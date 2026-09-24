@@ -35,7 +35,8 @@ describe('/ship review fix loop (#2391)', () => {
 
   test('rendered section instructs the bounded in-invocation loop', () => {
     const content = fs.readFileSync(RENDERED_SITES[0], 'utf-8');
-    expect(content).toContain('stay in this invocation and loop');
+    expect(content).toContain('| Fixing pass below the cap | Stay in this invocation:');
+    expect(content).toContain('Never ask the user to restart `/ship` merely to continue this cycle');
     expect(content).toContain('3 fix cycles');
     // The loop re-runs tests AND the review, and only a converged pass continues.
     expect(content).toContain('re-run the test suite (Step 5)');

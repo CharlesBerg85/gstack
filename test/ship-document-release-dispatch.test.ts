@@ -29,8 +29,8 @@ describe('pre-publication documentation lifecycle', () => {
   test('final verification orders build, bounded documentation refresh, freeze and evidence', () => {
     const body = read('ship/SKILL.md.tmpl');
     const gate = body.slice(body.indexOf('## Step 16:'), body.indexOf('## Step 17:'));
-    const steps = ['1. **Settle writers and build.**', '2. **Classify changes since review.**',
-      '3. **Resolve documentation freshness.**', '4. **Freeze and verify.**', '5. **Report, then push.**'];
+    const steps = ['### 1. Finish writers and prepare outputs', '### 2. Choose the change route',
+      '### 3. Resolve documentation freshness', '### 4. Verify the frozen candidate', '### 5. Report, then push'];
     const positions = steps.map(step => gate.indexOf(step));
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -90,13 +90,14 @@ describe('pre-publication documentation lifecycle', () => {
 
   test('failure is visible, bounded and settled before another writer', () => {
     const body = read('ship/sections/documentation.md.tmpl').replace(/\s+/g, ' ');
-    for (const text of ['confirm it is terminal/settled', 'A stop request alone is not settlement',
+    for (const text of ['inspect status for terminal completion or confirmed termination', 'A stop request alone is not settlement',
       '1 used: only ONE repair/re-audit remains', 'specific named documentation risk', 'Preserve partial',
-      'Vet actual changed paths/content against candidate HEAD/index/status',
-      'enforcing prompt/audit-scope permissions and protected-file exclusions, not returned claims',
-      'Require complete path equality with `files_updated`, no read-only writes, unchanged HEAD/index and preserved user edits',
-      'Any base change or edit other than verified permitted child edits makes this result stale',
-      'Later generation or other content changes require re-audit under the remaining allowance']) expect(body).toContain(text);
+      'Compare HEAD, index entries, dirty/untracked paths and actual file changes with the saved candidate',
+      'Enforce the prompt/audit-scope permissions and protected-file exclusions, not returned claims',
+      'Changed paths must equal `files_updated`; require unchanged HEAD/index, preserved user edits and no read-only writes',
+      'Only verified permitted child edits may differ. Other edits or a changed base make the audit stale',
+      'Later content changes require the remaining re-audit or a blocked-risk decision',
+      'never silently refresh accepted hashes']) expect(body).toContain(text);
     expect(body).not.toContain('Do not block /ship on subagent failure');
   });
 
@@ -107,8 +108,8 @@ describe('pre-publication documentation lifecycle', () => {
       'A stale snapshot is not an attempt and is not a current audit',
       'Inline takeover keeps the same settlement/validation gates',
       '2 used: no third attempt, including after a late Step 16 change',
-      'Settle the old attempt before another writer',
-      'stop the owned child if still running and confirm it is terminal/settled before repair, retry or inline takeover',
+      'Confirm the old child stopped',
+      'request stop, then inspect status for terminal completion or confirmed termination before repair, retry, inline takeover or another writer',
       'If an attempt remains AND a concrete launch/input/permission correction or reviewed patch repair is available',
       'with a fresh id/snapshot, run the remaining attempt, then return to Parent processing',
       'Otherwise STOP before commit/publication',

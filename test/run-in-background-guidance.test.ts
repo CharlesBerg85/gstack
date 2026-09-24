@@ -443,11 +443,13 @@ describe('run_in_background guidance (#2440)', () => {
   test('ship pr-body carries the doc-sync deadline recovery + scope guard', () => {
     for (const rel of PR_BODY_SITES) {
       const content = fs.readFileSync(path.join(ROOT, rel), 'utf-8').replace(/\s+/g, ' ');
-      expect(content.toLowerCase()).toContain('errors/deadlines block');
-      expect(content).toContain('stop the owned child if still running and confirm it is');
-      expect(content).toContain('terminal/settled');
+      expect(content).toContain('Require terminal completion and final output within ~10 minutes');
+      expect(content).toContain('On failure/deadline, use recovery below before another writer');
+      expect(content).toContain('request stop, then inspect status for terminal completion or confirmed termination');
+      expect(content).toContain('A stop request alone is not settlement');
       expect(content).toContain('Only audit/edit permitted docs');
-      expect(content).toContain('Any failure goes to Blocked recovery, not the next ship step');
+      expect(content).toContain('If any validation fails, use Blocked recovery');
+      expect(content).toContain('A `blocked` result also goes to recovery, even when its JSON is valid');
       expect(content).toContain('On any failure, report `Documentation: blocked`');
       expect(content).toContain('`Documentation: blocked`');
     }

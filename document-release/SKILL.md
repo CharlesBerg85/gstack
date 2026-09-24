@@ -28,7 +28,7 @@ updates README/ARCHITECTURE/CONTRIBUTING/CLAUDE.md to match what shipped,
 detects architecture diagram drift, polishes CHANGELOG voice with a sell-test
 rubric, cleans up TODOS, and optionally bumps VERSION. Surfaces documentation
 debt in the PR body. Use when asked to "update the docs", "sync documentation",
-or "post-ship docs". Proactively suggest after a PR is merged or code is shipped.
+or "post-ship docs". Proactively suggest a documentation audit before merge.
 
 ## Preamble (run first)
 

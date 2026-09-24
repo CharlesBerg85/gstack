@@ -14,6 +14,22 @@ const ROOT = path.resolve(import.meta.dir, '..');
 const TEMP = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-outside-preflight-'));
 afterAll(() => fs.rmSync(TEMP, { recursive: true, force: true }));
 
+test('ship design availability is an existing automatic choice, not a new opt-in', () => {
+  for (const host of ALL_HOST_CONFIGS) {
+    const ctx: TemplateContext = { host: host.name, skillName: 'ship', tmplPath: 'ship/SKILL.md.tmpl', paths: HOST_PATHS[host.name] };
+    const output = outsideVoicePreflight(ctx, { disabledBehavior: 'opt-in' });
+    expect(output).toContain('Ship attempts this optional design check automatically when frontend review applies');
+    expect(output).toContain('No additional opt-in is needed');
+    expect(output).toContain('Step 11 keeps its separate outside-review switch');
+    expect(output).toContain('`CODEX_MODE` reports provider availability, not user consent');
+    expect(output).not.toContain('Honor this caller’s existing opt-in/skip choice');
+    const other = outsideVoicePreflight({ ...ctx, skillName: 'review' }, { disabledBehavior: 'opt-in' });
+    expect(other).toContain('Honor this caller’s existing opt-in/skip choice');
+    expect(other).not.toContain('No additional opt-in is needed');
+    expect(output.match(/```bash\n([\s\S]*?)\n```/)![1]).toBe(other.match(/```bash\n([\s\S]*?)\n```/)![1]);
+  }
+});
+
 test('CEO and Eng describe the actual disabled route and completion validator', () => {
   for (const host of ALL_HOST_CONFIGS) {
     for (const skillName of ['plan-ceo-review', 'plan-eng-review']) {

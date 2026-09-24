@@ -10,6 +10,15 @@ function calls(...toolCalls: SkillTestResult['toolCalls']): SkillTestResult {
   return { toolCalls } as SkillTestResult;
 }
 
+test('document-release discovery describes the supported pre-merge lifecycle', () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dir, '../document-release/SKILL.md.tmpl'), 'utf8');
+  const description = source.match(/\ndescription: \|([\s\S]*?)\nallowed-tools:/)![1].replace(/\s+/g, ' ');
+  expect(description).toContain('before merge');
+  expect(description).not.toContain('after a PR is merged');
+  expect(source).toContain('Standalone `/document-release` runs after\ncommit, before merge');
+  expect(source).toContain('if on the base branch, **abort**');
+});
+
 test('docs write authority permits the authored doc and private JSON/Markdown artifacts only', () => {
   const fixture = fixtureDocs('updated');
   try {

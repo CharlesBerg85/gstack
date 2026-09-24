@@ -106,7 +106,9 @@ describe('content-binding template drift', () => {
     const army = rendered('ship/sections/review-army.md');
     expect(army.indexOf('gstack-review-log --start review')).toBeLessThan(army.indexOf('run `git diff origin/<base>`'));
     expect(army).toContain('--finish REVIEW_START');
-    expect(army).toContain('persist item 6 below with `converged:false`');
+    expect(army.replace(/\s+/g, ' ')).toContain("Complete items 5–6 exactly once with this pass's original REVIEW_START");
+    expect(army).toContain('any fixing pass uses `converged:false`');
+    expect(army).toContain('The persisted pass remains `converged:false`');
     expect(army).toContain('--start design-review-lite');
     expect(army).toContain('--finish DESIGN_START');
     const codex = rendered('codex/sections/review-mode.md');
