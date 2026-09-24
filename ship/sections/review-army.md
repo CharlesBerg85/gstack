@@ -2,25 +2,21 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Step 9: Pre-Landing Review
 
-Steps 9–11 are one parent-owned review phase. Initialize CYCLES to 0 only on
-first entry. Steps 10–11 queue findings; only Step 9.4 applies their fixes.
-Keep approvals for the same finding and scope; changed scope needs a new decision.
+The parent owns Steps 9–11. Set CYCLES to 0 on first entry only; Steps 10–11
+queue findings for Step 9.4 to fix, using the same counter and approvals.
+Changed finding scope needs a new decision.
 
-For each Step 9 pass:
-1. Run checklist/design, specialists (9.1), then merge/Red Team (9.2).
-2. Run exploratory QA (9.2.1), dedup (9.3), and fixes/persistence (9.4).
-   Gated/unsupported fan-out skips to 9.2.1, not past QA or Step 11.
-3. Use Step 9.4's exit decision. After persistence, STOP for missing dispatched
-   reviewer output; undispatched coverage keeps its gated/unsupported label.
+Each pass runs checklist/design, specialists (9.1), merge/Red Team (9.2),
+exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4). If fan-out is
+gated/unsupported, continue at 9.2.1, not past QA or Step 11. Step 9.4 decides
+whether to repeat, stop for missing dispatched output, or continue.
 
-**Required-probe parent gate:** Only an actual user may accept named failed/unavailable required probes after
-a zero-edit pass with completed checklist and dispatched reviewers.
-For those probes, use AskUserQuestion: stop for repair (recommended), or accept each named
-probe's concrete risk. A skipped fix is not an answer to this separate question. Retain actual
-probe outcomes and incomplete flags; VERIFY_RESULT stays fail for plan-check exceptions,
-never claim a pass.
-This exception cannot waive missing reviewer output, recurring fixes, or independent
-test/security gates.
+**Required-probe parent gate:** If required probes fail or are unavailable, wait for
+a zero-edit pass with completed checklist and dispatched reviewers. Then ask the
+user to stop for repair (recommended) or accept each named probe's concrete risk. Use AskUserQuestion and
+accept risk only on the user's explicit choice, never a skipped fix. Retain actual outcomes and incomplete flags;
+VERIFY_RESULT stays fail for plan-check exceptions. This cannot waive missing
+reviewer output, recurring fixes or independent test/security gates.
 
 ## Confidence Calibration
 
@@ -352,9 +348,9 @@ CHECKLIST:
 - Use `subagent_type: "general-purpose"`
 - Pass `run_in_background: false` on every specialist Agent call — background is the default since Claude Code v2.1.198; omitting the flag is not foreground.
 
-**Settlement is not coverage:**
-- Terminal failure means the reader has exited or is confirmed stopped. Record its failure and retain usable partial findings. A timeout alone does not prove termination.
-- Active or unknown reader/writer: wait for settlement or confirm it is stopped before editing. If neither is possible, use the parent's Fix-First stop path without edits.
+**Wait for readers before editing:**
+- Confirm that each task has finished or is stopped. A timeout alone does not prove termination. If a reader or writer is still active, wait; if its state is unknown, inspect its task/process status. If you cannot confirm it stopped, use the parent's Fix-First stop path without edits.
+- A failed task may be stopped without having completed its review. Record the failure and retain usable partial findings.
 - Continue independent evidence collection after a terminal failure. Missing dispatched coverage remains incomplete, never completed or clean; successful peers cannot replace it.
 
 ---
@@ -462,7 +458,7 @@ Consolidate equivalent shared-code advice under the core proposal, retaining all
 sources and counting overlapping savings once. Keep actual specialist stats;
 core-only advice must not create a specialist dispatch or finding.
 Normal AUTO-FIX/ASK rules apply, with advice ASK-only. Missing coverage still blocks
-completion; advice never relaxes the parent's settlement or coverage gates.
+completion. Advice never permits edits while readers are active or replaces a required review.
 
 ---
 
@@ -489,7 +485,7 @@ Add them to the original specialist outputs and rerun stages 1–7 of Step 9.2
 before Step 9.3 dedup, then Step 9.4 Fix-First; do not boost or count the earlier findings twice.
 
 If the Red Team returns NO FINDINGS, note: "Red Team review: no additional issues found."
-If the Red Team fails or times out, apply the same settlement and incomplete-coverage rules as the other specialists. Return to the parent's Exploratory QA step, then dedup and persistence; Step 9.4 cannot certify missing dispatched coverage as completed or clean.
+If the Red Team fails or times out, confirm it stopped and record its review as incomplete, just as for other specialists. Return to the parent's Exploratory QA step, then dedup and persistence; Step 9.4 cannot certify missing dispatched coverage as completed or clean.
 
 ### Step 9.2.1: Exploratory QA (before Fix-First)
 
@@ -575,12 +571,10 @@ or missing-reviewer rules.
 
 ## Step 9.4: Fix-First and persistence
 
-Before edits, confirm every dispatched reader has returned or is confirmed stopped.
-Inspect each handle in the invocation note. For an active or unknown reader/writer,
-wait or confirm termination with the host's task/status tools; otherwise persist
-incomplete via items 5–6 and STOP without edits.
-Terminal failure permits fixes from independent evidence, but missing dispatched
-output still blocks completion and continuation. The QA exception cannot waive it.
+Before edits, inspect every dispatched reader/writer's handle. Wait for return
+or confirm termination; otherwise log incomplete through items 5–6 and STOP
+without edits. After terminal failure, independent evidence may support fixes,
+but missing dispatched output still blocks continuation, even with a QA exception.
 
 1. **Classify each finding from the checklist pass, specialists, exploratory QA and queued Steps 10–11 findings as AUTO-FIX or ASK** per the Fix-First Heuristic in
    checklist.md. Critical findings lean toward ASK; informational lean toward AUTO-FIX.
@@ -594,11 +588,11 @@ output still blocks completion and continuation. The QA exception cannot waive i
    - Overall RECOMMENDATION
    - If 3 or fewer ASK items, you may use individual AskUserQuestion calls instead
 
-4. **Finalize this pass.** Increment CYCLES once if fixes were applied.
-   Complete items 5–6 exactly once with this pass's original REVIEW_START before
-   taking a return route. Missing dispatched output uses `status:"unavailable"`,
-   `completed:false` and `converged:false`; any fixing pass uses `converged:false`.
-   After persistence, commit named fixed files, if any
+4. **Finish and log this pass before choosing the next step.** Increment CYCLES
+   once if fixes were applied. Complete items 5–6 exactly once with the original
+   REVIEW_START. Missing dispatched output uses `status:"unavailable"`,
+   `completed:false` and `converged:false`; fixes also require `converged:false`.
+   Then commit named fixed files, if any
    (`git add <fixed-files> && git commit -m "fix: pre-landing review fixes"`).
 
 5. Output summary: `Pre-Landing Review: N issues — M auto-fixed, K asked (J fixed, L skipped)`
@@ -632,17 +626,23 @@ Save the review output — it goes into the PR body in Step 19.
 
 ### Choose the next step
 
-Bound: 3 fix cycles for this invocation. Keep this counter across returns from
-Steps 10, 11 and 16. Update the invocation note, then take the first matching row:
+Update the invocation record, keeping the **3 fixing-cycle limit** across returns
+from Steps 10, 11 and 16. First, if dispatched output is missing, STOP before
+Step 10: name the failed/missing specialist or Red Team and retain applied fixes.
+Gated/host-unsupported reviewers were not dispatched and do not trigger this stop.
+Once coverage is available, rerun Step 5 and affected Steps 6–8 if code changed,
+then start Step 9 again within the same limit.
 
-| Result | Next action |
-|---|---|
-| Missing dispatched coverage | STOP before Step 10, naming the failed/missing specialist or Red Team and retaining applied fixes. Once coverage is available, rerun Step 5 and affected Steps 6–8 if code changed, then start a new Step 9 pass under the remaining allowance. Gated/host-unsupported reviewers were not dispatched and do not trigger this stop. |
-| Third fixing cycle | STOP and report which findings keep reappearing. The persisted pass remains `converged:false`. |
-| Fixing pass below the cap | Stay in this invocation: re-run the test suite (Step 5) and affected Steps 6–8, then re-run the whole Step 9 cycle from a new pass's start-token capture, including design, specialists, exploratory QA, Red Team and dedup. Tests must be green or have the same explicit Step 5 waiver. |
-| Zero-fix pass | Resolve required failed/unavailable probes through the parent gate above. Skipping a fix does not pass its probe. Continue to Step 10 only with completed, converged coverage or the named QA exception. |
+After a third fixing cycle, STOP and report recurring findings; the logged pass
+remains `converged:false`. Below that cap, any fixing pass reruns Step 5 and
+affected Steps 6–8, then all of Step 9 from a new start-token capture, including
+design, specialists, Red Team, exploratory QA and dedup. Tests must be green or
+have the same explicit Step 5 waiver.
 
-Steps 10–11 queue fixes for this same cycle; they do not open another allowance.
-Never ask the user to restart `/ship` merely to continue this cycle.
+Only a zero-fix pass can continue to Step 10. Resolve failed/unavailable required
+probes through the parent gate above: skipping a fix does not pass its probe.
+Require completed, converged coverage or the named QA exception. Steps 10–11
+return their queued fixes here without resetting the limit; never ask the user
+to restart `/ship` merely to continue this cycle.
 
 ---

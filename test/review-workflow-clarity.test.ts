@@ -32,7 +32,7 @@ test('review settles adversarial attempts before fixing and has one full-pass ba
   const decision = skill.slice(skill.indexOf('## Step 5.8: Persist Eng Review result')).replace(/\s+/g, ' ');
   expect(generated).toContain('## Step 4.8: Adversarial review');
   expect(generated).toContain("queued for the parent's Fix-First handling at Step 5; do not edit during Step 4.8");
-  expect(generated).toContain('before the\nparent applies queued fixes');
+  expect(generated.replace(/\s+/g, ' ')).toContain('before the parent applies queued fixes');
   expect(generated).toContain('Return all findings and structured-review decisions to Step 5');
   expect(decision).toContain('A pass covers Steps 3–5, including all reviewers before fixes');
   expect(decision).toContain('Below 3, repeat Steps 3–5 with a new REVIEW_START');
@@ -228,14 +228,15 @@ for (const skillName of ['review', 'ship']) {
   const flat = army.replace(/\s+/g, ' ');
 
   test(`${skillName} clarity: terminal failure permits independent work but never certifies coverage`, () => {
-    expect(flat).toContain('Terminal failure means the reader has exited or is confirmed stopped');
+    expect(flat).toContain('Confirm that each task has finished or is stopped');
     expect(flat).toContain('A timeout alone does not prove termination');
-    expect(flat).toContain('Active or unknown reader/writer: wait for settlement or confirm it is stopped before editing');
+    expect(flat).toContain("If a reader or writer is still active, wait; if its state is unknown, inspect its task/process status");
+    expect(flat).toContain("If you cannot confirm it stopped, use the parent's Fix-First stop path without edits");
     expect(flat).toContain('Continue independent evidence collection after a terminal failure');
     expect(flat).toContain('Missing dispatched coverage remains incomplete, never completed or clean');
     expect(flat).not.toContain('Specialists are additive — partial results are better than no results');
     const redTeam = flat.slice(flat.indexOf('### Red Team dispatch'));
-    expect(redTeam).toContain('same settlement and incomplete-coverage rules');
+    expect(redTeam).toContain('confirm it stopped and record its review as incomplete, just as for other specialists');
     expect(redTeam).toContain('original specialist outputs and rerun stages 1–7');
   });
 
@@ -320,9 +321,9 @@ test('review clarity: Greptile reply choices never substitute for Fix-First appr
 test('ship review clarity: parent settlement gate precedes classification and cannot waive coverage', () => {
   const ship = readFileSync(join(root, 'ship/sections/review-army.md.tmpl'), 'utf8');
   const gate = ship.slice(ship.indexOf('## Step 9.4:'), ship.indexOf('1. **Classify')).replace(/\s+/g, ' ');
-  expect(gate).toContain('every dispatched reader has returned or is confirmed stopped');
-  expect(gate).toContain('active or unknown reader/writer');
-  expect(gate).toContain('persist incomplete via items 5–6 and STOP without edits');
-  expect(gate).toContain('Terminal failure permits fixes from independent evidence');
-  expect(gate).toContain('missing dispatched output still blocks completion and continuation');
+  expect(gate).toContain("Before edits, inspect every dispatched reader/writer's handle");
+  expect(gate).toContain('Wait for return or confirm termination');
+  expect(gate).toContain('otherwise log incomplete through items 5–6 and STOP without edits');
+  expect(gate).toContain('After terminal failure, independent evidence may support fixes');
+  expect(gate).toContain('missing dispatched output still blocks continuation, even with a QA exception');
 });

@@ -127,6 +127,10 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
     failures.push(...validateQACheckpoints({
       transcript: result.transcript, reportRoot, probes,
       requiredProbes: probes.filter(probe => firstEdit < 0 || probe.index < firstEdit).slice(1),
+      additionalTargets: result.toolCalls.filter(call => call.tool === 'Bash' && /^bun test(?: |$)/.test(call.input?.command ?? '')
+        && qaCommandAllowed(call.input.command) && (failureOutput(call.output) || passingOutput(call.output))
+        && /\nRan [1-9]\d* tests? across [1-9]\d* files?\. \[[^\]\n]+\]\s*$/.test(call.output))
+        .map(call => ({ command: call.input.command, output: call.output })),
       files: checkpointFiles, reportMarkdown,
     }));
   } catch (error) { failures.push(`checkpoint artifact failure: ${error instanceof Error ? error.message : error}`); }

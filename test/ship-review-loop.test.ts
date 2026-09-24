@@ -34,17 +34,17 @@ describe('/ship review fix loop (#2391)', () => {
   });
 
   test('rendered section instructs the bounded in-invocation loop', () => {
-    const content = fs.readFileSync(RENDERED_SITES[0], 'utf-8');
-    expect(content).toContain('| Fixing pass below the cap | Stay in this invocation:');
-    expect(content).toContain('Never ask the user to restart `/ship` merely to continue this cycle');
-    expect(content).toContain('3 fix cycles');
+    const content = fs.readFileSync(RENDERED_SITES[0], 'utf-8').replace(/\s+/g, ' ');
+    expect(content).toContain('Below that cap, any fixing pass reruns Step 5');
+    expect(content).toContain('never ask the user to restart `/ship` merely to continue this cycle');
+    expect(content).toContain('3 fixing-cycle limit');
     // The loop re-runs tests AND the review, and only a converged pass continues.
-    expect(content).toContain('re-run the test suite (Step 5)');
-    expect(content).toContain("re-run the whole Step 9 cycle from a new pass's start-token capture");
+    expect(content).toContain('any fixing pass reruns Step 5 and affected Steps 6–8');
+    expect(content).toContain('then all of Step 9 from a new start-token capture');
   });
 
   test('the non-convergence stop is a blocker report, not a rerun request', () => {
     const content = fs.readFileSync(RENDERED_SITES[0], 'utf-8');
-    expect(content).toContain('report which findings keep reappearing');
+    expect(content).toContain('After a third fixing cycle, STOP and report recurring findings');
   });
 });

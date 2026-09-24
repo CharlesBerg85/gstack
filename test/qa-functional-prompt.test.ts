@@ -37,6 +37,22 @@ test('declared examples respect the existing closed native grammar', () => {
   }
 });
 
+test('artifact completion preserves exact evidence before concise linked reporting', () => {
+  for (const entry of QA_FUNCTIONAL_CASES) {
+    const prompt = qaFunctionalPrompt(entry);
+    expect(prompt).toContain('Preserve qa-reports/evidence.json first, then write a concise qa-reports/report.md');
+    expect(prompt).toContain('using the functional report structure');
+    expect(prompt).toContain('Link the evidence and checkpoint files rather than repeating full probe payloads in Markdown');
+    expect(prompt).toContain('Both artifacts are required before completion');
+    expect(prompt).toContain('Evidence rows contain ONLY complete JSON actually emitted by native probes, including failures and repeats');
+    expect(prompt).toContain('retain pre-repair results alongside green results');
+    expect(prompt).toContain('Never synthesize JSON');
+  }
+  const source = readFileSync(join(import.meta.dir, 'helpers/qa-functional-eval.ts'), 'utf8');
+  expect(source).toContain('maxTurns: 40');
+  expect(source).toContain('completionReserveMs: timeout / 4');
+});
+
 test('report-only exploration requires a completed written checkpoint before the next probe', () => {
   const section = readFileSync(join(import.meta.dir, '../qa-only/sections/exploratory.md'), 'utf8');
   const positions = ['1. First demonstrate a successful operation', '2. **Write before probing.**', '3. Run that exact probe']

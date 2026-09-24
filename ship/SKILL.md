@@ -445,33 +445,30 @@ mark completed TODOs and apply auto-fixable review findings.
 Coverage at or above Step 7's target needs no approval: report remaining gaps,
 verify generated tests and commit with Step 15.
 
-**Route:** Steps 1–8 prepare the change; 9–11 review until no fixes remain;
-12–15 prepare release metadata, audit docs and commit; 16 verifies final content
-before 17–20 publish/report and 21 offers the optional plan-tune nudge.
+**Route:** Prepare the change in Steps 1–8, review it in 9–11, then prepare release
+metadata, audit docs and commit in 12–15. Step 16 checks the final content before
+17–20 publish/report; Step 21 offers the optional plan-tune nudge.
 
-**Invocation record:** Keep one progress note for this /ship request outside the
-product tree and retain its absolute path. Update it in place on re-entry:
+Keep one **invocation record** outside the product tree and retain its absolute
+path. Record used attempt counts, versions and `BUMP_LEVEL`; approvals with their finding, files and
+action; each review's handle, original token, terminal state, output and queued
+fixes; and each check's command/label, result/counts, timestamp, log and inputs.
+Keep the docs candidate/id, accepted hashes or named blocked exception there too.
 
-| Row | Record here |
-|---|---|
-| Release | Save base/current/proposed versions, `BUMP_LEVEL` and any rebump approval. |
-| Allowances and approvals | Track Step 7's 2 generation passes, Step 9's 3 fix cycles, Step 14.5's initial audit plus ONE repair/re-audit, and each approved finding/files/action. |
-| Review attempts | For each source/phase/attempt, save its task/process handle, original token, terminal state, output path and queued fixes with approvals. |
-| Checks and docs | Link each command/label, result/counts, timestamp, log and input evidence; retain the docs candidate/id, accepted hashes or named blocked exception. |
+Update this note on every return. It does not replace helper receipts or reset
+limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles, and
+Step 14.5 permits an initial audit plus ONE repair/re-audit. Reuse an approval
+only for the same finding, files and action.
 
-The note does not replace helper receipts. Returning to an earlier step never
-resets these counts. Approval carries over only for the same
-finding, files and action.
-
-A working-tree content snapshot (`wtree`) identifies tracked and non-ignored
-untracked content, not a commit id. Capture each `*_START` token before that pass
-reads its inputs and finish with that same token; never exchange tokens between passes.
+Review helpers return a `*_START` token identifying the content about to be read,
+including tracked and non-ignored untracked files (`wtree`), not just a commit.
+Capture it before each pass reads its inputs and finish that pass with the same
+token. Never exchange tokens between passes.
 
 **Re-run behavior (idempotency):**
-Every invocation repeats verification: tests, coverage, plan completion, both
-reviews, VERSION/CHANGELOG, TODOS and doc-sync. Steps 12, 17 and 19 prevent
-duplicate bumps, pushes and PRs; they do not skip their verification gates.
-Prior execution never exempts verification.
+Every invocation verifies tests, coverage, plan completion, both reviews,
+VERSION/CHANGELOG, TODOS and docs. Steps 12, 17 and 19 prevent duplicate bumps,
+pushes and PRs, never verification.
 
 ---
 
@@ -572,15 +569,69 @@ During pre-flight, read the existing review log and config to display readiness;
 ~/.claude/skills/gstack/bin/gstack-review-read
 ```
 
-Render each record using its recorded host, source, outside_provider, outside_status, and phase. Historical source "claude" means a native Claude subagent; source "claude-code" means the external CLI. Never infer a historical provider from the current harness. Unknown model identity remains unknown. Missing/disabled/skipped outside coverage is distinct from native completion.
+**1. Choose the records to display.** Use the latest record for each row below.
+Do not use a record older than 7 days to clear a row, and never substitute an older
+success for a newer failure. Ship metrics are not review records.
 
-Parse the output. Find the most recent entry for each skill (plan-ceo-review, plan-eng-review, review, plan-design-review, design-review-lite, adversarial-review, codex-review, codex-plan-review). Ignore entries with timestamps older than 7 days. For the Eng Review row, show whichever is more recent between `review` (diff-scoped pre-landing review) and `plan-eng-review` (plan-stage architecture review). Append "(DIFF)" or "(PLAN)" to the status to distinguish. For the Adversarial row, show whichever is more recent between `adversarial-review` (new auto-scaled) and `codex-review` (legacy). For Design Review, show whichever is more recent between `plan-design-review` (full visual audit) and `design-review-lite` (code-level check). Append "(FULL)" or "(LITE)" to the status to distinguish. For the Outside Voice row, show the most recent `codex-plan-review` entry — this captures outside voices from both /plan-ceo-review and /plan-eng-review.
+| Row | Choose the latest of | Status suffix |
+|---|---|---|
+| Eng Review | `review` or `plan-eng-review` | (DIFF) or (PLAN) |
+| CEO Review | `plan-ceo-review` | — |
+| Design Review | `plan-design-review` or `design-review-lite` | (FULL) or (LITE) |
+| Adversarial | `adversarial-review` or legacy `codex-review` | — |
+| Outside Voice | `codex-plan-review` from CEO or Eng review | — |
 
-**Source attribution:** If the most recent entry for a skill has a \`"via"\` field, append it to the status label in parentheses. Examples: `plan-eng-review` with `via:"autoplan"` shows as "CLEAR (PLAN via /autoplan)". `review` with `via:"ship"` shows as "CLEAR (DIFF via /ship)". Entries without a `via` field show as "CLEAR (PLAN)" or "CLEAR (DIFF)" as before.
+Keep each record's host, source, outside_provider, outside_status and phase.
+Historical source "claude" is a native subagent; "claude-code" is the external CLI.
+Do not infer old providers or unknown models from today's harness. A native result
+does not fill missing, disabled or skipped outside coverage.
 
-From gstack-review-read output, use entries whose skill is `autoplan-voices` or `design-outside-voices` for the coverage detail below the dashboard. Group by workflow run and phase, not merely skill. Show each phase’s recorded provider and outside_status; partial coverage must remain partial. These records do not change the engineering gate.
+**Source attribution:** Append a recorded `via` to the suffix, for example
+"CLEAR (PLAN via /autoplan)" or "CLEAR (DIFF via /ship)". Without `via`, keep
+"CLEAR (PLAN)" or "CLEAR (DIFF)". Below the dashboard, group `autoplan-voices`
+and `design-outside-voices` by workflow run and phase. Show each phase's provider
+and outside_status; retain partial coverage. These details do not clear Eng Review.
 
-Display:
+**2. Check freshness before choosing a verdict.**
+
+- **Content-first rule:** For `review`, `adversarial-review`, `codex-review`,
+  ship-stage reviews and `design-review-lite`, use `review_freshness.status`
+  and show its `reason`. CURRENT means a completed clean review whose start and
+  end content fingerprints equal the current `---WTREE---` fingerprint. This
+  fingerprint covers working-tree content, not just the commit.
+  STALE or UNVERIFIED cannot clear Eng Review. Missing `review_freshness`,
+  including legacy log-only records, means UNVERIFIED. Never fall back to HEAD
+  equality or commit distance for diff evidence, even at zero commits.
+  Show recorded cycles, completed/converged fields and missing source/phase
+  coverage. Unknown coverage is not a pass.
+- **Plan records** (plan-ceo-review, plan-eng-review, plan-design-review and
+  codex-plan-review) use the 7-day window, not the working-tree fingerprint.
+  If `plan_sha256` is present, you may compare the plan file and report a mismatch.
+  For plan records only, compare the recorded commit with `---HEAD---`.
+  If different, run `git rev-list --count STORED_COMMIT..HEAD` and report
+  "Note: {skill} review from {date} may be stale — {N} commits since review".
+  A failed command means UNKNOWN, treated as stale. Without commit tracking,
+  retain the note to consider re-running. Omit staleness notes when all reviews
+  are current.
+
+**3. Choose the historical verdict.** CLEARED requires the selected Eng Review
+to be `clean`, within 7 days and fresh under step 2. Otherwise report NOT CLEARED
+and its missing, stale or open-issue reason. If `skip_eng_review` is true, show
+"SKIPPED (global)" for Eng Review and CLEARED for this dashboard.
+This verdict never skips Step 9 or its finding, approval and convergence gates. Continue Step 1 even when history is NOT CLEARED.
+
+Other rows provide context, not a substitute for Eng Review:
+- Recommend CEO Review for product/business or scope decisions, not routine fixes or cleanup.
+- Recommend Design Review for UI/UX work, not backend, infrastructure or prompt-only work.
+- Adversarial review always includes a native pass. Available, enabled outside
+  challenges supplement it; diffs of 200+ lines also get the structured P1 gate.
+- Outside Voice is the default-on plan review after CEO/Eng review. `codex_reviews`
+  disables that extra step. Provider failure uses native fallback and records
+  missing outside coverage; this dashboard row never gates shipping.
+
+**4. Display the dashboard.** Show missing, stale, disabled or unavailable results
+explicitly, never as CLEAR. Display a fresh `clean` result as CLEAR and
+`issues_open` as ISSUES OPEN without changing the stored status.
 
 ```
 +====================================================================+
@@ -597,26 +648,6 @@ Display:
 | VERDICT: CLEARED — Eng Review passed                                |
 +====================================================================+
 ```
-
-**Review tiers:**
-- **Eng Review (historical readiness):** Required for a CLEARED dashboard, not for continuing Step 1. Step 9 remains mandatory, with its finding, approval and convergence gates. The skip_eng_review setting changes this dashboard only.
-- **CEO Review (optional):** Use your judgment. Recommend it for big product/business changes, new user-facing features, or scope decisions. Skip for bug fixes, refactors, infra, and cleanup.
-- **Design Review (optional):** Use your judgment. Recommend it for UI/UX changes. Skip for backend-only, infra, or prompt-only changes.
-- **Adversarial Review (automatic):** Always-on for every review. Every diff gets a native adversarial pass and, when enabled and available, a host-selected outside challenge. Large diffs (200+ lines) additionally get a structured outside review with P1 gate.
-- **Outside Voice (default-on):** Independent plan review through the host-selected provider after /plan-ceo-review and /plan-eng-review. The codex_reviews switch disables the entire extra step. Provider failure uses the existing native fallback and reports missing outside coverage. Never gates shipping.
-
-**Verdict logic:**
-- **CLEARED**: Eng Review has >= 1 entry within 7 days from either \`review\` or \`plan-eng-review\` with status "clean"; diff review must also grade CURRENT below (or \`skip_eng_review\` is \`true\`)
-- **NOT CLEARED**: Eng Review missing, stale (>7 days), or has open issues
-- CEO, Design, and outside reviews are shown for context but never block shipping
-- If \`skip_eng_review\` config is \`true\`, Eng Review shows "SKIPPED (global)" and verdict is CLEARED
-
-**Staleness detection:** Grade before deciding CLEARED:
-- Ship telemetry reports metrics, not review coverage; it never satisfies a review row.
-- **Content-first rule (diff-scoped rows only: `review`, `adversarial-review`, `codex-review`, ship-stage entries, `design-review-lite`).** Use the helper's computed `review_freshness.status` and show its `reason`. CURRENT requires a completed clean pass with captured start/end wtree equal to the current `---WTREE---`. STALE or UNVERIFIED never clears Eng Review. Missing `review_freshness` is UNVERIFIED, including legacy log-only rows. Never fall back to HEAD equality or commit distance for diff evidence, even at 0 commits. Show recorded cycles, completed/converged state, and missing per-source/phase coverage; unknown is not a pass.
-- Plan-tier rows (plan-ceo-review, plan-eng-review, plan-design-review, codex-plan-review) grade a plan file, not the repo tree — never apply the wtree rule to them; they keep the 7-day freshness logic. If an entry carries `plan_sha256`, you MAY compare it with the plan file and note "plan changed since review" on mismatch.
-- Plan-tier fallback only: parse `---HEAD---`. For entries with a different `commit`, count elapsed commits: `git rev-list --count STORED_COMMIT..HEAD`. If that command FAILS, grade UNKNOWN and treat as stale. Display: "Note: {skill} review from {date} may be stale — {N} commits since review". Missing commit tracking retains the legacy note to consider re-running.
-- If all reviews grade CURRENT, do not display staleness notes
 
 If Eng Review is not CLEAR, print its actual status and reason: "Eng Review: {status} — {reason}. Ship will run its pre-landing review in Step 9." For diffs >200 lines (`git diff origin/<base> --stat | tail -1`), recommend `/plan-eng-review` or `/autoplan` for architecture review.
 
@@ -701,9 +732,8 @@ No plan skips only plan-specific work, not Prior Learnings or Scope Drift.
 
 Use **`gstack-version-bump`** for classify/write/repair and `gstack-next-version`
 for slot selection. Bump level and queue collisions remain agent decisions.
-Read `BUMP_LEVEL` from this invocation note's Release row. Save the selected or
-recovered level there before queue selection; save `BASE_VERSION` and `NEW_VERSION`
-there as they become known.
+Save `BUMP_LEVEL` in the invocation record before queue selection, and
+`BASE_VERSION` and `NEW_VERSION` as they become known. Reuse the recorded level.
 
 1. **Classify state** — pure reader, never writes:
    ```bash
@@ -711,7 +741,7 @@ there as they become known.
    ```
    Save the JSON `baseVersion` as `BASE_VERSION`, then read `state` and dispatch:
    - **FRESH** → do the bump (steps 2-4).
-   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. If the Release row has no level, compare `baseVersion` and `currentVersion` left to right: the first changed major/minor/patch/micro component supplies `BUMP_LEVEL` (a missing fourth component is zero). Then run step 3's queue check. This recovers the level, not permission to bump again.
+   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. If no level was recorded, compare `baseVersion` and `currentVersion` left to right: the first changed major/minor/patch/micro component supplies `BUMP_LEVEL` (a missing fourth component is zero). Then run step 3's queue check. This recovers the level, not permission to bump again.
    - **DRIFT_STALE_PKG** → run `gstack-version-bump repair`, then reclassify. On success, follow **ALREADY_BUMPED**, including its queue check; on failure, STOP. Repair alone never re-bumps.
    - **DRIFT_UNEXPECTED** → **STOP**. package.json disagrees with VERSION while VERSION matches base — a manual edit bypassed /ship. Reconcile manually, then re-run.
 
@@ -753,7 +783,7 @@ Persist approved follow-ups, then conservatively mark completed work.
 
 Read `~/.claude/skills/gstack/review/TODOS-format.md` for the canonical format reference.
 
-**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes its creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. If B, continue to Step 14.5's documentation audit with the outcome in the summary below.
+**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. Skip bypasses items 2–4: report the declined creation and unsaved follow-ups under item 5, then continue to Step 14.5.
 
 **2. Organization:** Expect component headings, `**Priority:**` P0–P4 fields, and `## Completed` at the bottom. If disorganized, ask: A) Reorganize (recommended), B) Leave as-is. A preserves all content; B continues without restructuring.
 
@@ -807,99 +837,94 @@ EOF
 
 **IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
-Keep the invocation record's counters and approvals throughout these five stages.
+Work through these five stages with the same invocation record and limits.
 
-**Reusing a check:** Read its original command, result/counts, timestamp and log
-from the note's Checks and docs row. Use saved hashes or byte comparisons to compare consumed
-files, fixtures, dependencies and execution parameters. Record why changes outside
-those inputs cannot affect the result; changed or unknown dependencies require reruns.
-For a model judge, compare the complete expanded request, rubric, parameters and
-builder/runtime dependencies. Do not resample an identical passing judge; cite its
-original result. Reuse does not replace mandatory review passes or the test-tree
-receipt rules below.
+Reuse a check only when its saved evidence proves that its consumed files,
+fixtures, dependencies and execution parameters are unchanged. Compare hashes or
+complete bytes and explain why other changes cannot affect it; unknown or changed
+dependencies require a rerun. For a model judge, compare the complete expanded
+request, rubric, parameters and builder/runtime dependencies. Cite the original
+command, result/counts, timestamp and log rather than resampling an identical
+passing judge. This does not replace mandatory reviews or stage 4's test receipts.
 
 ### 1. Finish writers and prepare outputs
 
-Inspect the recorded handles of all writers, including the docs child. A terminal
-result or confirmed termination permits the next writer. Timeout or cancellation
-acknowledgment alone does not. If a writer cannot be confirmed stopped, STOP.
+Inspect all writer handles, including the docs child. Before another writer runs,
+require terminal completion or confirmed termination, not merely a timeout or
+cancellation acknowledgment. If unconfirmed, STOP; resume only after confirming
+the writer stopped (use Step 14.5's recovery for its child).
 
-Find generation/build commands from its scripts or CI configuration and run them.
-If none is declared, record build/generation as not applicable with the inspected source.
-A declared command with missing prerequisites is blocked, not absent. Record each
-command/result; a failed build blocks push.
+Run generation/build commands declared in project scripts or CI and record their
+results. If none exists, record not applicable and the inspected source. Missing
+prerequisites for a declared command, or a failed build, block push.
 
 ### 2. Choose the change route
 
-Compare with the content last examined in Steps 9–11, not the original branch diff.
-A commit alone doesn't change content. Prompts/templates are behavioral inputs,
-not automatically documentation.
+Compare content with the last Steps 9–11 review, not the original branch diff.
+If unchanged, continue to stage 3; a commit alone is not a content change.
 
-| Change | Next action |
-|---|---|
-| No content changed | Continue to stage 3. |
-| Only authored docs or release metadata changed | Refresh affected plan items, then continue to stage 3 without a new code review. |
-| Behavior, tests or build inputs changed | Revisit Step 5 test lanes, Step 6 eval selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11, then recheck release metadata in Steps 12–14. Restart stage 1. |
+If only authored docs or release metadata changed, recheck affected Step 8 plan
+items against the new content and update their completion/verification evidence.
+Then continue to stage 3 without a new code review.
 
-Do not wait for final receipts or a fresh docs audit before the behavioral route.
+If behavior, tests or build inputs changed, revisit Step 5 tests, Step 6 eval
+selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11. Recheck
+release metadata in Steps 12–14, then restart stage 1. Prompts/templates are
+behavioral, not automatically documentation. Take this route before collecting
+final receipts or refreshing docs; keep all existing attempt limits.
 
 ### 3. Resolve documentation freshness
 
 Compare the base, release files, docs/templates and generated content with the
-accepted docs hashes in the note:
+accepted docs hashes. If unchanged, continue to stage 4. If changed, return to
+Step 14.5 using its remaining attempt. After recovery, commit approved files in
+Step 15 and restart stage 1, so generation runs before the next comparison.
 
-| Documentation state | Next action |
-|---|---|
-| Accepted audit, unchanged inputs | Continue to stage 4. |
-| Changed inputs | Return to Step 14.5 under the existing invocation allowance. After recovery, commit approved files through Step 15 and restart stage 1 so generation precedes the next comparison. |
-| Blocked or exhausted | Use Step 14.5's named user-risk gate. Continue to stage 4 only after its unwaivable gates clear. |
-
-Reuse an exception only for the same named scope/content; changed content needs a
-new user decision, not a third audit. An approved exception leaves `Documentation: blocked`;
-it never certifies current docs.
+A blocked audit or exhausted attempts require Step 14.5's explicit user decision
+on the named documentation risk. Continue only after its unwaivable gates clear.
+An exception applies only to the same scope/content; changes need a new decision,
+never a third audit. The result remains `Documentation: blocked`, not current.
 
 ### 4. Verify the frozen candidate
 
-Keep inputs frozen through verification and push. Run the repo's declared
-docs/link/generated-file checks; report any unavailable check. Skipping code review
-for docs-only changes does not preserve test evidence: authored docs and TODO edits
-change the verified tree. For EACH Step 5 test lane, use its actual label/command:
+Keep inputs frozen through verification and push. Run declared docs/link/generated-file
+checks and report any unavailable check. Docs-only changes skip code review, not
+test freshness: authored docs and TODO edits change the verified tree.
+For EACH Step 5 test lane, use its actual label/command:
 `--label <lane> --expect-cmd '<exact Step 5 command>'`.
 
-Inspect changes since each lane ran before choosing `--allow-paths`. Only release
-metadata may use path exemptions. Remove any path with behavioral changes from
-the flag. Manifest scripts, dependencies and runtime configuration require live
-tests, even in `package.json`. The example assumes metadata-only changes in every
-listed path, with `tests` and `vitest` lanes:
+Inspect changes since each lane ran. Use `--allow-paths` only for release metadata;
+exclude any path with behavioral changes. Manifest scripts, dependencies and
+runtime configuration require live tests, even in `package.json`. This example
+assumes metadata-only changes in every listed path:
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --label vitest --expect-cmd '<vitest>' --max-age 24 --allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md
 ```
 
-With no Step 5 lanes, report the gap, not FRESH evidence. Declared builds must still pass.
-Do not add `TODOS.md` or generated tests: authored docs, new tests, fixes and TODO
-edits make evidence STALE.
+Do not exempt `TODOS.md` or generated tests: authored docs, new tests, fixes and
+TODO edits make evidence STALE. With no Step 5 lanes, report the gap, not FRESH;
+declared builds must still pass.
 
-Choose exactly one result for each lane:
+For FRESH (exit 0), cite the label, exit, timestamp and log. For STALE/MISSING
+(changed content, command or age, or no proven run), run
+`~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`,
+read the result and recheck once. A failed freshness check selects this live run;
+a failed test run requires Step 5's triage. Missing evidence never means pass.
 
-| Receipt result | Next action |
-|---|---|
-| FRESH (exit 0) | Cite its label, exit, timestamp and log. |
-| STALE/MISSING: content, command or age changed, or no proven run | Run the lane with `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`. Read results and recheck once. |
-| Ledger-only failure on unchanged inputs: only saving/reading the test receipt failed | Independently prove unchanged final content, command and valid age from the successful run's evidence. Cite the exact command, exit, timestamp and log; report ledger unavailable, never FRESH. Without that proof, use STALE/MISSING. |
-
-Stale content cannot use the ledger-only path. Do not rerun green suites solely for
-bookkeeping: only the ledger record may need repair, not changed content.
-
-A failed freshness CHECK is not a failed test: it selects live verification above.
-A failed RUN requires Step 5's triage; missing evidence never means pass.
+If only receipt storage/readback failed, independently prove unchanged final
+content, the same command and valid age from the successful run's evidence. Cite
+its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH.
+Without that proof, use STALE/MISSING. Stale content cannot take this exception;
+unchanged green suites do not need a rerun just to repair bookkeeping.
 
 ### 5. Report, then push
 
-Paste build/docs/test results. Use prior waivers only for the same verified
-pre-existing failures and approved scope; cite approval and failing counts, never
-FRESH or all-green. New, changed or unwaived failures STOP publication and return
-to Step 5. A later content edit restarts stage 1, including an edit made by a check.
+Paste build/docs/test results. Reuse waivers only for the same verified
+pre-existing failures and approved scope; cite approval and failing counts,
+never FRESH or all-green. New, changed or unwaived failures STOP publication and
+return to Step 5. Any later edit, even by a check, restarts stage 1 without
+resetting limits. Otherwise continue to Step 17.
 
 ---
 

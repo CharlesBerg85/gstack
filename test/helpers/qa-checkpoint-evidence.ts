@@ -77,6 +77,7 @@ export function validateQACheckpoints(input: {
   reportRoot: string;
   probes: Probe[];
   requiredProbes: Probe[];
+  additionalTargets?: Array<{ command: string; output: string }>;
   files: Record<string, string>;
   reportMarkdown: string;
 }): string[] {
@@ -130,13 +131,24 @@ export function validateQACheckpoints(input: {
     notes.push({ name, call, value });
   }
   for (const name of Object.keys(disk)) if (!written.has(name)) failures.push(`Checkpoint has no public Write: ${name}`);
+  const additional: Array<{ command: string; call: Call }> = [];
+  for (const target of input.additionalTargets ?? []) {
+    if (!notes.some(note => note.value.nextCommand === target.command)) continue;
+    const matches = calls.filter(call => call.name === 'Bash' && call.input.command === target.command
+      && call.end > call.start && call.output === target.output);
+    if (matches.length !== 1 || bound.some(row => row.call === matches[0]) || additional.some(row => row.call === matches[0])) {
+      failures.push(`Unbound or ambiguous additional checkpoint target: ${target.command}`);
+    } else additional.push({ command: target.command, call: matches[0] });
+  }
   const owners = new Map<Call, typeof notes>();
-  for (const target of bound) {
+  for (const target of [...bound.map(row => ({ command: row.probe.command, call: row.call })), ...additional]) {
     const previous = bound.filter(row => row.call.parent === target.call.parent && row.call.start < target.call.start).at(-1);
     owners.set(target.call, notes.filter(note => previous && note.call.parent === target.call.parent
       && note.call.start > previous.call.end && note.call.end < target.call.start
       && note.value.observationCommand === previous.probe.command && isDeepStrictEqual(note.value.observed, previous.probe.observed)
-      && note.value.nextCommand === target.probe.command));
+      && note.value.nextCommand === target.command
+      && !calls.some(call => call.name === 'Bash' && call.parent === target.call.parent && call.input.command === target.command
+        && call.start >= note.call.start && call.start < target.call.start)));
   }
   const targets = new Set<Call>();
   for (const required of input.requiredProbes) {

@@ -1,6 +1,9 @@
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { generateReviewDashboard } from '../scripts/resolvers/review';
+import { HOST_PATHS } from '../scripts/resolvers/types';
+import { ALL_HOST_CONFIGS } from '../hosts';
 
 /**
  * Template-drift tripwire for the content-binding wave. The bins are
@@ -39,14 +42,14 @@ describe('content-binding template drift', () => {
   test('ship historical readiness does not replace the current pre-landing gate', () => {
     const text = rendered('ship/SKILL.md');
     expect(text).not.toContain('The only review that gates shipping');
-    expect(text).toContain('Step 9 remains mandatory');
+    expect(text).toContain('This verdict never skips Step 9 or its finding, approval and convergence gates');
   });
 
   test('ship Step 16 carries the evidence check (mechanized IRON LAW)', () => {
     const ship = rendered('ship/SKILL.md');
     expect(ship).toMatch(/gstack-evidence check --label tests --expect-cmd '[^']+' --label vitest --expect-cmd '[^']+' --max-age 24 --allow-paths CHANGELOG\.md,VERSION,package\.json/);
-    expect(ship).toContain('A failed freshness CHECK is not a failed test: it selects live verification');
-    expect(ship).toContain("A failed RUN requires Step 5's triage");
+    expect(ship.replace(/\s+/g, ' ')).toContain('A failed freshness check selects this live run');
+    expect(ship.replace(/\s+/g, ' ')).toContain("a failed test run requires Step 5's triage");
     expect(ship).toContain('New, changed or unwaived failures STOP publication');
   });
 
@@ -71,8 +74,8 @@ describe('content-binding template drift', () => {
     // {{REVIEW_DASHBOARD}}; ship is the canonical carrier.
     const ship = rendered('ship/SKILL.md');
     expect(ship).toContain('---WTREE---');
-    expect(ship).toContain('diff-scoped rows only');
-    expect(ship).toContain('grade UNKNOWN and treat as stale');
+    expect(ship).toContain('Content-first rule');
+    expect(ship).toContain('A failed command means UNKNOWN, treated as stale');
   });
 
   test('the diff-scoped row list is IDENTICAL in both grading surfaces (no drift)', () => {
@@ -80,7 +83,7 @@ describe('content-binding template drift', () => {
     // they diverged once (codex-review present in one, missing in the other).
     // Rendered dashboards escape backticks (template-literal origin), so match
     // structurally: the three row names in order inside the rule sentence.
-    const rowList = /diff-scoped rows only:[\s\S]{0,80}?adversarial-review[\s\S]{0,80}?codex-review[\s\S]{0,80}?ship-stage entries/;
+    const rowList = /Content-first rule[\s\S]{0,80}?`review`[\s\S]{0,80}?`adversarial-review`[\s\S]{0,80}?`codex-review`[\s\S]{0,80}?ship-stage (?:entries|reviews)[\s\S]{0,80}?`design-review-lite`/;
     expect(rendered('ship/SKILL.md')).toMatch(rowList);
     // land-and-deploy's copy of the row list lives in the carved readiness-gate
     // section (Step 3.5a), not the skeleton.
@@ -93,8 +96,8 @@ describe('content-binding template drift', () => {
       expect(text).toContain('review_freshness');
       expect(text).toContain('UNVERIFIED');
       expect(text).toContain('Never fall back');
-      expect(text).toContain('0 commits');
-      expect(text.toLowerCase()).toContain('plan-tier');
+      expect(text).toMatch(/(?:0|zero) commits/);
+      expect(text.toLowerCase()).toMatch(/plan-tier|plan records/);
     }
   });
 
@@ -106,9 +109,9 @@ describe('content-binding template drift', () => {
     const army = rendered('ship/sections/review-army.md');
     expect(army.indexOf('gstack-review-log --start review')).toBeLessThan(army.indexOf('run `git diff origin/<base>`'));
     expect(army).toContain('--finish REVIEW_START');
-    expect(army.replace(/\s+/g, ' ')).toContain("Complete items 5–6 exactly once with this pass's original REVIEW_START");
-    expect(army).toContain('any fixing pass uses `converged:false`');
-    expect(army).toContain('The persisted pass remains `converged:false`');
+    expect(army.replace(/\s+/g, ' ')).toContain('Complete items 5–6 exactly once with the original REVIEW_START');
+    expect(army).toContain('fixes also require `converged:false`');
+    expect(army.replace(/\s+/g, ' ')).toContain('the logged pass remains `converged:false`');
     expect(army).toContain('--start design-review-lite');
     expect(army).toContain('--finish DESIGN_START');
     const codex = rendered('codex/sections/review-mode.md');
@@ -123,8 +126,25 @@ describe('content-binding template drift', () => {
       const adversarial = rendered(`${skill}/sections/adversarial.md`);
       expect(adversarial).toContain('--start adversarial-review');
       expect(adversarial).toContain('--finish PASS_START');
-      expect(adversarial).toContain('Each outside adversarial/structured pass');
+      expect(adversarial.replace(/\s+/g, ' ')).toContain('Do the same before each outside adversarial or structured pass reads its diff');
       expect(adversarial).toContain('Each token is consumed once');
+    }
+  });
+
+  test('dashboard selection and freshness precede a verdict without replacing the live ship gate', () => {
+    for (const host of ALL_HOST_CONFIGS) {
+      const text = generateReviewDashboard({ host: host.name, skillName: 'ship',
+        tmplPath: 'ship/SKILL.md.tmpl', paths: HOST_PATHS[host.name] }).replace(/\s+/g, ' ');
+      const positions = ['**1. Choose the records', '**2. Check freshness',
+        '**3. Choose the historical verdict', '**4. Display the dashboard'].map(marker => text.indexOf(marker));
+      expect(positions.every(position => position >= 0)).toBe(true);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      expect(text).toContain('never substitute an older success for a newer failure');
+      expect(text).toContain('CLEARED requires the selected Eng Review to be `clean`, within 7 days and fresh under step 2');
+      expect(text).toContain('STALE or UNVERIFIED cannot clear Eng Review');
+      expect(text).toContain('Missing `review_freshness`, including legacy log-only records, means UNVERIFIED');
+      expect(text).toContain('This verdict never skips Step 9 or its finding, approval and convergence gates');
+      expect(text).toContain('Continue Step 1 even when history is NOT CLEARED');
     }
   });
 

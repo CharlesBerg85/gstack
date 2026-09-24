@@ -730,7 +730,8 @@ WTF-LIKELIHOOD:
 
 ## Phase 9: Final QA
 
-Re-run affected contracts and adjacent happy paths on the final inputs. For browser
+Re-run affected contracts and adjacent happy paths on the final inputs.
+Caller-required rechecks cannot be skipped as unaffected. For browser
 surfaces, recheck affected pages and compute the final health score. Warn prominently
 about a worse score or regressed contract; blocked/inconclusive rechecks never verify repairs.
 

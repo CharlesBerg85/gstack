@@ -3,6 +3,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { readQACheckpointFiles, validateQACheckpoints } from './helpers/qa-checkpoint-evidence';
+import { qaFunctionalVerdict } from './helpers/qa-functional-evidence';
+import { parseNDJSON } from './helpers/session-runner';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
@@ -47,6 +49,167 @@ function updateNote(input: ReturnType<typeof fixture>, edit: (value: any) => voi
 function rejected(input: ReturnType<typeof fixture>, message: string) {
   expect(validateQACheckpoints(input).some(failure => failure.includes(message))).toBe(true);
 }
+
+function regressionCheckpoint(family: 'cli' | 'webhook' = 'cli') {
+  const reportRoot = path.join(temporaryRoot(), 'qa-reports');
+  fs.mkdirSync(reportRoot);
+  const command = family === 'cli' ? 'bun run probe -- export' : 'bun run probe -- dependency';
+  const observed = { ...(family === 'cli' ? { args: ['export'] } : { scenario: 'dependency' }), exit: 69,
+    stdout: '', stderr: 'SETUP_BLOCKED: optional qa-fixture-exporter-unavailable is not installed\n',
+    state: { jobs: {}, effects: [] }, stateRoot: '/fixture/.qa-state/dependency' };
+  const nextCommand = `bun test test/${family === 'cli' ? 'amount.regression-1' : 'worker.regression-001'}.test.ts`;
+  const output = 'Exit code 1\nbun test v1.4.0 (34cbb9a40)\n\n' + (family === 'cli'
+    ? ' 1 pass\n 3 fail\n 4 expect() calls\nRan 4 tests across 1 file. [22.00ms]'
+    : ' 0 pass\n 3 fail\n 6 expect() calls\nRan 3 tests across 1 file. [124.00ms]');
+  const name = family === 'cli' ? 'exploration-007.json' : 'exploration-010.json';
+  const content = JSON.stringify({ observationCommand: command, observed,
+    hypothesis: 'Dependency path is an expected setup blocker. Codify the observed defect in a native regression before repair.', nextCommand });
+  const file_path = path.join(reportRoot, name);
+  fs.writeFileSync(file_path, content);
+  return { reportRoot, probes: [{ command, observed }], requiredProbes: [] as Array<{ command: string; observed: unknown }>,
+    additionalTargets: [{ command: nextCommand, output }], files: readQACheckpointFiles(reportRoot), reportMarkdown: `[Checkpoint](${name})`,
+    transcript: [use('observation', 'Bash', { command }), result('observation', `Exit code 69\n${JSON.stringify(observed)}`, null, true),
+      use('checkpoint', 'Write', { file_path, content }), result('checkpoint', `File created successfully at: ${file_path}`),
+      use('regression', 'Bash', { command: nextCommand }), result('regression', output, null, true)] };
+}
+
+function functionalCheckpointVerdict(input: ReturnType<typeof regressionCheckpoint>) {
+  const captured = parseNDJSON(input.transcript.map(event => JSON.stringify(event)));
+  return qaFunctionalVerdict({ root: path.dirname(input.reportRoot), family: 'cli', revision: 'fixture', files: {} } as any, 'qa',
+    { ...captured, exitReason: 'success', output: '' } as any,
+    { complete: true, failures: [], events: [], changed: [], before: {}, after: {}, limits: [] }, {},
+    { path: 'qa/sections/system-functional.md', content: 'fixture' }, input.reportMarkdown);
+}
+
+function updateRegressionNote(input: ReturnType<typeof regressionCheckpoint>, edit: (value: any) => void) {
+  const write = input.transcript[2].message.content[0].input;
+  const value = JSON.parse(write.content);
+  edit(value);
+  write.content = JSON.stringify(value);
+  fs.writeFileSync(write.file_path, write.content);
+  input.files = readQACheckpointFiles(input.reportRoot);
+}
+
+describe('QA optional native regression checkpoints', () => {
+  test.each(['cli', 'webhook'] as const)('accepts the captured %s dependency-to-red-regression sequence', family => {
+    const input = regressionCheckpoint(family);
+    expect(validateQACheckpoints(input)).toEqual([]);
+    expect(functionalCheckpointVerdict(input).filter(failure => failure.includes('checkpoint'))).toEqual([]);
+  });
+  test('keeps regression targets optional and caller-authorized', () => {
+    const input = regressionCheckpoint();
+    expect(validateQACheckpoints({ ...input, additionalTargets: [] })).toContain('QA checkpoint: Unrelated, reused or retrospective checkpoint: exploration-007.json');
+    input.transcript.splice(2, 2);
+    fs.unlinkSync(path.join(input.reportRoot, 'exploration-007.json'));
+    input.files = {};
+    expect(validateQACheckpoints(input)).toEqual([]);
+  });
+  test.each(['absent Write', 'late Write', 'failed Write', 'missing Write result', 'late Write result', 'missing target',
+    'missing target result', 'wrong result parent', 'wrong Write parent', 'wrong target parent', 'missing observation result',
+    'late observation result', 'forged observation', 'partial observation', 'missing disk', 'missing link', 'changed target output',
+    'duplicate target', 'duplicate note'])('rejects optional target with %s', kind => {
+    const input = regressionCheckpoint();
+    if (kind === 'absent Write') input.transcript.splice(2, 2);
+    if (kind === 'late Write') input.transcript.push(...input.transcript.splice(2, 2));
+    if (kind === 'failed Write') input.transcript[3].message.content[0].is_error = true;
+    if (kind === 'missing Write result') input.transcript.splice(3, 1);
+    if (kind === 'late Write result') input.transcript.push(...input.transcript.splice(3, 1));
+    if (kind === 'missing target') input.transcript.splice(4, 2);
+    if (kind === 'missing target result') input.transcript.pop();
+    if (kind === 'wrong result parent') input.transcript[5].parent_tool_use_id = 'other';
+    if (kind === 'wrong Write parent') for (const index of [2, 3]) input.transcript[index].parent_tool_use_id = 'other';
+    if (kind === 'wrong target parent') for (const index of [4, 5]) input.transcript[index].parent_tool_use_id = 'other';
+    if (kind === 'missing observation result') input.transcript.splice(1, 1);
+    if (kind === 'late observation result') input.transcript.push(...input.transcript.splice(1, 1));
+    if (kind === 'forged observation') updateRegressionNote(input, value => { value.observed.stateRoot = '/forged'; });
+    if (kind === 'partial observation') updateRegressionNote(input, value => { delete value.observed.state; });
+    if (kind === 'missing disk') fs.unlinkSync(path.join(input.reportRoot, 'exploration-007.json'));
+    if (kind === 'missing link') input.reportMarkdown = '';
+    if (kind === 'changed target output') input.additionalTargets[0].output += 'fabricated';
+    if (kind === 'duplicate target') input.transcript.push(use('repeat', 'Bash', { command: input.additionalTargets[0].command }), result('repeat', input.additionalTargets[0].output, null, true));
+    if (kind === 'duplicate note') {
+      const file_path = path.join(input.reportRoot, 'exploration-008.json');
+      const content = input.transcript[2].message.content[0].input.content;
+      fs.writeFileSync(file_path, content);
+      input.files = readQACheckpointFiles(input.reportRoot);
+      input.reportMarkdown += '\n[duplicate](exploration-008.json)';
+      input.transcript.splice(4, 0, use('duplicate-note', 'Write', { file_path, content }), result('duplicate-note', 'File created successfully'));
+    }
+    expect(validateQACheckpoints(input).length).toBeGreaterThan(0);
+  });
+  test.each(['pwd', 'bun test; echo forged', 'bun test test/../outside.test.ts', 'bun run probe -- dependency'])('functional caller rejects unrelated regression command %s', command => {
+    const input = regressionCheckpoint();
+    updateRegressionNote(input, value => { value.nextCommand = command; });
+    input.transcript[4].message.content[0].input.command = command;
+    expect(functionalCheckpointVerdict(input).some(failure => failure.includes('Unrelated, reused or retrospective checkpoint'))).toBe(true);
+  });
+  test.each(['Exit code 1\nCommand failed before launch', '3 fail', 'bun test v1.4.0\n0 pass\n3 fail\n',
+    'SyntaxError\n 0 pass\n 3 fail\nRan 3 tests across 1 file. [1ms]'])('functional caller rejects incomplete or unsupported native result %s', output => {
+    const input = regressionCheckpoint();
+    input.transcript[5].message.content[0].content = output;
+    expect(functionalCheckpointVerdict(input).some(failure => failure.includes('Unrelated, reused or retrospective checkpoint'))).toBe(true);
+  });
+  test('associates a note only with the next execution, not a later repeat', () => {
+    const input = regressionCheckpoint();
+    const next = { command: input.additionalTargets[0].command, output: 'bun test v1.4.0\n 3 pass\n 0 fail\nRan 3 tests across 1 file. [1ms]' };
+    input.additionalTargets.push(next);
+    input.transcript.push(use('repeat', 'Bash', { command: next.command }), result('repeat', next.output));
+    expect(validateQACheckpoints(input)).toEqual([]);
+    input.additionalTargets.shift();
+    expect(validateQACheckpoints(input)).toContain('QA checkpoint: Unrelated, reused or retrospective checkpoint: exploration-007.json');
+  });
+  test.each(['late Write completion', 'same-event dispatch'])('cannot rescue %s by borrowing a later test repeat', kind => {
+    const input = regressionCheckpoint();
+    const next = { command: input.additionalTargets[0].command, output: 'bun test v1.4.0\n 3 pass\n 0 fail\nRan 3 tests across 1 file. [1ms]' };
+    if (kind === 'late Write completion') [input.transcript[3], input.transcript[4]] = [input.transcript[4], input.transcript[3]];
+    else {
+      input.transcript[2].message.content.push(input.transcript[4].message.content[0]);
+      input.transcript.splice(4, 1);
+    }
+    input.additionalTargets = [next];
+    input.transcript.push(use('repeat', 'Bash', { command: next.command }), result('repeat', next.output));
+    expect(validateQACheckpoints(input)).toContain('QA checkpoint: Unrelated, reused or retrospective checkpoint: exploration-007.json');
+  });
+  test('accepts separately written notes for repeated completed test commands', () => {
+    const input = regressionCheckpoint();
+    const next = { command: input.additionalTargets[0].command, output: 'bun test v1.4.0\n 3 pass\n 0 fail\nRan 3 tests across 1 file. [1ms]' };
+    const file_path = path.join(input.reportRoot, 'exploration-008.json');
+    const content = input.transcript[2].message.content[0].input.content;
+    fs.writeFileSync(file_path, content);
+    input.files = readQACheckpointFiles(input.reportRoot);
+    input.reportMarkdown += '\n[repeat](exploration-008.json)';
+    input.additionalTargets.push(next);
+    input.transcript.push(use('repeat-note', 'Write', { file_path, content }), result('repeat-note', 'File created successfully'),
+      use('repeat', 'Bash', { command: next.command }), result('repeat', next.output));
+    expect(validateQACheckpoints(input)).toEqual([]);
+  });
+  test('accepts completed child-local regression evidence with native text arrays', () => {
+    const input = regressionCheckpoint();
+    for (const event of input.transcript) event.parent_tool_use_id = 'qa-child';
+    for (const index of [1, 3, 5]) {
+      const block = input.transcript[index].message.content[0];
+      block.content = [{ type: 'text', text: block.content }];
+    }
+    expect(validateQACheckpoints(input)).toEqual([]);
+  });
+  test('additional targets cannot replace required native discovery notes', () => {
+    const input = regressionCheckpoint();
+    const next = { command: 'bun run probe -- balance', observed: { args: ['balance'], exit: 0, stdout: 'balance=0\n', stderr: '', state: { jobs: {}, effects: [] }, stateRoot: '/fixture/.qa-state/next' } };
+    input.probes.push(next);
+    input.requiredProbes.push(next);
+    input.transcript.push(use('next-probe', 'Bash', { command: next.command }), result('next-probe', JSON.stringify(next.observed)));
+    expect(validateQACheckpoints(input)).toEqual(['QA checkpoint: Missing unique completed checkpoint before probe: bun run probe -- balance']);
+    input.requiredProbes = [{ command: input.additionalTargets[0].command, observed: {} }];
+    expect(validateQACheckpoints(input)).toContain(`QA checkpoint: Unbound or reused checkpoint target: ${input.additionalTargets[0].command}`);
+  });
+  test('requires the latest native observation rather than a forged or stale predecessor', () => {
+    const input = regressionCheckpoint();
+    const newer = { command: 'bun run probe -- export', observed: { ...input.probes[0].observed, stateRoot: '/fixture/.qa-state/newer' } };
+    input.probes.push(newer);
+    input.transcript.splice(2, 0, use('newer', 'Bash', { command: newer.command }), result('newer', JSON.stringify(newer.observed)));
+    expect(validateQACheckpoints(input)).toContain('QA checkpoint: Unrelated, reused or retrospective checkpoint: exploration-007.json');
+  });
+});
 
 describe('QA checkpoint file reader', () => {
   test('reads only exact checkpoint basenames and preserves bytes', () => {

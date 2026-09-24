@@ -43,33 +43,30 @@ mark completed TODOs and apply auto-fixable review findings.
 Coverage at or above Step 7's target needs no approval: report remaining gaps,
 verify generated tests and commit with Step 15.
 
-**Route:** Steps 1–8 prepare the change; 9–11 review until no fixes remain;
-12–15 prepare release metadata, audit docs and commit; 16 verifies final content
-before 17–20 publish/report and 21 offers the optional plan-tune nudge.
+**Route:** Prepare the change in Steps 1–8, review it in 9–11, then prepare release
+metadata, audit docs and commit in 12–15. Step 16 checks the final content before
+17–20 publish/report; Step 21 offers the optional plan-tune nudge.
 
-**Invocation record:** Keep one progress note for this /ship request outside the
-product tree and retain its absolute path. Update it in place on re-entry:
+Keep one **invocation record** outside the product tree and retain its absolute
+path. Record used attempt counts, versions and `BUMP_LEVEL`; approvals with their finding, files and
+action; each review's handle, original token, terminal state, output and queued
+fixes; and each check's command/label, result/counts, timestamp, log and inputs.
+Keep the docs candidate/id, accepted hashes or named blocked exception there too.
 
-| Row | Record here |
-|---|---|
-| Release | Save base/current/proposed versions, `BUMP_LEVEL` and any rebump approval. |
-| Allowances and approvals | Track Step 7's 2 generation passes, Step 9's 3 fix cycles, Step 14.5's initial audit plus ONE repair/re-audit, and each approved finding/files/action. |
-| Review attempts | For each source/phase/attempt, save its task/process handle, original token, terminal state, output path and queued fixes with approvals. |
-| Checks and docs | Link each command/label, result/counts, timestamp, log and input evidence; retain the docs candidate/id, accepted hashes or named blocked exception. |
+Update this note on every return. It does not replace helper receipts or reset
+limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles, and
+Step 14.5 permits an initial audit plus ONE repair/re-audit. Reuse an approval
+only for the same finding, files and action.
 
-The note does not replace helper receipts. Returning to an earlier step never
-resets these counts. Approval carries over only for the same
-finding, files and action.
-
-A working-tree content snapshot (`wtree`) identifies tracked and non-ignored
-untracked content, not a commit id. Capture each `*_START` token before that pass
-reads its inputs and finish with that same token; never exchange tokens between passes.
+Review helpers return a `*_START` token identifying the content about to be read,
+including tracked and non-ignored untracked files (`wtree`), not just a commit.
+Capture it before each pass reads its inputs and finish that pass with the same
+token. Never exchange tokens between passes.
 
 **Re-run behavior (idempotency):**
-Every invocation repeats verification: tests, coverage, plan completion, both
-reviews, VERSION/CHANGELOG, TODOS and doc-sync. Steps 12, 17 and 19 prevent
-duplicate bumps, pushes and PRs; they do not skip their verification gates.
-Prior execution never exempts verification.
+Every invocation verifies tests, coverage, plan completion, both reviews,
+VERSION/CHANGELOG, TODOS and docs. Steps 12, 17 and 19 prevent duplicate bumps,
+pushes and PRs, never verification.
 
 ---
 
@@ -186,9 +183,8 @@ No plan skips only plan-specific work, not Prior Learnings or Scope Drift.
 
 Use **`gstack-version-bump`** for classify/write/repair and `gstack-next-version`
 for slot selection. Bump level and queue collisions remain agent decisions.
-Read `BUMP_LEVEL` from this invocation note's Release row. Save the selected or
-recovered level there before queue selection; save `BASE_VERSION` and `NEW_VERSION`
-there as they become known.
+Save `BUMP_LEVEL` in the invocation record before queue selection, and
+`BASE_VERSION` and `NEW_VERSION` as they become known. Reuse the recorded level.
 
 1. **Classify state** — pure reader, never writes:
    ```bash
@@ -196,7 +192,7 @@ there as they become known.
    ```
    Save the JSON `baseVersion` as `BASE_VERSION`, then read `state` and dispatch:
    - **FRESH** → do the bump (steps 2-4).
-   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. If the Release row has no level, compare `baseVersion` and `currentVersion` left to right: the first changed major/minor/patch/micro component supplies `BUMP_LEVEL` (a missing fourth component is zero). Then run step 3's queue check. This recovers the level, not permission to bump again.
+   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. If no level was recorded, compare `baseVersion` and `currentVersion` left to right: the first changed major/minor/patch/micro component supplies `BUMP_LEVEL` (a missing fourth component is zero). Then run step 3's queue check. This recovers the level, not permission to bump again.
    - **DRIFT_STALE_PKG** → run `gstack-version-bump repair`, then reclassify. On success, follow **ALREADY_BUMPED**, including its queue check; on failure, STOP. Repair alone never re-bumps.
    - **DRIFT_UNEXPECTED** → **STOP**. package.json disagrees with VERSION while VERSION matches base — a manual edit bypassed /ship. Reconcile manually, then re-run.
 
@@ -237,7 +233,7 @@ Persist approved follow-ups, then conservatively mark completed work.
 
 Read `~/.claude/skills/gstack/review/TODOS-format.md` for the canonical format reference.
 
-**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes its creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. If B, continue to Step 14.5's documentation audit with the outcome in the summary below.
+**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. Skip bypasses items 2–4: report the declined creation and unsaved follow-ups under item 5, then continue to Step 14.5.
 
 **2. Organization:** Expect component headings, `**Priority:**` P0–P4 fields, and `## Completed` at the bottom. If disorganized, ask: A) Reorganize (recommended), B) Leave as-is. A preserves all content; B continues without restructuring.
 
@@ -290,99 +286,94 @@ EOF
 
 **IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
-Keep the invocation record's counters and approvals throughout these five stages.
+Work through these five stages with the same invocation record and limits.
 
-**Reusing a check:** Read its original command, result/counts, timestamp and log
-from the note's Checks and docs row. Use saved hashes or byte comparisons to compare consumed
-files, fixtures, dependencies and execution parameters. Record why changes outside
-those inputs cannot affect the result; changed or unknown dependencies require reruns.
-For a model judge, compare the complete expanded request, rubric, parameters and
-builder/runtime dependencies. Do not resample an identical passing judge; cite its
-original result. Reuse does not replace mandatory review passes or the test-tree
-receipt rules below.
+Reuse a check only when its saved evidence proves that its consumed files,
+fixtures, dependencies and execution parameters are unchanged. Compare hashes or
+complete bytes and explain why other changes cannot affect it; unknown or changed
+dependencies require a rerun. For a model judge, compare the complete expanded
+request, rubric, parameters and builder/runtime dependencies. Cite the original
+command, result/counts, timestamp and log rather than resampling an identical
+passing judge. This does not replace mandatory reviews or stage 4's test receipts.
 
 ### 1. Finish writers and prepare outputs
 
-Inspect the recorded handles of all writers, including the docs child. A terminal
-result or confirmed termination permits the next writer. Timeout or cancellation
-acknowledgment alone does not. If a writer cannot be confirmed stopped, STOP.
+Inspect all writer handles, including the docs child. Before another writer runs,
+require terminal completion or confirmed termination, not merely a timeout or
+cancellation acknowledgment. If unconfirmed, STOP; resume only after confirming
+the writer stopped (use Step 14.5's recovery for its child).
 
-Find generation/build commands from its scripts or CI configuration and run them.
-If none is declared, record build/generation as not applicable with the inspected source.
-A declared command with missing prerequisites is blocked, not absent. Record each
-command/result; a failed build blocks push.
+Run generation/build commands declared in project scripts or CI and record their
+results. If none exists, record not applicable and the inspected source. Missing
+prerequisites for a declared command, or a failed build, block push.
 
 ### 2. Choose the change route
 
-Compare with the content last examined in Steps 9–11, not the original branch diff.
-A commit alone doesn't change content. Prompts/templates are behavioral inputs,
-not automatically documentation.
+Compare content with the last Steps 9–11 review, not the original branch diff.
+If unchanged, continue to stage 3; a commit alone is not a content change.
 
-| Change | Next action |
-|---|---|
-| No content changed | Continue to stage 3. |
-| Only authored docs or release metadata changed | Refresh affected plan items, then continue to stage 3 without a new code review. |
-| Behavior, tests or build inputs changed | Revisit Step 5 test lanes, Step 6 eval selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11, then recheck release metadata in Steps 12–14. Restart stage 1. |
+If only authored docs or release metadata changed, recheck affected Step 8 plan
+items against the new content and update their completion/verification evidence.
+Then continue to stage 3 without a new code review.
 
-Do not wait for final receipts or a fresh docs audit before the behavioral route.
+If behavior, tests or build inputs changed, revisit Step 5 tests, Step 6 eval
+selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11. Recheck
+release metadata in Steps 12–14, then restart stage 1. Prompts/templates are
+behavioral, not automatically documentation. Take this route before collecting
+final receipts or refreshing docs; keep all existing attempt limits.
 
 ### 3. Resolve documentation freshness
 
 Compare the base, release files, docs/templates and generated content with the
-accepted docs hashes in the note:
+accepted docs hashes. If unchanged, continue to stage 4. If changed, return to
+Step 14.5 using its remaining attempt. After recovery, commit approved files in
+Step 15 and restart stage 1, so generation runs before the next comparison.
 
-| Documentation state | Next action |
-|---|---|
-| Accepted audit, unchanged inputs | Continue to stage 4. |
-| Changed inputs | Return to Step 14.5 under the existing invocation allowance. After recovery, commit approved files through Step 15 and restart stage 1 so generation precedes the next comparison. |
-| Blocked or exhausted | Use Step 14.5's named user-risk gate. Continue to stage 4 only after its unwaivable gates clear. |
-
-Reuse an exception only for the same named scope/content; changed content needs a
-new user decision, not a third audit. An approved exception leaves `Documentation: blocked`;
-it never certifies current docs.
+A blocked audit or exhausted attempts require Step 14.5's explicit user decision
+on the named documentation risk. Continue only after its unwaivable gates clear.
+An exception applies only to the same scope/content; changes need a new decision,
+never a third audit. The result remains `Documentation: blocked`, not current.
 
 ### 4. Verify the frozen candidate
 
-Keep inputs frozen through verification and push. Run the repo's declared
-docs/link/generated-file checks; report any unavailable check. Skipping code review
-for docs-only changes does not preserve test evidence: authored docs and TODO edits
-change the verified tree. For EACH Step 5 test lane, use its actual label/command:
+Keep inputs frozen through verification and push. Run declared docs/link/generated-file
+checks and report any unavailable check. Docs-only changes skip code review, not
+test freshness: authored docs and TODO edits change the verified tree.
+For EACH Step 5 test lane, use its actual label/command:
 `--label <lane> --expect-cmd '<exact Step 5 command>'`.
 
-Inspect changes since each lane ran before choosing `--allow-paths`. Only release
-metadata may use path exemptions. Remove any path with behavioral changes from
-the flag. Manifest scripts, dependencies and runtime configuration require live
-tests, even in `package.json`. The example assumes metadata-only changes in every
-listed path, with `tests` and `vitest` lanes:
+Inspect changes since each lane ran. Use `--allow-paths` only for release metadata;
+exclude any path with behavioral changes. Manifest scripts, dependencies and
+runtime configuration require live tests, even in `package.json`. This example
+assumes metadata-only changes in every listed path:
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --label vitest --expect-cmd '<vitest>' --max-age 24 --allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md
 ```
 
-With no Step 5 lanes, report the gap, not FRESH evidence. Declared builds must still pass.
-Do not add `TODOS.md` or generated tests: authored docs, new tests, fixes and TODO
-edits make evidence STALE.
+Do not exempt `TODOS.md` or generated tests: authored docs, new tests, fixes and
+TODO edits make evidence STALE. With no Step 5 lanes, report the gap, not FRESH;
+declared builds must still pass.
 
-Choose exactly one result for each lane:
+For FRESH (exit 0), cite the label, exit, timestamp and log. For STALE/MISSING
+(changed content, command or age, or no proven run), run
+`~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`,
+read the result and recheck once. A failed freshness check selects this live run;
+a failed test run requires Step 5's triage. Missing evidence never means pass.
 
-| Receipt result | Next action |
-|---|---|
-| FRESH (exit 0) | Cite its label, exit, timestamp and log. |
-| STALE/MISSING: content, command or age changed, or no proven run | Run the lane with `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`. Read results and recheck once. |
-| Ledger-only failure on unchanged inputs: only saving/reading the test receipt failed | Independently prove unchanged final content, command and valid age from the successful run's evidence. Cite the exact command, exit, timestamp and log; report ledger unavailable, never FRESH. Without that proof, use STALE/MISSING. |
-
-Stale content cannot use the ledger-only path. Do not rerun green suites solely for
-bookkeeping: only the ledger record may need repair, not changed content.
-
-A failed freshness CHECK is not a failed test: it selects live verification above.
-A failed RUN requires Step 5's triage; missing evidence never means pass.
+If only receipt storage/readback failed, independently prove unchanged final
+content, the same command and valid age from the successful run's evidence. Cite
+its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH.
+Without that proof, use STALE/MISSING. Stale content cannot take this exception;
+unchanged green suites do not need a rerun just to repair bookkeeping.
 
 ### 5. Report, then push
 
-Paste build/docs/test results. Use prior waivers only for the same verified
-pre-existing failures and approved scope; cite approval and failing counts, never
-FRESH or all-green. New, changed or unwaived failures STOP publication and return
-to Step 5. A later content edit restarts stage 1, including an edit made by a check.
+Paste build/docs/test results. Reuse waivers only for the same verified
+pre-existing failures and approved scope; cite approval and failing counts,
+never FRESH or all-green. New, changed or unwaived failures STOP publication and
+return to Step 5. Any later edit, even by a check, restarts stage 1 without
+resetting limits. Otherwise continue to Step 17.
 
 ---
 

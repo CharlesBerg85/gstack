@@ -69,7 +69,13 @@ The Claude adversarial subagent always runs.
 
 ### Claude adversarial subagent (always runs)
 
-Before dispatch, run `~/.claude/skills/gstack/bin/gstack-review-log --start adversarial-review`. Save its token for this native attempt. Each outside adversarial/structured pass also gets its own token before reading or supplying its diff. Track tokens by source/phase/attempt, never in REVIEW_START. Capture a fresh token on each actual rerun, never while logging. Include non-ignored untracked source in the context or reviewer read instructions (`git ls-files --others --exclude-standard`); it is fingerprinted too.
+Before dispatch, run `~/.claude/skills/gstack/bin/gstack-review-log --start adversarial-review`
+and save the returned token for this native attempt. Do the same before each outside
+adversarial or structured pass reads its diff. Keep each token with that attempt;
+do not overwrite the parent's REVIEW_START. A rerun needs a new token before it
+reads, not when it saves its result. Include non-ignored untracked source in each
+reviewer's context or read instructions (`git ls-files --others --exclude-standard`).
+Those files are part of the recorded content too.
 
 Dispatch via the Agent tool with `run_in_background: false` (background is the default since Claude Code v2.1.198); findings must arrive before review concludes. Fresh context avoids checklist bias, but this is the same harness, not an independent model unless runtime identity proves otherwise.
 
@@ -218,24 +224,30 @@ If `DIFF_TOTAL < 200` without that override, skip structured review; the adversa
 
 ### Persist the review result
 
-After the attempts settle, log each source/phase/attempt separately, before the
-parent applies queued fixes. Use the template once per attempt:
-- Started: `--finish PASS_START` consumes that attempt's original token.
-- Never started (missing, disabled or size-gated): omit `--finish PASS_START`;
-  set completed/converged false. Do not capture or borrow a token for logging.
+Wait until every started task has finished or is confirmed stopped. Then save one
+record per source, phase and attempt, before the parent applies queued fixes.
+A stopped task without a completed response still has incomplete coverage.
+
+Use the template once per attempt. If it started, `--finish PASS_START` consumes
+its original token. If it never started because it was unavailable, disabled or
+size-gated, omit `--finish PASS_START` and set completed/converged false.
+Do not create or borrow a token just to save a result.
 ```bash
 ~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","host":"claude","outside_provider":"codex","outside_status":"OUTSIDE_STATUS","phase":"PHASE","tier":"always","gate":"GATE","commit":"'"$(git rev-parse --short HEAD)"'","completed":COMPLETED,"converged":CONVERGED}' --finish PASS_START
 ```
 PASS_START belongs to that attempt, not the parent's REVIEW_START. Each token is consumed once.
-COMPLETED requires a completed response; timeout, failure, refusal or missing
-coverage means false. CONVERGED requires that completed attempt to make no edits.
-A fixing pass cannot certify the fixed tree without a fresh full pass. Native
-completion never credits outside coverage. The fields below are per attempt,
-not the parent's Step 5.8 fields.
-Set fields per source/phase:
-- PHASE: "adversarial" or "structured". SOURCE: the actual outside provider or native in-host source.
-- STATUS: "clean" only for a completed pass without findings; "issues_found" for its findings; "unavailable" for an incomplete pass. Preserve its actual OUTSIDE_STATUS.
-- GATE: "informational" for adversarial passes; structured "pass"/"fail", "skipped" when size-gated, or "informational" for MISSING COVERAGE with completed:false. No source certifies another.
+Fill fields from this attempt, not the parent's Step 5.8 result:
+- COMPLETED is true only with a completed response. Timeout, failure, refusal or
+  missing coverage means false. CONVERGED also requires that the attempt made no edits.
+  A fixing pass cannot certify the fixed tree without a fresh full pass.
+- PHASE is "adversarial" or "structured". SOURCE is the actual outside provider or
+  native in-host source. Preserve its actual OUTSIDE_STATUS; native completion
+  never credits outside coverage.
+- STATUS is "clean" for a completed pass without findings, "issues_found" for
+  a completed pass with findings, or "unavailable" for an incomplete pass.
+- GATE is "informational" for adversarial passes. For structured review, use
+  "pass" or "fail" from its completed result, "skipped" when size-gated, or
+  "informational" with completed:false when coverage is missing.
 
 ---
 

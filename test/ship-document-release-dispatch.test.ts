@@ -34,12 +34,12 @@ describe('pre-publication documentation lifecycle', () => {
     const positions = steps.map(step => gate.indexOf(step));
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(gate.replace(/\s+/g, ' ')).toContain('Step 14.5 under the existing invocation allowance');
-    expect(body.replace(/\s+/g, ' ')).toContain("Step 14.5's initial audit plus ONE repair/re-audit");
+    expect(gate.replace(/\s+/g, ' ')).toContain('Step 14.5 using its remaining attempt');
+    expect(body.replace(/\s+/g, ' ')).toContain('Step 14.5 permits an initial audit plus ONE repair/re-audit');
     expect(gate.replace(/\s+/g, ' ')).toContain('authored docs, new tests, fixes and TODO edits make evidence STALE');
     const docs = read('ship/sections/documentation.md.tmpl');
-    expect(docs.replace(/\s+/g, ' ')).toContain('2 used: no third attempt, including after a late Step 16 change');
-    expect(docs.replace(/\s+/g, ' ')).toContain('Do not start another child in this invocation');
+    expect(docs.replace(/\s+/g, ' ')).toContain('never a third attempt, even after Step 16 changes');
+    expect(docs.replace(/\s+/g, ' ')).toContain('Otherwise STOP before commit/publication and do not launch another child');
   });
 
   test('dispatch is carved before commit and final verification on every host', () => {
@@ -71,7 +71,7 @@ describe('pre-publication documentation lifecycle', () => {
 
   test('documentation preflight follows the installed host layout', () => {
     const claude = fs.readFileSync(path.join(generated, 'ship/sections/documentation.md'), 'utf8');
-    expect(claude).toContain('Follow its section-file links when present');
+    expect(claude.replace(/\s+/g, ' ')).toContain('full audit-scope/release-body content, linked as sections or inlined for external hosts');
     for (const section of ['audit-scope', 'release-body']) {
       expect(fs.existsSync(path.join(generated, `document-release/sections/${section}.md`))).toBe(true);
     }
@@ -79,7 +79,7 @@ describe('pre-publication documentation lifecycle', () => {
       const ship = fs.readFileSync(path.join(generated, host, 'skills/gstack-ship/SKILL.md'), 'utf8');
       const directory = path.join(generated, host, 'skills/gstack-document-release');
       const document = fs.readFileSync(path.join(directory, 'SKILL.md'), 'utf8');
-      expect(ship).toContain('external hosts inline that content\n   in SKILL.md');
+      expect(ship).toContain('linked as sections or inlined for external hosts');
       expect(document).toContain('# Documentation scope and discovery');
       expect(document).toContain('## Step 2: Per-File Documentation Audit');
       expect(document).toContain('## Ship-owned documentation mode');
@@ -90,30 +90,31 @@ describe('pre-publication documentation lifecycle', () => {
 
   test('failure is visible, bounded and settled before another writer', () => {
     const body = read('ship/sections/documentation.md.tmpl').replace(/\s+/g, ' ');
-    for (const text of ['inspect status for terminal completion or confirmed termination', 'A stop request alone is not settlement',
-      '1 used: only ONE repair/re-audit remains', 'specific named documentation risk', 'Preserve partial',
-      'Compare HEAD, index entries, dirty/untracked paths and actual file changes with the saved candidate',
-      'Enforce the prompt/audit-scope permissions and protected-file exclusions, not returned claims',
-      'Changed paths must equal `files_updated`; require unchanged HEAD/index, preserved user edits and no read-only writes',
-      'Only verified permitted child edits may differ. Other edits or a changed base make the audit stale',
-      'Later content changes require the remaining re-audit or a blocked-risk decision',
-      'never silently refresh accepted hashes']) expect(body).toContain(text);
+    for (const text of ['Terminal completion or confirmed termination is sufficient', 'the request alone is insufficient',
+      'an initial audit plus ONE repair/re-audit', 'specific named documentation risk', 'Preserve partial',
+      'Compare actual changes against the candidate',
+      'enforcing prompt/audit-scope permissions and protected-file exclusions',
+      'HEAD and index must be unchanged, existing dirty/untracked user content preserved',
+      'changed paths exactly `files_updated`. Reject any read-only write',
+      'Only verified permitted child edits may differ. Other edits or base changes make the audit stale',
+      'Later changes require the remaining re-audit or a risk decision',
+      'never silently refreshed hashes']) expect(body).toContain(text);
     expect(body).not.toContain('Do not block /ship on subagent failure');
   });
 
   test('stale detection does not spend the remaining audit, but repair and inline takeover do', () => {
     const body = read('ship/sections/documentation.md.tmpl').replace(/\s+/g, ' ');
-    for (const text of ['Increment the invocation count before dispatch or inline execution',
-      'failed launches and inline takeover each consume an attempt',
-      'A stale snapshot is not an attempt and is not a current audit',
-      'Inline takeover keeps the same settlement/validation gates',
-      '2 used: no third attempt, including after a late Step 16 change',
-      'Confirm the old child stopped',
-      'request stop, then inspect status for terminal completion or confirmed termination before repair, retry, inline takeover or another writer',
-      'If an attempt remains AND a concrete launch/input/permission correction or reviewed patch repair is available',
-      'with a fresh id/snapshot, run the remaining attempt, then return to Parent processing',
+    for (const text of ['Increment before each launch or inline takeover',
+      'including failed launches',
+      'A stale snapshot is neither a new attempt nor a current audit',
+      'inline work follows the same validation gates',
+      'never a third attempt, even after Step 16 changes',
+      'Confirm the child stopped before any repair, retry, inline takeover or other writer',
+      'request stop and inspect its status; the request alone is insufficient',
+      'If an attempt remains and a concrete launch/input/permission correction or reviewed patch repair is available',
+      'using current inputs and a fresh id/snapshot, run the remaining attempt, then validate it through Parent processing',
       'Otherwise STOP before commit/publication',
-      'Do not start another child in this invocation']) expect(body).toContain(text);
+      'do not launch another child']) expect(body).toContain(text);
     expect(body).not.toContain('A stale audit consumes the same ONE repair/re-audit attempt');
   });
 

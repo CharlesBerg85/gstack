@@ -135,9 +135,9 @@ CHECKLIST:
 - Use \`subagent_type: "general-purpose"\`
 - Pass \`run_in_background: false\` on every specialist Agent call — background is the default since ${CC_BACKGROUND_DEFAULT_SINCE}; omitting the flag is not foreground.
 
-**Settlement is not coverage:**
-- Terminal failure means the reader has exited or is confirmed stopped. Record its failure and retain usable partial findings. A timeout alone does not prove termination.
-- Active or unknown reader/writer: wait for settlement or confirm it is stopped before editing. If neither is possible, use the parent's Fix-First stop path without edits.
+**Wait for readers before editing:**
+- Confirm that each task has finished or is stopped. A timeout alone does not prove termination. If a reader or writer is still active, wait; if its state is unknown, inspect its task/process status. If you cannot confirm it stopped, use the parent's Fix-First stop path without edits.
+- A failed task may be stopped without having completed its review. Record the failure and retain usable partial findings.
 - Continue independent evidence collection after a terminal failure. Missing dispatched coverage remains incomplete, never completed or clean; successful peers cannot replace it.`;
 }
 
@@ -250,7 +250,7 @@ Consolidate equivalent shared-code advice under the core proposal, retaining all
 sources and counting overlapping savings once. Keep actual specialist stats;
 core-only advice must not create a specialist dispatch or finding.
 Normal AUTO-FIX/ASK rules apply, with advice ASK-only. Missing coverage still blocks
-completion; advice never relaxes the parent's settlement or coverage gates.`;
+completion. Advice never permits edits while readers are active or replaces a required review.`;
 }
 
 function generateRedTeam(ctx: TemplateContext): string {
@@ -280,7 +280,7 @@ Add them to the original specialist outputs and rerun stages 1–7 of Step ${ste
 before ${fixFirstRef}; do not boost or count the earlier findings twice.
 
 If the Red Team returns NO FINDINGS, note: "Red Team review: no additional issues found."
-If the Red Team fails or times out, apply the same settlement and incomplete-coverage rules as the other specialists. ${isShip ? "Return to the parent's Exploratory QA step, then dedup and persistence; Step 9.4 cannot certify missing dispatched coverage as completed or clean." : 'Continue independent Step 4.7 QA and Step 4.8 adversarial review; Step 5.8 cannot certify missing dispatched coverage as completed or clean.'}`;
+If the Red Team fails or times out, confirm it stopped and record its review as incomplete, just as for other specialists. ${isShip ? "Return to the parent's Exploratory QA step, then dedup and persistence; Step 9.4 cannot certify missing dispatched coverage as completed or clean." : 'Continue independent Step 4.7 QA and Step 4.8 adversarial review; Step 5.8 cannot certify missing dispatched coverage as completed or clean.'}`;
 }
 
 export function generateReviewArmy(ctx: TemplateContext): string {

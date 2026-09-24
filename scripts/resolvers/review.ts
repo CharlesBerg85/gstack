@@ -30,15 +30,69 @@ ${ctx.skillName === 'ship' ? 'During pre-flight, read the existing review log an
 ~/.claude/skills/gstack/bin/gstack-review-read
 \`\`\`
 
-Render each record using its recorded host, source, outside_provider, outside_status, and phase. Historical source "claude" means a native Claude subagent; source "claude-code" means the external CLI. Never infer a historical provider from the current harness. Unknown model identity remains unknown. Missing/disabled/skipped outside coverage is distinct from native completion.
+**1. Choose the records to display.** Use the latest record for each row below.
+Do not use a record older than 7 days to clear a row, and never substitute an older
+success for a newer failure. Ship metrics are not review records.
 
-Parse the output. Find the most recent entry for each skill (plan-ceo-review, plan-eng-review, review, plan-design-review, design-review-lite, adversarial-review, codex-review, codex-plan-review). Ignore entries with timestamps older than 7 days. For the Eng Review row, show whichever is more recent between \`review\` (diff-scoped pre-landing review) and \`plan-eng-review\` (plan-stage architecture review). Append "(DIFF)" or "(PLAN)" to the status to distinguish. For the Adversarial row, show whichever is more recent between \`adversarial-review\` (new auto-scaled) and \`codex-review\` (legacy). For Design Review, show whichever is more recent between \`plan-design-review\` (full visual audit) and \`design-review-lite\` (code-level check). Append "(FULL)" or "(LITE)" to the status to distinguish. For the Outside Voice row, show the most recent \`codex-plan-review\` entry — this captures outside voices from both /plan-ceo-review and /plan-eng-review.
+| Row | Choose the latest of | Status suffix |
+|---|---|---|
+| Eng Review | \`review\` or \`plan-eng-review\` | (DIFF) or (PLAN) |
+| CEO Review | \`plan-ceo-review\` | — |
+| Design Review | \`plan-design-review\` or \`design-review-lite\` | (FULL) or (LITE) |
+| Adversarial | \`adversarial-review\` or legacy \`codex-review\` | — |
+| Outside Voice | \`codex-plan-review\` from CEO or Eng review | — |
 
-**Source attribution:** If the most recent entry for a skill has a \\\`"via"\\\` field, append it to the status label in parentheses. Examples: \`plan-eng-review\` with \`via:"autoplan"\` shows as "CLEAR (PLAN via /autoplan)". \`review\` with \`via:"ship"\` shows as "CLEAR (DIFF via /ship)". Entries without a \`via\` field show as "CLEAR (PLAN)" or "CLEAR (DIFF)" as before.
+Keep each record's host, source, outside_provider, outside_status and phase.
+Historical source "claude" is a native subagent; "claude-code" is the external CLI.
+Do not infer old providers or unknown models from today's harness. A native result
+does not fill missing, disabled or skipped outside coverage.
 
-From gstack-review-read output, use entries whose skill is \`autoplan-voices\` or \`design-outside-voices\` for the coverage detail below the dashboard. Group by workflow run and phase, not merely skill. Show each phase’s recorded provider and outside_status; partial coverage must remain partial. These records do not change the engineering gate.
+**Source attribution:** Append a recorded \`via\` to the suffix, for example
+"CLEAR (PLAN via /autoplan)" or "CLEAR (DIFF via /ship)". Without \`via\`, keep
+"CLEAR (PLAN)" or "CLEAR (DIFF)". Below the dashboard, group \`autoplan-voices\`
+and \`design-outside-voices\` by workflow run and phase. Show each phase's provider
+and outside_status; retain partial coverage. These details do not clear Eng Review.
 
-${['plan-ceo-review', 'plan-eng-review'].includes(ctx.skillName) ? 'Display a fresh `clean` result as CLEAR and `issues_open` as ISSUES OPEN. Show missing, stale, disabled or unavailable results explicitly; none implies CLEAR. Keep the logged status unchanged.\n\n' : ''}Display:
+**2. Check freshness before choosing a verdict.**
+
+- **Content-first rule:** For \`review\`, \`adversarial-review\`, \`codex-review\`,
+  ship-stage reviews and \`design-review-lite\`, use \`review_freshness.status\`
+  and show its \`reason\`. CURRENT means a completed clean review whose start and
+  end content fingerprints equal the current \`---WTREE---\` fingerprint. This
+  fingerprint covers working-tree content, not just the commit.
+  STALE or UNVERIFIED cannot clear Eng Review. Missing \`review_freshness\`,
+  including legacy log-only records, means UNVERIFIED. Never fall back to HEAD
+  equality or commit distance for diff evidence, even at zero commits.
+  Show recorded cycles, completed/converged fields and missing source/phase
+  coverage. Unknown coverage is not a pass.
+- **Plan records** (plan-ceo-review, plan-eng-review, plan-design-review and
+  codex-plan-review) use the 7-day window, not the working-tree fingerprint.
+  If \`plan_sha256\` is present, you may compare the plan file and report a mismatch.
+  For plan records only, compare the recorded commit with \`---HEAD---\`.
+  If different, run \`git rev-list --count STORED_COMMIT..HEAD\` and report
+  "Note: {skill} review from {date} may be stale — {N} commits since review".
+  A failed command means UNKNOWN, treated as stale. Without commit tracking,
+  retain the note to consider re-running. Omit staleness notes when all reviews
+  are current.
+
+**3. Choose the historical verdict.** CLEARED requires the selected Eng Review
+to be \`clean\`, within 7 days and fresh under step 2. Otherwise report NOT CLEARED
+and its missing, stale or open-issue reason. If \`skip_eng_review\` is true, show
+"SKIPPED (global)" for Eng Review and CLEARED for this dashboard.
+${ctx.skillName === 'ship' ? 'This verdict never skips Step 9 or its finding, approval and convergence gates. Continue Step 1 even when history is NOT CLEARED.' : 'Eng Review is required by default; `gstack-config set skip_eng_review true` disables that requirement.'}
+
+Other rows provide context, not a substitute for Eng Review:
+- Recommend CEO Review for product/business or scope decisions, not routine fixes or cleanup.
+- Recommend Design Review for UI/UX work, not backend, infrastructure or prompt-only work.
+- Adversarial review always includes a native pass. Available, enabled outside
+  challenges supplement it; diffs of 200+ lines also get the structured P1 gate.
+- Outside Voice is the default-on plan review after CEO/Eng review. \`codex_reviews\`
+  disables that extra step. Provider failure uses native fallback and records
+  missing outside coverage; this dashboard row never gates shipping.
+
+**4. Display the dashboard.** Show missing, stale, disabled or unavailable results
+explicitly, never as CLEAR. Display a fresh \`clean\` result as CLEAR and
+\`issues_open\` as ISSUES OPEN without changing the stored status.
 
 \`\`\`
 +====================================================================+
@@ -54,29 +108,7 @@ ${['plan-ceo-review', 'plan-eng-review'].includes(ctx.skillName) ? 'Display a fr
 +--------------------------------------------------------------------+
 | VERDICT: CLEARED — Eng Review passed                                |
 +====================================================================+
-\`\`\`
-
-**Review tiers:**
-- **Eng Review (required by default):** The only review that gates shipping. Covers architecture, code quality, tests, performance. Can be disabled globally with \\\`gstack-config set skip_eng_review true\\\` (the "don't bother me" setting).
-- **CEO Review (optional):** Use your judgment. Recommend it for big product/business changes, new user-facing features, or scope decisions. Skip for bug fixes, refactors, infra, and cleanup.
-- **Design Review (optional):** Use your judgment. Recommend it for UI/UX changes. Skip for backend-only, infra, or prompt-only changes.
-- **Adversarial Review (automatic):** Always-on for every review. Every diff gets a native adversarial pass and, when enabled and available, a host-selected outside challenge. Large diffs (200+ lines) additionally get a structured outside review with P1 gate.
-- **Outside Voice (default-on):** Independent plan review through the host-selected provider after /plan-ceo-review and /plan-eng-review. The codex_reviews switch disables the entire extra step. Provider failure uses the existing native fallback and reports missing outside coverage. Never gates shipping.
-
-**Verdict logic:**
-- **CLEARED**: Eng Review has >= 1 entry within 7 days from either \\\`review\\\` or \\\`plan-eng-review\\\` with status "clean"; diff review must also grade CURRENT below (or \\\`skip_eng_review\\\` is \\\`true\\\`)
-- **NOT CLEARED**: Eng Review missing, stale (>7 days), or has open issues
-- CEO, Design, and outside reviews are shown for context but never block shipping
-- If \\\`skip_eng_review\\\` config is \\\`true\\\`, Eng Review shows "SKIPPED (global)" and verdict is CLEARED
-
-**Staleness detection:** Grade before deciding CLEARED:
-- Ship telemetry reports metrics, not review coverage; it never satisfies a review row.
-- **Content-first rule (diff-scoped rows only: \`review\`, \`adversarial-review\`, \`codex-review\`, ship-stage entries, \`design-review-lite\`).** Use the helper's computed \`review_freshness.status\` and show its \`reason\`. CURRENT requires a completed clean pass with captured start/end wtree equal to the current \`---WTREE---\`. STALE or UNVERIFIED never clears Eng Review. Missing \`review_freshness\` is UNVERIFIED, including legacy log-only rows. Never fall back to HEAD equality or commit distance for diff evidence, even at 0 commits. Show recorded cycles, completed/converged state, and missing per-source/phase coverage; unknown is not a pass.
-- Plan-tier rows (plan-ceo-review, plan-eng-review, plan-design-review, codex-plan-review) grade a plan file, not the repo tree — never apply the wtree rule to them; they keep the 7-day freshness logic. If an entry carries \`plan_sha256\`, you MAY compare it with the plan file and note "plan changed since review" on mismatch.
-- Plan-tier fallback only: parse \`---HEAD---\`. For entries with a different \`commit\`, count elapsed commits: \`git rev-list --count STORED_COMMIT..HEAD\`. If that command FAILS, grade UNKNOWN and treat as stale. Display: "Note: {skill} review from {date} may be stale — {N} commits since review". Missing commit tracking retains the legacy note to consider re-running.
-- If all reviews grade CURRENT, do not display staleness notes`;
-  if (ctx.skillName === 'ship') return result.replace(/^- \*\*Eng Review \(required by default\):\*\*.*$/m,
-    '- **Eng Review (historical readiness):** Required for a CLEARED dashboard, not for continuing Step 1. Step 9 remains mandatory, with its finding, approval and convergence gates. The skip_eng_review setting changes this dashboard only.');
+\`\`\``;
   return ctx.skillName === 'plan-eng-review' ? result.replaceAll('\\`', '`') : result;
 }
 
@@ -822,7 +854,13 @@ The ${outsideVoiceFor(ctx).nativeLabel} adversarial subagent always runs.
 
 ### ${outsideVoiceFor(ctx).nativeLabel} adversarial subagent (always runs)
 
-Before dispatch, run \`~/.claude/skills/gstack/bin/gstack-review-log --start adversarial-review\`. Save its token for this native attempt. Each outside adversarial/structured pass also gets its own token before reading or supplying its diff. Track tokens by source/phase/attempt, never in REVIEW_START. Capture a fresh token on each actual rerun, never while logging. Include non-ignored untracked source in the context or reviewer read instructions (\`git ls-files --others --exclude-standard\`); it is fingerprinted too.
+Before dispatch, run \`~/.claude/skills/gstack/bin/gstack-review-log --start adversarial-review\`
+and save the returned token for this native attempt. Do the same before each outside
+adversarial or structured pass reads its diff. Keep each token with that attempt;
+do not overwrite the parent's REVIEW_START. A rerun needs a new token before it
+reads, not when it saves its result. Include non-ignored untracked source in each
+reviewer's context or read instructions (\`git ls-files --others --exclude-standard\`).
+Those files are part of the recorded content too.
 
 Dispatch via the Agent tool with \`run_in_background: false\` (background is the default since ${CC_BACKGROUND_DEFAULT_SINCE}); findings must arrive before review concludes. Fresh context avoids checklist bias, but this is the same harness, not an independent model unless runtime identity proves otherwise.
 
@@ -898,24 +936,30 @@ If \`DIFF_TOTAL < 200\` without that override, skip structured review; the adver
 
 ### Persist the review result
 
-After the attempts settle, log each source/phase/attempt separately, before the
-parent applies queued fixes. Use the template once per attempt:
-- Started: \`--finish PASS_START\` consumes that attempt's original token.
-- Never started (missing, disabled or size-gated): omit \`--finish PASS_START\`;
-  set completed/converged false. Do not capture or borrow a token for logging.
+Wait until every started task has finished or is confirmed stopped. Then save one
+record per source, phase and attempt, before the parent applies queued fixes.
+A stopped task without a completed response still has incomplete coverage.
+
+Use the template once per attempt. If it started, \`--finish PASS_START\` consumes
+its original token. If it never started because it was unavailable, disabled or
+size-gated, omit \`--finish PASS_START\` and set completed/converged false.
+Do not create or borrow a token just to save a result.
 \`\`\`bash
 ~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"adversarial-review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","status":"STATUS","source":"SOURCE","host":"${ctx.host}","outside_provider":"${outsideVoiceFor(ctx).id}","outside_status":"OUTSIDE_STATUS","phase":"PHASE","tier":"always","gate":"GATE","commit":"'"$(git rev-parse --short HEAD)"'","completed":COMPLETED,"converged":CONVERGED}' --finish PASS_START
 \`\`\`
 PASS_START belongs to that attempt, not the parent's REVIEW_START. Each token is consumed once.
-COMPLETED requires a completed response; timeout, failure, refusal or missing
-coverage means false. CONVERGED requires that completed attempt to make no edits.
-A fixing pass cannot certify the fixed tree without a fresh full pass. Native
-completion never credits outside coverage. The fields below are per attempt,
-not the parent's ${isShip ? 'Step 9.4' : 'Step 5.8'} fields.
-Set fields per source/phase:
-- PHASE: "adversarial" or "structured". SOURCE: the actual outside provider or native in-host source.
-- STATUS: "clean" only for a completed pass without findings; "issues_found" for its findings; "unavailable" for an incomplete pass. Preserve its actual OUTSIDE_STATUS.
-- GATE: "informational" for adversarial passes; structured "pass"/"fail", "skipped" when size-gated, or "informational" for MISSING COVERAGE with completed:false. No source certifies another.
+Fill fields from this attempt, not the parent's ${isShip ? 'Step 9.4' : 'Step 5.8'} result:
+- COMPLETED is true only with a completed response. Timeout, failure, refusal or
+  missing coverage means false. CONVERGED also requires that the attempt made no edits.
+  A fixing pass cannot certify the fixed tree without a fresh full pass.
+- PHASE is "adversarial" or "structured". SOURCE is the actual outside provider or
+  native in-host source. Preserve its actual OUTSIDE_STATUS; native completion
+  never credits outside coverage.
+- STATUS is "clean" for a completed pass without findings, "issues_found" for
+  a completed pass with findings, or "unavailable" for an incomplete pass.
+- GATE is "informational" for adversarial passes. For structured review, use
+  "pass" or "fail" from its completed result, "skipped" when size-gated, or
+  "informational" with completed:false when coverage is missing.
 
 ---
 

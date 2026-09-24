@@ -61,6 +61,25 @@ function assertSharedBrowserAuthority(body: string): void {
 
 describe('QA caller authority in pure host renders', () => {
   for (const host of ALL_HOST_CONFIGS) {
+    test(`${host.name}: a scope handoff requires the actual prior method read`, () => {
+      for (const caller of callers) {
+        const body = RESOLVERS.QA_EXPLORATORY(context(host.name, caller));
+        expect(body).toContain('Read `sections/scope.md`');
+        expect(body).toContain('in full unless the caller already read it and established surfaces and isolation');
+        expect(body).not.toContain('If the caller has not selected surfaces and established isolation');
+      }
+    });
+
+    test(`${host.name}: final QA cannot omit caller-required rechecks as unaffected`, () => {
+      const body = render('qa/SKILL.md.tmpl', {
+        ...context(host.name, 'qa'), tmplPath: 'qa/SKILL.md.tmpl', preambleTier: 4,
+      });
+      const final = body.slice(body.indexOf('## Phase 9: Final QA'), body.indexOf('## Phase 10: Report'));
+      expect(final).toContain('Re-run affected contracts and adjacent happy paths on the final inputs');
+      expect(final).toContain('Caller-required rechecks cannot be skipped as unaffected');
+      expect(final).toContain('blocked/inconclusive rechecks never verify repairs');
+    });
+
     test(`${host.name}: prior learnings name QA findings without changing review callers`, () => {
       for (const skill of ['qa', 'qa-only']) {
         const body = RESOLVERS.LEARNINGS_SEARCH(context(host.name, skill));
@@ -224,8 +243,8 @@ describe('QA caller authority in pure host renders', () => {
       const body = RESOLVERS.ADVERSARIAL_STEP(context(host.name, 'review'));
       expect(body).toContain("queued for the parent's Fix-First handling at Step 5; do not edit during Step 4.8");
       expect(body).toContain('do not start an inner repair loop');
-      expect(body).toContain('Track tokens by source/phase/attempt, never in REVIEW_START');
-      expect(body).toContain('log each source/phase/attempt separately, before the');
+      expect(body.replace(/\s+/g, ' ')).toContain("Keep each token with that attempt; do not overwrite the parent's REVIEW_START");
+      expect(body.replace(/\s+/g, ' ')).toContain('save one record per source, phase and attempt, before the');
       expect(body).toContain('parent applies queued fixes');
       expect(body).toContain('Each token is consumed once');
       expect(body).not.toContain('address the findings. Re-run the same shared structured invocation');

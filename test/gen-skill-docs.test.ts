@@ -820,16 +820,16 @@ describe('REVIEW_DASHBOARD resolver', () => {
 
   test('dashboard treats review as a valid Eng Review source', () => {
     const content = readShipUnion();
-    expect(content).toContain('plan-eng-review, review, plan-design-review');
-    expect(content).toContain('`review` (diff-scoped pre-landing review)');
-    expect(content).toContain('`plan-eng-review` (plan-stage architecture review)');
-    expect(content).toContain('from either \\`review\\` or \\`plan-eng-review\\`');
+    expect(content).toContain('| Eng Review | `review` or `plan-eng-review` | (DIFF) or (PLAN) |');
+    expect(content).toContain('**Content-first rule:** For `review`');
+    expect(content).toContain('**Plan records** (plan-ceo-review, plan-eng-review');
+    expect(content.replace(/\s+/g, ' ')).toContain('CLEARED requires the selected Eng Review to be `clean`, within 7 days and fresh under step 2');
   });
 
   test('shared dashboard propagates review source to plan-eng-review', () => {
     const content = readSkillUnion('plan-eng-review'); // carved: review body moved to section
-    expect(content).toContain('plan-eng-review, review, plan-design-review');
-    expect(content).toContain('`review` (diff-scoped pre-landing review)');
+    expect(content).toContain('| Eng Review | `review` or `plan-eng-review` | (DIFF) or (PLAN) |');
+    expect(content).toContain('**Content-first rule:** For `review`');
   });
 
   test('resolver output contains key dashboard elements', () => {
@@ -850,7 +850,7 @@ describe('REVIEW_DASHBOARD resolver', () => {
 
   test('dashboard includes staleness detection prose', () => {
     const content = readSkillUnion('plan-ceo-review'); // carved: dashboard moved to section
-    expect(content).toContain('Staleness detection');
+    expect(content).toContain('**2. Check freshness before choosing a verdict.**');
     expect(content).toContain('commit');
   });
 
@@ -1155,8 +1155,8 @@ describe('TEST_COVERAGE_AUDIT placeholders', () => {
 
   test('ship SKILL.md contains re-run idempotency behavior', () => {
     expect(shipSkill).toContain('Re-run behavior (idempotency)');
-    expect(shipSkill).toContain('Every invocation repeats verification:');
-    expect(shipSkill).toContain('Prior execution never exempts verification.');
+    expect(shipSkill).toContain('Every invocation verifies tests, coverage, plan completion, both reviews');
+    expect(shipSkill.replace(/\s+/g, ' ')).toContain('Steps 12, 17 and 19 prevent duplicate bumps, pushes and PRs, never verification');
   });
 });
 
@@ -1246,9 +1246,9 @@ describe('PLAN_FILE_REVIEW_REPORT resolver', () => {
       for (const output of [confidence, dashboard, report, outside]) expect(output).not.toContain('\\`');
       expect(confidence).toBe(generateConfidenceCalibration({...ctx, skillName: 'plan-ceo-review'}).replaceAll('\\`', '`'));
       const ceoDashboard = generateReviewDashboard({...ctx, skillName: 'plan-ceo-review'}).replaceAll('\\`', '`');
-      const ceoVoiceSource = 'From gstack-review-read output, use entries whose skill is `autoplan-voices` or `design-outside-voices` for the coverage detail below the dashboard.';
-      expect(dashboard).toContain(ceoVoiceSource);
-      expect(ceoDashboard).toContain(ceoVoiceSource);
+      const ceoVoiceSource = 'Below the dashboard, group `autoplan-voices` and `design-outside-voices` by workflow run and phase';
+      expect(dashboard.replace(/\s+/g, ' ')).toContain(ceoVoiceSource);
+      expect(ceoDashboard.replace(/\s+/g, ' ')).toContain(ceoVoiceSource);
       expect(ceoDashboard).toBe(dashboard);
       for (const field of ['status', 'unresolved', 'critical_gaps', 'issues_found', 'mode', 'commit']) {
         expect(report).toContain('`' + field + '`');

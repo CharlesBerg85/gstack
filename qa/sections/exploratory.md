@@ -9,8 +9,7 @@ install a framework, publish or acquire extra authority.
 Read shared QA assets from this host's sibling qa/gstack-qa, never product or cross-host copies.
 If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
-If the caller has not selected surfaces and established isolation:
-Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full.
+Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full unless the caller already read it and established surfaces and isolation.
 
 ## 1. Charter and preflight
 

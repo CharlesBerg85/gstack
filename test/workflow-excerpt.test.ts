@@ -90,7 +90,7 @@ describe('workflow judge excerpts', () => {
     const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
     expect(text).toContain("Return to the parent's Exploratory QA step, then continue to Step 9.3 (cross-review dedup)");
     expect(text).toContain('## Step 9.4: Fix-First and persistence');
-    expect(text).toContain('including design, specialists, exploratory QA, Red Team and dedup');
+    expect(text.replace(/\s+/g, ' ')).toContain('including design, specialists, Red Team, exploratory QA and dedup');
     const audit = text.slice(text.indexOf('## Step 7:'), text.indexOf('## Step 8:'));
     expect(audit).not.toContain('Scope Challenge');
     expect(text).toContain('Ship anyway retains VERIFY_RESULT=fail');
@@ -117,8 +117,9 @@ describe('workflow judge excerpts', () => {
     expect(text).toContain('never create an empty commit');
     const review = text.slice(text.indexOf('## Step 9:'), text.indexOf('## Step 10:'));
     expect(review.indexOf('## Confidence Calibration')).toBeLessThan(review.indexOf('1. Read'));
-    expect(review.replace(/\s+/g, ' ')).toContain('After persistence, STOP for missing dispatched reviewer output');
-    expect(review.replace(/\s+/g, ' ')).toContain('Continue to Step 10 only with completed, converged coverage or the named QA exception');
+    expect(review.replace(/\s+/g, ' ')).toContain('if dispatched output is missing, STOP before Step 10');
+    expect(review.replace(/\s+/g, ' ')).toContain('Only a zero-fix pass can continue to Step 10');
+    expect(review.replace(/\s+/g, ' ')).toContain('Require completed, converged coverage or the named QA exception');
   });
 
   test('ship approval gates stay outside the subagent prompts', () => {

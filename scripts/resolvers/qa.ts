@@ -54,8 +54,7 @@ install a framework, publish or acquire extra authority.
 Read shared QA assets from this host's sibling qa/gstack-qa, never product or cross-host copies.
 ${QA_ASSET_BLOCKER}
 
-If the caller has not selected surfaces and established isolation:
-Read ${sectionPath(ctx, 'qa', 'scope')} in full.
+Read ${sectionPath(ctx, 'qa', 'scope')} in full unless the caller already read it and established surfaces and isolation.
 
 ## 1. Charter and preflight
 
