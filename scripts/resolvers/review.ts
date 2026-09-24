@@ -886,6 +886,7 @@ B) Continue — review will still complete
 \`\`\`
 
 If A: ${isShip ? 'queue the approved findings for the next Step 9 pass instead of editing here. On returning to Step 11, repeat the same structured invocation and diff scope' : "queue the findings and this approval for Step 5's Fix-First handling. After edits, the full re-review repeats this same structured invocation and diff scope; do not start an inner repair loop"}.
+If B: retain the acknowledged findings and failed gate; do not report a clean review.
 
 Read stderr for errors (same error handling as ${outsideVoiceFor(ctx).label} adversarial above).
 
@@ -941,6 +942,7 @@ ${isShip ? `Before Step 12: STOP if the required native pass did not complete.
 Optional outside failures retain their own incomplete records.
 - With queued fixes, return to Step 9 before capturing its fresh start token.
   Step 9.4 owns their edits and the same CYCLES limit. Repeat Steps 9–11 on the new tree.
+  Reuse unchanged Step 10 comment decisions, not the old review evidence.
 - With no queued fixes and a completed native pass, proceed to Step 12.
   Continue only after a zero-edit review cycle with no queued fixes.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
 

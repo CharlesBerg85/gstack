@@ -46,6 +46,8 @@ describe('content-binding template drift', () => {
     const ship = rendered('ship/SKILL.md');
     expect(ship).toMatch(/gstack-evidence check --label tests --expect-cmd '[^']+' --label vitest --expect-cmd '[^']+' --max-age 24 --allow-paths CHANGELOG\.md,VERSION,package\.json/);
     expect(ship).toContain('A failed freshness CHECK is not a failed test: it selects live verification');
+    expect(ship).toContain("A failed RUN requires Step 5's triage");
+    expect(ship).toContain('New, changed or unwaived failures STOP publication');
   });
 
   test('ship Step 5 lanes run wrapped with per-lane labels', () => {

@@ -206,6 +206,7 @@ B) Continue — review will still complete
 ```
 
 If A: queue the findings and this approval for Step 5's Fix-First handling. After edits, the full re-review repeats this same structured invocation and diff scope; do not start an inner repair loop.
+If B: retain the acknowledged findings and failed gate; do not report a clean review.
 
 Read stderr for errors (same error handling as Codex adversarial above).
 

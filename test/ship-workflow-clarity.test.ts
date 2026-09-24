@@ -1,10 +1,14 @@
 import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { ALL_HOST_CONFIGS } from '../hosts';
+import { generateAdversarialStep } from '../scripts/resolvers/review';
+import { HOST_PATHS } from '../scripts/resolvers/types';
 import { readWorkflowExcerpt } from './helpers/workflow-excerpt';
 
-const ship = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
+const readShip = () => readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
 
 test('ship uses the PR template headings instead of a competing combined QA report', () => {
+  const ship = readShip();
   expect(ship).toContain('Include `## Exploratory QA` in the PR body');
   expect(ship).toContain('Put plan-check outcomes in `## Verification Results`');
   expect(ship).toContain("Read QA's `templates/functional-report-template.md` for this one final QA section");
@@ -14,6 +18,7 @@ test('ship uses the PR template headings instead of a competing combined QA repo
 });
 
 test('late adversarial fixes use the same bounded review cycle before release steps', () => {
+  const ship = readShip();
   const review = ship.slice(ship.indexOf('## Step 9:'), ship.indexOf('## Step 10:'));
   const adversarial = ship.slice(ship.indexOf('## Step 11:'), ship.indexOf('## Step 12:'));
   expect(review).toContain('queued Steps 10–11 findings');
@@ -31,6 +36,7 @@ test('late adversarial fixes use the same bounded review cycle before release st
 });
 
 test('late source changes repeat affected gates without resetting either allowance', () => {
+  const ship = readShip();
   const gate = ship.slice(ship.indexOf('## Step 16:'), ship.indexOf('## Step 17:'));
   const text = gate.replace(/\s+/g, ' ');
   expect(text).toContain('Behavior, tests or build inputs changed');
@@ -323,4 +329,85 @@ test('ship template consolidation: remote integration retains all allowances and
   expect(push).toContain('Never bypass a failed guard');
   expect(push).toContain('Only a successful push or verified `ALREADY_PUSHED` proceeds');
   expect(push).toContain('No documentation writer runs after push');
+});
+
+test('missing dispatched coverage is persisted and stopped before any zero-fix completion', () => {
+  const review = compact(reviewTemplate);
+  const branches = review.slice(review.indexOf('Take the first matching branch'), review.indexOf('5. Output summary'));
+  expect(branches.indexOf('If a dispatched specialist or Red Team failed')).toBeGreaterThanOrEqual(0);
+  expect(branches.indexOf('Fixing pass below the cap')).toBeGreaterThan(branches.indexOf('STOP before Step 10'));
+  expect(branches.indexOf('Zero-fix pass')).toBeGreaterThan(branches.indexOf('STOP before Step 10'));
+  expect(branches).toContain('`status:"unavailable"`, `completed:false` and `converged:false`');
+  expect(review).toContain('Pre-Landing Review: INCOMPLETE');
+  expect(branches).toContain('retaining applied fixes');
+  expect(branches).toContain('rerun Step 5 and affected Steps 6–8 if code changed');
+  expect(branches).toContain('new Step 9 pass');
+  expect(branches).toContain('Intentionally gated or host-unsupported reviewers were not dispatched');
+  expect(review).toContain('After persistence, STOP for missing dispatched reviewer output');
+  expect(review).toContain('Step 10 only with completed, converged coverage or the named QA exception');
+  expect(review).toContain('This exception cannot waive missing reviewer output');
+  expect(review).toContain('`STATUS`: `unavailable` for missing dispatched reviewer output');
+  const settlement = review.slice(review.indexOf('## Step 9.4:'), review.indexOf('1. **Classify'));
+  expect(settlement).toContain('every dispatched reader has returned or is confirmed stopped');
+  expect(settlement).toContain('persist incomplete via items 5–6 and STOP without edits');
+  expect(settlement).toContain('Terminal failure permits fixes from independent evidence');
+});
+
+test('external-comment fixes refresh tests and mandatory review without repeating prior decisions', () => {
+  const section = compact(readTemplate('ship/sections/greptile.md.tmpl'));
+  const finish = section.slice(section.indexOf('**After triage:**'));
+  expect(section).toContain('queue the approved fix for Step 9, without editing here');
+  expect(finish).toContain('return to Step 9 with their approvals and comment references');
+  expect(finish).toContain('owns the edits and commits');
+  expect(finish.indexOf('rerun Step 5')).toBeGreaterThan(-1);
+  expect(finish.indexOf('affected Steps 6–8')).toBeGreaterThan(finish.indexOf('rerun Step 5'));
+  expect(finish.indexOf('then the full Step 9')).toBeGreaterThan(finish.indexOf('affected Steps 6–8'));
+  expect(finish.indexOf('before continuing to Step 11')).toBeGreaterThan(finish.indexOf('then the full Step 9'));
+  expect(finish).toContain('finish the saved replies without asking again about completed fixes');
+  expect(finish).toContain('With no queued fixes, continue to Step 11');
+});
+
+test.each(ALL_HOST_CONFIGS.map(({ name }) => name))('%s: late adversarial fixes have a bounded return path and preserve approvals', host => {
+  const ctx = { host, skillName: 'ship', tmplPath: '', paths: HOST_PATHS[host] };
+  const text = generateAdversarialStep(ctx);
+  const finish = text.slice(text.indexOf('Before Step 12:'));
+  expect(text).toContain('queued for the next Step 9 pass; do not edit during Step 11');
+  expect(text).toContain('If A: queue the approved findings for the next Step 9 pass instead of editing here');
+  expect(finish).toContain('return to Step 9 before capturing its fresh start token');
+  expect(finish).toContain('Step 9.4 owns their edits and the same CYCLES limit');
+  expect(finish).toContain('Repeat Steps 9–11 on the new tree');
+  expect(finish).toContain('Reuse unchanged Step 10 comment decisions, not the old review evidence');
+  expect(reviewTemplate).toContain('3 fix cycles for this invocation');
+  expect(reviewTemplate).toContain('If cycle 3 still fixes code, persist item 6 below with `converged:false`, then STOP');
+  expect(reviewTemplate).toContain('re-run the test suite (Step 5) and affected Steps 6–8');
+  expect(finish).toContain('With no queued fixes and a completed native pass, proceed to Step 12');
+  expect(finish).toContain('Continue only after a zero-edit review cycle with no queued fixes');
+  expect(text).toContain('retain the acknowledged findings and failed gate');
+  expect(text).toContain('do not report a clean review');
+  expect(finish).toContain('STOP if the required native pass did not complete');
+  expect(finish).toContain('Optional outside failures retain their own incomplete records');
+  expect(text).toContain('Native\ncompletion never credits outside coverage');
+  const standalone = generateAdversarialStep({ ...ctx, skillName: 'review' });
+  expect(standalone).not.toContain('Before Step 12:');
+  expect(standalone).toContain("queue the findings and this approval for Step 5's Fix-First handling");
+  expect(standalone).toContain('After edits, the full re-review repeats this same structured invocation and diff scope');
+  expect(standalone).toContain('do not start an inner repair loop');
+});
+
+test('existing release levels have an explicit recovery rule, not implicit rebump approval', () => {
+  const root = entryTemplate;
+  const version = root.slice(root.indexOf('## Step 12:'), root.indexOf('## Step 14:'));
+  expect(version).toContain('first changed major/minor/patch/micro component supplies `BUMP_LEVEL`');
+  expect(version).toContain('a missing fourth component is zero');
+  expect(version).toContain('This recovers the level, not permission to bump again');
+  expect(version).toContain('Only approval changes the existing version');
+});
+
+test('distribution setup asks for unknown targets and cannot release before review', () => {
+  const root = entryTemplate;
+  const distribution = root.slice(root.indexOf('## Step 2:'), root.indexOf('## Step 3:'));
+  expect(distribution).toContain('Ask for the intended distribution target if it is unknown');
+  expect(distribution).toContain('do not invent a registry or credentials');
+  expect(distribution).toContain('include the new workflow in the tests and review below');
+  expect(distribution).toContain('Do not publish a release during `/ship`');
 });

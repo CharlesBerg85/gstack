@@ -74,26 +74,30 @@ output still blocks completion and continuation. The QA exception cannot waive i
    Each case below finishes items 5–6 exactly once with this pass's original REVIEW_START.
    Then commit named fixed files, if any
    (`git add <fixed-files> && git commit -m "fix: pre-landing review fixes"`), before exiting.
+   Take the first matching branch:
+   - **Missing dispatched coverage:** If a dispatched specialist or Red Team failed or its output is missing, use `status:"unavailable"`, `completed:false` and `converged:false`. Then **STOP before Step 10**, naming the missing reviewer and retaining applied fixes. When coverage is available, rerun Step 5 and affected Steps 6–8 if code changed, then resume with a new Step 9 pass under the remaining allowance. Intentionally gated or host-unsupported reviewers were not dispatched and do not trigger this stop.
    - **Bound: 3 fix cycles for this invocation.** Keep this counter across returns from Steps 10, 11 and 16. If cycle 3 still fixes code, persist item 6 below with `converged:false`, then STOP and report which findings keep reappearing.
-   - **Fixing pass below the cap:** **stay in this invocation and loop**: re-run the test suite (Step 5), then re-run the whole Step 9 cycle from a new pass's start-token capture, including design, specialists, exploratory QA, Red Team, and dedup; tests must be green or have the same explicit Step 5 waiver. NEVER tell the user to run `/ship` again just for this cycle.
+   - **Fixing pass below the cap:** **stay in this invocation and loop**: re-run the test suite (Step 5) and affected Steps 6–8, then re-run the whole Step 9 cycle from a new pass's start-token capture, including design, specialists, exploratory QA, Red Team, and dedup; tests must be green or have the same explicit Step 5 waiver. NEVER tell the user to run `/ship` again just for this cycle.
    - **Zero-fix pass:** resolve required failed/unavailable probes through the
      parent gate above. Skipping a fix does not pass its probe; continue to
      Step 10 only with completed, converged coverage or the named QA exception.
 
 5. Output summary: `Pre-Landing Review: N issues — M auto-fixed, K asked (J fixed, L skipped)`
 
-   If no issues found: `Pre-Landing Review: No issues found.`
+   If coverage is incomplete: `Pre-Landing Review: INCOMPLETE — <missing reviewers>`.
+   Otherwise, if no issues found: `Pre-Landing Review: No issues found.`
 
 6. Persist the review result to the review log:
 ```bash
 ~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(git rev-parse --short HEAD)"'","via":"ship","completed":COMPLETED,"converged":CONVERGED,"cycles":CYCLES}' --finish REVIEW_START
 ```
-- `TIMESTAMP`: ISO 8601. `STATUS`: `clean` only for completed coverage with no
+- `TIMESTAMP`: ISO 8601. `STATUS`: `unavailable` for missing dispatched reviewer output;
+  otherwise `clean` only for completed coverage with no
   unresolved non-advisory defects; otherwise `issues_found`. N counts current
   unresolved defects, not original totals. Missing coverage is not a defect.
 - `REVIEW_START`: this pass's Step 9 token captured before reading the diff;
   never recapture at persistence to certify unreviewed fixes.
-- `COMPLETED`: checklist, dispatched specialists and applicable probes completed.
+- `COMPLETED`: checklist, dispatched specialists/Red Team and applicable probes completed.
   Blocked, inconclusive or missing required coverage means false, never clean.
   Record accepted untested risk separately, not as passing verification.
   Undispatched host-unsupported/gated specialists do not block; retain their labels.
@@ -105,5 +109,6 @@ output still blocks completion and continuation. The QA exception cannot waive i
 - `findings`: checklist, specialist and exploratory QA records with
   `{"fingerprint":"path:line:category","severity":"CRITICAL|INFORMATIONAL","action":"ACTION"}`.
   ACTION: `"auto-fixed"`, `"fixed"` (approved), or `"skipped"` (explicit Skip).
+Save the review output — it goes into the PR body in Step 19.
 
 ---

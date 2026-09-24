@@ -52,7 +52,8 @@ For each comment in `comments`:
 **SUPPRESSED:** Skip silently — these are known false positives from previous triage.
 
 **After triage:** With queued fixes, return to Step 9 with their approvals and comment
-references. Its normal fix/test/review cycle owns the edits and commits. On returning
+references. Its normal fix/test/review cycle owns the edits and commits: rerun Step 5
+and affected Steps 6–8, then the full Step 9 before continuing to Step 11. On returning
 here, finish the saved replies without asking again about completed fixes. With no
 queued fixes, continue to Step 11.
 

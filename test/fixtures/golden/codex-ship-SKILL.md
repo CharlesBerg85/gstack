@@ -303,31 +303,6 @@ For high-stakes ambiguity (architecture, data model, destructive scope, missing 
 
 A claimed limitation or requirement ("the API can't do this", "X requires a credential", "that's impossible on this platform") is a material claim. State one only with the verbatim error, the documented statement, or a live probe in hand — pattern-matching a failure to a familiar story is not evidence. When a cheap probe settles the question, run it BEFORE asking the user anything or declaring a step blocked.
 
-## Continuous Checkpoint Mode
-
-If `CHECKPOINT_MODE` is `"continuous"`: auto-commit completed logical units with `WIP:` prefix.
-
-Commit after new intentional files, completed functions/modules, verified bug fixes, and before long-running install/build/test commands.
-
-Commit format:
-
-```
-WIP: <concise description of what changed>
-
-[gstack-context]
-Decisions: <key choices made this step>
-Remaining: <what's left in the logical unit>
-Tried: <failed approaches worth recording> (omit if none)
-Skill: </skill-name-if-running>
-[/gstack-context]
-```
-
-Rules: stage only intentional files, NEVER `git add -A`, do not commit broken tests or mid-edit state, and push only if `CHECKPOINT_PUSH` is `"true"`. Do not announce each WIP commit.
-
-`/context-restore` reads `[gstack-context]`; `/ship` squashes WIP commits into clean commits.
-
-If `CHECKPOINT_MODE` is `"explicit"`: ignore this section unless a skill or user asks to commit.
-
 ## Context Health (soft directive)
 
 During long-running skill sessions, periodically write a brief `[PROGRESS]` summary: done, next, surprises.
@@ -659,18 +634,15 @@ service with existing deployment — verify that a distribution pipeline exists.
    - B) Defer — add a P1 distribution TODO in Step 14
    - C) Not needed — this is internal/web-only, existing deployment covers it
 
-4. **If release pipeline exists:** Continue silently.
-5. **If no new artifact detected:** Skip silently.
-
-For option A, use the repository's existing build/publish conventions. If the registry,
-distribution target or required access is unknown, ask before creating a workflow.
-Recheck the completed workflow against the artifact before continuing.
+4. **If the user chooses A:** Add packaging and publish configuration using this repository's CI conventions. Ask for the intended distribution target if it is unknown; do not invent a registry or credentials. Ask about an unknown registry or required access before creating the workflow. Recheck it against the artifact and include the new workflow in the tests and review below. Do not publish a release during `/ship`.
+5. **If release pipeline exists:** Continue silently.
+6. **If no new artifact detected:** Skip silently.
 
 ---
 
 ## Step 3: Merge the base branch (BEFORE tests)
 
-Merge the base ref fetched in Step 1 so subsequent tests cover the integrated candidate:
+Merge the base ref fetched in Step 1 so tests and reviews cover the integrated code:
 
 ```bash
 git merge origin/<base> --no-edit
@@ -2062,26 +2034,30 @@ output still blocks completion and continuation. The QA exception cannot waive i
    Each case below finishes items 5–6 exactly once with this pass's original REVIEW_START.
    Then commit named fixed files, if any
    (`git add <fixed-files> && git commit -m "fix: pre-landing review fixes"`), before exiting.
+   Take the first matching branch:
+   - **Missing dispatched coverage:** If a dispatched specialist or Red Team failed or its output is missing, use `status:"unavailable"`, `completed:false` and `converged:false`. Then **STOP before Step 10**, naming the missing reviewer and retaining applied fixes. When coverage is available, rerun Step 5 and affected Steps 6–8 if code changed, then resume with a new Step 9 pass under the remaining allowance. Intentionally gated or host-unsupported reviewers were not dispatched and do not trigger this stop.
    - **Bound: 3 fix cycles for this invocation.** Keep this counter across returns from Steps 10, 11 and 16. If cycle 3 still fixes code, persist item 6 below with `converged:false`, then STOP and report which findings keep reappearing.
-   - **Fixing pass below the cap:** **stay in this invocation and loop**: re-run the test suite (Step 5), then re-run the whole Step 9 cycle from a new pass's start-token capture, including design, specialists, exploratory QA, Red Team, and dedup; tests must be green or have the same explicit Step 5 waiver. NEVER tell the user to run `/ship` again just for this cycle.
+   - **Fixing pass below the cap:** **stay in this invocation and loop**: re-run the test suite (Step 5) and affected Steps 6–8, then re-run the whole Step 9 cycle from a new pass's start-token capture, including design, specialists, exploratory QA, Red Team, and dedup; tests must be green or have the same explicit Step 5 waiver. NEVER tell the user to run `/ship` again just for this cycle.
    - **Zero-fix pass:** resolve required failed/unavailable probes through the
      parent gate above. Skipping a fix does not pass its probe; continue to
      Step 10 only with completed, converged coverage or the named QA exception.
 
 5. Output summary: `Pre-Landing Review: N issues — M auto-fixed, K asked (J fixed, L skipped)`
 
-   If no issues found: `Pre-Landing Review: No issues found.`
+   If coverage is incomplete: `Pre-Landing Review: INCOMPLETE — <missing reviewers>`.
+   Otherwise, if no issues found: `Pre-Landing Review: No issues found.`
 
 6. Persist the review result to the review log:
 ```bash
 $GSTACK_ROOT/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","status":"STATUS","issues_found":N,"critical":N,"informational":N,"quality_score":SCORE,"specialists":SPECIALISTS_JSON,"findings":FINDINGS_JSON,"commit":"'"$(git rev-parse --short HEAD)"'","via":"ship","completed":COMPLETED,"converged":CONVERGED,"cycles":CYCLES}' --finish REVIEW_START
 ```
-- `TIMESTAMP`: ISO 8601. `STATUS`: `clean` only for completed coverage with no
+- `TIMESTAMP`: ISO 8601. `STATUS`: `unavailable` for missing dispatched reviewer output;
+  otherwise `clean` only for completed coverage with no
   unresolved non-advisory defects; otherwise `issues_found`. N counts current
   unresolved defects, not original totals. Missing coverage is not a defect.
 - `REVIEW_START`: this pass's Step 9 token captured before reading the diff;
   never recapture at persistence to certify unreviewed fixes.
-- `COMPLETED`: checklist, dispatched specialists and applicable probes completed.
+- `COMPLETED`: checklist, dispatched specialists/Red Team and applicable probes completed.
   Blocked, inconclusive or missing required coverage means false, never clean.
   Record accepted untested risk separately, not as passing verification.
   Undispatched host-unsupported/gated specialists do not block; retain their labels.
@@ -2093,6 +2069,7 @@ $GSTACK_ROOT/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","s
 - `findings`: checklist, specialist and exploratory QA records with
   `{"fingerprint":"path:line:category","severity":"CRITICAL|INFORMATIONAL","action":"ACTION"}`.
   ACTION: `"auto-fixed"`, `"fixed"` (approved), or `"skipped"` (explicit Skip).
+Save the review output — it goes into the PR body in Step 19.
 
 ---
 
@@ -2148,7 +2125,8 @@ For each comment in `comments`:
 **SUPPRESSED:** Skip silently — these are known false positives from previous triage.
 
 **After triage:** With queued fixes, return to Step 9 with their approvals and comment
-references. Its normal fix/test/review cycle owns the edits and commits. On returning
+references. Its normal fix/test/review cycle owns the edits and commits: rerun Step 5
+and affected Steps 6–8, then the full Step 9 before continuing to Step 11. On returning
 here, finish the saved replies without asking again about completed fixes. With no
 queued fixes, continue to Step 11.
 
@@ -2384,6 +2362,7 @@ B) Continue — review will still complete
 ```
 
 If A: queue the approved findings for the next Step 9 pass instead of editing here. On returning to Step 11, repeat the same structured invocation and diff scope.
+If B: retain the acknowledged findings and failed gate; do not report a clean review.
 
 Read stderr for errors (same error handling as Claude Code adversarial above).
 
@@ -2439,6 +2418,7 @@ Before Step 12: STOP if the required native pass did not complete.
 Optional outside failures retain their own incomplete records.
 - With queued fixes, return to Step 9 before capturing its fresh start token.
   Step 9.4 owns their edits and the same CYCLES limit. Repeat Steps 9–11 on the new tree.
+  Reuse unchanged Step 10 comment decisions, not the old review evidence.
 - With no queued fixes and a completed native pass, proceed to Step 12.
   Continue only after a zero-edit review cycle with no queued fixes.
 
@@ -2503,7 +2483,7 @@ for slot selection. Bump level and queue collisions remain agent decisions.
    ```
    Save the JSON `baseVersion` as `BASE_VERSION`, then read `state` and dispatch:
    - **FRESH** → do the bump (steps 2-4).
-   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. Reuse `BUMP_LEVEL` selected earlier in this invocation; otherwise derive it from the first differing component of `baseVersion` and `currentVersion` (major/minor/patch/micro). Run step 3's queue check. Do not bump again without approval.
+   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. Use the recorded level for this release; if absent, compare `baseVersion` and `currentVersion` left to right: the first changed major/minor/patch/micro component supplies `BUMP_LEVEL` (a missing fourth component is zero). Then run step 3's queue check. This recovers the level, not permission to bump again.
    - **DRIFT_STALE_PKG** → run `gstack-version-bump repair`, then reclassify. On success, follow **ALREADY_BUMPED**, including its queue check; on failure, STOP. Repair alone never re-bumps.
    - **DRIFT_UNEXPECTED** → **STOP**. package.json disagrees with VERSION while VERSION matches base — a manual edit bypassed /ship. Reconcile manually, then re-run.
 
@@ -2535,16 +2515,6 @@ for slot selection. Bump level and queue collisions remain agent decisions.
    $GSTACK_ROOT/bin/gstack-decision-log '{"decision":"Ship NEW_VERSION (BUMP_LEVEL)","rationale":"WHY","scope":"repo","source":"skill","confidence":9}' 2>/dev/null || true
    ```
    Substitute `NEW_VERSION`, `BUMP_LEVEL`, and one-line `WHY` (scope or breaking-change signal). Best-effort, non-interactive, non-blocking.
-
-**Before drafting:** In continuous checkpoint mode, read the WIP commit bodies
-while they still exist (no WIP commits means no extra context):
-
-```bash
-git log origin/<base>..HEAD --grep="^WIP:" --format="%H%n%B"
-```
-
-Use their `[gstack-context]` notes only where supported by the diff. Step 15.0
-later preserves these bodies for PR context before squashing them.
 
 ## Step 13: CHANGELOG (auto-generate)
 
@@ -2723,25 +2693,7 @@ unexpected child commits.
 
 ## Step 15: Commit (bisectable chunks)
 
-### Step 15.0: Preserve checkpoint context
-
-Run `$GSTACK_ROOT/bin/gstack-config get checkpoint_mode`. `continuous` means automatic `WIP:`
-checkpoint commits; any other value skips WIP consolidation. In continuous mode,
-count `WIP:` commits in `origin/<base>..HEAD`. If none exist, skip Step 15.2.
-Otherwise preserve their context before committing or rewriting history:
-
-```bash
-mkdir -p "$(git rev-parse --show-toplevel)/.gstack"
-git log origin/<base>..HEAD --grep="^WIP:" --format="%H%n%B%n---END---" > \
-  "$(git rev-parse --show-toplevel)/.gstack/wip-context-before-squash.md"
-```
-
-If export fails, do not rewrite history. Step 13 already read these bodies for
-CHANGELOG; retain this PR context locally, outside commits.
-
-### Step 15.1: Bisectable Commits
-
-Create small, logical commits for `git bisect`. If all changes are already committed, continue to Step 15.2; never create an empty commit.
+Create small, logical commits for `git bisect`. If all changes are already committed, continue to Step 16; never create an empty commit.
 
 1. Group coherent changes with their tests and controller views. Migrations may
    stand alone or accompany their model; keep feature config/routes and their
@@ -2761,48 +2713,6 @@ Co-Authored-By: OpenAI Codex <noreply@openai.com>
 EOF
 )"
 ```
-
-### Step 15.2: Consolidate WIP commits when safe
-
-After Step 15.1, run only for continuous-mode WIP commits. Require a clean working
-tree except the context export. Run `git fetch origin`; failure means STOP.
-Inspect `WIP_BASE..HEAD`, where `WIP_BASE` is `git merge-base HEAD origin/<base>`:
-
-- **merge commits:** do not replay or flatten Step 3's integration merge.
-- **published commits** (`git branch -r --contains <sha>` returns a ref): never rewrite.
-- For either, ask to preserve WIP history and continue to Step 16 (recommended),
-  or stop for manual consolidation. Never rebase or force-push these paths.
-
-For a linear, unpublished range, prepare and inspect an oldest-first todo.
-Keep non-WIP commits as `pick` in relative order; put each WIP after its verified
-logical target as `fixup`. Include every commit exactly once. An ambiguous or
-out-of-range target needs a preserve-history/stop decision. First entry stays
-`pick` or `reword`; all-WIP ranges retain a logical `reword` anchor. Rewording
-requires a noninteractive `WIP_EDITOR` script that writes descriptive messages;
-picks/fixups alone use `true`. Set the reviewed todo's absolute path below:
-
-```bash
-export WIP_TODO="<absolute path to prepared todo>"
-test -s "$WIP_TODO" || exit 1
-WIP_BASE=$(git merge-base HEAD origin/<base>) || exit 1
-test -z "$(git status --porcelain -- . ':(exclude).gstack/wip-context-before-squash.md')" || exit 1
-test -z "$(git rev-list --merges "$WIP_BASE"..HEAD)" || exit 1
-for sha in $(git rev-list "$WIP_BASE"..HEAD); do
-  test -z "$(git branch -r --contains "$sha")" || exit 1
-done
-ORIGINAL_TREE=$(git rev-parse 'HEAD^{tree}')
-GIT_EDITOR="${WIP_EDITOR:-true}" GIT_SEQUENCE_EDITOR='cp "$WIP_TODO"' git rebase -i "$WIP_BASE" || {
-  git rebase --abort
-  echo "STATUS: BLOCKED — WIP consolidation conflicted; original history restored"
-  exit 1
-}
-test "$ORIGINAL_TREE" = "$(git rev-parse 'HEAD^{tree}')" || {
-  echo "STATUS: BLOCKED — consolidation changed contents; inspect before continuing"
-  exit 1
-}
-```
-
-Proceed only after successful, tree-preserving consolidation.
 
 ---
 
@@ -2865,7 +2775,8 @@ Choose exactly one result for each lane:
   Read results and recheck once. Stale content cannot use the ledger-only path.
 - **Ledger-only failure on unchanged inputs:** only saving/reading the test receipt failed.
   To use this path, independently prove unchanged final content, command and valid age from the successful
-  run's log. Cite the exact command, exit, and log; never label the ledger FRESH.
+  run's log. Cite the exact command, exit, timestamp and log; report ledger unavailable,
+  never label the ledger FRESH.
   Without that proof, use STALE/MISSING.
   Do not rerun green suites solely for bookkeeping: only the ledger record may
   need repair, not changed content.

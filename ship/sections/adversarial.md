@@ -206,6 +206,7 @@ B) Continue — review will still complete
 ```
 
 If A: queue the approved findings for the next Step 9 pass instead of editing here. On returning to Step 11, repeat the same structured invocation and diff scope.
+If B: retain the acknowledged findings and failed gate; do not report a clean review.
 
 Read stderr for errors (same error handling as Codex adversarial above).
 
@@ -261,6 +262,7 @@ Before Step 12: STOP if the required native pass did not complete.
 Optional outside failures retain their own incomplete records.
 - With queued fixes, return to Step 9 before capturing its fresh start token.
   Step 9.4 owns their edits and the same CYCLES limit. Repeat Steps 9–11 on the new tree.
+  Reuse unchanged Step 10 comment decisions, not the old review evidence.
 - With no queued fixes and a completed native pass, proceed to Step 12.
   Continue only after a zero-edit review cycle with no queued fixes.
 
