@@ -82,13 +82,13 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
     const entry = fs.readFileSync(path.join(SHIP_DIR, 'SKILL.md'), 'utf8');
     const gate = entry.slice(entry.indexOf('## Step 16:'), entry.indexOf('## Step 17:'));
     const text = gate.replace(/\s+/g, ' ');
-    expect(text).toContain('content, command, or age mismatch, or no proven run');
+    expect(text).toContain('STALE/MISSING: content, command or age changed, or no proven run');
     expect(text).toContain('only saving/reading the test receipt failed');
-    expect(text).toContain('independently prove unchanged final content, command and valid age');
-    expect(text).toContain('from the successful run\'s log');
+    expect(text).toContain('Independently prove unchanged final content, command and valid age');
+    expect(text).toContain('from the successful run\'s evidence');
     expect(text).toContain('exact command, exit, timestamp and log');
     expect(text).toContain('report ledger unavailable');
-    expect(text).toContain('never label the ledger FRESH');
+    expect(text).toContain('report ledger unavailable, never FRESH');
     expect(text).toContain('Do not rerun green suites solely for bookkeeping');
     expect(text).toContain("A failed RUN requires Step 5's triage");
     expect(text).toContain('Use prior waivers only for the same verified pre-existing failures and approved scope');
