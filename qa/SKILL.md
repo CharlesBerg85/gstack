@@ -449,9 +449,6 @@ branch name wherever the instructions say "the base branch" or `<default>`.
 
 # /qa: Test → Fix → Verify
 
-Explore selected surfaces, diagnose defects, and verify regressions/repairs before commits.
-Browser QA tests journeys; functional QA checks native outputs and durable effects.
-
 ---
 
 ## Section index — Read each section when its situation applies
@@ -494,6 +491,8 @@ Read sections in full when directed; do not work from memory.
 
 `--quick` also selects Quick exploration; `--exhaustive` changes only the fix tier.
 Regression mode preserves the selected fix tier. Each surface's method defines its modes.
+If both `--quick` and `--regression` are supplied, ask which exploration mode to use
+before setup or probes. Keep the selected fix tier; this choice concerns exploration only.
 
 **On a feature branch without an explicit scope:** Use diff-aware testing of changed
 and adjacent behavior. Select the surface first; absence of a URL never forces a browser.
@@ -504,17 +503,20 @@ and adjacent behavior. Select the surface first; absence of a URL never forces a
 git status --porcelain
 ```
 
-If the output is non-empty (working tree is dirty), **STOP** and use AskUserQuestion:
+If dirty, **STOP** and use AskUserQuestion. Explain that a clean tree keeps QA fixes atomic:
+- A) Commit all current changes with a descriptive message before QA (recommended).
+- B) Stash changes, run QA, then pop the stash.
+- C) Abort for manual cleanup.
 
-"Your working tree has uncommitted changes. /qa needs a clean tree so each bug fix gets its own atomic commit."
+Execute only the user's choice before continuing setup.
 
-- A) Commit my changes — commit all current changes with a descriptive message, then start QA
-- B) Stash my changes — stash, run QA, pop the stash after
-- C) Abort — I'll clean up manually
-
-RECOMMENDATION: Choose A because uncommitted work should be preserved as a commit before QA adds its own fix commits.
-
-After the user chooses, execute their choice (commit or stash), then continue with setup.
+**Prepare report artifacts before browser setup.** Resolve any supplied prior report
+and baseline paths before writing. Use the output override or `.gstack/qa-reports`
+as `REPORT_DIR` only when it is empty; otherwise choose a fresh owned run subdirectory.
+Create the chosen directory and use it for all local reports, baselines and evidence.
+Never overwrite previous reports, baselines, screenshots or exploration notes.
+A caller's fixed artifact paths and permissions take precedence; if preserving them
+safely is impossible, report the output blocker rather than expanding write authority.
 
 **Browser surface only:** load its setup; functional-only runs skip this section.
 
@@ -529,9 +531,6 @@ they do not load this browser bootstrap or generate CI.
 > **STOP.** Before checking the browser target's test framework during Setup; never for functional-only targets — ecosystem detection, authorized bootstrap, CI pipeline and first tests, Read `sections/test-bootstrap.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full and follow it.
 > Use this host's installed path, never the product working directory or another host's assets.
 > If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
-
-Set `REPORT_DIR` to the shell-quoted output override or `.gstack/qa-reports`, then run
-`mkdir -p "$REPORT_DIR"`. Use it for all local reports and evidence.
 
 ---
 
@@ -565,7 +564,7 @@ If B: run `~/.claude/skills/gstack/bin/gstack-config set cross_project_learnings
 
 Then re-run the search with the appropriate flag.
 
-If learnings are found, incorporate them into your analysis. When a review finding
+If learnings are found, incorporate them into your analysis. When a QA finding
 matches a past learning, display:
 
 **"Prior learning applied: [key] (confidence N/10, from [date])"**
@@ -590,6 +589,8 @@ Prefer the richer of recent project test plans and plans in conversation over gi
 
 ## Phases 1-6: QA Baseline
 
+Follow the shared exploratory loop for every surface. Browser phase names identify techniques.
+
 Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads:
 
 **Functional surfaces:**
@@ -611,7 +612,8 @@ surfaces separate.
 ## Output Structure
 
 Under `$REPORT_DIR`, write `qa-report-{target}-{YYYY-MM-DD}.md` and the browser's
-`baseline.json`. Browser evidence goes in `screenshots/`: `initial.jpg`,
+`baseline.json`. Browser `{target}` is a safe hostname.
+Browser evidence goes in `screenshots/`: `initial.jpg`,
 `issue-NNN-step-N.jpg`, `issue-NNN-result.jpg`, annotated `issue-NNN.png` and
 `issue-NNN-after.jpg` (Phase 5 is the before). Functional reports use a safe command/service
 label and sanitized command/request/state evidence, not a domain or screenshots.
@@ -643,14 +645,14 @@ For each fixable issue, in severity order:
 
 ### 8a. Diagnose and reproduce
 
-Trace the failing input/state, state a causal hypothesis and test it. Minimize the
-reproducer and record actual versus documented behavior before edits. Only modify
-responsible files; an environment failure or unclear contract never authorizes a repair.
+Use the shared loop's causal hypothesis and minimized replay, recording actual versus
+documented behavior before edits. Modify only responsible files. Environment failures
+and unclear contracts never authorize repair.
 
 ### 8a.5. Regression test before repair
 
 Match 2-3 nearby tests' naming, imports, assertions and fixtures. Reproduce the failure
-in a new native test. Run it before repairing product code; prove the defect caused its
+in a new native test. Run its detected command before repair; prove the defect caused its
 failure, not a bad fixture, import or service. Attribute it in the language's comment syntax:
 
 ```text
@@ -661,13 +663,11 @@ failure, not a bad fixture, import or service. Attribute it in the language's co
 
 A clear, healthy uncovered contract may gain a passing test without product edits.
 
-Use unit tests for logic, real integration for request/queue/storage boundaries, and E2E
-for journeys smaller tests cannot prove. Mock unrelated services, not the failing boundary.
-CSS-only defects may use browser evidence. Missing infrastructure stays coverage debt;
-functional QA never bootstraps. Never weaken/delete existing tests, alter CI or bless bugs.
+Apply the shared exploratory section's native unit/integration/E2E rules.
+CSS-only defects may use browser evidence. Missing infrastructure stays coverage debt.
 
-For auto-incrementing `{name}.regression-*.test.{ext}`, choose the max number + 1. Run the
-detected command for the new file. Keep valid red regressions; narrowly correct a proved
+For auto-incrementing `{name}.regression-*.test.{ext}`, choose the max number + 1.
+Keep valid red regressions; narrowly correct a proved
 fixture/test error or report the unresolved bug.
 
 ### 8b. Fix
@@ -676,11 +676,10 @@ Read the surrounding source and make the **minimal fix**. No unrelated refactors
 
 ### 8c. Re-test
 
-Require the new regression to pass, rerun the exact original failing probe and an
-adjacent happy path, and inspect relevant final state. A webhook acceptance response
-alone cannot verify a worker repair. Failed or unavailable rechecks stay unresolved.
+Apply the shared regression/original-probe/adjacent-happy-path gate and inspect final
+state. Acceptance alone cannot verify a worker repair. Failed/unavailable rechecks stay unresolved.
 
-For a browser defect only, use the existing visual/interaction verification:
+For browser defects only:
 
 > **STOP.** Before rechecking a reproduced browser defect after repair; never for a functional-only repair, Read `sections/browser-verify.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full and follow it.
 > Use this host's installed path, never the product working directory or another host's assets.
@@ -698,14 +697,14 @@ repairs and valid red regressions/evidence uncommitted; tell the user what remai
 
 ### 8e. Classify
 
-- **verified**: original probe, native regression when available and adjacent happy path confirm the fix; disclose any missing test coverage
+- **verified**: passed 8c (native regression when available); disclose missing test coverage
 - **best-effort**: fix applied but couldn't fully verify (e.g., needs auth state, external service)
 - **reverted**: regression detected → undo only this run's repair (revert its commit if already committed), retain the valid regression/evidence, and mark the issue "deferred". Never discard user changes.
 
 ### 8e.5. Regression Test
 
-Record 8a.5/8c's regression file/command, attribution, boundary and red/green results,
-or the concrete deferred case. Do not duplicate the test or discard a valid red one.
+Record 8a.5/8c's file, command, attribution, boundary and red/green results or deferred case.
+Do not duplicate the test.
 Healthy-contract commits use `test(qa): regression test for {contract}`.
 **WTF-likelihood exclusion:** test-only commits do not count toward the heuristic.
 
@@ -739,9 +738,7 @@ about a worse score or regressed contract; blocked/inconclusive rechecks never v
 
 ## Phase 10: Report
 
-Write the report to both local and project-scoped locations:
-
-**Local:** `$REPORT_DIR/qa-report-{target}-{YYYY-MM-DD}.md`, using the safe command/service label or browser hostname.
+Write the Output Structure report locally and copy the same content to project context:
 
 **Project-scoped:** Write test outcome artifact for cross-session context:
 ```bash
@@ -755,14 +752,15 @@ Write to `~/.gstack/projects/{slug}/{user}-{branch}-test-outcome-{datetime}.md`
 - Files Changed (if fixed)
 - Before/After evidence: screenshots for browser, outputs/requests/durable state for functional
 
-**Summary:** total issues, fixes (verified/best-effort/reverted counts), deferred issues,
-and browser score delta or functional outcomes, separate for mixed targets.
+**Summary:** total issues, verified/best-effort/reverted fixes and deferred issues.
+For browser coverage include the score delta. For functional coverage include
+passing/failing/blocked/not-run contracts, permanent regressions and remaining risks,
+never a score. Keep mixed results separate.
 
-**PR Summary:** Include a one-line summary suitable for PR descriptions:
+**PR Summary:** Include one line:
 > "QA found N issues, fixed M, health score X → Y."
 
-For functional targets instead report actual passing/failing/blocked/not-run contracts,
-verified repairs, permanent regressions and remaining risks; do not invent a score.
+For functional targets, use those contract outcomes instead of a score in the PR summary.
 
 ---
 
@@ -804,8 +802,6 @@ already knows. A good test: would this insight save time in a future session? If
 
 ## Additional Rules (qa-specific)
 
-11. **Clean working tree required.** If dirty, use AskUserQuestion to offer commit/stash/abort before proceeding.
-12. **One commit per fix.** Never bundle multiple fixes into one commit.
 13. **Outside an explicitly approved browser bootstrap:** Only create tests through authorized codification in Phase 8a.5. Never modify CI configuration or weaken existing tests; use new native test files.
-14. **Revert on regression.** Undo only your repair, preserve the valid regression and evidence, and never discard user changes.
-15. **Self-regulate.** Follow the WTF-likelihood heuristic. When in doubt, stop and ask.
+
+When in doubt, stop and ask.

@@ -623,7 +623,7 @@ This is my **QA lead mode**.
 
 The most common use case: you're on a feature branch, you just finished coding, and you want to verify everything works. Just say `/qa` — it uses your request, repository contracts, test plan and diff to select browser, functional (API, CLI, job, worker or webhook), or mixed surfaces. No URL or manual test plan is required. Browser targets still open affected pages in Aside tabs (or gstack's fallback browser); functional-only targets use documented native commands and isolated local fixtures without starting a browser.
 
-Four modes:
+Choose Full, Quick or Regression depth; diff-aware selects what to test:
 
 - **Diff-aware** (automatic on feature branches) — selects changed and adjacent behavior. Standalone `/qa` first resolves a dirty working tree through its commit/stash/abort question; it tests the resulting checkout. For browser targets it identifies affected pages and tests them specifically.
 - **Full** — browser QA systematically explores the entire app (typically 5-15 minutes, documenting 5-10 well-evidenced issues); functional QA covers applicable documented contracts and reports blocked or untested ones separately.
@@ -635,6 +635,12 @@ Exploration retains a written trail: before each next discovery probe, QA saves 
 command and result, the hypothesis and the next exact command. The final report
 links those files. `/qa-only` and the bounded review/ship pass use the same evidence
 contract without gaining permission to edit product code or tests.
+
+Time limits include checkpoint and evidence work; unfinished probes remain untested.
+New runs preserve prior reports and baselines, using a fresh owned run directory when
+the selected output directory already contains artifacts. Mixed runs put browser and
+functional results in separate sections of one report; browser scores never apply to
+functional coverage. Conflicting Quick/Regression requests are resolved before probing.
 
 ### Automatic regression tests
 

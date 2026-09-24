@@ -20,6 +20,7 @@ and every ship audits relevant documentation before final verification and publi
 
 ### Fixed
 
+- Repeated QA runs preserve prior reports, baselines and exploration notes. Browser techniques follow the same checkpointed probe order as functional QA, and mixed reports keep each surface's evidence and scores separate.
 - Ship's two-pass test-generation allowance includes the initial attempt, failures and zero-test results. Duplicate design findings share one action while retaining both reviewers' evidence, statistics and the stricter approval requirement.
 - Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
 

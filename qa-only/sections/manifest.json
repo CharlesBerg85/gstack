@@ -4,12 +4,6 @@
   "version": 1,
   "sections": [
     {
-      "id": "browser-setup",
-      "file": "browser-setup.md",
-      "title": "Browser-only setup",
-      "trigger": "setting up an explicitly selected browser surface; never for functional-only targets"
-    },
-    {
       "id": "exploratory",
       "file": "exploratory.md",
       "title": "Report-only exploratory QA",

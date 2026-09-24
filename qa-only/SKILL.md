@@ -416,10 +416,9 @@ Read sections in full when directed; do not work from memory.
 
 | When | Read this section |
 |------|-------------------|
-| setting up an explicitly selected browser surface; never for functional-only targets | `sections/browser-setup.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
 | running selected report-only baseline and exploratory probes without product or test writes | `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
 
-## Setup
+## Request Parameters
 
 **Parse the user's request for these parameters:**
 
@@ -430,6 +429,9 @@ Read sections in full when directed; do not work from memory.
 | Output dir | `.gstack/qa-reports/` | `Output to /tmp/qa` |
 | Scope | Selected target (or diff-scoped) | `Focus on duplicate webhook delivery` |
 | Auth | Isolated synthetic identity for functional probes | Browser session handling lives in browser setup; never request credentials in chat |
+
+Parsing records the request; it does not start browser setup. If both `--quick` and
+`--regression` are supplied, ask the user to choose one mode before setup or probes.
 
 **On a feature branch without an explicit scope:** Use diff-aware testing of changed
 and adjacent behavior. Do not discover a browser merely because no URL was supplied.
@@ -477,13 +479,15 @@ If B: run `~/.claude/skills/gstack/bin/gstack-config set cross_project_learnings
 
 Then re-run the search with the appropriate flag.
 
-If learnings are found, incorporate them into your analysis. When a review finding
+If learnings are found, incorporate them into your analysis. When a QA finding
 matches a past learning, display:
 
 **"Prior learning applied: [key] (confidence N/10, from [date])"**
 
 This makes the compounding visible. The user should see that gstack is getting
 smarter on their codebase over time.
+
+## Select Surfaces and Isolation
 
 Use that context when selecting surfaces and isolation:
 
@@ -494,17 +498,30 @@ For mixed Regression, the argument is the prior combined report. Resolve its fun
 replay evidence and browser baseline links first, then give each method its own baseline.
 A missing baseline blocks that surface's regression coverage, not independent checks.
 
-**Create output directories:** Resolve the requested output dir, defaulting to
-`.gstack/qa-reports`. Set `REPORT_DIR` to that shell-quoted value, then run
-`mkdir -p "$REPORT_DIR"`. All local reports, baselines and evidence use this directory.
-Do not overwrite unrelated files. Let `{target}` be the hostname or command/service
-name with characters other than letters, digits and hyphens replaced by hyphens.
+## Prepare Report Artifacts
+
+Resolve and preserve supplied prior report/baseline paths and their evidence links
+before writing. Use the requested output dir or `.gstack/qa-reports` as `REPORT_DIR`
+only when it is empty; otherwise choose a fresh owned run subdirectory. Create the
+chosen directory if needed. All local reports, baselines and evidence use this directory.
+Never overwrite previous reports, baselines, screenshots or exploration notes.
+
+A caller's fixed artifact paths and permissions take precedence. An existing empty
+directory already established as owned by the caller needs no new shell commands
+to revalidate it; use the caller's supported interface and fixed destinations.
+If safe preservation is impossible within those permissions, report an output blocker;
+do not expand write authority or silently redirect required artifacts.
+
+Let `{target}` be the hostname or command/service name with characters other than
+letters, digits and hyphens replaced by hyphens. For mixed targets, use
+`mixed-{project-label}`, sanitizing the repository name the same way; use `mixed-target`
+when no repository name is available. List the individual targets in the report.
+
+## Browser Setup (conditional)
 
 **Browser surface only:** load its setup; functional-only runs skip this section.
 
-> **STOP.** Before setting up an explicitly selected browser surface; never for functional-only targets, Read `sections/browser-setup.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory in full and follow it.
-> Use this host's installed path, never the product working directory or another host's assets.
-> If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
+Read `sections/browser-setup.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full. Find qa/gstack-qa beside this host's installed caller skill. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA. No product-directory or cross-host substitutes.
 
 ---
 
@@ -524,7 +541,8 @@ Read `sections/qa-patterns.md` in full.
 
 ## Output
 
-Write the report to both local and project-scoped locations:
+Write the report to both local and project-scoped locations, subject to the caller's
+artifact paths and permissions established above:
 
 **Local:** `$REPORT_DIR/qa-report-{target}-{YYYY-MM-DD}.md`.
 
@@ -536,6 +554,27 @@ Write to `~/.gstack/projects/{slug}/{user}-{branch}-test-outcome-{datetime}.md`
 using the same report content. Derive safe `{user}` and `{branch}` labels from
 `git config user.name` and `git branch --show-current`, falling back to `unknown-user`
 and `detached`; sanitize them like `{target}`. Use a UTC `YYYYMMDDTHHMMSSZ` datetime.
+If that destination exists, choose a fresh suffixed filename; never replace a prior report.
+
+### Assemble the report
+
+Use the selected surface's report template from this host's installed QA directory.
+For a mixed run, write one report with common metadata once: date, branch/revision,
+caller/authority, mode, overall scope and duration/stop reason. Then add:
+
+- **Browser:** use `templates/qa-report-template.md` for browser targets, URL, framework,
+  page/screenshot counts, browser findings, health/category scores and regression comparison.
+- **Functional:** use `templates/functional-report-template.md` for native tools/runtime,
+  fixture ownership, contract outcomes, findings, discoveries/proposed tests and cleanup.
+
+Nest each template's remaining headings under its surface section, without duplicating
+the shared title or metadata. Preserve surface-specific scope, duration and coverage
+limits. Browser scores apply only to browser coverage; never combine them with functional
+outcomes. In each section link the current baseline or replay evidence and checkpoints;
+for functional regression the report plus replay evidence is the baseline. Regression
+also links the prior input baseline/report; missing required replay inputs block affected
+coverage. Prior baselines are not applicable to Full/Quick. Report-only
+repair/test fields contain proposals or not-run status, never claims of edits.
 
 ### Output Structure
 

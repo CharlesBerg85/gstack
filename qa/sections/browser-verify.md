@@ -31,7 +31,8 @@ cp "<ASIDE_DIR>/issue-NNN-after.jpg" "<report-dir>/screenshots/issue-NNN-after.j
 ```
 
 Read the copied screenshot so the user sees it. For interaction bugs, rerun the
-Phase 5 Drive-a-flow script and compare `DIFF` and `CONSOLE_ERRORS=`. When Aside is
+Phase 3 read/flow script in qa-patterns with `flow = true` and compare `DIFF` and
+`CONSOLE_ERRORS=`. When Aside is
 unavailable, use the browser setup's existing fallback equivalents for the same
 interaction, snapshot, console and screenshot evidence; never make a functional
 repair depend on this section.

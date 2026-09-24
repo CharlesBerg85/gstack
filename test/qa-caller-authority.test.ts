@@ -61,15 +61,28 @@ function assertSharedBrowserAuthority(body: string): void {
 
 describe('QA caller authority in pure host renders', () => {
   for (const host of ALL_HOST_CONFIGS) {
+    test(`${host.name}: prior learnings name QA findings without changing review callers`, () => {
+      for (const skill of ['qa', 'qa-only']) {
+        const body = RESOLVERS.LEARNINGS_SEARCH(context(host.name, skill));
+        expect(body).toContain('When a QA finding');
+        expect(body).not.toContain('When a review finding');
+        expect(body).toContain('Prior learning applied');
+      }
+      for (const skill of ['review', 'ship']) {
+        expect(RESOLVERS.LEARNINGS_SEARCH(context(host.name, skill))).toContain('When a review finding');
+      }
+    });
+
     test(`${host.name}: missing lazy sections stop affected probes, not independent checks`, () => {
       for (const skill of ['qa', 'qa-only']) {
         const ctx = context(host.name, skill);
         for (const id of ['browser-setup', 'exploratory']) {
-          const pointer = RESOLVERS.SECTION(ctx, [id]);
+          const sharedSetup = skill === 'qa-only' && id === 'browser-setup';
+          const pointer = sharedSetup ? RESOLVERS.QA_RESOURCE(ctx, [id]) : RESOLVERS.SECTION(ctx, [id]);
           assertProbeLocalBlocker(pointer);
           expect(pointer).toContain(`\`sections/${id}.md\``);
           expect(pointer).toContain('SKILL.md directory');
-          expect(pointer).toContain('never the product working directory');
+          expect(pointer).toContain(sharedSetup ? 'No product-directory or cross-host substitutes' : 'never the product working directory');
           expect(pointer).not.toContain('## BROWSER SETUP');
           expect(pointer).not.toContain('aside repl');
         }

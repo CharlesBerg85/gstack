@@ -4,6 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { generateQAMethodology } from '../scripts/resolvers/utility';
+import { generateQAExploratory } from '../scripts/resolvers/qa';
 import { generateTestBootstrap } from '../scripts/resolvers/testing';
 import { HOST_PATHS } from '../scripts/resolvers/types';
 import { runBashScript } from './helpers/bash-script';
@@ -133,6 +134,91 @@ async function runRecipe(marker: string, options: { flow?: boolean; hostname?: s
 }
 
 describe('compact QA browser recipes retain native operations', () => {
+  test('one shared loop owns the preserved phases, checkpoints and time limits', () => {
+    const prose = method.replace(/\s+/g, ' ');
+    for (const contract of [
+      'shared exploratory loop owns execution order, not these technique phases',
+      'checkpoint rule covers every probe after the baseline, including orientation, links, exact replay and additional evidence',
+      'Never batch across checkpoints',
+      'Time caps include checkpoints and evidence',
+      'stop probing and report unfinished coverage, never skip checkpoints',
+      'For /qa and /qa-only, choose Full, Quick or Regression',
+      "/review and /ship keep their caller's smoke and plan bounds",
+      'Resolve conflicting depth flags by asking before probes',
+      'Diff-aware selects scope, not another pass',
+      'After selecting and isolating a browser surface',
+      'Visit every reachable page (5-15 minutes)', '30 seconds: homepage + top 5 navigation targets',
+      "skip detailed issues/checklist, never the shared loop's gates",
+    ]) expect(prose).toContain(contract);
+    const titles = ['Initialize', 'Authenticate (if needed)', 'Orient', 'Explore', 'Document', 'Wrap Up'];
+    const phases = titles.map((title, index) => {
+      const heading = `### Phase ${index + 1}: ${title}`;
+      expect(method).toContain(heading);
+      const start = method.indexOf(heading);
+      const next = index < 5 ? method.indexOf(`### Phase ${index + 2}:`) : method.indexOf('## Health Score Rubric');
+      expect(next).toBeGreaterThan(start);
+      return method.slice(start, next).replace(/\s+/g, ' ');
+    });
+    expect(phases[0]).toContain("Reuse the caller's BROWSER SETUP");
+    expect(phases[0]).toContain('owned artifact paths');
+    expect(phases[0]).toContain('Complete only missing setup within caller authority');
+    expect(phases[0]).toContain("unless the caller's timer is already running");
+    expect(phases[2]).toContain('Establish the successful baseline before challenges');
+    expect(phases[2]).toContain('expected result/state, not merely a successful load');
+    expect(phases[3]).toContain('Select the next candidate from the preceding result');
+    expect(phases[4]).toContain("shared loop's exact-replay rule");
+    expect(phases[4]).toContain('A timeout before replay finishes leaves confirmation incomplete');
+    expect(phases[4]).toContain('Later timeouts leave confirmed defects intact');
+    expect(phases[4]).toContain('evidence or minimization unfinished');
+    expect(phases[5]).toContain('Format retained evidence without new probes');
+    expect(phases[5]).toContain("caller's artifact/mixed-report rules");
+    for (const skillName of ['qa', 'qa-only']) {
+      const loop = generateQAExploratory({ ...ctx, skillName }).replace(/\s+/g, ' ');
+      for (const contract of [
+        'not a second probe sequence', 'successful operation\'s output AND durable effects',
+        'Before each next discovery probe, Write a new',
+        'Wait for the successful Write result before dispatch',
+        'Bash captions, private thinking and retrospective notes do not count',
+        'Re-run the exact failing command/request from the same initial fixture state',
+        'with its own checkpoint. Then minimize it',
+        'A different malformed input or a regression test is not that replay',
+      ]) expect(loop).toContain(contract);
+    }
+  });
+
+  test('consolidated QA rules survive at their authoritative execution steps', () => {
+    const source = fs.readFileSync(path.resolve(import.meta.dir, '../qa/SKILL.md.tmpl'), 'utf8');
+    const section = (start: string, end: string) => source.slice(source.indexOf(start), source.indexOf(end)).replace(/\s+/g, ' ');
+    const setup = section('## Setup', '## Phases 1-6:');
+    expect(setup).toContain('git status --porcelain');
+    expect(setup).toContain('If dirty, **STOP** and use AskUserQuestion');
+    for (const choice of ['Commit all current changes with a descriptive message', 'Stash changes, run QA, then pop the stash', 'Abort for manual cleanup']) expect(setup).toContain(choice);
+    expect(setup).toContain("Execute only the user's choice before continuing setup");
+    expect(section('### 8d.', '### 8e.')).toContain('Commit each verified fix with its regression, never unrelated fixes');
+    const classification = section('### 8e.', '### 8e.5.');
+    for (const rule of ['passed 8c', 'native regression when available', 'disclose missing test coverage', "undo only this run's repair", 'revert its commit if already committed', 'retain the valid regression/evidence', '"deferred"', 'Never discard user changes']) expect(classification).toContain(rule);
+    const regulation = section('### 8f.', '## Phase 9:');
+    for (const rule of ['Every 5 fixes (or after any revert)', 'WTF > 20%', 'STOP immediately', 'Ask whether to continue', 'Hard cap: 50 fixes']) expect(regulation).toContain(rule);
+    expect(source).toContain('When in doubt, stop and ask');
+    const rules = source.slice(source.indexOf('## Additional Rules'));
+    for (const rule of ['Outside an explicitly approved browser bootstrap', 'Only create tests through authorized codification in Phase 8a.5', 'Never modify CI configuration or weaken existing tests', 'use new native test files']) expect(rules).toContain(rule);
+    const loop = generateQAExploratory(ctx).replace(/\s+/g, ' ');
+    for (const rule of ['unit for logic', 'real integration for storage/ requests/queues', 'E2E where smaller tests cannot prove journeys or mocks hide the bug', 'Do not automatically use both', 'Mock unrelated services, not the failing boundary', 'Confirm the regression fails for the defect BEFORE repair', 'green regression, original probe and adjacent happy path', 'Never freeze buggy output, weaken tests or delete valid red tests']) expect(loop).toContain(rule);
+    expect(section('### 8a.5.', '### 8b.')).toContain("shared exploratory section's native unit/integration/E2E rules");
+    expect(section('### 8c.', '### 8d.')).toContain('shared regression/original-probe/adjacent-happy-path gate');
+  });
+
+  test('browser repair verification points at the actual read/flow recipe', () => {
+    const verify = fs.readFileSync(path.resolve(import.meta.dir, '../qa/sections/browser-verify.md.tmpl'), 'utf8');
+    expect(verify).toContain('Phase 3 read/flow script in qa-patterns with `flow = true`');
+    expect(verify).not.toContain('Phase 5 Drive-a-flow');
+    const orient = method.slice(method.indexOf('### Phase 3: Orient'), method.indexOf('### Phase 4: Explore'));
+    expect(orient).toContain('const flow = false;');
+    expect(orient).toContain('if (flow)');
+    expect(orient).toContain('"DIFF_START"');
+    expect(orient).toContain('"CONSOLE_ERRORS="');
+  });
+
   test('browser selection, evidence, consent and report contracts remain explicit', () => {
     for (const contract of [
       'selected browser surfaces', 'Source reads may map the diff', 'browser discovery stays black-box',

@@ -4,7 +4,16 @@
 
 Run only for selected browser surfaces. Source reads may map the diff; browser discovery stays black-box and later diagnosis stays caller-owned.
 
+The shared exploratory loop owns execution order, not these technique phases. Its
+checkpoint rule covers every probe after the baseline, including orientation, links,
+exact replay and additional evidence. Never batch across checkpoints.
+
 ## Modes
+
+For /qa and /qa-only, choose Full, Quick or Regression. Resolve conflicting depth flags
+by asking before probes. /review and /ship keep their caller's smoke and plan bounds.
+Diff-aware selects scope, not another pass. Time caps include checkpoints and evidence.
+At exhaustion, stop probing and report unfinished coverage, never skip checkpoints.
 
 ### Diff-aware (automatic when on a feature branch with no URL)
 
@@ -15,7 +24,7 @@ git diff main...HEAD --name-only
 git log main..HEAD --oneline
 ```
 
-Map changed controllers/routes/views/components/models/services/styles to pages. Check commits/PR intent; add related TODO bugs to the test plan. Open static pages directly. For APIs:
+Map changed controllers/routes/views/components/models/services/styles to pages. Check commits/PR intent; add related TODO bugs to the test plan. Open static pages directly. For browser-surface API probes:
 
 ```bash
 aside repl '
@@ -27,13 +36,13 @@ await closeTab(pg); console.log("GSTACK_STEP_OK");
 '
 ```
 
-Find a local app:
+After selecting and isolating a browser surface, find a local app if its URL is missing:
 
 ```bash
 for p in 3000 4000 8080; do curl -sI --max-time 3 "http://localhost:$p" >/dev/null 2>&1 && echo "Found app on :$p"; done
 ```
 
-Use a supplied URL or first responder/staging/preview; ask if none. Keep diff scope; test changed/adjacent pages and flows. Report page count, outcomes/screenshots and new bugs absent from TODOS.md.
+Use the supplied URL or first responder/staging/preview; ask if none. Test changed/adjacent pages and flows. Flag new bugs absent from TODOS.md in the Phase 6 report.
 
 **No identifiable pages:** use Quick plus discovered interactions, even for backend/config/infrastructure changes.
 
@@ -41,7 +50,7 @@ Use a supplied URL or first responder/staging/preview; ask if none. Keep diff sc
 Visit every reachable page (5-15 minutes). Score health; document 5-10 evidenced issues, never invent any.
 
 ### Quick (`--quick`)
-30 seconds: homepage + top 5 navigation targets. Check loads/console/broken links, score coverage; skip detailed issues/checklist.
+30 seconds: homepage + top 5 navigation targets. Check loads/console/broken links, score coverage; skip detailed issues/checklist, never the shared loop's gates.
 
 ### Regression (`--regression <baseline>`)
 Run Full; append fixed/new issues and score delta. Preserve the supplied prior baseline.
@@ -50,13 +59,18 @@ Run Full; append fixed/new issues and score delta. Preserve the supplied prior b
 
 ### Phase 1: Initialize
 
-Run BROWSER SETUP first: Aside READY, otherwise its `$B` fallback table (`NEEDS_ASIDE`/`ASIDE_NOT_RUNNING`). Create output dirs, copy `qa/templates/qa-report-template.md`, start a timer.
+Reuse the caller's BROWSER SETUP (Aside READY or `$B` fallback for `NEEDS_ASIDE`/
+`ASIDE_NOT_RUNNING`) and owned artifact paths. Complete only missing setup within caller
+authority. Start a timer before baseline unless the caller's timer is already running.
 
 ### Phase 2: Authenticate (if needed)
 
 Follow BROWSER SETUP's **Browser access decision** for /setup-browser-cookies or `$B handoff`/`$B resume`. Rerun after user sign-in/2FA/OTP/CAPTCHA. Never handle credentials or expose cookies/tokens/localStorage.
 
 ### Phase 3: Orient
+
+Establish the successful baseline before challenges. Observe the page or interaction's
+expected result/state, not merely a successful load.
 
 **Read/flow:** set `flow = true` and replace action/wait for interactions. Keep ONE script; tabs close at its end.
 
@@ -103,7 +117,7 @@ Framework: `__next`/`_next/data` = Next.js; `csrf-token` = Rails; `wp-content` =
 
 ### Phase 4: Explore
 
-For each page, use the read script with `page-<name>.jpg`. Check layout, controls, empty/invalid/edge-case forms, navigation and empty/loading/error/overflow states per `qa/references/issue-taxonomy.md`. Prioritize core flows over secondary pages; Quick skips this checklist. For mobile:
+Select the next candidate from the preceding result. For each page, use the read script with `page-<name>.jpg`. Check layout, controls, empty/invalid/edge-case forms, navigation and empty/loading/error/overflow states per `qa/references/issue-taxonomy.md`. Prioritize core flows over secondary pages; Quick skips this checklist. For mobile:
 
 ```bash
 aside repl '
@@ -118,7 +132,10 @@ console.log("ASIDE_DIR=" + pwd); await closeTab(pg); console.log("GSTACK_STEP_OK
 
 ### Phase 5: Document
 
-Confirm each issue by retrying once; report immediately with screenshot evidence.
+Confirm each issue by retrying once under the shared loop's exact-replay rule, then
+minimize and report screenshot evidence immediately. A timeout before replay finishes leaves
+confirmation incomplete. Later timeouts leave confirmed defects intact but evidence
+or minimization unfinished.
 
 **Interactive:** Phase 3, `flow = true`. Alternatives: `pg.fill("#email", "qa@example.com")`, `pg.getByRole("button", { name: "Save" }).click()`, `pg.waitForSelector("#done")`, `pg.waitForURL(/dashboard/)`. Link before/after screenshots in repro steps.
 
@@ -134,6 +151,9 @@ console.log("ASIDE_DIR=" + pwd); await closeTab(pg); console.log("GSTACK_STEP_OK
 ```
 
 ### Phase 6: Wrap Up
+
+Format retained evidence without new probes, using `templates/qa-report-template.md`
+from this host's installed QA directory and the caller's artifact/mixed-report rules.
 
 Report score, Top 3 Things to Fix by severity, console health, severity counts, date, duration, page/screenshot counts and framework. Save `baseline.json`: `date` (YYYY-MM-DD), `url`, `healthScore`, `issues` (`id`, `title`, `severity`, `category`), `categoryScores`. Regression: fixed = prior only, new = current only.
 

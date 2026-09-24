@@ -66,7 +66,8 @@ this invocation; every new /ship reruns. Specialists guide this pass, not duplic
 - **Planning:** propose charters only; no execution.
 
 Approved tests follow native conventions: unit for logic, real integration for storage/
-requests/queues, E2E where mocks hide the bug; not automatically both or fully mocked E2E.
+requests/queues, E2E where smaller tests cannot prove journeys or mocks hide the bug.
+Do not automatically use both. Mock unrelated services, not the failing boundary.
 Confirm the regression fails for the defect BEFORE repair; then require green regression,
 original probe and adjacent happy path. Never freeze buggy output, weaken tests or delete
 valid red tests. Missing infrastructure/unclear expectations stay coverage gaps.

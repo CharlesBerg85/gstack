@@ -6,7 +6,7 @@ import { ALL_HOST_CONFIGS } from '../hosts';
 import { runGeneration, type GenerationResult } from '../scripts/gen-skill-docs';
 import { discoverSectionTemplates } from '../scripts/discover-skills';
 import { SECTION, SECTION_INDEX, sectionPath, usesLazySections } from '../scripts/resolvers/sections';
-import { generateQAMethodReads } from '../scripts/resolvers/qa';
+import { generateQAMethodReads, generateQAResource } from '../scripts/resolvers/qa';
 import { HOST_PATHS, type TemplateContext } from '../scripts/resolvers/types';
 import { runBashScript } from './helpers/bash-script';
 import { PARITY_INVARIANTS, runParityChecks } from './helpers/parity-harness';
@@ -115,6 +115,25 @@ describe('QA-only cross-host lazy rendering', () => {
         .toEqual({ relativePath, kind: 'asset', host: host.name });
       expect(fs.readFileSync(path.join(rendered, relativePath), 'utf8'))
         .toBe(host.name === 'claude' ? REPORT_TEMPLATE : GENERATED_REPORT);
+    });
+
+    test(`${host.name} qa-only reads shared browser setup directly without a redirect section`, () => {
+      const dir = host.name === 'claude' ? 'qa-only' : `${host.hostSubdir}/skills/gstack-qa-only`;
+      const entry = fs.readFileSync(path.join(rendered, dir, 'SKILL.md'), 'utf8');
+      const browserRead = generateQAResource(context(host.name, 'qa-only'), ['browser-setup']);
+      expect(entry).toContain(browserRead);
+      expect(entry.indexOf('**Browser surface only:**')).toBeLessThan(entry.indexOf(browserRead));
+      expect(browserRead).toContain(sectionPath(context(host.name, 'qa-only'), 'qa', 'browser-setup'));
+      expect(browserRead).toContain("this host's installed caller skill");
+      expect(browserRead).toContain('No product-directory or cross-host substitutes');
+      expect(browserRead).toContain('Missing/unreadable assets block required QA');
+      expect(browserRead).toContain('continue other safe probes');
+      expect(generated.artifacts.some(artifact => artifact.relativePath === `${dir}/sections/browser-setup.md`)).toBe(false);
+      const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'qa-only/sections/manifest.json'), 'utf8'));
+      expect(manifest.sections.some((section: { id: string }) => section.id === 'browser-setup')).toBe(false);
+      for (const name of ['browser-setup.md.tmpl', 'browser-setup.md']) {
+        expect(fs.existsSync(path.join(ROOT, 'qa-only/sections', name))).toBe(false);
+      }
     });
 
     test(`${host.name} both QA entrypoints reach shared functional modes before probes`, () => {
@@ -244,8 +263,15 @@ describe('QA-only cross-host lazy rendering', () => {
 describe('installed QA pointers', () => {
   test('report-only scope, modes and output overrides precede browser setup', () => {
     const source = fs.readFileSync(path.join(ROOT, 'qa-only/SKILL.md.tmpl'), 'utf8');
-    expect(source.indexOf('## Test Plan Context')).toBeLessThan(source.indexOf('{{QA_RESOURCE:scope}}'));
-    expect(source.indexOf('{{QA_RESOURCE:scope}}')).toBeLessThan(source.indexOf('{{SECTION:browser-setup}}'));
+    const stages = ['## Request Parameters', '## Test Plan Context', '{{LEARNINGS_SEARCH}}',
+      '## Select Surfaces and Isolation', '{{QA_RESOURCE:scope}}', '## Prepare Report Artifacts',
+      '## Browser Setup (conditional)', '{{QA_RESOURCE:browser-setup}}', '{{QA_METHOD_READS}}', '{{SECTION:exploratory}}'];
+    const positions = stages.map(stage => source.indexOf(stage));
+    for (const position of positions) expect(position).toBeGreaterThan(-1);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(source).not.toContain('{{SECTION:browser-setup}}');
+    expect(source).toContain('Parsing records the request; it does not start browser setup');
+    expect(source).toContain('If both `--quick` and\n`--regression` are supplied, ask the user to choose one mode before setup or probes');
     expect(source).toContain("Each surface's method defines Full, Quick and Regression");
     expect(source).toContain('All local reports, baselines and evidence use this directory');
     expect(source).toContain('$REPORT_DIR/qa-report-{target}-{YYYY-MM-DD}.md');
@@ -253,6 +279,41 @@ describe('installed QA pointers', () => {
     const browser = fs.readFileSync(path.join(ROOT, 'qa/sections/browser-setup.md.tmpl'), 'utf8');
     expect(browser).toContain('do not run the fallback\'s setup/install or cookie-import workflow');
     expect(browser).toContain('scope section\'s ownership rules apply even to LOCAL browser targets');
+  });
+
+  test('QA entrypoints preserve previous artifacts before browser setup without expanding caller authority', () => {
+    for (const skill of QA_SKILLS) {
+      const source = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md.tmpl'), 'utf8');
+      const browser = skill === 'qa' ? '{{SECTION:browser-setup}}' : '{{QA_RESOURCE:browser-setup}}';
+      const setup = source.slice(0, source.indexOf(browser)).replace(/\s+/g, ' ');
+      expect(setup).toContain('prior report');
+      expect(setup).toMatch(/baseline paths.*before writing/);
+      expect(setup).toContain('only when it is empty; otherwise choose a fresh owned run subdirectory');
+      expect(setup).toContain('Never overwrite previous reports, baselines, screenshots or exploration notes');
+      expect(setup).toContain("caller's fixed artifact paths and permissions take precedence");
+      expect(setup).toMatch(/impossible.*(?:output blocker|blocker)/);
+      expect(setup).toMatch(/(?:rather than expanding|do not expand) write authority/);
+    }
+    const source = fs.readFileSync(path.join(ROOT, 'qa-only/SKILL.md.tmpl'), 'utf8').replace(/\s+/g, ' ');
+    expect(source).toContain('existing empty directory already established as owned by the caller needs no new shell commands to revalidate it');
+    expect(source).toContain("use the caller's supported interface and fixed destinations");
+    expect(source).toContain('If that destination exists, choose a fresh suffixed filename; never replace a prior report');
+  });
+
+  test('mixed report labels, metadata and baselines have one explicit assembly rule', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'qa-only/SKILL.md.tmpl'), 'utf8').replace(/\s+/g, ' ');
+    for (const contract of [
+      '`mixed-{project-label}`', 'sanitizing the repository name', '`mixed-target`',
+      'List the individual targets', 'common metadata once', '**Browser:**', '**Functional:**',
+      '`templates/qa-report-template.md`', '`templates/functional-report-template.md`',
+      'without duplicating the shared title or metadata',
+      'Browser scores apply only to browser coverage; never combine them with functional outcomes',
+      'current baseline or replay evidence and checkpoints',
+      'Regression also links the prior input baseline/report',
+      'Prior baselines are not applicable to Full/Quick',
+      'for functional regression the report plus replay evidence is the baseline',
+      'Report-only repair/test fields contain proposals or not-run status, never claims of edits',
+    ]) expect(source).toContain(contract);
   });
 
   const installers = new Set(['claude', 'codex', 'factory', 'kiro', 'opencode', 'cursor']);

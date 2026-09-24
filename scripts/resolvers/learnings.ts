@@ -34,6 +34,7 @@ export function generateLearningsSearch(ctx: TemplateContext, args?: string[]): 
     );
   }
   const queryFlag = queryArg ? ` --query "${queryArg}"` : '';
+  const findingKind = ctx.skillName === 'qa' || ctx.skillName === 'qa-only' ? 'QA' : 'review';
 
   if (getHostConfig(ctx.host).learningsMode === 'basic') {
     // Basic learnings mode (host config learningsMode: 'basic' — every host
@@ -47,7 +48,7 @@ Search for relevant learnings from previous sessions on this project:
 $GSTACK_BIN/gstack-learnings-search --limit 10${queryFlag} 2>/dev/null || true
 \`\`\`
 
-If learnings are found, incorporate them into your analysis. When a review finding
+If learnings are found, incorporate them into your analysis. When a ${findingKind} finding
 matches a past learning, note it: "Prior learning applied: [key] (confidence N, from [date])"`;
   }
 
@@ -81,7 +82,7 @@ If B: run \`${ctx.paths.binDir}/gstack-config set cross_project_learnings false\
 
 Then re-run the search with the appropriate flag.
 
-If learnings are found, incorporate them into your analysis. When a review finding
+If learnings are found, incorporate them into your analysis. When a ${findingKind} finding
 matches a past learning, display:
 
 **"Prior learning applied: [key] (confidence N/10, from [date])"**

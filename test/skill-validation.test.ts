@@ -1274,9 +1274,12 @@ describe('Phase 8e.5 regression test generation', () => {
     expect(content).toContain('Only create tests through authorized codification in Phase 8a.5');
     expect(content).toContain('Never modify CI configuration or weaken existing tests');
     expect(content.indexOf('### 8a.5. Regression test before repair')).toBeLessThan(content.indexOf('### 8b. Fix'));
-    expect(content).toContain('Run it before repairing product code');
-    expect(content).toContain('Require the new regression to pass, rerun the exact original failing probe');
-    expect(content).toContain('adjacent happy path');
+    expect(content).toContain('Run its detected command before repair');
+    expect(content).toContain('shared regression/original-probe/adjacent-happy-path gate');
+    const exploratory = fs.readFileSync(path.join(ROOT, 'qa', 'sections', 'exploratory.md'), 'utf-8').replace(/\s+/g, ' ');
+    expect(exploratory).toContain('Confirm the regression fails for the defect BEFORE repair');
+    expect(exploratory).toContain('then require green regression, original probe and adjacent happy path');
+    expect(exploratory).toContain('Re-run the exact failing command/request from the same initial fixture state');
     expect(content).not.toContain('Never modify tests or CI configuration');
   });
 

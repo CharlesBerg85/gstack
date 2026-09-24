@@ -670,13 +670,13 @@ do not launch the downstream skill or open a browser.`,
   },
   'qa-only': {
     skill: 'qa-only',
-    expectedSections: ['browser-setup.md', 'exploratory.md'],
+    expectedSections: ['exploratory.md'],
     requiredReads: ['exploratory.md'],
     scenario:
       'Walk /qa-only for an isolated CLI fixture using its declared native commands. Read installed scope, exploratory and functional resources; never read browser setup or DX instructions. Report contract outcomes and proposed tests without changing product, tests or Git. Do not use AskUserQuestion.',
     staticInvariants: {
-      mustStayInSkeleton: ['## Setup', 'Never fix bugs or write product tests', '## Output'],
-      mustPrecedeStop: ['## Setup'],
+      mustStayInSkeleton: ['## Request Parameters', 'Never fix bugs or write product tests', '## Output'],
+      mustPrecedeStop: ['## Request Parameters'],
       mustMoveToSection: ['# Shared exploratory QA'],
     },
     behavioral: 'external',
