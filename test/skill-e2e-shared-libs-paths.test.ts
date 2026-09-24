@@ -6,10 +6,11 @@ import { CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { describeE2ETier, e2eTierEnabled } from './helpers/e2e-gate';
 import { EvalCollector } from './helpers/eval-store';
 import {
-  fixtureWorkingTree, reviewLifecycleInstructions, reviewRevalidationPrompt, reviewRecords,
+  fixtureGit, fixtureWorkingTree, reviewLifecycleInstructions, reviewRevalidationPrompt, reviewRecords, SHARED_LIBS_ROOT,
   runSharedInteractive, toolCommandTrace, readRequests, SharedCaptureAccumulator, type SharedLibsFixture,
 } from './helpers/shared-libs-eval-fixture';
 import { preparePathEligibilityFixture, type PathEligibilityCase } from './helpers/shared-libs-path-fixture';
+import { hasTrustedSharedLibsCheck } from './helpers/shared-libs-review-start-evidence';
 
 const describeE2E = describeE2ETier('gate');
 const collector = e2eTierEnabled('gate') ? new EvalCollector('e2e') : null;
@@ -62,9 +63,6 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
         for (const source of prepared.sourcePaths) {
           expect(reads, `${kind}: reread ${source}`).toContain(source);
         }
-        if (kind === 'symlinks') expect(trace).toMatch(/readlink|lstat|stat\b|test\s+-L|\[\s+-L|ls-files[^\n]*(?:--stage|-s\b)/);
-        if (kind === 'submodule') expect(trace + '\n' + result.output).toMatch(/submodule|160000/i);
-        if (kind === 'ignored') expect(trace + '\n' + result.output).toMatch(/check-ignore|ignored|exclude-standard/i);
         expect(fixtureWorkingTree(f), `${kind}: Skip must not refactor any source`).toBe(prepared.beforeTree);
         for (const [source, before] of sourceBefore) {
           expect(fs.readFileSync(path.join(f.repo, source as string), 'utf8'), `${kind}: preserve raw ${source}`).toBe(before);
@@ -78,6 +76,20 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
         expect(skipped.length, `${kind}: the new explicit decision must be saved`).toBeGreaterThan(0);
         expect(skipped.some((finding: any) => finding.helper_target?.path === 'lib/retry-after.ts'
           && finding.helper_target?.symbol === 'retrySeconds')).toBe(true);
+        if (trace.includes('--check-shared-libs')) {
+          expect(hasTrustedSharedLibsCheck(result.events ?? result.transcript ?? [], {
+            helper: path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'),
+            repo: f.repo, state: f.state, slug: 'fixture-shared-libs',
+            directory: path.join(f.state, 'projects/fixture-shared-libs/.review-starts'),
+            branch: fixtureGit(f, 'symbolic-ref', '--quiet', '--short', 'HEAD'), wtree: fixtureWorkingTree(f),
+            startedAt: last.review_binding.started_at, finding: prepared.current, reusable: false,
+            coveredPaths: skipped.find((finding: any) => finding.fingerprint === prepared.current.fingerprint)?.snapshot_covered_paths,
+          })).toBe(true);
+        } else {
+          if (kind === 'symlinks') expect(trace).toMatch(/readlink|lstat|stat\b|test\s+-L|\[\s+-L|ls-files[^\n]*(?:--stage|-s\b)/);
+          if (kind === 'submodule') expect(trace + '\n' + result.output).toMatch(/submodule|160000/i);
+          if (kind === 'ignored') expect(trace + '\n' + result.output).toMatch(/check-ignore|ignored|exclude-standard/i);
+        }
         for (const finding of skipped) {
           expect(finding.fingerprint).toMatch(/^shared-libs:[0-9a-f]{64}$/);
           expect(finding.evidence_paths).toContain('src/retry-worker.ts');

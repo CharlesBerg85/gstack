@@ -247,7 +247,7 @@ export function generateAsideResearch(ctx: TemplateContext): string {
 
 When a step calls for looking something up on the web (competitors, current best practices, a known bug, prior art), do it through Aside's own agent first: it searches with the user's real browser, signed-in sessions included. If Aside is not ready, fall back to the WebSearch tool when this host provides one. If neither is available, say so once and continue on what you already know.
 
-Check once per run that Aside is ready (if this skill already ran this same probe, in BROWSER SETUP or Third-Party Web Actions, reuse its answer):
+Check once per run that Aside is ready (${ctx.skillName === 'review' ? 'reuse an actual result from earlier in this review, if available' : 'if this skill already ran this same probe, in BROWSER SETUP or Third-Party Web Actions, reuse its answer'}):
 
 \`\`\`bash
 ${probe}

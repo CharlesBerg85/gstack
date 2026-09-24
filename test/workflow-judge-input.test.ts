@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt } from './helpers/workflow-judge-input';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES } from './helpers/workflow-judge-input';
 import { ENG_REVIEW_EXCERPT } from './helpers/workflow-excerpt';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -108,6 +108,56 @@ describe('workflow judge file bundle', () => {
     expect(header).toMatch(/(?:not|isn't|does not)[^.\n]*execution order/i);
     expect(text).toContain('STOP and read sections/step.md.');
   });
+
+  test('cross-skill references retain complete bytes once and fail on missing assets', () => {
+    const root = fixture({
+      'example/SKILL.md': '## Begin\nRead the shared resource.\n## End',
+      'example/sections/local.md': 'Complete local section.',
+      'shared/sections/method.md': 'Shared prefix\n## End\nShared suffix',
+    });
+    const options = { root, skillPath: 'example/SKILL.md', startMarker: '## Begin', endMarker: '## End',
+      references: ['example/sections/local.md', 'shared/sections/method.md', 'shared/sections/method.md'] };
+    const input = readWorkflowJudgeInput(options);
+    expect(input.files.filter(file => file.kind === 'reference')).toEqual([
+      { path: 'shared/sections/method.md', kind: 'reference', content: 'Shared prefix\n## End\nShared suffix', startLine: 1, endLine: 3 },
+    ]);
+    expect(input.files.filter(file => file.path === 'example/sections/local.md')).toHaveLength(1);
+    expect(occurrences(input.text, 'Shared prefix')).toBe(1);
+    expect(() => readWorkflowJudgeInput({ ...options, references: ['shared/missing.md'] })).toThrow();
+    expect(() => readWorkflowJudgeInput({ ...options, references: ['../outside.md'] })).toThrow('Reference outside root');
+  });
+
+  for (const skill of ['ship', 'qa-only', 'document-release', 'review']) {
+    test(`actual ${skill} judge includes all referenced QA or documentation sections`, () => {
+      const caller = readFileSync(join(ROOT, 'test/skill-llm-eval.test.ts'), 'utf8');
+      const name = `${skill}/SKILL.md workflow`;
+      const start = caller.indexOf(`testIfSelected('${name}'`);
+      expect(start).toBeGreaterThanOrEqual(0);
+      const registration = caller.slice(start).match(/await runWorkflowJudge\(\{([\s\S]*?)\n    \}\);/);
+      expect(registration).not.toBeNull();
+      const options = new Function('QA_DISCOVERY_REFERENCES', `return ({${registration![1]}});`)(QA_DISCOVERY_REFERENCES);
+      const input = readWorkflowJudgeInput({ root: ROOT, ...options });
+      for (const file of options.references ?? []) {
+        expect(input.files.find(item => item.path === file)?.content).toBe(readFileSync(join(ROOT, file), 'utf8'));
+      }
+      if (skill === 'ship') {
+        expect(input.files.map(file => file.path)).toContain('ship/sections/documentation.md');
+        expect(input.files.map(file => file.path)).toContain('qa/sections/exploratory.md');
+      } else if (skill === 'qa-only') {
+        expect(input.files.map(file => file.path)).toContain('qa/sections/system-functional.md');
+        expect(input.files.filter(file => file.path.endsWith('/exploratory.md'))).toHaveLength(1);
+        expect(input.files.find(file => file.kind === 'entrypoint')?.content).toContain('Never fix bugs or write product tests');
+      } else if (skill === 'document-release') {
+        expect(input.files.map(file => file.path)).toContain('document-release/sections/audit-scope.md');
+        expect(input.text).toContain('Ship-owned documentation mode');
+      } else {
+        expect(input.files.map(file => file.path)).toContain('qa/sections/exploratory.md');
+        expect(input.files.map(file => file.path)).toContain('review/checklist.md');
+        expect(input.text).toContain('test_stub');
+        expect(input.text).toContain('## Step 5: Fix-First Review');
+      }
+    });
+  }
 
   test('retains section prelude and suffix exactly once when both markers are inside a section', () => {
     // Generated comments made the old 120-character prefix heuristic append

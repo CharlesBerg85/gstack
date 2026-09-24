@@ -1,0 +1,326 @@
+import { expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { readWorkflowExcerpt } from './helpers/workflow-excerpt';
+
+const ship = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
+
+test('ship uses the PR template headings instead of a competing combined QA report', () => {
+  expect(ship).toContain('Include `## Exploratory QA` in the PR body');
+  expect(ship).toContain('Put plan-check outcomes in `## Verification Results`');
+  expect(ship).toContain("Read QA's `templates/functional-report-template.md` for this one final QA section");
+  expect(ship).toContain('Its checkpoint files are supporting evidence');
+  expect(ship).toContain('Link each `exploration-NNN.json` there; write no second report');
+  expect(ship).not.toContain('## Exploratory QA and Verification Results');
+});
+
+test('late adversarial fixes use the same bounded review cycle before release steps', () => {
+  const review = ship.slice(ship.indexOf('## Step 9:'), ship.indexOf('## Step 10:'));
+  const adversarial = ship.slice(ship.indexOf('## Step 11:'), ship.indexOf('## Step 12:'));
+  expect(review).toContain('queued Steps 10–11 findings');
+  expect(review).toContain('3 fix cycles for this invocation');
+  expect(review).toContain('Keep this counter across returns from Steps 10, 11 and 16');
+  expect(adversarial).toContain('queued for the next Step 9 pass; do not edit during Step 11');
+  expect(adversarial).toContain('return to Step 9 before capturing its fresh start token');
+  expect(adversarial).toContain('Before Step 12: STOP if the required native pass did not complete');
+  expect(adversarial).toContain('Optional outside failures retain their own incomplete records');
+  expect(adversarial).toContain('Repeat Steps 9–11 on the new tree');
+  expect(adversarial).toContain('Continue only after a zero-edit review cycle');
+  const greptile = ship.slice(ship.indexOf('## Step 10:'), ship.indexOf('## Step 11:'));
+  expect(greptile).toContain('queue the approved fix for Step 9, without editing here');
+  expect(greptile).toContain('finish the saved replies without asking again about completed fixes');
+});
+
+test('late source changes repeat affected gates without resetting either allowance', () => {
+  const gate = ship.slice(ship.indexOf('## Step 16:'), ship.indexOf('## Step 17:'));
+  const text = gate.replace(/\s+/g, ' ');
+  expect(text).toContain('Behavior, tests or build inputs changed');
+  expect(text).toContain("Keep the invocation record's counters and approvals");
+  expect(text).toContain('Step 14.5 under the existing invocation allowance');
+  const workflow = ship.replace(/\s+/g, ' ');
+  expect(workflow).toContain('Increment the invocation count before dispatch or inline execution');
+  expect(workflow).toContain('failed launches and inline takeover each consume an attempt');
+  expect(workflow).toContain('A stale snapshot is not an attempt and is not a current audit');
+  expect(workflow).toContain('2 used: no third attempt, including after a late Step 16 change');
+});
+
+const readTemplate = (name: string) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
+const compact = (text: string) => text.replace(/\s+/g, ' ');
+const reviewTemplate = readTemplate('ship/sections/review-army.md.tmpl');
+const coverageTemplate = readTemplate('ship/sections/test-coverage.md.tmpl');
+const entryTemplate = readTemplate('ship/SKILL.md.tmpl');
+const docsTemplate = readTemplate('ship/sections/documentation.md.tmpl');
+const prTemplate = readTemplate('ship/sections/pr-body.md.tmpl');
+
+test('ship r6 template: one progress note defines surviving state and per-pass content tokens', () => {
+  const entry = compact(entryTemplate);
+  expect(entry).toContain('one progress note for this /ship request');
+  expect(entry).toContain('Update it in place on re-entry');
+  expect(entry).toContain('working-tree content snapshot (`wtree`)');
+  expect(entry).toContain('tracked and non-ignored untracked content, not a commit id');
+  expect(entry).toContain('Capture each `*_START` token before that pass reads its inputs');
+  expect(entry).toContain('finish with that same token; never exchange tokens between passes');
+  expect(entry).toContain('Approval carries over only for the same finding, files and action');
+});
+
+test('ship r6 template: plan obligations precede learnings and scope drift even without a plan', () => {
+  const route = compact(entryTemplate.slice(entryTemplate.indexOf('{{SECTION:test-coverage}}'), entryTemplate.indexOf('{{SECTION:review-army}}')));
+  expect(route).toContain('Step 8 audit/gates → Step 8.1 collect verification → Prior Learnings → Step 8.2 Scope Drift → Step 9');
+  expect(route).toContain('No plan skips only plan-specific work, not Prior Learnings or Scope Drift');
+  expect(route.indexOf('follow this order')).toBeLessThan(route.indexOf('{{SECTION:plan-completion}}'));
+});
+
+test('ship r6 template: an approved rebump logs the written version rather than its initial state', () => {
+  const bump = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 12:'), entryTemplate.indexOf('{{SECTION:changelog}}')));
+  expect(bump).toContain('Record the release decision after a version was actually written');
+  expect(bump).toContain('including an approved ALREADY_BUMPED rebump');
+  expect(bump).toContain('Skip when the version is unchanged');
+  expect(bump).not.toContain('skip if ALREADY_BUMPED');
+  expect(bump).toContain('Only approval changes the existing version');
+  expect(bump).toContain('Best-effort, non-interactive, non-blocking');
+});
+
+test('ship r6 template: late-change routing runs prerequisites before final evidence without a circular gate', () => {
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  const build = gate.indexOf('1. **Settle writers and build.**');
+  const route = gate.indexOf('2. **Classify changes since review.**');
+  const docs = gate.indexOf('3. **Resolve documentation freshness.**');
+  const verify = gate.indexOf('4. **Freeze and verify.**');
+  expect(build).toBeGreaterThan(0);
+  expect(route).toBeGreaterThan(build);
+  expect(docs).toBeGreaterThan(route);
+  expect(verify).toBeGreaterThan(docs);
+  expect(gate).toContain('Do not wait for final receipts or a fresh docs audit before this route');
+  expect(gate).toContain('return to item 1, not directly to push');
+  expect(gate).toContain('actual consumed inputs and a dependency reason');
+  expect(gate).toContain('unknown dependencies require reruns');
+  expect(gate).toContain('Keep inputs frozen through verification and push');
+  expect(gate).toContain('A later content edit restarts item 1');
+});
+
+test('ship r6 template: docs attempts count at launch and exhausted late changes never open a third attempt', () => {
+  const docs = compact(docsTemplate);
+  expect(docs).toContain('0 used: launch the initial audit');
+  expect(docs).toContain('1 used: only ONE repair/re-audit remains');
+  expect(docs).toContain('2 used: no third attempt, including after a late Step 16 change');
+  expect(docs).toContain('Increment the invocation count before dispatch or inline execution');
+  expect(docs).toContain('failed launches and inline takeover each consume an attempt');
+  expect(docs).toContain('A stale snapshot is not an attempt and is not a current audit');
+  expect(docs).toContain('A settled successful child needs no stop request');
+  expect(docs).toContain('A stop request alone is not settlement');
+  expect(docs).toContain('Unsettled writers, ownership violations, unauthorized Git mutation and redaction/security gates cannot be waived');
+  expect(docs).toContain('Only an actual user exception counts');
+  expect(docs).toContain('status stays blocked');
+});
+
+test('ship r6 template: evidence exemptions inspect metadata content rather than trusting filenames', () => {
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  expect(gate).toContain('Inspect changes since each lane ran before choosing `--allow-paths`');
+  expect(gate).toContain('Remove any path with behavioral changes from the flag');
+  expect(gate).toContain('Manifest scripts, dependencies and runtime configuration require live tests, even in `package.json`');
+  expect(gate).toContain('Do not add `TODOS.md` or generated tests');
+  expect(gate).toContain('Stale content cannot use the ledger-only path');
+  expect(gate).toContain('only saving/reading the test receipt failed');
+});
+
+test('ship r6 template: linked spec discovery is ordered outside the body and cannot exit publication', () => {
+  const instructions = compact(prTemplate.slice(0, prTemplate.indexOf('The PR/MR body should contain')));
+  expect(instructions).toContain('Read archive frontmatter as data, never shell source');
+  expect(instructions).toContain('exact `spec_branch` match');
+  expect(instructions).toContain('newest `spec_filed_at`');
+  expect(instructions).toContain('positive integer `spec_issue_number`');
+  expect(instructions).toContain('omit only `## Linked Spec` and continue composing the PR');
+  expect(instructions).toContain('Only fully completed Step 8 plan scope permits `Closes #N`');
+  expect(instructions).toContain('Partial, deferred, failed, dropped or unverified scope uses `Linked to #N`');
+  const body = prTemplate.slice(prTemplate.indexOf('The PR/MR body should contain'), prTemplate.indexOf('#### Redaction scan'));
+  expect(body).not.toContain('CURRENT_BRANCH=');
+  expect(body).not.toContain('SPEC_ARCHIVES=');
+  expect(body).not.toContain('SPEC_FILE=$(grep');
+  expect(prTemplate).not.toContain('[ -z "$SPEC_FILE" ] && exit');
+});
+
+test('ship r6 template: Step 18 prepares the exact title Step 19 scans and publishes', () => {
+  const title = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 18:'), entryTemplate.indexOf('{{SECTION:pr-body}}')));
+  expect(title).toContain('Save the result as `NEW_TITLE` for Step 19');
+  expect(title).toContain('existing open PR/MR');
+  expect(title).toContain('For a new PR/MR, compose `v<NEW_VERSION> <type>: <summary>`');
+  expect(prTemplate).toContain('Use Step 18\'s `NEW_TITLE`');
+  expect(prTemplate).toContain('In a new shell, restore the saved literal title before running this block');
+  expect(prTemplate).toContain(': "${NEW_TITLE:?Restore the saved Step 18 title before scanning}"');
+  expect(prTemplate).not.toContain('NEW_TITLE="<final vNEW_VERSION type: summary>"');
+  expect(prTemplate).toContain('Update the title with the same scanned `NEW_TITLE`');
+  expect(prTemplate).toContain('HIGH blocks (exit 3, no skip)');
+});
+
+test('ship template consolidation: initial, failed and inline generation attempts share one allowance', () => {
+  const allowance = compact(coverageTemplate.slice(0, coverageTemplate.indexOf('````text')));
+  expect(allowance).toContain('Maximum 2 generation passes total per invocation');
+  expect(allowance).toContain('Count each generation-authorized attempt before dispatch/inline execution');
+  expect(allowance).toContain('including the initial audit, failures and zero-test results');
+  expect(allowance).toContain('Re-entry never resets it');
+  expect(allowance).toContain('Two passes already used means no further generation');
+  expect(allowance).toContain('read-only reassessment uses no pass');
+  expect(allowance).toContain('30-path/20-test/2-minute per-test caps');
+  expect(allowance).toContain('missing permission is not approval');
+  expect(coverageTemplate).toContain('run the audit inline in the parent');
+});
+
+test('ship template consolidation: audit-only authority reaches the actual coverage child prompt', () => {
+  const prompt = coverageTemplate.split('````text\n')[1]?.split('\n````')[0] ?? '';
+  expect(prompt).toContain('Generation: <allowed|audit-only>; passes used: <N> of 2.');
+  expect(prompt).toContain('Audit-only overrides every generation instruction below.');
+  expect(prompt.indexOf('Audit-only overrides')).toBeLessThan(prompt.indexOf('{{TEST_COVERAGE_AUDIT_SHIP}}'));
+  expect(prompt).toContain('Do not commit or push');
+  expect(prompt).toContain('return unresolved user decisions to the parent');
+  expect(prompt).toContain('"coverage_pct":N,"gaps":N');
+  expect(prompt).toContain('"tests_added":["path",...]');
+});
+
+test('ship template consolidation: duplicate design defects have one action without losing independent coverage', () => {
+  const design = compact(reviewTemplate.slice(reviewTemplate.indexOf('{{DESIGN_REVIEW_LITE}}'), reviewTemplate.indexOf('{{REVIEW_ARMY}}')));
+  expect(design).toContain('The parent owns design-lite; the Design specialist is an independent read');
+  expect(design).toContain('Before final counting/Fix-First');
+  expect(design).toContain('same evidenced design defect at the same path/line');
+  expect(design).toContain('one item with both sources and stricter ASK');
+  expect(design).toContain('Retain actual specialist stats');
+  expect(design).toContain('distinct defects stay separate');
+  expect(design).toContain('neither pass substitutes for the other');
+  expect(reviewTemplate).toContain('{{DESIGN_REVIEW_LITE}}');
+  expect(reviewTemplate).toContain('{{REVIEW_ARMY}}');
+  expect(reviewTemplate).toContain('"dispatched":true,"findings":N,"critical":N,"informational":N');
+});
+
+test('ship template consolidation: the parent owns one ordered review phase', () => {
+  const intro = compact(reviewTemplate.slice(0, reviewTemplate.indexOf('{{CONFIDENCE_CALIBRATION}}')));
+  expect(intro).toContain('Steps 9–11 are one parent-owned review phase');
+  expect(intro).toContain('Initialize CYCLES to 0 only on first entry');
+  expect(intro).toContain('Steps 10–11 queue findings; only Step 9.4 applies their fixes');
+  expect(intro).toContain('changed scope needs a new decision');
+  expect(intro).toContain('Gated/unsupported fan-out skips to 9.2.1, not past QA or Step 11');
+  expect(intro).toContain('After persistence, STOP for missing dispatched reviewer output');
+  expect(intro.indexOf('specialists (9.1)')).toBeLessThan(intro.indexOf('exploratory QA (9.2.1)'));
+  expect(intro.indexOf('exploratory QA (9.2.1)')).toBeLessThan(intro.indexOf('fixes/persistence (9.4)'));
+});
+
+test('ship template consolidation: every fixing pass persists once before looping or stopping at cycle three', () => {
+  const exit = compact(reviewTemplate.slice(reviewTemplate.indexOf('4. **'), reviewTemplate.indexOf('5. Output summary:')));
+  expect(exit).toContain('Increment CYCLES once if fixes were applied');
+  expect(exit).toContain("finishes items 5–6 exactly once with this pass's original REVIEW_START");
+  expect(exit.indexOf('finishes items 5–6')).toBeLessThan(exit.indexOf('stay in this invocation and loop'));
+  expect(exit).toContain('commit named fixed files');
+  expect(exit).toContain('If cycle 3 still fixes code, persist item 6 below with `converged:false`');
+  expect(exit).toContain('then STOP and report which findings keep reappearing');
+  expect(exit).toContain('Keep this counter across returns from Steps 10, 11 and 16');
+  expect(exit).toContain('Fixing pass below the cap');
+  expect(exit).toContain("re-run the whole Step 9 cycle from a new pass's start-token capture");
+  expect(exit).toContain('same explicit Step 5 waiver');
+  expect(reviewTemplate).toContain('--finish REVIEW_START');
+  expect(compact(reviewTemplate)).toContain('never recapture at persistence to certify unreviewed fixes');
+  expect(reviewTemplate).toContain('`CONVERGED`: completed with zero fixes');
+});
+
+test('ship template consolidation: named QA risks remain failed or incomplete and cannot waive other gates', () => {
+  const intro = compact(reviewTemplate.slice(0, reviewTemplate.indexOf('{{CONFIDENCE_CALIBRATION}}')));
+  expect(intro).toContain('Only an actual user may accept named failed/unavailable required probes');
+  expect(intro).toContain('after a zero-edit pass with completed checklist and dispatched reviewers');
+  expect(intro).toContain('Retain actual probe outcomes and incomplete flags; VERIFY_RESULT stays fail');
+  expect(intro).toContain('VERIFY_RESULT stays fail for plan-check exceptions');
+  expect(intro).toContain('never claim a pass');
+  expect(intro).toContain('cannot waive missing reviewer output, recurring fixes, or independent test/security gates');
+  expect(compact(reviewTemplate)).toContain('Skipping a fix does not pass its probe');
+  expect(compact(reviewTemplate)).toContain('Blocked, inconclusive or missing required coverage means false, never clean');
+  expect(compact(reviewTemplate)).toContain('Record accepted untested risk separately, not as passing verification');
+});
+
+test('ship template consolidation: late behavioral inputs revisit named gates while docs still get freshness checks', () => {
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  expect(gate).toContain('revisit Step 5 test lanes, Step 6 eval selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11');
+  expect(gate).toContain('then recheck release metadata in Steps 12–14');
+  expect(gate).toContain('Prompts/templates are behavioral inputs, not automatically documentation');
+  expect(gate).toContain('prove unchanged actual consumed inputs and a dependency reason; unknown dependencies require reruns');
+  expect(gate).toContain('Only authored docs or release metadata changed');
+  expect(gate).toContain('refresh affected plan items; continue to item 3 without a new code review');
+  expect(gate).toContain("Keep the invocation record's counters and approvals");
+  expect(gate).toContain('Step 14.5 under the existing invocation allowance');
+  expect(gate).toContain('An approved exception leaves `Documentation: blocked`; it never certifies current docs');
+  expect(gate).toContain('commit approved files through Step 15 and restart at item 1');
+  expect(gate).toContain('Confirm all writers, including the docs child, stopped');
+});
+
+test('ship template consolidation: ledger recovery never waives stale content or failed verification', () => {
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  expect(gate).toContain('Stale content cannot use the ledger-only path');
+  expect(gate).toContain('Ledger-only failure on unchanged inputs');
+  expect(gate).toContain('independently prove unchanged final content, command and valid age');
+  expect(gate).toContain('only the ledger record may need repair, not changed content');
+  expect(gate).toContain('--allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md');
+  expect(gate).toContain('Do not add `TODOS.md` or generated tests');
+  expect(gate).toContain('authored docs, new tests, fixes and TODO edits make evidence STALE');
+  expect(gate).toContain("A failed RUN requires Step 5's triage");
+  expect(gate).toContain('New, changed or unwaived failures STOP publication');
+});
+
+test('ship has one invocation route and retains each independently bounded allowance', () => {
+  const entry = compact(entryTemplate);
+  expect(entry).toContain('9–11 review until no fixes remain');
+  expect(entry).toContain('12–15 prepare release metadata, audit docs and commit');
+  expect(entry).toContain('16 verifies final content');
+  expect(entry).toContain("Step 7's 2 generation passes, Step 9's 3 fix cycles");
+  expect(entry).toContain("Step 14.5's initial audit plus ONE repair/re-audit");
+  expect(entry).toContain('Returning to an earlier step never resets these counts');
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  expect(gate).toContain('content last examined in Steps 9–11, not the original branch diff');
+  expect(gate).toContain("A commit alone doesn't change content");
+  expect(gate).toContain('For EACH Step 5 test lane, use its actual label/command');
+  expect(gate).toContain("--label <lane> --expect-cmd '<exact Step 5 command>'");
+});
+
+test('ship resolves threshold, branch and installed-asset references without competing instructions', () => {
+  expect(entryTemplate).toContain("Coverage at or above Step 7's target");
+  expect(entryTemplate).not.toContain('Test coverage gaps within target threshold');
+  expect(entryTemplate.indexOf('Save the current branch as `<branch-name>`')).toBeGreaterThan(0);
+  expect(entryTemplate.indexOf('Save the current branch as `<branch-name>`')).toBeLessThan(entryTemplate.indexOf('refs/heads/<branch-name>'));
+  expect(entryTemplate).toContain('~/.claude/skills/gstack/review/TODOS-format.md');
+  expect(entryTemplate).not.toContain('`.claude/skills/review/TODOS-format.md`');
+  const skeleton = readTemplate('ship/SKILL.md');
+  const row = skeleton.split('\n').find(line => line.startsWith('| exploratory QA before Fix-First'))!;
+  expect(row).toContain('`sections/review-army.md`');
+  expect(row).not.toContain('below');
+});
+
+test('ship distinguishes a changed verified tree from failed test-receipt storage', () => {
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  expect(gate).toContain('generation/build commands from its scripts or CI configuration');
+  expect(gate).toContain("repo's declared docs/link/generated-file checks");
+  expect(gate).toContain('Skipping code review for docs-only changes does not preserve test evidence');
+  expect(gate).toContain('authored docs and TODO edits change the verified tree');
+  expect(gate).toContain('Choose exactly one result for each lane');
+  expect(gate).toContain('only saving/reading the test receipt failed');
+  expect(gate).toContain('Without that proof, use STALE/MISSING');
+  expect(gate).toContain('authored docs, new tests, fixes and TODO edits make evidence STALE');
+});
+
+test('ship names the approval scope, probe-risk decision, and native-review recovery', () => {
+  const entry = compact(entryTemplate);
+  const review = compact(reviewTemplate);
+  const adversarial = compact(readTemplate('ship/sections/adversarial.md.tmpl'));
+  expect(entry).toContain('one progress note for this /ship request');
+  expect(entry).toContain('Approval carries over only for the same finding, files and action');
+  expect(entry).toContain('never exchange tokens between passes');
+  expect(review).toContain('use AskUserQuestion: stop for repair (recommended), or accept each named probe');
+  expect(review).toContain('A skipped fix is not an answer to this separate question');
+  expect(adversarial).toContain('Restore its prerequisites before resuming Step 11 within the remaining allowances');
+  expect(adversarial).toContain('Outside-provider output never replaces that pass');
+  expect(entry).toContain('version in its message and co-author trailer (not a Git tag)');
+  expect(entry).toContain('encode null/undetermined as -1');
+});
+
+test('ship template consolidation: remote integration retains all allowances and cannot bypass publication guards', () => {
+  const push = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 17:'), entryTemplate.indexOf('## Step 18:')));
+  expect(push).toContain('return to Step 5 through Step 16 before retrying');
+  expect(push).toContain('retain all generation/review/docs counters and same-scope approvals');
+  expect(push).toContain('Resolve ambiguous conflicts with the user; never force-push');
+  expect(push).toContain('recheck Step 16 before retrying, even with unchanged content');
+  expect(push).toContain('Never bypass a failed guard');
+  expect(push).toContain('Only a successful push or verified `ALREADY_PUSHED` proceeds');
+  expect(push).toContain('No documentation writer runs after push');
+});

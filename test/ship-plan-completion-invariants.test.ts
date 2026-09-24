@@ -87,12 +87,12 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
     const entry = fs.readFileSync(path.join(SHIP_DIR, 'SKILL.md'), 'utf8');
     const gate = entry.slice(entry.indexOf('## Step 16:'), entry.indexOf('## Step 17:'));
     expect(gate).toContain('content, command, or age mismatch');
-    expect(gate).toContain('ledger alone cannot record or verify');
+    expect(gate).toContain('only saving/reading the test receipt failed');
     expect(gate).toContain('unchanged final content');
     expect(gate).toMatch(/exact command,\s+exit, and log/);
     expect(gate).toContain('never label the ledger FRESH');
     expect(gate).toContain('Do not rerun green suites solely for bookkeeping');
-    expect(gate).toContain('a failed RUN does');
+    expect(gate).toContain("A failed RUN requires Step 5's triage");
   });
 
   test('ship contract precedes base detection and fresh remote facts precede distribution decisions', () => {

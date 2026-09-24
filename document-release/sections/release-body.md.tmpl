@@ -1,5 +1,9 @@
 ## Step 2: Per-File Documentation Audit
 
+**Ship-owned documentation mode:** execute Steps 2–4 and 6 only, under the skeleton's
+audit/edit/result boundary. Then return the caller's typed completion; all standalone
+metadata, review, commit and PR steps below remain unavailable to this child.
+
 Read each documentation file and cross-reference it against the diff. Use these generic heuristics
 (adapt to whatever project you're in — these are not gstack-specific):
 
@@ -27,7 +31,7 @@ Read each documentation file and cross-reference it against the diff. Use these 
 - Are listed commands and scripts accurate?
 - Do build/test instructions match what's in package.json (or equivalent)?
 
-**Any other .md files:**
+**Other relevant docs and authored templates (including nested declared roots):**
 - Read the file, determine its purpose and audience.
 - Cross-reference against the diff to check if it contradicts anything the file says.
 
@@ -42,7 +46,9 @@ For each file, classify needed updates as:
 
 ## Step 3: Apply Auto-Updates
 
-Make all clear, factual updates directly using the Edit tool.
+Make all clear, factual updates directly using the Edit tool after reading the full
+file. In ship-owned read-only mode, propose them as blockers without editing. Preserve
+pre-existing user edits; ambiguity about overlapping content goes back to the parent.
 
 For each file modified, output a one-line summary describing **what specifically changed** — not
 just "Updated README.md" but "README.md: added /new-skill to skills table, updated skill count
@@ -57,6 +63,11 @@ from 9 to 10."
 ---
 
 ## Step 4: Ask About Risky/Questionable Changes
+
+In ship-owned mode, record the specific decision and affected paths as blockers for
+the parent, leave the questionable content alone, and finish the remaining safe audit.
+Do not call AskUserQuestion or auto-choose any recommendation. Standalone mode follows
+the existing gate below.
 
 For each risky or questionable update identified in Step 2, use AskUserQuestion with:
 - Context: project name, branch, which doc file, what we're reviewing
@@ -115,6 +126,11 @@ After auditing each file individually, do a cross-doc consistency pass:
    should be discoverable from one of the two entry-point files.
 5. Flag any contradictions between documents. Auto-fix clear factual inconsistencies (e.g., a
    version mismatch). Use AskUserQuestion for narrative contradictions.
+
+In ship-owned mode, protected metadata/manifests stay untouched even for factual
+inconsistencies, and narrative contradictions return as blockers. This is the last
+ship-child step: output the doc-health summary and typed completion, then STOP. A
+partial audit or unresolved required correction is `blocked`, never `current`.
 
 ---
 

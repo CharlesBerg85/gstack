@@ -171,6 +171,22 @@ Bun auto-loads `.env` — no extra config. Conductor workspaces inherit `.env` f
 
 ### Test tiers
 
+Functional QA changes need native fixture proof as well as prompt checks. Add declared
+CLI or loopback API/worker contracts in isolated temporary repositories, outside this
+checkout. Exercise success and adverse paths, durable effects, and setup failure.
+Report-only evaluations must leave mutation-capable tools available and independently
+detect forbidden writes, including an edit later restored; a clean final diff is not
+enough. Validate the observer with deliberately bad controls before a paid run.
+
+For exploratory regressions, retain the actual pre-repair failure, post-repair pass,
+original probe and adjacent happy path. Automatic caller tests must enter through
+review/ship, not tell the agent to run the component being tested. Documentation tests
+must prove the real child completed and the parent used its result before publication;
+the existing dispatch-only test is narrower evidence. Register new cases and all
+consumed section/resolver inputs in touchfiles, tiers and the PR profile so they run.
+Share sanitized reproduction commands and fixture evidence when reporting a problem,
+never credentials, private payloads or an entire unreviewed agent transcript.
+
 | Tier | Command | Cost | What it tests |
 |------|---------|------|---------------|
 | 1 — Static | `bun run test` | Free | Command validation, snapshot flags, Aside contract pins, render-wrapper option mapping, SKILL.md correctness, TODOS-format.md refs, observability unit tests |
@@ -195,7 +211,7 @@ gate and periodic censuses run fresh weekly and on manual
 dispatch of `evals-periodic.yml`; `bun run eval:bg:release` runs both locally.
 Some broad behavioral failures will therefore be found after the PR gate.
 
-CI enables verified first-attempt reuse for the 14 workflow quality judges for
+CI enables verified first-attempt reuse for the 15 workflow quality judges for
 24 hours within the same PR. The other 11 quality cases and all dynamic agent
 cases stay fresh. Local runs stay fresh unless the complete scoped cache and
 runtime configuration is supplied. The key includes complete prompt bytes, generated inputs,

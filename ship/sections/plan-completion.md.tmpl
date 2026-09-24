@@ -4,7 +4,10 @@
 
 {{FOREGROUND_DISPATCH_NOTE}} The Gate Logic below consumes this audit's LAST-line JSON before /ship can proceed.
 
-**Subagent prompt:** Pass these instructions to the subagent:
+**Subagent prompt:** Substitute `<base>` and supply the active plan's absolute path
+or complete text, including relevant user-approved scope changes. If none exists,
+say so explicitly and let the child use the fallback search below. The child does
+not inherit the parent's conversation.
 
 ````text
 You are running a ship-workflow plan completion audit. The base branch is `<base>`. Use `git diff origin/<base>` and inspect untracked files from `git status` to see the full proposed change. Do not commit or push. Report only: classify every item, but do not execute Gate Logic, ask the user, or advance the workflow. The parent applies those gates to your report.

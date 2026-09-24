@@ -6,10 +6,20 @@
 
 **Foreground required:** pass `run_in_background: false` on the Agent call — subagents run in the BACKGROUND by default since Claude Code v2.1.198. (Merely omitting the flag no longer produces a foreground run; it must be explicitly false.) The dispatch happens ONLY via the Agent tool: invoking the target as a Skill, or executing its workflow inline in your own context, is WRONG even though the skill may appear in your available-skills list — inline execution forfeits the fresh-context isolation this dispatch exists for, and the explicit flag already makes the Agent call block. (Where a step defines an inline FALLBACK, it applies only after a dispatched subagent has failed.) The parent needs this audit's LAST-line JSON before continuing.
 
-**Subagent prompt:** Pass the following instructions to the subagent, with `<base>` substituted with the base branch:
+**Generation allowance:** Maximum 2 generation passes total per invocation.
+Count each generation-authorized attempt before dispatch/inline execution, including
+the initial audit, failures and zero-test results. Re-entry never resets it.
+Two passes already used means no further generation; read-only reassessment uses no pass.
+
+**Subagent prompt:** Supply `<base>`, Step 4's framework/bootstrap decision,
+permitted paths/commands, remaining gaps, passes used and generation allowance.
+No allowance means audit only; missing permission is not approval. Preserve the
+30-path/20-test/2-minute per-test caps.
 
 ````text
 You are running a ship-workflow test coverage audit. Run `git diff origin/<base>` to include uncommitted tracked changes; also read relevant non-ignored untracked source/tests. Do not commit or push. Perform only this audit; return unresolved user decisions to the parent instead of asking or advancing to another workflow step.
+
+Generation: <allowed|audit-only>; passes used: <N> of 2. Audit-only overrides every generation instruction below.
 
 100% coverage is the goal — every untested path is a path where bugs hide and vibe coding becomes yolo coding. Evaluate what was ACTUALLY coded (from the diff), not what was planned.
 
@@ -185,7 +195,7 @@ If test framework detected (or bootstrapped in Step 4):
 - For paths marked [→EVAL]: generate eval tests using the project's eval framework, or flag for manual eval if none exists
 - Write tests that exercise the specific uncovered path with real assertions
 - Run each test. Passes → keep the change and report its path; the parent commits in Step 15.
-- Fails → fix once. Still fails → revert, note gap in diagram.
+- Fails → diagnose whether the test/fixture is invalid or a declared product contract is broken. Correct a demonstrated test defect once; preserve a valid red regression and route the reproduced product failure through the parent's fix/approval flow. Never delete or weaken it to manufacture green; retain unresolved coverage in the diagram.
 
 Caps: 30 code paths max, 20 tests generated max (code + user flow combined), 2-min per-test exploration cap.
 
@@ -251,7 +261,7 @@ Use null for an undetermined or skipped coverage percentage, not zero. Include e
 
 **7. Coverage gate:**
 
-The parent owns this gate after receiving the audit result, including after an inline fallback. Generated tests stay uncommitted until Step 15. Any further generation uses the same audit prompt with the remaining gaps and pass count supplied.
+The parent owns this gate, including after inline fallback. Generated tests stay uncommitted until Step 15. Use Step 7's remaining generation allowance; supply it and the remaining gaps to the same audit prompt. At the cap, omit A and recommend stopping; the listed risk choices remain available.
 
 Before proceeding, check CLAUDE.md for a `## Test Coverage` section with `Minimum:` and `Target:` fields. If found, use those percentages. Otherwise use defaults: Minimum = 60%, Target = 80%.
 
@@ -265,7 +275,7 @@ Using the coverage percentage from the diagram in substep 4 (the `COVERAGE: X/Y 
     A) Generate more tests for remaining gaps (recommended)
     B) Ship anyway — I accept the coverage risk
     C) These paths don't need tests — mark as intentionally uncovered
-  - If A: Dispatch one more generation pass targeting remaining gaps, then re-evaluate the result here. Maximum 2 generation passes total. At the cap, offer only B/C or stop; do not offer another generation pass.
+  - If A and allowance remains: dispatch one generation pass, then re-evaluate here. At the cap, offer only B/C or stop; never another generation pass.
   - If B: Continue. Include in PR body: "Coverage gate: {X}% — user accepted risk."
   - If C: Continue. Include in PR body: "Coverage gate: {X}% — {N} paths intentionally uncovered."
 
@@ -275,7 +285,7 @@ Using the coverage percentage from the diagram in substep 4 (the `COVERAGE: X/Y 
   - Options:
     A) Generate tests for remaining gaps (recommended)
     B) Override — ship with low coverage (I understand the risk)
-  - If A: Dispatch one more generation pass. Maximum 2 passes total. At the cap, offer only B or stop; do not offer another generation pass.
+  - If A and allowance remains: dispatch one generation pass, then re-evaluate here. At the cap, offer only B or stop; never another generation pass.
   - If B: Continue. Include in PR body: "Coverage gate: OVERRIDDEN at {X}%."
 
 **Coverage percentage undetermined:** If the coverage diagram doesn't produce a clear numeric percentage (ambiguous output, parse error), **skip the gate** with: "Coverage gate: could not determine percentage — skipping." Do not default to 0% or block.

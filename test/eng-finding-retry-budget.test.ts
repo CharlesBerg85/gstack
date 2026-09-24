@@ -32,8 +32,8 @@ for (const budget of FINDING_RETRY_BUDGETS) {
     expect([...source.matchAll(/1_500_000\s*\/\* physical ceiling:/g)]).toHaveLength(budget.cases);
     // Current periodic CI already supports this supervision wall.
     const workflow = fs.readFileSync(path.join(import.meta.dir, '../.github/workflows/evals-periodic.yml'), 'utf8');
-    expect(workflow).toMatch(/timeout-minutes: 355/);
-    expect(budget.shardMs).toBeLessThan(355 * 60_000);
+    expect(workflow).toMatch(/timeout-minutes: 360/);
+    expect(budget.shardMs).toBeLessThan(360 * 60_000);
   });
 
   test(`${budget.file}: own-shard allocation leaves ordinary and explicit limits intact`, () => {
@@ -127,8 +127,10 @@ test('live periodic census fits the declared CI wall including setup', () => {
     const workers = files.some(isOverlayTestFile) ? Math.min(periodicWorkers, OVERLAY_MAX_ACTIVE_SHARDS) : periodicWorkers;
     return paidShardWallUpperBoundMs(files, workers);
   });
+  expect(Math.max(...walls)).toBe(339 * 60_000);
+  expect(periodicJob['timeout-minutes']).toBe(360);
   expect(Math.max(...walls) + 20 * 60_000).toBeLessThanOrEqual(periodicJob['timeout-minutes'] * 60_000);
-  expect(m.entries.filter(e => e.status === 'planned')).toHaveLength(99);
+  expect(m.entries.filter(e => e.status === 'planned')).toHaveLength(102);
   const overlays = m.entries.filter(e => e.status === 'planned' && e.slice === periodicSliceCount - 1);
   expect(overlays).toHaveLength(6);
   expect(overlays.every(e => isOverlayTestFile(e.file))).toBe(true);
@@ -137,7 +139,7 @@ test('live periodic census fits the declared CI wall including setup', () => {
 
 test('registered allocation is deterministic and preserves every discovered file', () => {
   const files = collectPaidTestFiles();
-  expect(files).toHaveLength(114);
+  expect(files).toHaveLength(117);
   const m = livePlan(files);
   expect(livePlan([...files].reverse())).toEqual(m);
   expect(m.entries.map(e => e.file).sort()).toEqual([...files].sort());
@@ -171,14 +173,18 @@ test('single-slice manifest retains all registered files with one allocation', (
 });
 
 test('current detach supervision covers the live-census floor', () => {
-  const files = selectPaidTestFiles(collectPaidTestFiles(), 'periodic').selected;
-  const excess = files.reduce((n, file) => n + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - DEFAULT_SHARD_TIMEOUT_MS), 0);
-  const floor = Math.ceil((Math.ceil(files.length / DEFAULT_JOBS) * DEFAULT_SHARD_TIMEOUT_MS + excess) / 1000 * 1.05);
+  const floorFor = (tier: 'gate' | 'periodic') => {
+    const files = selectPaidTestFiles(collectPaidTestFiles(), tier).selected;
+    const excess = files.reduce((n, file) => n + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - DEFAULT_SHARD_TIMEOUT_MS), 0);
+    return Math.ceil((Math.ceil(files.length / DEFAULT_JOBS) * DEFAULT_SHARD_TIMEOUT_MS + excess) / 1000 * 1.05);
+  };
   const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '../package.json'), 'utf8'));
-  const configured = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
-  expect(floor).toBe(64995);
-  expect(configured).toBeGreaterThanOrEqual(floor);
-  expect(pkg.scripts['eval:bg:gate']).toContain('--timeout 33600');
+  const periodicTimeout = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
+  const gateTimeout = Number(pkg.scripts['eval:bg:gate'].match(/--timeout\s+(\d+)/)[1]);
+  expect(floorFor('gate')).toBe(46_757);
+  expect(gateTimeout).toBe(46_800);
+  expect(floorFor('periodic')).toBe(66_812);
+  expect(periodicTimeout).toBe(66_840);
 });
 
 for (const jobs of [1, 2, 3]) test(`FIFO bound covers partial durations with ${jobs} workers`, () => {

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 export interface WorkflowJudgeFile {
   path: string;
-  kind: 'entrypoint' | 'section';
+  kind: 'entrypoint' | 'section' | 'reference';
   content: string;
   startLine: number;
   endLine: number;
@@ -14,6 +14,15 @@ export interface WorkflowJudgeInput {
   files: WorkflowJudgeFile[];
   text: string;
 }
+
+export const QA_DISCOVERY_REFERENCES = [
+  'qa/sections/scope.md',
+  'qa/sections/exploratory.md',
+  'qa/sections/system-functional.md',
+  'qa/sections/browser-setup.md',
+  'qa/sections/qa-patterns.md',
+  'qa/templates/functional-report-template.md',
+];
 
 /** Exact existing rubric/request text; extraction must not resample a new prompt. */
 export function buildWorkflowJudgePrompt(opts: { judgeContext: string; judgeGoal: string }, input: WorkflowJudgeInput): string {
@@ -43,6 +52,7 @@ export function readWorkflowJudgeInput(opts: {
   skillPath: string;
   startMarker: string;
   endMarker: string | null;
+  references?: readonly string[];
 }): WorkflowJudgeInput {
   const sources = [{
     path: opts.skillPath,
@@ -59,7 +69,12 @@ export function readWorkflowJudgeInput(opts: {
         content: fs.readFileSync(path.join(sectionRoot, name), 'utf8'),
       }))
     : [];
-  const allSources = [...sources, ...sections];
+  const references = [...new Set(opts.references ?? [])].map(file => {
+    const resolved = path.resolve(opts.root, file);
+    if (!resolved.startsWith(path.resolve(opts.root) + path.sep)) throw new Error(`Reference outside root: ${file}`);
+    return { path: file, kind: 'reference' as const, content: fs.readFileSync(resolved, 'utf8') };
+  }).filter(file => ![...sources, ...sections].some(source => source.path === file.path));
+  const allSources = [...sources, ...sections, ...references];
 
   // Preserve the existing marker window, including markers that moved into
   // section files. Offsets identify the source of each slice; prose prefixes
@@ -76,8 +91,8 @@ export function readWorkflowJudgeInput(opts: {
     // Every section was already supplied in full by the old judge input. Keep
     // that coverage, but include each file once even when the marker window
     // also covers part of it. Only the entrypoint retains the requested slice.
-    const from = file.kind === 'section' ? 0 : Math.max(0, start - offset);
-    const to = file.kind === 'section' ? file.content.length : Math.min(file.content.length, end - offset);
+    const from = file.kind !== 'entrypoint' ? 0 : Math.max(0, start - offset);
+    const to = file.kind !== 'entrypoint' ? file.content.length : Math.min(file.content.length, end - offset);
     if (from < to) {
       files.push({
         ...file,
@@ -93,7 +108,7 @@ export function readWorkflowJudgeInput(opts: {
   const context = [
     'The material below is a bundle of source-file excerpts, with each original file and line range labeled.',
     'SKILL.md is the entry point; the labeled ranges identify which excerpts are supplied.',
-    ...(sections.length > 0 ? [
+    ...(sections.length + references.length > 0 ? [
       'The section files remain separate on disk and are read at the points and conditions specified by the skill\'s Read directives.',
       'They are supplied here as on-demand references; their order in this bundle is not execution order.',
     ] : []),

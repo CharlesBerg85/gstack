@@ -359,7 +359,10 @@ describe('gen-skill-docs', () => {
     // Aside is the primary browser: every browsing skill renders the Aside
     // contract ({{ASIDE_SETUP}}); the browse binary is its fallback.
     const qaTmpl = fs.readFileSync(path.join(ROOT, 'qa', 'SKILL.md.tmpl'), 'utf-8');
-    expect(qaTmpl).toContain('{{ASIDE_SETUP}}');
+    expect(qaTmpl).not.toContain('{{ASIDE_SETUP}}');
+    expect(qaTmpl).toContain('{{SECTION:browser-setup}}');
+    expect(fs.readFileSync(path.join(ROOT, 'qa/sections/browser-setup.md.tmpl'), 'utf8'))
+      .toContain('{{ASIDE_SETUP}}');
     expect(browseTmpl).toContain('{{ASIDE_SETUP}}');
   });
 
@@ -572,22 +575,36 @@ describe('gen-skill-docs', () => {
     }
   });
 
-  test('qa and qa-only templates use QA_METHODOLOGY placeholder', () => {
-    // qa carve: the macro moved into the section template (the skeleton
-    // carries the STOP-Read pointer); qa-only remains an inline monolith.
+  test('qa and qa-only load the shared QA_METHODOLOGY through exploration', () => {
     const qaSkeletonTmpl = fs.readFileSync(path.join(ROOT, 'qa', 'SKILL.md.tmpl'), 'utf-8');
-    expect(qaSkeletonTmpl).toContain('{{SECTION:qa-patterns}}');
+    expect(qaSkeletonTmpl).toContain('{{SECTION:exploratory}}');
+    expect(qaSkeletonTmpl).toContain('{{QA_METHOD_READS}}');
     expect(qaSkeletonTmpl).not.toContain('{{QA_METHODOLOGY}}');
     const qaSectionTmpl = fs.readFileSync(path.join(ROOT, 'qa', 'sections', 'qa-patterns.md.tmpl'), 'utf-8');
     expect(qaSectionTmpl).toContain('{{QA_METHODOLOGY}}');
 
     const qaOnlyTmpl = fs.readFileSync(path.join(ROOT, 'qa-only', 'SKILL.md.tmpl'), 'utf-8');
-    expect(qaOnlyTmpl).toContain('{{QA_METHODOLOGY}}');
+    expect(qaOnlyTmpl).not.toContain('{{QA_METHODOLOGY}}');
+    expect(qaOnlyTmpl).toContain('{{SECTION:exploratory}}');
+    expect(qaOnlyTmpl).toContain('{{QA_METHOD_READS}}');
+    for (const skill of ['qa', 'qa-only']) {
+      expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md.tmpl'), 'utf8'))
+        .toContain('{{QA_EXPLORATORY}}');
+      const entry = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf8');
+      expect(entry).toContain("Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads");
+      expect(entry).toContain('**Browser surfaces only:**\nRead `sections/qa-patterns.md` in full.');
+      expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md'), 'utf8'))
+        .toContain("Complete the caller's required surface reads first");
+    }
   });
 
-  test('QA_METHODOLOGY appears expanded in both qa and qa-only generated files', () => {
+  test('QA_METHODOLOGY is expanded in the shared resource referenced by qa and qa-only', () => {
     const qaContent = readSkillUnion('qa'); // carved: methodology lives in qa/sections/qa-patterns.md
-    const qaOnlyContent = fs.readFileSync(path.join(ROOT, 'qa-only', 'SKILL.md'), 'utf-8');
+    const qaOnlyUnion = readSkillUnion('qa-only');
+    expect(qaOnlyUnion).toContain("Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads");
+    expect(qaOnlyUnion).toContain('**Browser surfaces only:**\nRead `sections/qa-patterns.md` in full.');
+    expect(qaOnlyUnion).not.toContain('Health Score Rubric');
+    const qaOnlyContent = qaOnlyUnion + fs.readFileSync(path.join(ROOT, 'qa/sections/qa-patterns.md'), 'utf8');
 
     // Both should contain the health score rubric
     expect(qaContent).toContain('Health Score Rubric');
@@ -1075,7 +1092,8 @@ describe('TEST_COVERAGE_AUDIT placeholders', () => {
       'utf-8',
     );
     expect(reviewArmySection).toContain('"advisory": true');
-    expect(reviewArmySection).toContain('quality score over NON-advisory findings only');
+    expect(reviewArmySection).toContain('Only specialist findings enter this header and `quality_score`; core findings do not');
+    expect(reviewArmySection).toContain('Use the merged NON-advisory specialist findings for both counts and score');
     expect(reviewArmySection).toContain('Simplification: lean already — nothing to cut.');
     expect(reviewArmySection).toContain('net: -N lines possible');
     expect(reviewArmySection).toContain('--simplification');
@@ -1331,25 +1349,28 @@ describe('PLAN_VERIFICATION_EXEC placeholder', () => {
     expect(shipSkill).toContain('Plan Verification');
   });
 
-  test('references /qa-only invocation', () => {
-    expect(shipSkill).toContain('qa-only/SKILL.md');
-    expect(shipSkill).toContain('qa-only');
+  test('references the shared explorer without invoking an entire QA workflow', () => {
+    expect(shipSkill).toContain("From the installed /ship SKILL.md's directory, Read `../qa/sections/scope.md` in full");
+    expect(shipSkill).toContain('Read `sections/exploratory.md` in that QA installation and complete its preflight');
+    expect(shipSkill).toContain('do not invoke an entire QA skill or start duplicate probes');
   });
 
-  test('contains dev-server discovery (CLAUDE.md first, then a port probe)', () => {
-    // Fork port wave 2: the hardcoded 4-port list became read-CLAUDE.md-or-
-    // probe; the probe loops common ports instead of naming each once.
-    expect(shipSkill).toContain('CLAUDE.md first');
-    expect(shipSkill).toContain('http://localhost:$_p');
-    expect(shipSkill).toContain('NO_SERVER');
+  test('keeps declared browser URLs separate from native functional probes', () => {
+    expect(shipSkill).toContain('items use the declared project/plan dev URL');
+    expect(shipSkill).toContain('functional items use native tools without discovering a web server');
+    expect(shipSkill).toContain('An API URL is\nnot automatically a page');
   });
 
-  test('skips gracefully when no verification section', () => {
-    expect(shipSkill).toContain('No verification steps found in plan');
+  test('retains automatic exploration when there is no plan or verification section', () => {
+    expect(shipSkill).toContain('If no verification section or no plan file');
+    expect(shipSkill).toContain('The automatic diff-scoped exploratory pass still runs in Step 9');
+    expect(shipSkill).toContain('preserve any plan checks that go beyond the smoke charter');
   });
 
-  test('skips gracefully when no dev server', () => {
-    expect(shipSkill).toContain('No dev server detected');
+  test('blocks unavailable required checks instead of silently skipping them', () => {
+    expect(shipSkill).toContain('noninteractive runs return blocked');
+    expect(shipSkill).toContain('Neither unavailable browser/server nor an\nunreadable section is a passing check or silent waiver');
+    expect(shipSkill).toContain('explicitly risk-accepted by the user');
   });
 });
 

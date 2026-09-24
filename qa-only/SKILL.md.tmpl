@@ -3,8 +3,8 @@ name: qa-only
 preamble-tier: 4
 version: 1.0.0
 description: |
-  Report-only QA testing. Systematically tests a web application and produces a
-  structured report with health score, screenshots, and repro steps — but never
+  Report browser/API/CLI/job/worker/webhook bugs. Produces a
+  structured report with contract evidence or browser scores and repro steps — but never
   fixes anything. Use when asked to "just report bugs", "qa report only", or
   "test but don't fix". For the full test-fix-verify loop, use /qa instead.
   Proactively suggest when the user wants a bug report without any code changes. (gstack)
@@ -27,7 +27,13 @@ triggers:
 
 # /qa-only: Report-Only QA Testing
 
-You are a QA engineer. Test web applications like a real user — click everything, fill every form, check every state. Produce a structured report with evidence. **NEVER fix anything.**
+You are a QA engineer. Explore the selected surfaces and report reproducible behavior
+with evidence. **NEVER fix anything or change product tests.** Discovery can propose
+regression cases, but report-only writes are limited to reports/evidence and owned
+temporary fixture state. Source reads needed for functional contracts do not grant
+mutation authority. Browser discovery retains its black-box method.
+
+{{SECTION_INDEX:qa-only}}
 
 ## Setup
 
@@ -35,30 +41,14 @@ You are a QA engineer. Test web applications like a real user — click everythi
 
 | Parameter | Default | Override example |
 |-----------|---------|-----------------:|
-| Target URL | (auto-detect or required) | `https://myapp.com`, `http://localhost:3000` |
-| Mode | full | `--quick`, `--regression .gstack/qa-reports/baseline.json` |
+| Target | (infer from request/repository or ask) | Browser URL, API route, CLI command, job, worker or webhook |
+| Mode | full | `--quick`, `--regression <previous-report-or-baseline>` |
 | Output dir | `.gstack/qa-reports/` | `Output to /tmp/qa` |
-| Scope | Full app (or diff-scoped) | `Focus on the billing page` |
-| Auth | Your Aside session (already signed in) | If a sign-in wall appears, you sign in yourself in Aside — no credentials in chat (see BROWSER SETUP). Fallback browser only: /setup-browser-cookies or `$B handoff` |
+| Scope | Selected target (or diff-scoped) | `Focus on duplicate webhook delivery` |
+| Auth | Isolated synthetic identity for functional probes | Browser session handling lives in browser setup; never request credentials in chat |
 
-**If no URL is given and you're on a feature branch:** Automatically enter **diff-aware mode** (see Modes below). This is the most common case — the user just shipped code on a branch and wants to verify it works.
-
-**Browser: Aside**
-
-{{ASIDE_SETUP}}
-
-{{BROWSE_FALLBACK}}
-
-**Create output directories:**
-
-```bash
-REPORT_DIR=".gstack/qa-reports"
-mkdir -p "$REPORT_DIR/screenshots"
-```
-
----
-
-{{LEARNINGS_SEARCH}}
+**On a feature branch without an explicit scope:** Use diff-aware testing of changed
+and adjacent behavior. Do not discover a browser merely because no URL was supplied.
 
 ## Test Plan Context
 
@@ -73,9 +63,32 @@ Before falling back to git diff heuristics, check for richer test plan sources:
 2. **Conversation context:** Check if a prior `/plan-eng-review` or `/plan-ceo-review` produced test plan output in this conversation
 3. **Use whichever source is richer.** Fall back to git diff analysis only if neither is available.
 
+{{LEARNINGS_SEARCH}}
+
+Use that context when selecting surfaces and isolation:
+
+{{QA_RESOURCE:scope}}
+
+Each surface's method defines Full, Quick and Regression; mixed runs apply them separately.
+For mixed Regression, the argument is the prior combined report. Resolve its functional
+replay evidence and browser baseline links first, then give each method its own baseline.
+A missing baseline blocks that surface's regression coverage, not independent checks.
+
+**Create output directories:** Resolve the requested output dir, defaulting to
+`.gstack/qa-reports`. Set `REPORT_DIR` to that shell-quoted value, then run
+`mkdir -p "$REPORT_DIR"`. All local reports, baselines and evidence use this directory.
+Do not overwrite unrelated files. Let `{target}` be the hostname or command/service
+name with characters other than letters, digits and hyphens replaced by hyphens.
+
+**Browser surface only:** load its setup; functional-only runs skip this section.
+
+{{SECTION:browser-setup}}
+
 ---
 
-{{QA_METHODOLOGY}}
+{{QA_METHOD_READS}}
+
+{{SECTION:exploratory}}
 
 ---
 
@@ -83,29 +96,37 @@ Before falling back to git diff heuristics, check for richer test plan sources:
 
 Write the report to both local and project-scoped locations:
 
-**Local:** `.gstack/qa-reports/qa-report-{domain}-{YYYY-MM-DD}.md`
+**Local:** `$REPORT_DIR/qa-report-{target}-{YYYY-MM-DD}.md`.
 
 **Project-scoped:** Write test outcome artifact for cross-session context:
 ```bash
 {{SLUG_SETUP}}
 ```
 Write to `~/.gstack/projects/{slug}/{user}-{branch}-test-outcome-{datetime}.md`
+using the same report content. Derive safe `{user}` and `{branch}` labels from
+`git config user.name` and `git branch --show-current`, falling back to `unknown-user`
+and `detached`; sanitize them like `{target}`. Use a UTC `YYYYMMDDTHHMMSSZ` datetime.
 
 ### Output Structure
 
 ```
-.gstack/qa-reports/
-├── qa-report-{domain}-{YYYY-MM-DD}.md    # Structured report
+$REPORT_DIR/
+├── qa-report-{target}-{YYYY-MM-DD}.md    # Structured report
 ├── screenshots/
 │   ├── initial.jpg                        # Landing page screenshot
 │   ├── issue-001-step-1.jpg               # Per-issue evidence
 │   ├── issue-001-result.jpg
 │   ├── issue-002.png                      # Annotated screenshot (static bugs)
 │   └── ...
-└── baseline.json                          # For regression mode
+└── baseline.json                          # Browser baseline for regression mode
 ```
 
-Report filenames use the domain and date: `qa-report-myapp-com-2026-03-12.md`
+Report filenames use a safe target label and date: `qa-report-myapp-com-2026-03-12.md`.
+For functional targets, use the command/service label, contract outcomes and sanitized
+output/request/state evidence, not screenshots or a visual health score. For mixed
+targets, use separate browser and functional sections in this same report. Link each
+surface's replay evidence and baseline for later regression runs. State blocked, not-run
+and inconclusive contracts explicitly, along with proposed tests and cleanup limits.
 
 ---
 
@@ -113,5 +134,14 @@ Report filenames use the domain and date: `qa-report-myapp-com-2026-03-12.md`
 
 ## Additional Rules (qa-only specific)
 
-11. **Never fix bugs.** Find and document only. Do not read source code, edit files, or suggest fixes in the report. Your job is to report what's broken, not to fix it. Use `/qa` for the test-fix-verify loop.
-12. **No test framework detected?** If the project has no test infrastructure (no test config files, no test directories), include in the report summary: "No test framework detected. Run `/qa` to bootstrap one and enable regression test generation."
+1. **Never fix bugs or write product tests.** Find and document only. Necessary read-only
+    source discovery is allowed for functional targets, while browser discovery stays
+    black-box. Do not edit product code, tests, dependencies, config or tracked state
+    through any tool, including shell writes, renames, deletions and edit-then-restore.
+    Never commit, stash or bootstrap. Proposed regressions belong in report artifacts.
+2. **During preflight, check documented native commands and test infrastructure.** If absent,
+    report missing coverage and proposed cases without installing anything. An unavailable
+    command/service is not a product defect. Never invoke /qa or another skill from this report-only run.
+    When the browser app's repository is available and no framework is documented, say
+    "No test framework detected. Run `/qa` to bootstrap in a separate, user-authorized repair session."
+    Functional targets keep the gap without a new framework.

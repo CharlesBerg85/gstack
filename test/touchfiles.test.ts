@@ -153,7 +153,6 @@ describe('selectTests', () => {
       ['plan-eng-review/sections/review-sections.md', 'TEST_COVERAGE_AUDIT_PLAN'],
       ['ship/sections/tests.md', 'TEST_BOOTSTRAP'],
       ['ship/sections/test-coverage.md', 'TEST_COVERAGE_AUDIT_SHIP'],
-      ['qa/sections/test-bootstrap.md', 'TEST_BOOTSTRAP'],
       ['design-review/SKILL.md', 'TEST_BOOTSTRAP'],
     ];
     for (const [output, token] of consumers) {
@@ -170,7 +169,7 @@ describe('selectTests', () => {
     expect(actual.reason).toBe('diff');
     expect(actual.selected.sort()).toEqual(expected);
     for (const id of ['plan-eng-finding-count', 'plan-eng-multi-finding-batching',
-      'autoplan-chain-pty', 'plan-eng-review-format-coverage', 'ship-section-loading', 'qa-fix-loop']) {
+      'autoplan-chain-pty', 'plan-eng-review-format-coverage', 'ship-section-loading']) {
       expect(actual.selected).toContain(id);
       expect(E2E_TIERS[id]).toBe('periodic');
     }
@@ -178,7 +177,7 @@ describe('selectTests', () => {
       expect(actual.selected).toContain(id);
       expect(E2E_TIERS[id]).toBe('gate');
     }
-    for (const unrelated of ['browse-basic', 'retro', 'office-hours-section-loading', 'review-coverage-audit']) {
+    for (const unrelated of ['browse-basic', 'retro', 'office-hours-section-loading', 'review-coverage-audit', 'qa-fix-loop', 'qa-quick']) {
       expect(actual.selected).not.toContain(unrelated);
     }
   });
@@ -447,10 +446,10 @@ describe('selectTests', () => {
 
   test('works with LLM_JUDGE_TOUCHFILES', () => {
     const result = selectTests(['qa/SKILL.md'], LLM_JUDGE_TOUCHFILES);
-    expect(result.selected).toContain('qa/SKILL.md workflow');
-    expect(result.selected).toContain('qa/SKILL.md health rubric');
-    expect(result.selected).toContain('qa/SKILL.md anti-refusal');
-    expect(result.selected.length).toBe(3);
+    expect(result.selected.sort()).toEqual([
+      'qa/SKILL.md workflow', 'qa/SKILL.md health rubric', 'qa/SKILL.md anti-refusal',
+      'qa-only/SKILL.md workflow', 'review/SKILL.md workflow', 'ship/SKILL.md workflow',
+    ].sort());
   });
 
   test('SKILL.md.tmpl root template selects root-dependent tests and routing tests', () => {
@@ -594,7 +593,7 @@ describe('TOUCHFILES completeness', () => {
     );
 
     const unique = registeredJudgeTestNames(llmContent);
-    expect(unique).toHaveLength(25);
+    expect(unique).toHaveLength(26);
 
     const missing = unique.filter(name => !(name in LLM_JUDGE_TOUCHFILES));
     if (missing.length > 0) {
@@ -613,7 +612,7 @@ describe('TOUCHFILES completeness', () => {
       testIfSelected('unmapped judge case', async () => {}, 120_000);
     `;
     const names = registeredJudgeTestNames(withUnmappedCase);
-    expect(names).toHaveLength(26);
+    expect(names).toHaveLength(27);
     expect(names.filter(name => !(name in LLM_JUDGE_TOUCHFILES))).toEqual(['unmapped judge case']);
   });
 

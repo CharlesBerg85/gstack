@@ -34,6 +34,18 @@ the missing path.
 
 ## Categories
 
+### Exploratory hypotheses
+
+The parent runs one shared exploratory QA pass before Fix-First, including small diffs
+that skip specialists. Supply high-risk changed contracts, adverse scenarios and native
+test candidates to that pass; do not launch another explorer, edit product/tests or
+commit. A test proposal uses `test_stub` and keeps the caller's approval requirements.
+Check real request/queue/storage effects, retries, duplicates and interrupted recovery
+where applicable. A diagram or test count is not executed proof. For discoveries promoted
+to regressions, require failure for the reproduced bug before repair and green plus
+original/adjacent probes afterward; never accept buggy-output goldens or discarded valid
+red tests. Unit tests suit logic; real integration/E2E tests protect boundaries mocks hide.
+
 ### Missing Negative-Path Tests
 - New code paths that handle errors, rejections, or invalid input with NO corresponding test
 - Guard clauses and early returns that are untested

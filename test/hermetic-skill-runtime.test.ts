@@ -16,8 +16,13 @@ describe('hermetic seeded PTY runtime', () => {
   test('runtime helper and regression select every PTY consumer', () => {
     const consumers = Object.entries(E2E_TOUCHFILES).filter(([, files]) => files.includes('test/helpers/claude-pty-runner.ts')).map(([name]) => name).sort();
     expect(consumers.length).toBeGreaterThan(15);
+    expect(fs.readFileSync(path.join(ROOT, 'test/helpers/qa-callers-fixture.ts'), 'utf8'))
+      .toContain("from './hermetic-skill-runtime'");
+    const nativeConsumers = Object.entries(E2E_TOUCHFILES).filter(([, files]) => files.includes('test/helpers/qa-callers-fixture.ts')).map(([name]) => name).sort();
+    expect(nativeConsumers).toEqual(['review-exploratory-small-cli', 'ship-exploratory-late-input',
+      'ship-exploratory-plan-checks', 'ship-exploratory-small-cli', 'ship-exploratory-unavailable']);
     for (const file of ['test/helpers/hermetic-skill-runtime.ts', 'test/hermetic-skill-runtime.test.ts'])
-      expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual(consumers);
+      expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual([...new Set([...consumers, ...nativeConsumers])].sort());
   });
   test.skipIf(process.platform === 'win32')('uses current lazy files and tools with scoped access, preserving auth, caches, and explicit overrides', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-runtime-probe-'));

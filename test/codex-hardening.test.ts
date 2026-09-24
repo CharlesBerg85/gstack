@@ -469,7 +469,7 @@ describe('codex review-mode section Step 2A: PROMPT + --base mutual exclusion gu
 describe('codex timeout wrapper: /review + /ship diff passes', () => {
   const WRAPPED_SITES = [
     'scripts/resolvers/review.ts', // generator (source of truth)
-    'review/sections/adversarial.md', // review section (Step 5.7 carved out of the skeleton)
+    'review/sections/adversarial.md', // review section (Step 4.8 carved out of the skeleton)
     'ship/sections/adversarial.md', // ship section source
   ];
 

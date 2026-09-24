@@ -1,6 +1,6 @@
 <!-- AUTO-GENERATED from plan-completion.md.tmpl — do not edit directly -->
 <!-- Regenerate: bun run gen:skill-docs -->
-This is the deep pass behind Step 1.5's scope-drift check: discover the plan file, extract its actionable items, classify how each can be verified, and cross-reference them against the diff. Like Step 1.5 itself, the audit is INFORMATIONAL — it never blocks the review.
+This is Step 1.5's plan-completion audit: discover the plan, extract actionable items, classify their verification and compare with the diff. It is INFORMATIONAL except for the HIGH-impact discrepancy question below; resolve that gate before the final Scope Check.
 
 ### Plan File Discovery
 
@@ -190,7 +190,8 @@ The plan completion results augment the existing Scope Drift Detection. If a pla
 
 This is **INFORMATIONAL** unless HIGH-impact discrepancies are found (then it gates via AskUserQuestion).
 
-Update the scope drift output to include plan file context:
+After the audit and any high-impact decision, emit the single final Scope Check using
+Step 1.5's provisional notes and this plan context:
 
 ```
 Scope Check: [CLEAN / DRIFT DETECTED / REQUIREMENTS MISSING]
@@ -202,4 +203,6 @@ Plan items: N DONE, M PARTIAL, K NOT DONE
 [If scope creep: list each out-of-scope change not in the plan]
 ```
 
-**No plan file found:** Use commit messages and TODOS.md as fallback sources (see above). If no intent sources at all, skip with: "No intent sources detected — skipping completion audit."
+**No plan file found:** Use commit messages and TODOS.md as fallback sources (see above).
+Emit Step 1.5's Scope Check once without plan fields. If no intent sources exist, state
+"No intent sources detected — skipping completion audit." rather than claiming requirements were verified.

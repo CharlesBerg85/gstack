@@ -4,10 +4,20 @@
 
 {{FOREGROUND_DISPATCH_NOTE}} The parent needs this audit's LAST-line JSON before continuing.
 
-**Subagent prompt:** Pass the following instructions to the subagent, with `<base>` substituted with the base branch:
+**Generation allowance:** Maximum 2 generation passes total per invocation.
+Count each generation-authorized attempt before dispatch/inline execution, including
+the initial audit, failures and zero-test results. Re-entry never resets it.
+Two passes already used means no further generation; read-only reassessment uses no pass.
+
+**Subagent prompt:** Supply `<base>`, Step 4's framework/bootstrap decision,
+permitted paths/commands, remaining gaps, passes used and generation allowance.
+No allowance means audit only; missing permission is not approval. Preserve the
+30-path/20-test/2-minute per-test caps.
 
 ````text
 You are running a ship-workflow test coverage audit. Run `git diff origin/<base>` to include uncommitted tracked changes; also read relevant non-ignored untracked source/tests. Do not commit or push. Perform only this audit; return unresolved user decisions to the parent instead of asking or advancing to another workflow step.
+
+Generation: <allowed|audit-only>; passes used: <N> of 2. Audit-only overrides every generation instruction below.
 
 {{TEST_COVERAGE_AUDIT_SHIP}}
 

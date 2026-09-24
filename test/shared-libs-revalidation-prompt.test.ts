@@ -7,6 +7,7 @@ import {
   SHARED_INTERACTIVE_MAX_TURNS, SHARED_LIBS_ROOT, type SharedLibsFixture,
 } from './helpers/shared-libs-eval-fixture';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
+import { hasTrustedSharedLibsCheck } from './helpers/shared-libs-review-start-evidence';
 
 const f = { root: '/fixture root', repo: '/fixture root/repo', state: '/fixture root/state',
   bin: '/fixture root/bin' } as SharedLibsFixture;
@@ -33,7 +34,8 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
   const afterCompletion = () => { throw new Error('A non-success capture reached completion checks'); };
   const exercise = new Function('deps', `const { captures, preparePathEligibilityFixture, fs, path,
     reviewLifecycleInstructions, reviewPrompt, reviewRevalidationPrompt, runSharedInteractive, readRequests,
-    toolCommandTrace, sourceReadTrace, fixtureWorkingTree, reviewRecords, expect, CAPTURE_LONG_MS } = deps;
+    toolCommandTrace, sourceReadTrace, fixtureGit, fixtureWorkingTree, reviewRecords, expect, CAPTURE_LONG_MS,
+    hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT } = deps;
     ${transpile(pathsSource.slice(start, end))} return exerciseEligibility;`)({
     captures: { runAttempt: async (name: string, kinds: string[], timeout: number, work: any) => {
       attempts.push({ name, kinds, timeout });
@@ -51,7 +53,8 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
     reviewLifecycleInstructions: (fixture: SharedLibsFixture) => path.join(fixture.root, 'review-lifecycle.md'),
     reviewPrompt, reviewRevalidationPrompt, runSharedInteractive: capture, readRequests: () => [],
     toolCommandTrace: afterCompletion, sourceReadTrace: afterCompletion,
-    fixtureWorkingTree: afterCompletion, reviewRecords: afterCompletion, expect, CAPTURE_LONG_MS,
+    fixtureGit: afterCompletion, fixtureWorkingTree: afterCompletion, reviewRecords: afterCompletion, expect, CAPTURE_LONG_MS,
+    hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT,
   });
   return { exercise, rows, removed, attempts, fixtures };
 }

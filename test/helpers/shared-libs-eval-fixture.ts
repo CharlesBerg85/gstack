@@ -664,12 +664,10 @@ export function reviewLifecycleInstructions(f: SharedLibsFixture): string {
   ]);
   const army = fs.readFileSync(path.join(root, 'review/sections/review-army.md'), 'utf8');
   const merge = sliceBetween(army, '### Step 4.6: Collect and merge findings', '### Red Team dispatch');
-  const adversarial = fs.readFileSync(path.join(root, 'review/sections/adversarial.md'), 'utf8');
-  const completion = adversarial.slice(adversarial.indexOf('### Before persisting Eng Review (Step 5.8)'));
-  if (!completion.startsWith('### Before persisting')) throw new Error('Missing actual review completion rules');
+  if (!core.includes('snapshot_covered_paths') || !core.includes('COMPLETED')
+    || !core.includes('--finish REVIEW_START')) throw new Error('Missing actual review completion rules');
   // Insert the actual merge text before Fix-First, retaining core ownership for tiny diffs.
   const text = core.replace('## Step 5: Fix-First Review', `${merge}\n\n## Step 5: Fix-First Review`)
-    .replace('## Step 5.8: Persist Eng Review result', `${completion}\n\n## Step 5.8: Persist Eng Review result`)
     .replaceAll('~/.claude/skills/gstack', root)
     .replaceAll('$HOME/.claude/skills/gstack', root)
     .replaceAll('origin/<base>', 'origin/main');
@@ -730,42 +728,18 @@ export function reviewRevalidationPrompt(f: SharedLibsFixture, instructions: str
 
 Revalidation fixture execution contract:
 - The runtime allows ${SHARED_INTERACTIVE_MAX_TURNS} assistant turns. Batch independent required source reads, Git configuration/attribute checks, and snapshot checks within each phase. Preserve every required evidence check and dependency: capture the real start token before reading the diff, and complete final evidence verification before persistence.
-- The trusted start-record location is ${startRecord}. Replace <REVIEW_START> with the token actually returned by --start; read and verify that record. Use the supplied helper interfaces; discovering helper CLI options is outside this replay.
+- The trusted start-record location is ${startRecord}. Replace <REVIEW_START> with the token actually returned by --start; read and verify that record through ${SHARED_LIBS_ROOT}/bin/gstack-review-log --check-shared-libs. Run the checker from the target repo with that literal token and the current finding on stdin. Inspect its complete returned JSON before a separate --finish invocation, including reusable, review_start, fingerprint and snapshot.covered_paths. This mechanical proof does not replace reading the actual authored callers. Use the supplied helper interfaces; discovering helper CLI options is outside this replay.
 - After final verification, combine successful --finish persistence and one complete, untruncated read-back through gstack-review-read in the same tool invocation. Read back only after persistence succeeds, inspect the full current record and binding, then return the final review summary in conversation.
 - Failed persistence or verification remains a failure. Late source changes still require the workflow's normal re-review; never skip checks, questions, or convergence rules to finish within the bound.`;
 }
 
 /** Seed a real, bound skipped advisory in an earlier review; never fabricate a verified binding. */
 export async function seedSkippedAdvisory(f: SharedLibsFixture): Promise<any> {
-  const { sharedLibsFingerprint } = await import('../../lib/review-evidence');
   const finding: any = { severity: 'INFORMATIONAL', confidence: 9,
     path: 'src/retry-worker.ts', line: 2, category: 'shared-libs',
     summary: 'Reuse the tested parser', advisory: true, action: 'skipped',
     evidence_paths: ['src/retry-worker.ts', 'src/retry-route.ts', 'lib/retry-after.ts'],
     helper_target: { path: 'lib/retry-after.ts', symbol: 'retrySeconds' } };
-  finding.fingerprint = sharedLibsFingerprint(finding);
-  const tree = fixtureWorkingTree(f);
-  let ordinaryCoverage = true;
-  try {
-    const autocrlf = (() => { try { return fixtureGit(f, 'config', '--get', 'core.autocrlf'); } catch { return ''; } })();
-    if (autocrlf && autocrlf !== 'false') ordinaryCoverage = false;
-    const algorithm = fixtureGit(f, 'rev-parse', '--show-object-format');
-    for (const relative of finding.evidence_paths) {
-      let location = f.repo;
-      for (const component of relative.split('/')) {
-        location = path.join(location, component);
-        if (fs.lstatSync(location).isSymbolicLink()) ordinaryCoverage = false;
-      }
-      if (!fs.lstatSync(location).isFile()) ordinaryCoverage = false;
-      if (!/^H /.test(fixtureGit(f, 'ls-files', '-v', '--', relative))) ordinaryCoverage = false;
-      const attributes = fixtureGit(f, 'check-attr', 'filter', 'working-tree-encoding', 'ident', 'text', 'eol', '--', relative);
-      if (attributes.split('\n').some(line => !line.endsWith(': unspecified'))) ordinaryCoverage = false;
-      const bytes = fs.readFileSync(location);
-      const rawBlob = createHash(algorithm).update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex');
-      if (fixtureGit(f, 'rev-parse', `${tree}:${relative}`) !== rawBlob) ordinaryCoverage = false;
-    }
-  } catch { ordinaryCoverage = false; }
-  finding.snapshot_covered_paths = ordinaryCoverage ? [...finding.evidence_paths] : [];
   const log = path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log');
   const env = { ...process.env, ...f.env, PATH: process.env.PATH, GSTACK_HOME: f.state };
   const token = execFileSync(log, ['--start', 'review'], { cwd: f.repo, env, encoding: 'utf8', timeout: 30_000 }).trim();
@@ -773,7 +747,7 @@ export async function seedSkippedAdvisory(f: SharedLibsFixture): Promise<any> {
     status: 'clean', issues_found: 0, critical: 0, informational: 0, quality_score: 10,
     findings: [finding], completed: true, converged: true, cycles: 0 }), '--finish', token],
   { cwd: f.repo, env, encoding: 'utf8', timeout: 30_000 });
-  return finding;
+  return reviewRecords(f).filter(row => row.skill === 'review').at(-1).findings[0];
 }
 
 export function reviewRecords(f: SharedLibsFixture): any[] {

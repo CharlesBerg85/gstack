@@ -73,10 +73,19 @@ describe('shared-code skill distribution', () => {
         expect(parent).toContain('Never downgrade severity to make advisory metadata consistent');
         expect(parent).toContain('Valid INFORMATIONAL advisories remain advisory in every category, including simplification');
         expect(parent).toContain('contradictory CRITICAL/advisory metadata cannot establish a skipped defect or advisory decision');
-        const merge = parent.indexOf('**Parse findings:**');
-        if (merge >= 0) {
-          expect(parent.indexOf('**Validate advisory severity first.**', merge))
-            .toBeLessThan(parent.indexOf('**Fingerprint and deduplicate:**', merge));
+        if (host.name !== 'codex' && !host.suppressedResolvers?.includes('REVIEW_ARMY')) {
+          const stages = ['#### 1. Parse outputs', '#### 2. Validate severity', '#### 3. Identify and merge',
+            '#### 4. Apply specialist confidence gates', '#### 5. Score and present specialists'];
+          const positions = stages.map(stage => parent.indexOf(stage));
+          expect(positions.every(position => position >= 0)).toBe(true);
+          expect(positions).toEqual([...positions].sort((a, b) => a - b));
+          const merge = parent.slice(positions[1], positions[2]).replace(/\s+/g, ' ');
+          expect(merge).toContain('remove `advisory` and retain its `CRITICAL` severity');
+          expect(merge).toContain('Never downgrade severity');
+          expect(parent).toContain('Only specialist findings enter this header and `quality_score`; core findings do not');
+        } else {
+          expect(parent).not.toContain('#### 1. Parse outputs');
+          expect(parent).not.toContain('SPECIALIST REVIEW: N findings');
         }
       }
     });
