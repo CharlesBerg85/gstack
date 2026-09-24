@@ -326,11 +326,11 @@ describe('browser consolidation tripwires', () => {
       if (skill === 'qa' || skill === 'qa-only') {
         expect(md).toContain('sections/browser-setup.md');
         expect(md).not.toContain('## BROWSER SETUP (Aside');
-        const setup = fs.readFileSync(path.join(ROOT, skill, 'sections/browser-setup.md'), 'utf8');
         if (skill === 'qa-only') {
-          expect(setup).toContain('Read `sections/browser-setup.md` relative to the installed `qa`');
-          md += fs.readFileSync(path.join(ROOT, 'qa/sections/browser-setup.md'), 'utf8');
-        } else md += setup;
+          expect(md).toContain('Read `sections/browser-setup.md` relative to the installed `qa`');
+          expect(fs.existsSync(path.join(ROOT, skill, 'sections/browser-setup.md'))).toBe(false);
+        }
+        md += fs.readFileSync(path.join(ROOT, 'qa/sections/browser-setup.md'), 'utf8');
       }
       const aside = md.indexOf('## BROWSER SETUP (Aside');
       const fb = md.indexOf("## Browser fallback: gstack's own headless browser");
