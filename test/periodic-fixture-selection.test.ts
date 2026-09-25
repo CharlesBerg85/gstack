@@ -891,13 +891,14 @@ test('atomic documentation attribution dependencies select every documentation c
     'ship-docsync-launch-failure', 'ship-docsync-timeout-unsettled', 'ship-docsync-late-result',
     'ship-docsync-stale-before', 'ship-docsync-stale-after', 'ship-docsync-recovery'].sort();
   for (const file of ['test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/qa-functional-observer.ts',
-    'test/docsync-atomic-writes.test.ts']) {
+    'test/docsync-atomic-writes.test.ts', 'test/docsync-lifecycle-interface.test.ts']) {
     const selected = selectTests([file], E2E_TOUCHFILES);
     expect(selected.reason).toBe('diff');
     expect(selected.selected.filter(name => name === 'docsync-spawned' || name.startsWith('ship-docsync')).sort()).toEqual(expected);
     expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
   }
   expect(selectTests(['test/docsync-atomic-writes.test.ts'], E2E_TOUCHFILES).selected.sort()).toEqual(expected);
+  expect(selectTests(['test/docsync-lifecycle-interface.test.ts'], E2E_TOUCHFILES).selected.sort()).toEqual(expected);
 });
 
 test('publication gate regressions select the ship workflow judgment', () => {

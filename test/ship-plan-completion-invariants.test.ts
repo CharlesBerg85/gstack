@@ -49,11 +49,24 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
   test('parent rejects audit errors and malformed counts instead of treating them as no plan', () => {
     const audit = fs.readFileSync(path.join(SHIP_DIR, 'sections/plan-completion.md'), 'utf8');
     const parent = audit.slice(audit.indexOf('**Parent processing:**'), audit.indexOf('**If the subagent fails'));
-    expect(parent).toContain('non-null `error`');
+    expect(parent).toContain("Check the task's terminal status; failure takes the audit-failure fallback");
+    expect(parent).toContain("On success, parse its LAST line as JSON with only the contract's seven fields");
+    expect(parent).toContain('Missing, extra or invalid fields take the same fallback');
     expect(parent).toContain('nonnegative integer');
     expect(parent).toContain('count sum');
     expect(parent).toContain('audit-failure fallback');
     expect(parent).toContain('Valid no-plan/no-actionable-item reports retain zero counts');
+  });
+
+  test('successful plan audits use the declared seven-field contract without an error field', () => {
+    const audit = fs.readFileSync(path.join(SHIP_DIR, 'sections/plan-completion.md'), 'utf8');
+    const line = audit.split('\n').find(line => line.startsWith('{"total_items":N,'));
+    expect(line).toBeDefined();
+    const contract = JSON.parse(line!.replace(/:N([,}])/g, ':0$1'));
+    expect(Object.keys(contract).sort()).toEqual(['total_items', 'done', 'changed', 'partial', 'not_done', 'unverifiable', 'summary'].sort());
+    expect(contract).not.toHaveProperty('error');
+    expect(audit).toContain('exactly these seven fields on the LAST LINE');
+    expect(audit).not.toContain('A non-null `error`');
   });
 
   test('CONTENT-SHAPE dispatch invokes validator before falling back to UNVERIFIABLE', () => {
@@ -89,12 +102,12 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
     expect(text).toContain('exact command, exit, timestamp and log');
     expect(text).toContain('as **ledger unavailable**');
     expect(text).toContain('**ledger unavailable**, never FRESH');
-    expect(text).toContain('unchanged green suites need no bookkeeping-only rerun');
+    expect(text).toContain('Unchanged green suites need no bookkeeping-only rerun');
     expect(text).toContain("A failed test run requires Step 5's triage");
     expect(text).toContain('Reuse waivers only for the same verified pre-existing failures and approved scope');
     expect(text).toContain('New, changed or unwaived failures STOP publication');
     expect(text).toContain('Docs, TODO edits, new/generated tests and fixes make evidence STALE');
-    expect(text).toContain('The last row permits bookkeeping repair only, never stale content');
+    expect(text).toContain('The bookkeeping row cannot cover stale content');
     expect(text).toContain('Without that proof, use STALE/MISSING');
   });
 
@@ -122,9 +135,11 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
   test('a rejected push stops publication and routes changed content back through verification', () => {
     const entry = fs.readFileSync(path.join(SHIP_DIR, 'SKILL.md'), 'utf8');
     const push = entry.slice(entry.indexOf('## Step 17:'), entry.indexOf('## Step 20:'));
+    const recovery = entry.slice(entry.indexOf('| Reason for returning |'), entry.indexOf('### 1. Finish writers'));
     expect(push).toMatch(/push fails[^\n]+STOP/);
-    expect(push).toContain('Step 5');
-    expect(push).toContain('Step 16');
+    expect(push).toContain('Follow the matching Step 16 recovery-map row');
+    expect(recovery).toMatch(/Step 17 push is non-fast-forward[^\n]+Resume at Step 5[^\n]+through Step 16[^\n]+retry Step 17/);
+    expect(recovery).toMatch(/authentication, hook or network failure[^\n]+repeat Step 16 even if content is unchanged[^\n]+retry Step 17/);
     expect(push).toMatch(/never force.push/i);
     expect(push).toContain('Only a successful push');
   });

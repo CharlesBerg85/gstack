@@ -41,25 +41,22 @@ mark completed TODOs and apply auto-fixable review findings.
 Coverage at or above Step 7's target needs no approval: report remaining gaps,
 verify generated tests and commit with Step 15.
 
-**Route:** Prepare the change in Steps 1–8, review it in 9–11, then prepare release
-metadata, audit docs and commit in 12–15. Step 16 checks the final content before
-17–20 publish/report; Step 21 offers the optional plan-tune nudge.
+**Re-run behavior (idempotency):**
+Every invocation verifies tests, coverage, plan completion, both reviews,
+VERSION/CHANGELOG, TODOS and docs in Steps 1–15.
+Step 16 verifies final content; Steps 17–20 publish/report and Step 21 offers the
+optional plan-tune nudge. Steps 12, 17 and 19
+prevent duplicate bumps, pushes and PRs, never verification.
 
 ### Keep state between steps
 
 Keep one private **invocation record** outside the product tree and retain its
-absolute path. Use these entries rather than reconstructing prior work from chat:
-
-| Entry | Save when it becomes available |
-|---|---|
-| Attempts | Counts used under the limits below |
-| Release | Versions and `BUMP_LEVEL` |
-| Decisions | Approval, finding, files and authorized action |
-| Reviews | Each handle, original start token, terminal state, output and queued fixes; the reviewed tree before Step 12 |
-| Checks | Command/label, result/counts, timestamp, log and consumed inputs |
-| Documentation | Candidate/id, accepted hashes or the named blocked exception |
-
-Update this note on every return. It does not replace helper receipts or reset limits:
+absolute path. Record versions, `BUMP_LEVEL` and used attempts. Save each approval
+with its finding, files and authorized action; each review's handle, original
+start token, terminal state, output and queued fixes; and each check's command/label,
+result/counts, timestamp, log and consumed inputs. Keep the reviewed tree from
+before Step 12 and the docs candidate/id, accepted hashes or named blocked exception.
+Update this record on every return without resetting these limits:
 
 | Owner | Limit for this invocation |
 |---|---|
@@ -68,17 +65,13 @@ Update this note on every return. It does not replace helper receipts or reset l
 | Step 11 | One corrected native-review retry |
 | Step 14.5 | Initial audit plus ONE repair/re-audit |
 
-Reuse an approval only for the same finding, files and action. Each review also
-keeps its own token: the parent owns REVIEW_START, each Step 11 attempt owns
-PASS_START, and design review owns DESIGN_START. Capture it before each pass reads
-its inputs and finish that pass with the same token. Never exchange tokens between
-passes. The helper binds the token to tracked and non-ignored untracked content,
-not just a commit; its `wtree` field is the corresponding Git tree fingerprint.
-
-**Re-run behavior (idempotency):**
-Every invocation verifies tests, coverage, plan completion, both reviews,
-VERSION/CHANGELOG, TODOS and docs. Steps 12, 17 and 19 prevent duplicate bumps,
-pushes and PRs, never verification.
+Reuse an approval only for the same finding, files and action. Keep the helpers'
+receipts: these saved results link a review or check to the content it examined.
+A review's start token identifies its captured starting content. The parent owns
+REVIEW_START, each Step 11 attempt owns PASS_START, and design owns DESIGN_START.
+Capture each token before reading and finish that pass with the same token; never
+exchange them. The helper's `wtree` fingerprint identifies a Git tree snapshot of
+tracked and non-ignored untracked files, not just a commit.
 
 ---
 
@@ -155,9 +148,8 @@ service with existing deployment — verify that a distribution pipeline exists.
    - B) Defer — add a P1 distribution TODO in Step 14
    - C) Not needed — this is internal/web-only, existing deployment covers it
 
-4. **If the user chooses A:** Add packaging and publish configuration using this repository's CI conventions. Ask for the intended distribution target if it is unknown; do not invent a registry or credentials. Ask about an unknown registry or required access before creating the workflow. Recheck it against the artifact and include the new workflow in the tests and review below. Do not publish a release during `/ship`.
-5. **If release pipeline exists:** Continue silently.
-6. **If no new artifact detected:** Skip silently.
+4. **If the user chooses A:** Add packaging and publish configuration using this repository's CI conventions. Ask for any unknown distribution target, registry or required access before creating it; never invent credentials. Recheck it against the artifact and include the new workflow in the tests and review below. Do not publish a release during `/ship`.
+5. **If a pipeline exists or no new artifact was detected:** Continue silently.
 
 ---
 
@@ -194,19 +186,23 @@ No plan skips only plan-specific work, not Prior Learnings or Scope Drift.
 
 {{SECTION:adversarial}}
 
-Before Step 12, run `~/.claude/skills/gstack/bin/gstack-review-read`. Compare this
-invocation's final native review's verified `wtree` with the final core record's
-`start_wtree` and `end_wtree`. When all three match, save that **reviewed tree** and
-both records for Step 16. Missing or mismatched hashes block release preparation;
-a new token cannot certify old work. Keep the core's actual incomplete flags and
-any named QA exception: matching content proves identity, not that waived probes passed.
+Before Step 12, run `~/.claude/skills/gstack/bin/gstack-review-read`. Use this
+invocation's saved handles, tokens and provenance to select its final records:
+- The Step 9.4 item 6 record has `skill:"review"` and `via:"ship"`.
+- The Step 11 native attempt has `skill:"adversarial-review"`. Select the recorded
+  native source, not an outside provider or an older invocation's result.
+
+Require the native record's `review_binding.state` to be `verified`. Its `wtree`
+must match the Step 9.4 record's `review_binding.start_wtree` and
+`review_binding.end_wtree`. Save both records and that **reviewed tree** for Step 16.
+Missing or mismatched hashes block release preparation; new tokens cannot certify
+old work. A named probe-risk exception may leave Step 9.4 incomplete, without a
+root `wtree`. Leave its incomplete flags unchanged and keep the user's named
+exception. Matching hashes do not show that the waived probes passed.
 
 ## Step 12: Version bump (auto-decide)
 
-Use **`gstack-version-bump`** for classify/write/repair and `gstack-next-version`
-for slot selection. Bump level and queue collisions remain agent decisions.
-Save `BUMP_LEVEL` in the invocation record before queue selection, and
-`BASE_VERSION` and `NEW_VERSION` as they become known. Reuse the recorded level.
+Before queue selection, reuse the recorded `BUMP_LEVEL` or save the chosen level.
 
 1. **Classify state** — pure reader, never writes:
    ```bash
@@ -240,8 +236,7 @@ Save `BUMP_LEVEL` in the invocation record before queue selection, and
    `--regen-digest` executes repo code with the same privileges as Step 5: `scripts/gen-agents-digest.ts`, only when it and committed `agents-digest/gstack-AGENTS.md` both exist. Check `agentsDigest`: if false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump before continuing. The committed digest must match the generator's output for the selected VERSION; verify that match before push.
 
 5. **Record the release decision after a version was actually written**, including
-   an approved ALREADY_BUMPED rebump. Skip when the version is unchanged; manifest
-   repair alone is not a new release decision.
+   an approved ALREADY_BUMPED rebump. Skip unchanged versions and manifest-only repairs.
    ```bash
    ~/.claude/skills/gstack/bin/gstack-decision-log '{"decision":"Ship NEW_VERSION (BUMP_LEVEL)","rationale":"WHY","scope":"repo","source":"skill","confidence":9}' 2>/dev/null || true
    ```
@@ -251,11 +246,9 @@ Save `BUMP_LEVEL` in the invocation record before queue selection, and
 
 ## Step 14: TODOS.md (auto-update)
 
-Persist approved follow-ups, then conservatively mark completed work.
+Read `~/.claude/skills/gstack/review/TODOS-format.md`.
 
-Read `~/.claude/skills/gstack/review/TODOS-format.md` for the canonical format reference.
-
-**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. Skip bypasses items 2–4: report the declined creation and unsaved follow-ups under item 5, then continue to Step 14.5.
+**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. Skip goes directly to item 5 to report declined creation and unsaved follow-ups.
 
 **2. Organization:** Expect component headings, `**Priority:**` P0–P4 fields, and `## Completed` at the bottom. If disorganized, ask: A) Reorganize (recommended), B) Leave as-is. A preserves all content; B continues without restructuring.
 
@@ -265,7 +258,7 @@ Read `~/.claude/skills/gstack/review/TODOS-format.md` for the canonical format r
 - Step 5: retain P0 test-failure entries already written; deduplicate by failure and source, adding missing approved entries with error output and branch.
 Never turn dropped scope into TODOs or invent unapproved follow-ups. Reuse matching existing entries rather than duplicating them.
 
-**4. Detect completed TODOs:** Match titles, files, and behavior against `git diff origin/<base>`, untracked files from status, and `git log origin/<base>..HEAD --oneline`. Only clear evidence earns completion; leave uncertain items open. Move completed items to `## Completed` and append `**Completed:** vX.Y.Z (YYYY-MM-DD)`.
+**4. Detect completed TODOs:** Check titles, files and behavior against `git diff origin/<base>`, untracked files and `git log origin/<base>..HEAD --oneline`. Move only clearly completed items to `## Completed` with `**Completed:** vX.Y.Z (YYYY-MM-DD)`; leave uncertain items open.
 
 **5. Save the summary:** Report added/deferred items, items marked complete, remaining count, and any creation/reorganization. If creation was declined or a write fails, warn and retain the unpersisted follow-ups in the Step 19 PR summary; never claim they were saved. A TODO write failure remains non-blocking.
 
@@ -289,10 +282,10 @@ Create small, logical commits for `git bisect`. If all changes are already commi
    Under 50 lines across fewer than 4 files may use one commit.
 2. Order dependencies first: infrastructure → models/services → controllers/views.
    Each commit must work independently, without broken imports or missing code.
-   Group VERSION + CHANGELOG + TODOS.md after the feature commits. Verified
-   generated outputs found later in Step 16 may follow in a separate commit.
+   Group VERSION + CHANGELOG + TODOS.md after the feature commits.
 3. Use `<type>: <summary>` (feat/fix/chore/refactor/docs) and a brief body.
-   Only the final VERSION/CHANGELOG commit gets the version in its message and co-author trailer (not a Git tag):
+   Only the final VERSION/CHANGELOG commit gets the release version and co-author
+   trailer; omit both from non-release commits. The version is not a Git tag:
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -309,9 +302,16 @@ EOF
 
 **IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
-Follow stages 1–5 with the same invocation record and limits on every return.
-Any later content edit, including one made by a check, restarts stage 1; a commit
-that preserves content keeps its evidence valid.
+Follow stages 1–5. Use this recovery map whenever work returns to an earlier step;
+keep the invocation's counts and same-scope approvals throughout.
+
+| Reason for returning | Resume here |
+|---|---|
+| Steps 10–11 queue fixes | Return to a fresh Step 9 pass. Step 9.4 applies fixes, then reruns Step 5, affected Steps 6–8 and all of Step 9 before Steps 10–11. |
+| Stage 2 finds behavioral changes | Run Steps 5–11 in order, recheck metadata in Steps 12–14, then restart stage 1. |
+| Content changes after verification, including during a check | Restart stage 1. A commit that preserves content keeps its evidence valid. |
+| Step 17 push is non-fast-forward | Fetch and inspect the remote branch; merge using Step 3's conflict rules. Resume at Step 5 and follow the normal order through Step 16, then retry Step 17 without rewriting history. |
+| Step 17 has an authentication, hook or network failure | Repair the cause, repeat Step 16 even if content is unchanged, then retry Step 17. Never bypass a failed guard. |
 
 ### 1. Finish writers and prepare outputs
 
@@ -321,8 +321,10 @@ STOP until confirmed; Step 14.5 handles docs recovery.
 
 Find declared generation/build commands in project instructions, manifests, build
 files and CI. Run them and save results. If none exists, record not applicable and
-the inspected sources. Missing prerequisites or a failed build block push;
-never invent a substitute.
+the inspected sources. A missing prerequisite or failed build stops shipping:
+report the command, error and needed repair. Restore the prerequisite or repair
+the cause, then retry stage 1. Stage 2 reviews any content repair as a behavioral
+change. Never invent a substitute command.
 
 ### 2. Choose the change route
 
@@ -331,14 +333,14 @@ Capture the current tree with `~/.claude/skills/gstack/bin/gstack-wtree`. Inspec
 Snapshots include tracked and non-ignored untracked files; missing snapshots
 block this comparison, regardless of HEAD equality.
 
-| What changed since review? | Next action |
-|---|---|
-| Nothing | Continue to stage 3. |
-| Only authored docs or release metadata | Update affected Step 8 completion/verification evidence, then continue to stage 3 without a new code review. |
-| Behavior, tests or build inputs | Revisit tests (5), eval selection (6), coverage (7), plan obligations (8) and full review (9–11). Recheck metadata (12–14), then restart stage 1. |
-
-Treat prompts/templates as behavioral inputs. Complete the behavioral route
-before refreshing docs or collecting final receipts.
+If nothing changed, continue to stage 3. Behavior, tests or build-input changes
+take the behavioral-change route above before docs or final receipts; this includes
+prompts/templates. If only authored docs or release metadata changed,
+preserve Step 8's original child report and counts. Recheck affected items using
+their recorded verification and append current references/results to the invocation
+record. If these no longer support an item's classification, return to Step 8's
+audit and decision gates instead of changing its counts yourself. Otherwise
+continue to stage 3 without a new code review.
 
 ### 3. Resolve documentation freshness
 
@@ -367,10 +369,10 @@ and log instead of resampling an identical passing judge. Mandatory reviews stil
 
 **Check each test lane's receipt as well.** Use its actual Step 5 label/command:
 `--label <lane> --expect-cmd '<exact Step 5 command>'`. Inspect changes since the run;
-`--allow-paths` exempts only release metadata. Docs, TODO edits, new/generated tests
-and fixes make evidence STALE even without a new code review. Behavioral paths,
-including manifest scripts, dependencies and runtime configuration, require live
-tests even in `package.json`. Every listed change in this example is metadata:
+`--allow-paths` exempts only release metadata. A `package.json` version-only edit
+can qualify; scripts, dependencies and runtime configuration require live tests.
+Uncertain edits cannot be exempted. Docs, TODO edits, new/generated tests and fixes
+make evidence STALE even without a new code review. Every listed change below is metadata:
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --label vitest --expect-cmd '<vitest>' --max-age 24 --allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md
@@ -382,9 +384,8 @@ tests even in `package.json`. Every listed change in this example is metadata:
 | STALE/MISSING: changed content, command or age, or no proven run | Run `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`, read the result and recheck once. A failed test run requires Step 5's triage. |
 | Only receipt storage/readback failed | Independently prove unchanged final content, the same command and valid age from the successful run's evidence. Cite its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH. Without that proof, use STALE/MISSING. |
 
-A failed freshness check selects a live run, not a failed-test verdict. The last
-row permits bookkeeping repair only, never stale content; unchanged green suites
-need no bookkeeping-only rerun. Missing evidence never means pass.
+The bookkeeping row cannot cover stale content. Unchanged green suites need no
+bookkeeping-only rerun. Missing evidence never means pass.
 With no test lanes, require Step 5's explicit untested-scope approval for this
 final content or return to its no-tests decision. Report the gap, never FRESH;
 builds must still pass.
@@ -482,16 +483,11 @@ git push -u origin <branch-name>
 ```
 
 **If the push fails, STOP.** Report the error; no Step 19 or publication claim.
-- **Non-fast-forward:** fetch and inspect the remote branch, merge without history
-  rewriting, then return to Step 5 through Step 16 before retrying. Use Step 16's
-  input rules and retain all generation/review/docs counters and same-scope approvals.
-  Resolve ambiguous conflicts with the user; never force-push.
-- **Authentication, hook or network:** repair the cause and recheck Step 16 before
-  retrying, even with unchanged content. Apply its input rules to any edits.
-  Never bypass a failed guard.
+Follow the matching Step 16 recovery-map row. Apply its input checks to every edit;
+never force-push.
 Only a successful push or verified `ALREADY_PUSHED` proceeds.
 
-**You are NOT done.** Continue to Step 18 with the verified documentation outcome. No documentation writer runs after push.
+Continue to Step 18. No documentation writer runs after push.
 
 ---
 
@@ -512,8 +508,6 @@ Prepare the title from that result; Step 19 scans and publishes it:
 2. For a new PR/MR, compose `v<NEW_VERSION> <type>: <summary>`.
 3. Save the result as `NEW_TITLE` for Step 19. Every created or updated title MUST
    start with `v$NEW_VERSION `; never publish an unprefixed title.
-
-Every report/PR includes this invocation's audit, including `current` or accepted `blocked` risk.
 
 {{SECTION:pr-body}}
 

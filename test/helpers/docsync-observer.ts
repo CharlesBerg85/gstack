@@ -140,7 +140,21 @@ export function docsCommandAllowed(command: string, fixture: ReturnType<typeof f
 }
 
 export function docsNativeInterface(fixture: ReturnType<typeof fixtureDocs>, scripts: string[] = []): string {
-  return `Fixture observation interface (applies to parent and every child; include this interface in child prompts): Bash may execute only separate literal pwd, ls, cat, stat, sha256sum, Git read commands (status, diff, show, log, ls-files, rev-parse, merge-base, hash-object without -w, branch --show-current), the exact generated Preamble block with its spawned prefix, or literal installed gstack-skill-start/gstack-skill-end commands for document-release (start requires GSTACK_SESSION_KIND=spawned). No shell composition, custom interpreters, arbitrary scripts, inline eval or memory-mapped writes. The only additional scripts are ${scripts.length ? scripts.join(', ') : 'none'}. Read/Glob/Grep remain available. Use Write/Edit for permitted docs and private JSON/Markdown artifacts under ${fixture.home}; do not rewrite installed skills, config, actor state or scripts. No effects outside the owned fixture. The owner preserves evidence and cleans up. Missing observer coverage blocks acceptance; the Linux kernel monitor covers syscall writes in the product tree, not hostile processes or arbitrary external destinations.`;
+  return `Fixture observation interface (applies to parent and every child; include this interface in child prompts): Bash may execute only separate literal pwd, ls, cat, stat, sha256sum, Git read commands (status, diff, show, log, ls-files, rev-parse, merge-base, hash-object without -w, branch --show-current), the exact generated Preamble block with its spawned prefix, or literal installed gstack-skill-start/gstack-skill-end commands for document-release (start requires GSTACK_SESSION_KIND=spawned). No shell composition, custom interpreters, arbitrary scripts, inline eval or memory-mapped writes. The only additional scripts are ${scripts.length ? scripts.join(', ') : 'none'}. Read/Glob/Grep remain available. Use Write/Edit for permitted docs and private JSON/Markdown artifacts under ${fixture.home}; do not rewrite installed skills, config, actor state or scripts. No effects outside the owned fixture. The owner preserves evidence and cleans up. Missing observer coverage blocks acceptance; the Linux kernel monitor covers syscall writes in the product tree, not hostile processes or arbitrary external destinations.
+
+Lifecycle commands in this closed fixture: read skill files at ${fixture.skills} (document-release: ${fixture.skills}/document-release/SKILL.md). Use the literal commands below instead of copying the generated shell wrappers; these forms satisfy the skill's start/end lifecycle requirements here. Run each as a separate, single-line Bash call. Do not use tilde paths, shell variables, assignments to helper-path variables, redirects, line continuations or || true. Do not add a parent PID: the start helper supplies its default.
+
+Start document-release with exactly:
+\`\`\`bash
+GSTACK_SESSION_KIND=spawned ${fixture.skills}/bin/gstack-skill-start --skill document-release --model claude
+\`\`\`
+The spawned prefix belongs directly on the helper invocation, not on a preceding assignment. Read the returned SESSION_KIND, SESSION_ID and TEL_START status lines. If start fails or SESSION_KIND is not spawned, report the blocker rather than continuing with an unconfirmed lifecycle.
+
+At workflow completion, use this one-line end command. Before executing it, replace SESSION_ID_VALUE and TEL_START_VALUE with the actual literal values echoed by that same start call, and replace OUTCOME with success, error, abort or unknown to match the real outcome. Never execute the placeholders or reuse values from another session.
+\`\`\`bash
+${fixture.skills}/bin/gstack-skill-end --skill document-release --outcome OUTCOME --session-id SESSION_ID_VALUE --tel-start TEL_START_VALUE --used-browse no
+\`\`\`
+Read the end result; do not suppress an error or claim completion if it failed. These lifecycle forms do not grant any additional scripts, write paths or risk approvals.`;
 }
 
 function within(file: string, root: string): boolean {
