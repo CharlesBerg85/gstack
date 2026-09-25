@@ -112,7 +112,8 @@ ${docsNativeInterface(fixture, [actorFile])}`,
     passed = true;
   } finally {
     const observation = observer.stop();
-    const failures = docsWriteFailures(observation, scenario.startsWith('stale-') ? ['app.ts', DOC_PATH] : []);
+    const failures = docsWriteFailures(observation, scenario.startsWith('stale-') ? ['app.ts', DOC_PATH] : [],
+      result ? { result, fixture, scripts: [actorFile] } : undefined);
     if (failures.length) passed = false;
     preserveDocsEvidence(fixture, result ?? { output: 'capture did not return', toolCalls: [] }, runId, testName, {
       observation, actor: JSON.parse(fs.readFileSync(stateFile, 'utf8')), passed,

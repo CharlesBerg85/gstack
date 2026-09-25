@@ -30,7 +30,7 @@ export function readQACheckpointFiles(reportRoot: string): Record<string, string
 type Probe = { command: string; observed: unknown };
 type Call = { parent: string | null; name: string; input: Record<string, any>; start: number; end: number; output: string; failed: boolean };
 
-function nativeCalls(transcript: unknown[], failures: string[]): Call[] {
+export function nativeCalls(transcript: unknown[], failures: string[]): Call[] {
   const calls = new Map<string, Call>();
   for (const [index, raw] of transcript.entries()) {
     if (!object(raw)) { failures.push('Malformed native event'); continue; }

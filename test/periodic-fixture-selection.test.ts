@@ -884,3 +884,24 @@ test('native clipped regressions retain the existing parser and owned-permission
     }
   }
 });
+
+test('atomic documentation attribution dependencies select every documentation case', () => {
+  const expected = ['docsync-spawned', 'ship-docsync', 'ship-docsync-completion', 'ship-docsync-current',
+    'ship-docsync-failure', 'ship-docsync-store', 'ship-docsync-missing-marker', 'ship-docsync-missing-asset',
+    'ship-docsync-launch-failure', 'ship-docsync-timeout-unsettled', 'ship-docsync-late-result',
+    'ship-docsync-stale-before', 'ship-docsync-stale-after', 'ship-docsync-recovery'].sort();
+  for (const file of ['test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/qa-functional-observer.ts',
+    'test/docsync-atomic-writes.test.ts']) {
+    const selected = selectTests([file], E2E_TOUCHFILES);
+    expect(selected.reason).toBe('diff');
+    expect(selected.selected.filter(name => name === 'docsync-spawned' || name.startsWith('ship-docsync')).sort()).toEqual(expected);
+    expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
+  }
+  expect(selectTests(['test/docsync-atomic-writes.test.ts'], E2E_TOUCHFILES).selected.sort()).toEqual(expected);
+});
+
+test('publication gate regressions select the ship workflow judgment', () => {
+  const file = 'test/ship-publication-gates.test.ts';
+  expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual(['ship/SKILL.md workflow']);
+  expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual([]);
+});

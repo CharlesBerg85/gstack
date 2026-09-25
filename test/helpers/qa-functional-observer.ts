@@ -31,14 +31,14 @@ export function qaTreeSnapshot(root: string): Record<string, string> {
   return result;
 }
 
-export function decodeQAInotify(buffer: Buffer): Array<{ wd: number; mask: number; name: string }> {
-  const records: Array<{ wd: number; mask: number; name: string }> = [];
+export function decodeQAInotify(buffer: Buffer): Array<{ wd: number; mask: number; cookie: number; name: string }> {
+  const records: Array<{ wd: number; mask: number; cookie: number; name: string }> = [];
   let offset = 0;
   while (offset < buffer.length) {
     if (buffer.length - offset < 16) throw new Error('truncated kernel event');
     const length = buffer.readUInt32LE(offset + 12);
     if (offset + 16 + length > buffer.length) throw new Error('truncated kernel event name');
-    records.push({ wd: buffer.readInt32LE(offset), mask: buffer.readUInt32LE(offset + 4),
+    records.push({ wd: buffer.readInt32LE(offset), mask: buffer.readUInt32LE(offset + 4), cookie: buffer.readUInt32LE(offset + 8),
       name: buffer.subarray(offset + 16, offset + 16 + length).toString().replace(/\0.*$/s, '') });
     offset += 16 + length;
   }
@@ -48,7 +48,7 @@ export function decodeQAInotify(buffer: Buffer): Array<{ wd: number; mask: numbe
 export interface QAWriteObservation {
   complete: boolean;
   failures: string[];
-  events: Array<{ path: string; mask: number; at: number }>;
+  events: Array<{ path: string; mask: number; cookie: number; at: number }>;
   changed: string[];
   before: Record<string, string>;
   after: Record<string, string>;
@@ -99,7 +99,7 @@ export async function observeQAWrites(root: string) {
         watches.delete(record.wd);
         continue;
       }
-      events.push({ path: relative === '.' ? '' : relative, mask: record.mask, at: Date.now() });
+      events.push({ path: relative === '.' ? '' : relative, mask: record.mask, cookie: record.cookie, at: Date.now() });
       if ((record.mask & 0x2000) || (watched.directory && (record.mask & 0x800))) failures.push(`watch target moved or unmounted: ${relative}`);
       if (record.mask & (0x100 | 0x80)) {
         try {

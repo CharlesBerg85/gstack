@@ -45,7 +45,7 @@ describeE2E('Native spawned document-release E2E (gate)', () => {
         let passed = false;
         try {
           expect(result.exitReason).toBe('success');
-          expect(docsWriteFailures(observation!, [DOC_PATH])).toEqual([]);
+          expect(docsWriteFailures(observation!, [DOC_PATH], { result, fixture })).toEqual([]);
           expect(docsToolFailures(result, fixture)).toEqual([]);
           expect(sawSpawnedMarker(result)).toBe(true);
           const contract = parseDocsCompletion(result.output, fixture.auditId);

@@ -66,7 +66,9 @@ async function runShipDocs(testName: string, scenario: DocsScenario, dispatchOnl
         expect(['success', 'error_max_turns', 'timeout']).toContain(result.exitReason);
       } else {
         expect(result.exitReason).toBe('success');
-        expect(docsWriteFailures(observation!, scenario === 'current' || scenario === 'store' ? [] : [DOC_PATH])).toEqual([]);
+        expect(docsWriteFailures(observation!, scenario === 'current' || scenario === 'store' ? [] : [DOC_PATH], {
+          result, fixture, scripts: [publish], readOnly: scenario === 'current' || scenario === 'store',
+        })).toEqual([]);
         expect(docsToolFailures(result, fixture, [publish], scenario === 'current' || scenario === 'store')).toEqual([]);
         const output = fs.readFileSync(report, 'utf8');
         const after = repoSnapshot(fixture.repo);

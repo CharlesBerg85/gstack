@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { observeQAWrites, type QAWriteObservation } from './qa-functional-observer';
+import { nativeCalls } from './qa-checkpoint-evidence';
 import type { SkillTestResult } from './session-runner';
 import { DOC_PATH, type fixtureDocs } from './docsync-fixture';
 
@@ -8,11 +10,97 @@ export async function observeDocsWrites(fixture: ReturnType<typeof fixtureDocs>)
   return observeQAWrites(fixture.repo);
 }
 
-export function docsWriteFailures(observation: QAWriteObservation, allowed: string[]): string[] {
+type DocsWriteContext = {
+  result: SkillTestResult;
+  fixture: ReturnType<typeof fixtureDocs>;
+  scripts?: string[];
+  readOnly?: boolean;
+};
+
+function docsAtomicSources(observation: QAWriteObservation, allowed: string[], context?: DocsWriteContext): Set<string> {
+  const denied = new Set<string>();
+  if (!context || context.readOnly || !allowed.includes(DOC_PATH) || !observation.complete || observation.failures.length) return denied;
+  const { result, fixture, scripts = [] } = context;
+  if (result.exitReason !== 'success' || !Array.isArray(result.transcript) || docsToolFailures(result, fixture, scripts).length) return denied;
+  const failures: string[] = [];
+  const target = path.join(fixture.repo, DOC_PATH);
+  const calls = nativeCalls(result.transcript, failures).filter(call => ['Write', 'Edit'].includes(call.name)
+    && typeof call.input.file_path === 'string' && path.resolve(fixture.repo, call.input.file_path) === target);
+  if (failures.length || !calls.length || calls.some((call, index) => call.failed || call.end <= call.start || (index > 0 && call.start <= calls[index - 1].end))) return denied;
+  const before = observation.before[DOC_PATH];
+  const after = observation.after[DOC_PATH];
+  if (!/^\d+:[a-f0-9]{64}$/.test(before ?? '') || !/^\d+:[a-f0-9]{64}$/.test(after ?? '') || before.split(':')[0] !== after.split(':')[0]) return denied;
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  let contentHash = before.split(':')[1];
+  const seen = new Set([contentHash]);
+  for (const call of calls) {
+    const event = result.transcript[call.end];
+    const payload = event.tool_use_result;
+    const results = event.message.content.filter((block: any) => block?.type === 'tool_result');
+    if (results.length !== 1 || (results[0].is_error !== undefined && results[0].is_error !== false) || !payload || payload.filePath !== target
+      || payload.userModified !== false || typeof payload.originalFile !== 'string' || hash(payload.originalFile) !== contentHash) return denied;
+    let content: string;
+    if (call.name === 'Write') {
+      if (payload.type !== 'update' || typeof call.input.content !== 'string' || payload.content !== call.input.content) return denied;
+      content = call.input.content;
+    } else {
+      const { old_string: old, new_string: replacement, replace_all: all = false } = call.input;
+      if (typeof old !== 'string' || !old || typeof replacement !== 'string' || typeof all !== 'boolean'
+        || payload.oldString !== old || payload.newString !== replacement || payload.replaceAll !== all) return denied;
+      const parts = payload.originalFile.split(old);
+      if (parts.length < 2 || (!all && parts.length !== 2)) return denied;
+      content = parts.join(replacement);
+    }
+    contentHash = hash(content);
+    if (seen.has(contentHash)) return denied;
+    seen.add(contentHash);
+  }
+  if (contentHash !== after.split(':')[1]) return denied;
+  const events = observation.events;
+  const destinations = events.flatMap((event, index) => event.path === DOC_PATH && event.mask === 0x80 ? [index] : []);
+  if (destinations.length !== calls.length) return denied;
+  const sources = new Set<string>();
+  let previous = -1;
+  for (const destination of destinations) {
+    const move = events[destination];
+    if (!Number.isInteger(move.cookie) || move.cookie <= 0 || move.cookie > 0xffffffff) return denied;
+    const pair = events.flatMap((event, index) => event.cookie === move.cookie ? [index] : []);
+    if (pair.length !== 2 || pair[1] !== destination) return denied;
+    const source = events[pair[0]];
+    if (source.mask !== 0x40 || source.path === DOC_PATH || path.dirname(source.path) !== path.dirname(DOC_PATH)
+      || Object.hasOwn(observation.before, source.path) || Object.hasOwn(observation.after, source.path) || sources.has(source.path)) return denied;
+    const lifecycle = events.flatMap((event, index) => event.path === source.path ? [{ event, index }] : []);
+    if (lifecycle[0]?.event.mask !== 0x100 || lifecycle[0].index <= previous || lifecycle.at(-1)?.index !== pair[0]) return denied;
+    let modified = false;
+    let closed = false;
+    for (const { event, index } of lifecycle) {
+      if (index === pair[0]) { if (!modified || !closed) return denied; continue; }
+      if (event.cookie !== 0) return denied;
+      if (index === lifecycle[0].index) continue;
+      if (event.mask === 0x2 && !closed) modified = true;
+      else if (event.mask === 0x4 && !closed) continue;
+      else if (event.mask === 0x8 && modified) closed = true;
+      else return denied;
+    }
+    sources.add(source.path);
+    previous = destination;
+  }
+  if (events.some((event, index) => event.path === DOC_PATH && (index < destinations[0]
+    || ![0x80, 0x4, 0x400, 0x800].includes(event.mask) || (event.mask !== 0x80 && event.cookie !== 0)))) return denied;
+  for (const [index, destination] of destinations.entries()) {
+    const replaced = events.slice(destination + 1, destinations[index + 1]).filter(event => event.path === DOC_PATH);
+    if (replaced.filter(event => event.mask === 0x4).length !== 1 || replaced.filter(event => event.mask === 0x400).length !== 1
+      || replaced.filter(event => event.mask === 0x800).length > 1) return denied;
+  }
+  return sources;
+}
+
+export function docsWriteFailures(observation: QAWriteObservation, allowed: string[], context?: DocsWriteContext): string[] {
   const failures = [...observation.failures];
   if (!observation.complete) failures.push('incomplete docs write observation');
+  const atomicSources = docsAtomicSources(observation, allowed, context);
   for (const file of new Set([...observation.events.map(e => e.path), ...observation.changed])) {
-    if (file !== '.qa-state/.observer-check' && !allowed.includes(file)) failures.push(`forbidden docs write: ${file}`);
+    if (file !== '.qa-state/.observer-check' && !allowed.includes(file) && !atomicSources.has(file)) failures.push(`forbidden docs write: ${file}`);
     if (allowed.includes(file) && observation.before[file] && observation.after[file] &&
         observation.before[file].split(':')[0] !== observation.after[file].split(':')[0]) failures.push(`document mode changed: ${file}`);
   }
