@@ -54,12 +54,15 @@ fixes; and each check's command/label, result/counts, timestamp, log and inputs.
 Keep the docs candidate/id, accepted hashes or named blocked exception there too.
 
 Update this note on every return. It does not replace helper receipts or reset
-limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles, and
-Step 14.5 permits an initial audit plus ONE repair/re-audit. Reuse an approval
+limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles,
+Step 11 permits one corrected native-review retry, and Step 14.5 permits an initial
+audit plus ONE repair/re-audit. Reuse an approval
 only for the same finding, files and action.
 
 Review helpers return a `*_START` token identifying the content about to be read,
 including tracked and non-ignored untracked files (`wtree`), not just a commit.
+The parent Step 9 pass owns REVIEW_START. Each Step 11 reviewer attempt owns a
+separate PASS_START; design review owns DESIGN_START. Keep each with its owner.
 Capture it before each pass reads its inputs and finish that pass with the same
 token. Never exchange tokens between passes.
 
@@ -267,7 +270,8 @@ Create small, logical commits for `git bisect`. If all changes are already commi
    Under 50 lines across fewer than 4 files may use one commit.
 2. Order dependencies first: infrastructure → models/services → controllers/views.
    Each commit must work independently, without broken imports or missing code.
-   VERSION + CHANGELOG + TODOS.md belong in the final commit.
+   Group VERSION + CHANGELOG + TODOS.md after the feature commits. Verified
+   generated outputs found later in Step 16 may follow in a separate commit.
 3. Use `<type>: <summary>` (feat/fix/chore/refactor/docs) and a brief body.
    Only the final VERSION/CHANGELOG commit gets the version in its message and co-author trailer (not a Git tag):
 
@@ -352,8 +356,9 @@ assumes metadata-only changes in every listed path:
 ```
 
 Do not exempt `TODOS.md` or generated tests: authored docs, new tests, fixes and
-TODO edits make evidence STALE. With no Step 5 lanes, report the gap, not FRESH;
-declared builds must still pass.
+TODO edits make evidence STALE. With no Step 5 lanes, require its explicit
+untested-scope approval, still applicable to the final content. Otherwise return
+to Step 5's no-tests decision. Report the gap, never FRESH; declared builds must pass.
 
 For FRESH (exit 0), cite the label, exit, timestamp and log. For STALE/MISSING
 (changed content, command or age, or no proven run), run
@@ -368,6 +373,11 @@ Without that proof, use STALE/MISSING. Stale content cannot take this exception;
 unchanged green suites do not need a rerun just to repair bookkeeping.
 
 ### 5. Report, then push
+
+Inspect the selected release files for uncommitted content. Commit any remaining
+approved, verified changes, including generated outputs, using Step 15's grouping
+rules. Preserve unrelated user files. A commit without content changes keeps the
+evidence valid; any content change returns to stage 1 before publication.
 
 Paste build/docs/test results. Reuse waivers only for the same verified
 pre-existing failures and approved scope; cite approval and failing counts,

@@ -8,6 +8,12 @@ After startup, prepare in this order:
 
 Then run **Scope Challenge A → B → C**, followed by Sections 1–4 in order.
 
+**Setup selectors stop at B.** Context Recovery/prerequisites, Prior Learnings
+configuration, target and Scope Challenge complexity selectors use their local
+rules without a pre-answer ledger. Scope Challenge B saves actual selector
+answers afterward; it does not use this remedy loop.
+These answers approve no engineering remedy. C starts the remedy loop below.
+
 ## Review record and write policy
 
 Use these terms throughout the review:
@@ -33,8 +39,7 @@ Choose the **report file** before any ledger write:
 2. Otherwise use the selected plan file, if there is one.
 3. Otherwise use `$GSTACK_STATE_ROOT/projects/$SLUG/$BRANCH-eng-review-{YYYYMMDD-HHMMSS}.md`, adding a suffix on collision. Obtain assignments from `~/.claude/skills/gstack/bin/gstack-paths` and `~/.claude/skills/gstack/bin/gstack-slug`; failed commands or missing values make this path unavailable.
 
-Name the target in the report header. Never substitute an unrelated active plan
-or silently replace a requested destination.
+Never substitute an unrelated active plan or silently replace a requested destination.
 
 **Check each artifact and parent directory's permission before writing.** Honor
 user and host limits, including active-plan-only restrictions. Permission for one
@@ -45,7 +50,7 @@ path authorizes no other; implementation edits require explicit authority.
 | Working plan, ledger and complete review report | Selected report file | Ask for a permitted destination if the user can supply one; wait without completion telemetry. If none is permitted, complete the review in chat as **not persisted**, then use **Blocked outcome**. |
 | QA Test Plan and task JSONL | Discovery paths below | Present each completely as **not persisted** and continue. |
 | TODOS.md | The project's TODO file | Present accepted TODO content as **not persisted** and continue. |
-| Required Review Log | The helper's state location | Present its fields as **not persisted**; the final gate cannot pass without this log. |
+| Required Review Log | The helper's state location | Present its fields as **not persisted**; the final gate cannot pass without this log. At finish step 3, use **Blocked outcome**. |
 | Best-effort metadata/learning logs | Helper-defined locations | Skip forbidden writes; otherwise keep their best-effort behavior. |
 
 The QA Test Plan and task JSONL intentionally use legacy discovery paths under
@@ -58,6 +63,20 @@ not the forbidden-write branches above. Do not ask from an unsaved record.
 Forbidden auxiliary writes allow the review to continue; unrecovered attempted
 writes block it. Best-effort logs retain their stated non-blocking behavior.
 Apply this policy at every later write.
+
+**First report save:** Name the fixed target in the report header. Read an
+existing destination and preserve its content. For a new file, create permitted
+parent directories, then write that header, an unchanged copy of the original
+plan (for plan targets), and the scope record or ledger being saved. Recheck option 3's collision before
+creation; use a suffix rather than overwrite. Do not add findings or fixes before
+Scope Challenge C. Put records before an existing `## GSTACK REVIEW REPORT`, or
+at EOF if absent; create that terminal report only in Required outputs step 2.
+
+**Read-only review:** At each scope/decision record save, present the complete
+record, grid and authorized amendments as **not persisted** instead. At both
+pre-question and post-answer verification gates, perform the same comparisons
+on that presentation instead of a saved Read. This supports chat review, never
+the saved-report gate. A failed permitted save is not this route.
 
 {{LEARNINGS_SEARCH}}
 
@@ -87,14 +106,8 @@ building proposed code. Keep suppressed findings for the output appendix.
 Run this six-step loop for findings from Scope Challenge, Sections 1–4, Outside
 Voice, late changes and TODO choices. Finish one choice before the next.
 
-Setup gates—Context Recovery/prerequisites, Prior Learnings configuration,
-target and Scope Challenge complexity selectors—use local rules without a
-pre-answer ledger. Scope Challenge B saves actual selector answers afterward;
-it does not use this remedy loop. These answers approve no engineering remedy.
-
-One question for one choice per AskUserQuestion call. Use the preamble for
-question transport/fallback and authorized auto-decisions. Use Review
-record/write policy only for saved records, reports and logs.
+Use the preamble's tool resolution, failure fallback and authorized auto-decision
+rules. Use Review record and write policy for every save below.
 
 ### 1. Establish current state
 
@@ -189,8 +202,8 @@ After the jitter answer, carry that value into both options of the later cap que
 
 ### 4. Save the pending record
 
-Save the record, complete grid and exact `currentDecision` in the report file,
-before `## GSTACK REVIEW REPORT`. Include every native field, the recommendation
+Save the record, complete grid and exact `currentDecision` using the report
+placement above. Include every native field, the recommendation
 and all options. A–D record selectors are ledger notation only: if a saved label
 already starts `A)`/`B)`/`C)`/`D)`, keep that one prefix; otherwise add it. Compare
 the label separately from that notation by removing the selector before matching.
@@ -230,18 +243,11 @@ Grep, chat references, summaries and planned writes do not verify the record.
 Repair any difference and repeat the complete Read before asking. A failed save
 blocks the question; unreadable or unverifiable records use **Recovery routing**.
 
-On the permitted read-only route, present the complete record and grid as **not
-persisted** and compare them with `currentDecision`. This can support the chat
-review, but cannot pass the saved-report gate.
-
 If any payload field changes, including a shortened label or formatting edit,
 repeat step 3, replace the whole saved payload and Read it again. An older
 comparison or a critic's advice cannot substitute for this verification.
 
 ### 5. Ask and wait
-
-Use the preamble's tool resolution, failure fallback and authorized auto-decision
-rules.
 
 Send `AskUserQuestion({ questions: [currentDecision] })` after step 4. Send one
 question object for one choice; other IDs wait. Copy the verified question,
@@ -271,16 +277,16 @@ to History. If older fields are separated, consolidate all three and remove thei
 old occurrences in the same edit; never update only the answer/scope tail.
 
 Use a scoped Edit to save this record and only the authorized working-plan
-amendments. Leave other choices unchanged. On the read-only route, present both
-completely as **not persisted**.
+amendments. Leave other choices unchanged.
 
 Check the save result, then Read the entire resolution block, including State.
 Verify that its unique state, actual answer and accepted scope match the complete
 selected option and grid column. An answer-only search or current-in-context hint
-cannot replace Read. In read-only mode, verify the presentation instead. Correct
+cannot replace Read. Correct
 any discrepancy before advancing; apply the write policy to failures.
 
-Return to step 1 with the updated working plan and answer. Keep chosen values
+Return to step 1 with the updated working plan and answer for the next choice
+in the calling section; when finished, resume that section. Keep chosen values
 fixed in later questions, and explain when a choice has become irrelevant rather
 than asking it again. Start the next section only when no answer is pending in
 this section. Keep unresolved risks and verification visible; resolve risk and
@@ -408,7 +414,10 @@ After the Test Plan Artifact is saved or presented, report the Test review findi
 
 ### 4. Performance review
 Evaluate:
-* N+1/database access, memory, caching, and slow or complex paths.
+* N+1 queries and database access patterns.
+* Memory usage.
+* Caching opportunities.
+* Slow or complex paths.
 
 {{CODEX_PLAN_REVIEW}}
 
@@ -436,8 +445,9 @@ Option C records accepted implementation scope; still do not edit product code.
 
 ## Required outputs
 
-Run this finish sequence after Approval readiness passes. Use the references
-below for each step, not as another review cycle.
+Run this finish sequence after Approval readiness passes. Each step requires
+the preceding step to succeed. The headings below supply its formats, not a
+second review cycle. The write policy governs forbidden writes and failed saves.
 
 For recovery or changed outputs, use the entrypoint's **Recovery routing**.
 
@@ -447,12 +457,9 @@ For recovery or changed outputs, use the entrypoint's **Recovery routing**.
    leave them pending. Save permitted auxiliary artifacts under the write policy.
 2. **Save and Read back.** Use Plan File Review Report to save the complete body
    and append its terminal `## GSTACK REVIEW REPORT`. Pass that writer's Read-back
-   gate. If report persistence is forbidden or the save cannot be recovered,
-   follow **Blocked outcome**; do not continue to logging.
+   gate before logging; chat-only output cannot pass it.
 3. **Log the saved review.** Run Review Log with the saved Completion summary's
-   values. If the required log is forbidden, show its fields as not persisted
-   and take **Blocked outcome**. If it fails, apply the write policy's recovery.
-   Neither case supplies completion or saved-dashboard credit.
+   values. Only a successful required log permits publication as a saved review.
 4. **Publish.** Display the Review Readiness Dashboard, then present the saved
    Completion summary to the user.
 5. **Choose navigation.** Use Next Steps — Review Chaining and wait for its answer.

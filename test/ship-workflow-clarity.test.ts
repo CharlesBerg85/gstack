@@ -261,9 +261,12 @@ test('ship template consolidation: duplicate design defects have one action with
 
 test('ship template consolidation: the parent owns one ordered review phase', () => {
   const intro = compact(reviewTemplate.slice(0, reviewTemplate.indexOf('{{CONFIDENCE_CALIBRATION}}')));
-  expect(intro).toContain('The parent owns Steps 9–11');
+  expect(intro).toContain('The parent owns this loop');
   expect(intro).toContain('Set CYCLES to 0 on first entry only');
-  expect(intro).toContain('Steps 10–11 queue findings for Step 9.4 to fix, using the same counter and approvals');
+  expect(intro).toContain('Run Step 9, then Step 10\'s outside comments, then Step 11\'s adversarial review');
+  expect(intro).toContain('Steps 10–11 never edit product code: they return approved findings to a new Step 9 pass');
+  expect(intro).toContain('reads the current content before Step 9.4 applies fixes');
+  expect(intro).toContain('retain it with the approvals on every return');
   expect(intro).toContain('Changed finding scope needs a new decision');
   expect(intro).toContain('If fan-out is gated/unsupported, continue at 9.2.1, not past QA or Step 11');
   expect(intro).toContain('Step 9.4 decides whether to repeat, stop for missing dispatched output, or continue');
@@ -384,10 +387,52 @@ test('ship names the approval scope, probe-risk decision, and native-review reco
   expect(entry).toContain('Never exchange tokens between passes');
   expect(review).toContain('ask the user to stop for repair (recommended) or accept each named probe\'s concrete risk. Use AskUserQuestion');
   expect(review).toContain('accept risk only on the user\'s explicit choice, never a skipped fix');
-  expect(adversarial).toContain('Restore its prerequisites before resuming Step 11 within the remaining allowances');
-  expect(adversarial).toContain('Outside-provider output never replaces that pass');
+  expect(adversarial).toContain('Once it is confirmed stopped, a concrete prerequisite correction permits one recovery retry during this invocation');
+  expect(adversarial).toContain('Record that retry before launch; later review cycles do not reset it');
+  expect(adversarial).toContain('after that retry fails, keep ship blocked');
+  expect(adversarial).toContain('Outside-provider output never replaces the native pass');
   expect(entry).toContain('version in its message and co-author trailer (not a Git tag)');
   expect(entry).toContain('encode null/undetermined as -1');
+});
+
+test('native recovery has its own bounded retry without resetting fixing or documentation limits', () => {
+  const entry = compact(entryTemplate);
+  const adversarial = compact(readTemplate('ship/sections/adversarial.md.tmpl'));
+  expect(entry).toContain('Step 11 permits one corrected native-review retry');
+  expect(entry).toContain('Step 9 permits 3 fixing cycles');
+  expect(entry).toContain('Step 14.5 permits an initial audit plus ONE repair/re-audit');
+  expect(adversarial).toContain('STOP and report the failure and needed repair');
+  expect(adversarial).toContain('Once it is confirmed stopped, a concrete prerequisite correction');
+  expect(adversarial).toContain('Record that retry before launch; later review cycles do not reset it');
+  expect(adversarial).toContain('Without a correction, with missing access, or after that retry fails, keep ship blocked');
+  expect(adversarial).toContain('Normal fresh reviews after code fixes are not recovery retries');
+  expect(adversarial).toContain("Step 9's fixing-cycle limit");
+});
+
+test('late verified generated outputs are committed before publication without absorbing user files', () => {
+  const commit = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 15:'), entryTemplate.indexOf('## Step 16:')));
+  const finish = compact(entryTemplate.slice(entryTemplate.indexOf('### 5. Report, then push'), entryTemplate.indexOf('## Step 17:')));
+  expect(commit).toContain('Verified generated outputs found later in Step 16 may follow in a separate commit');
+  expect(finish).toContain('Inspect the selected release files for uncommitted content');
+  expect(finish).toContain("Commit any remaining approved, verified changes, including generated outputs, using Step 15's grouping rules");
+  expect(finish).toContain('Preserve unrelated user files');
+  expect(finish).toContain('A commit without content changes keeps the evidence valid');
+  expect(finish).toContain('any content change returns to stage 1 before publication');
+  expect(finish.indexOf('Commit any remaining')).toBeLessThan(finish.indexOf('Otherwise continue to Step 17'));
+});
+
+test('missing test suites need a named gap decision rather than a fabricated fresh receipt', () => {
+  const tests = compact(readTemplate('ship/sections/tests.md.tmpl'));
+  const gate = compact(entryTemplate.slice(entryTemplate.indexOf('## Step 16:'), entryTemplate.indexOf('## Step 17:')));
+  expect(tests).toContain('If no applicable test suite exists');
+  expect(tests).toContain('A) Add tests and return to Step 4 (recommended), B) Ship with this named testing gap, or C) Stop');
+  expect(tests).toContain('Reuse an actual prior B answer only for the same scope and content');
+  expect(tests).toContain('declining bootstrap alone is not that approval');
+  expect(tests).toContain('Independent build, eval, review and QA gates still apply');
+  expect(tests).toContain('A declared but unavailable suite is a blocker, not an absent suite');
+  expect(gate).toContain('With no Step 5 lanes, require its explicit untested-scope approval, still applicable to the final content');
+  expect(gate).toContain("Otherwise return to Step 5's no-tests decision");
+  expect(gate).toContain('Report the gap, never FRESH');
 });
 
 test('ship template consolidation: remote integration retains all allowances and cannot bypass publication guards', () => {

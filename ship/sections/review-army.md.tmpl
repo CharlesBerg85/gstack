@@ -1,8 +1,12 @@
 ## Step 9: Pre-Landing Review
 
-The parent owns Steps 9–11. Set CYCLES to 0 on first entry only; Steps 10–11
-queue findings for Step 9.4 to fix, using the same counter and approvals.
-Changed finding scope needs a new decision.
+Run Step 9, then Step 10's outside comments, then Step 11's adversarial review.
+Only when all three finish without queued fixes can release preparation start.
+Steps 10–11 never edit product code: they return approved findings to a new Step 9
+pass, which reads the current content before Step 9.4 applies fixes.
+
+The parent owns this loop. Set CYCLES to 0 on first entry only and retain it with
+the approvals on every return. Changed finding scope needs a new decision.
 
 Each pass runs checklist/design, specialists (9.1), merge/Red Team (9.2),
 exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4). If fan-out is

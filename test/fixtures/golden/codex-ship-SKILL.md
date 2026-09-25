@@ -464,12 +464,15 @@ fixes; and each check's command/label, result/counts, timestamp, log and inputs.
 Keep the docs candidate/id, accepted hashes or named blocked exception there too.
 
 Update this note on every return. It does not replace helper receipts or reset
-limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles, and
-Step 14.5 permits an initial audit plus ONE repair/re-audit. Reuse an approval
+limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles,
+Step 11 permits one corrected native-review retry, and Step 14.5 permits an initial
+audit plus ONE repair/re-audit. Reuse an approval
 only for the same finding, files and action.
 
 Review helpers return a `*_START` token identifying the content about to be read,
 including tracked and non-ignored untracked files (`wtree`), not just a commit.
+The parent Step 9 pass owns REVIEW_START. Each Step 11 reviewer attempt owns a
+separate PASS_START; design review owns DESIGN_START. Keep each with its owner.
 Capture it before each pass reads its inputs and finish that pass with the same
 token. Never exchange tokens between passes.
 
@@ -891,6 +894,13 @@ Only commit if there are changes. Stage all bootstrap files (config, test direct
 ## Step 5: Run tests (on merged code)
 
 Use the project's test commands discovered in Step 4 or documented in AGENTS.md/AGENTS.md. Run every applicable suite; do not assume Rails or Vitest. The commands below are examples only for repositories that actually provide them. Use the same lane labels and exact commands again in Step 16.
+
+**If no applicable test suite exists:** Name the untested scope. AskUserQuestion:
+A) Add tests and return to Step 4 (recommended), B) Ship with this named testing
+gap, or C) Stop. Reuse an actual prior B answer only for the same scope and
+content; declining bootstrap alone is not that approval. B continues with the
+gap recorded, not passing tests. Independent build, eval, review and QA gates
+still apply. A declared but unavailable suite is a blocker, not an absent suite.
 
 **For Rails projects using `bin/test-lane`, do NOT run `RAILS_ENV=test bin/rails db:migrate`** — `bin/test-lane` already calls
 `db:test:prepare` internally, which loads the schema into the correct lane database.
@@ -1679,9 +1689,13 @@ Compare the stated intent with the actual changes before reviewing code quality.
 
 ## Step 9: Pre-Landing Review
 
-The parent owns Steps 9–11. Set CYCLES to 0 on first entry only; Steps 10–11
-queue findings for Step 9.4 to fix, using the same counter and approvals.
-Changed finding scope needs a new decision.
+Run Step 9, then Step 10's outside comments, then Step 11's adversarial review.
+Only when all three finish without queued fixes can release preparation start.
+Steps 10–11 never edit product code: they return approved findings to a new Step 9
+pass, which reads the current content before Step 9.4 applies fixes.
+
+The parent owns this loop. Set CYCLES to 0 on first entry only and retain it with
+the approvals on every return. Changed finding scope needs a new decision.
 
 Each pass runs checklist/design, specialists (9.1), merge/Red Team (9.2),
 exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4). If fan-out is
@@ -2489,9 +2503,13 @@ Optional outside failures retain their own incomplete records.
 
 ---
 
-If the required native pass did not complete, report its failure and needed repair.
-Restore its prerequisites before resuming Step 11 within the remaining allowances;
-missing access needs the user. Outside-provider output never replaces that pass.
+If the required native pass did not complete, STOP and report the failure and
+needed repair. Once it is confirmed stopped, a concrete prerequisite correction
+permits one recovery retry during this invocation. Record that retry before
+launch; later review cycles do not reset it. Without a correction, with missing
+access, or after that retry fails, keep ship blocked and ask for the needed repair.
+Normal fresh reviews after code fixes are not recovery retries and still follow
+Step 9's fixing-cycle limit. Outside-provider output never replaces the native pass.
 
 Run the following memory updates only after the review phase finishes without queued
 fixes. Then proceed to Step 12; a return to Step 9 skips these updates for now.
@@ -2771,7 +2789,8 @@ Create small, logical commits for `git bisect`. If all changes are already commi
    Under 50 lines across fewer than 4 files may use one commit.
 2. Order dependencies first: infrastructure → models/services → controllers/views.
    Each commit must work independently, without broken imports or missing code.
-   VERSION + CHANGELOG + TODOS.md belong in the final commit.
+   Group VERSION + CHANGELOG + TODOS.md after the feature commits. Verified
+   generated outputs found later in Step 16 may follow in a separate commit.
 3. Use `<type>: <summary>` (feat/fix/chore/refactor/docs) and a brief body.
    Only the final VERSION/CHANGELOG commit gets the version in its message and co-author trailer (not a Git tag):
 
@@ -2856,8 +2875,9 @@ $GSTACK_ROOT/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --la
 ```
 
 Do not exempt `TODOS.md` or generated tests: authored docs, new tests, fixes and
-TODO edits make evidence STALE. With no Step 5 lanes, report the gap, not FRESH;
-declared builds must still pass.
+TODO edits make evidence STALE. With no Step 5 lanes, require its explicit
+untested-scope approval, still applicable to the final content. Otherwise return
+to Step 5's no-tests decision. Report the gap, never FRESH; declared builds must pass.
 
 For FRESH (exit 0), cite the label, exit, timestamp and log. For STALE/MISSING
 (changed content, command or age, or no proven run), run
@@ -2872,6 +2892,11 @@ Without that proof, use STALE/MISSING. Stale content cannot take this exception;
 unchanged green suites do not need a rerun just to repair bookkeeping.
 
 ### 5. Report, then push
+
+Inspect the selected release files for uncommitted content. Commit any remaining
+approved, verified changes, including generated outputs, using Step 15's grouping
+rules. Preserve unrelated user files. A commit without content changes keeps the
+evidence valid; any content change returns to stage 1 before publication.
 
 Paste build/docs/test results. Reuse waivers only for the same verified
 pre-existing failures and approved scope; cite approval and failing counts,

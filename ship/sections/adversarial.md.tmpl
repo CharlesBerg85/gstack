@@ -1,8 +1,12 @@
 {{ADVERSARIAL_STEP}}
 
-If the required native pass did not complete, report its failure and needed repair.
-Restore its prerequisites before resuming Step 11 within the remaining allowances;
-missing access needs the user. Outside-provider output never replaces that pass.
+If the required native pass did not complete, STOP and report the failure and
+needed repair. Once it is confirmed stopped, a concrete prerequisite correction
+permits one recovery retry during this invocation. Record that retry before
+launch; later review cycles do not reset it. Without a correction, with missing
+access, or after that retry fails, keep ship blocked and ask for the needed repair.
+Normal fresh reviews after code fixes are not recovery retries and still follow
+Step 9's fixing-cycle limit. Outside-provider output never replaces the native pass.
 
 Run the following memory updates only after the review phase finishes without queued
 fixes. Then proceed to Step 12; a return to Step 9 skips these updates for now.

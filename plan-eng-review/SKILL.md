@@ -656,8 +656,8 @@ Scope Challenge is mandatory before Section 1.
 Use this routing at every STOP or failed verification; do not restart the review.
 
 **Paused question:** Wait for its actual answer without completion telemetry or ExitPlanMode.
-Resume that question's local procedure with the answer. A missing-result call
-that may have surfaced is still pending; do not duplicate it.
+For a remedy, resume Decision procedure step 6; for a selector, resume its local
+rule. A missing-result call that may have surfaced is still pending; do not duplicate it.
 
 **Repairable write/read failure:** Stop before the dependent question or output.
 Use that step's stated recovery, then repeat its full Read-back verification.

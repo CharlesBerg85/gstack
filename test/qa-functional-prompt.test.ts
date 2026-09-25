@@ -10,6 +10,8 @@ test('the native launcher consumes the family-specific actor boundary', () => {
   for (const entry of QA_FUNCTIONAL_CASES) {
     const prompt = qaFunctionalPrompt(entry);
     expect(prompt).toContain(`Read ${entry.mode}/SKILL.md`);
+    expect(prompt).toContain(entry.mode === 'qa' ? 'Full exploration and the Standard fix tier' : 'Full report-only exploration');
+    expect(prompt).not.toContain('at Standard depth');
     expect(prompt).toContain('successful Write result before the next probe');
     expect(prompt).toContain('no shell composition, scripts or added path operands');
     expect(prompt).toContain('ONLY complete JSON actually emitted');
@@ -19,6 +21,12 @@ test('the native launcher consumes the family-specific actor boundary', () => {
       ? 'The generic wrapper does NOT support wait'
       : 'bun cancel.ts is a CLI-only entrypoint, not part of this fixture');
     expect(prompt).not.toContain('parseInt');
+    if (entry.family === 'webhook') {
+      expect(prompt).toContain('All eight scenarios are required coverage; a replay does not replace another scenario');
+      expect(prompt).toContain('Choose their order from observations after the happy path');
+    } else {
+      expect(prompt).not.toContain('All eight scenarios');
+    }
   }
 });
 

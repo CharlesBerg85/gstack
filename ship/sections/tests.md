@@ -196,6 +196,13 @@ Only commit if there are changes. Stage all bootstrap files (config, test direct
 
 Use the project's test commands discovered in Step 4 or documented in CLAUDE.md/AGENTS.md. Run every applicable suite; do not assume Rails or Vitest. The commands below are examples only for repositories that actually provide them. Use the same lane labels and exact commands again in Step 16.
 
+**If no applicable test suite exists:** Name the untested scope. AskUserQuestion:
+A) Add tests and return to Step 4 (recommended), B) Ship with this named testing
+gap, or C) Stop. Reuse an actual prior B answer only for the same scope and
+content; declining bootstrap alone is not that approval. B continues with the
+gap recorded, not passing tests. Independent build, eval, review and QA gates
+still apply. A declared but unavailable suite is a blocker, not an absent suite.
+
 **For Rails projects using `bin/test-lane`, do NOT run `RAILS_ENV=test bin/rails db:migrate`** — `bin/test-lane` already calls
 `db:test:prepare` internally, which loads the schema into the correct lane database.
 Running bare test migrations without INSTANCE hits an orphan DB and corrupts structure.sql.
