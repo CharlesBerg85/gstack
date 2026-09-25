@@ -418,6 +418,9 @@ Read sections in full when directed; do not work from memory.
 |------|-------------------|
 | running selected report-only baseline and exploratory probes without product or test writes | `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
 
+This index is a lookup table, not the execution sequence. Follow the workflow below
+from Request Parameters; the shared QA methods are prerequisites to exploration.
+
 ## Request Parameters
 
 **Parse the user's request for these parameters:**
@@ -501,9 +504,10 @@ A missing baseline blocks that surface's regression coverage, not independent ch
 ## Prepare Report Artifacts
 
 Resolve and preserve supplied prior report/baseline paths and their evidence links
-before writing. Use the requested output dir or `.gstack/qa-reports` as `REPORT_DIR`
-only when it is empty; otherwise choose a fresh owned run subdirectory. Create the
-chosen directory if needed. All local reports, baselines and evidence use this directory.
+before writing. Select the requested output dir or `.gstack/qa-reports`; create it if absent.
+Use that directory as `REPORT_DIR` only when it is empty; otherwise choose a fresh owned run subdirectory.
+Use `run-YYYYMMDDTHHMMSSZ` in UTC, adding a suffix on collision.
+All local reports, baselines and evidence use this directory.
 Never overwrite previous reports, baselines, screenshots or exploration notes.
 
 A caller's fixed artifact paths and permissions take precedence. An existing empty
@@ -524,6 +528,11 @@ when no repository name is available. List the individual targets in the report.
 Read `sections/browser-setup.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full. Find qa/gstack-qa beside this host's installed caller skill. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA. No product-directory or cross-host substitutes.
 
 ---
+
+## Run the Selected Checks
+
+Complete the scope Read above, then the applicable method Reads below, before
+entering exploration. Knowing the target is functional does not replace those Reads.
 
 Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads:
 

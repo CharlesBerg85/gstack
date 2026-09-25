@@ -13,6 +13,8 @@ import type { runSkillTest, SkillTestResult } from './helpers/session-runner';
 import { SESSION_DRAIN_GRACE_MS } from './helpers/session-runner';
 import { CAPTURE_MS } from './helpers/eval-budgets';
 import { readQACheckpointFiles } from './helpers/qa-checkpoint-evidence';
+import { generateQAExploratory, generateQAReview, generateQAReviewPreflight } from '../scripts/resolvers/qa';
+import { HOST_PATHS } from '../scripts/resolvers/types';
 
 function nativeCall(id: string, name: string, input: object, output: string, parent: string | null = null, failed = false) {
   return [
@@ -84,6 +86,52 @@ function rebuildCheckpoints(observed: ReturnType<typeof evidence>) {
 }
 
 describe('caller native-event observer controls', () => {
+  test('a full parent section Read cannot substitute for actual method Reads', () => {
+    const observed = evidence();
+    observed.result.transcript.splice(0, 6, ...nativeCall('parent', 'Read', { file_path: '/fixture/caller-review.md' }, qaCallerInstructions('review')));
+    const errors = validateCallerEvidence(observed);
+    expect(errors).toEqual(['missing executed resource read: /qa/sections/exploratory.md', 'missing executed resource read: /qa/sections/system-functional.md']);
+  });
+
+  test('late-input synthetic replay keeps stale adverse coverage and overall remaining separate from passing happy proof', () => {
+    const observed = evidence();
+    const current = { ...happy, id: 'current-happy', snapshot: 'changed-fixture-inputs' };
+    observed.probes.push(current);
+    observed.currentSnapshot = current.snapshot;
+    observed.receipt.probes = [current.id, adverse.id];
+    observed.receipt.remaining = ['rerun rejection against changed fixture inputs'];
+    rebuildCheckpoints(observed);
+    expect(validateCallerEvidence(observed)).toEqual(['false green for charter: adverse', 'blocked, failing or incomplete coverage reported green']);
+    observed.receipt.remaining = [];
+    expect(validateCallerEvidence(observed)).toEqual(['missing current charter: adverse', 'false green for charter: adverse']);
+    const freshAdverse = { ...adverse, id: 'current-adverse', snapshot: current.snapshot };
+    observed.probes.push(freshAdverse);
+    observed.receipt.probes = [current.id, freshAdverse.id];
+    rebuildCheckpoints(observed);
+    expect(validateCallerEvidence(observed)).toEqual([]);
+    observed.result.transcript.splice(-4, 2);
+    expect(validateCallerEvidence(observed).some(error => error.includes('checkpoint'))).toBe(true);
+  });
+
+  test('a defect replay note must copy the immediately prior result, not the older failing receipt', () => {
+    const observed = evidence();
+    observed.probes[0].status = 'fail';
+    observed.probes.push({ ...observed.probes[0], id: 'defect-replay' });
+    observed.receipt.status = 'fail';
+    rebuildCheckpoints(observed);
+    expect(validateCallerEvidence(observed)).toEqual([]);
+    const file = path.join(observed.reportRoot, 'exploration-002.json');
+    const note = JSON.parse(observed.checkpointFiles['exploration-002.json']);
+    note.observationCommand = 'bun scripts/probe.ts 3';
+    note.observed = observed.probes[0];
+    const content = JSON.stringify(note);
+    fs.writeFileSync(file, content, { mode: 0o600 });
+    observed.checkpointFiles['exploration-002.json'] = content;
+    for (const event of observed.result.transcript as any[]) for (const block of event.message.content) {
+      if (block.type === 'tool_use' && block.name === 'Write' && block.input.file_path === file) block.input.content = content;
+    }
+    expect(validateCallerEvidence(observed)).toContain('QA checkpoint: Missing unique completed checkpoint before probe: bun scripts/probe.ts 3');
+  });
   test('caller acceptance requires causal persisted checkpoints for every subsequent probe', () => {
     const observed = evidence();
     expect(validateCallerEvidence(observed)).toEqual([]);
@@ -364,13 +412,45 @@ describe('caller native-event observer controls', () => {
 });
 
 describe('generated actual parent paths', () => {
+  test('authored parent QA owns ordered loading, execution and current-input finalization', () => {
+    for (const skillName of ['review', 'ship']) {
+      const ctx = { skillName, tmplPath: `${skillName}/SKILL.md.tmpl`, host: 'claude' as const, paths: HOST_PATHS.claude };
+      const parent = generateQAReview(ctx);
+      const phases = [skillName === 'review' ? "1. Complete Step 4's method Reads before probing" : '1. Load methods before any QA or explicit-verification probe', '2. List the checks that must pass', '3. Run the checks without repairing the product', '4. Check for changes before reporting'];
+      const positions = phases.map(phase => parent.indexOf(phase));
+      expect(positions.every(position => position >= 0)).toBe(true);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      const load = skillName === 'review' ? generateQAReviewPreflight(ctx) : parent.slice(positions[0], positions[1]);
+      if (skillName === 'review') {
+        expect(parent.slice(positions[0], positions[1])).toContain("Complete Step 4's method Reads before probing");
+      }
+      expect(load).toContain('{{QA_RESOURCE:scope}}');
+      expect(load).toContain('sections/exploratory.md');
+      expect(load).toContain('sections/system-functional.md');
+      expect(load).toContain('Caller/report templates cannot replace these method Reads');
+      const flat = parent.replace(/\s+/g, ' ');
+      expect(flat).toContain('Discovery is report-only');
+      expect(flat).toContain('Follow the numbered Probe loop in `sections/exploratory.md` for discovery, replays and revalidation');
+      expect(flat).toContain('Before reporting, read updates from any dispatched agents');
+      expect(flat).toContain('repeat affected review and probes through the same loop without resetting its checkpoint sequence');
+      expect(flat).toContain('Pass only when all required checks pass on the current inputs');
+      expect(flat).toContain('list every failed, blocked, inconclusive or not-run required check otherwise');
+    }
+  });
+
+  test('authored shared loop preserves complete safe observations and re-enters checkpoints after input changes', () => {
+    const text = generateQAExploratory({ skillName: 'qa', tmplPath: 'qa/SKILL.md.tmpl', host: 'claude', paths: HOST_PATHS.claude }).replace(/\s+/g, ' ');
+    for (const contract of ['immediately preceding completed probe', 'copy every key and value', 'nonsecret source/fixture identity hashes', 'Interpretations belong in hypothesis, not observed', 'Terminal summaries belong in the report, not a checkpoint', 'return to step 2 for each affected revalidation', 'Pass requires all required current-input contracts to pass with no required remainder']) {
+      expect(text).toContain(contract);
+    }
+  });
   test('the shared smoke has explicit limits without waiving required plan checks', () => {
-    const body = fs.readFileSync(path.join(import.meta.dir, '../qa/sections/exploratory.md'), 'utf8');
+    const body = fs.readFileSync(path.join(import.meta.dir, '../qa/sections/exploratory.md'), 'utf8').replace(/\s+/g, ' ');
     expect(body).toContain('Stop after 5 minutes or 12 probes, whichever comes first');
-    expect(body).toContain('Bound each\ncommand by the remaining time');
-    expect(body).toContain('Explicit plan checks remain\nrequired even when they exceed this smoke budget');
+    expect(body).toContain('Bound commands by remaining time');
+    expect(body).toContain('Explicit plan checks remain required beyond this smoke budget');
     expect(body).toContain('make /review incomplete.');
-    expect(body).toContain('They block /ship absent explicit\nuser acceptance of that named risk');
+    expect(body).toContain('They block /ship absent explicit user acceptance of that named risk');
   });
 
   test('excerpt extraction fails loudly instead of producing an empty passing fixture', () => {
@@ -419,6 +499,24 @@ describe('real caller-specific native fixture and capture boundary', () => {
   };
   const probe = (fixture: QaCallerFixture, value: string) => spawnSync(process.execPath, ['scripts/probe.ts', value], { cwd: fixture.cwd, encoding: 'utf8', timeout: 5000 });
   const dispose = async (fixture: QaCallerFixture) => { await fixture.close(); fs.rmSync(fixture.root, { recursive: true, force: true }); };
+
+  test('actual runner receives a safe receipt interface without scenario answers or a duplicate QA workflow', async () => {
+    const fixture = await fixtureFor('ship-exploratory-small-cli');
+    try {
+      fixture.config = path.join(fixture.root, 'callback-config');
+      await runQaCaller(fixture, 'free-receipt-interface', async options => {
+        expect(options.prompt).toContain('status is the overall supplied phase gate, not whether some probes passed');
+        expect(options.prompt).toContain('Pass requires no remaining required contracts or gates');
+        expect(options.prompt).toContain('Optional unavailable providers and later stages outside this excerpt are not required remainder');
+        expect(options.prompt).not.toMatch(/bun scripts\/probe\.ts \d|exploration-[0-9]{3}|snapshot.*must|plan:nine|adverse/i);
+        const readme = fs.readFileSync(path.join(fixture.cwd, 'README.md'), 'utf8');
+        expect(readme).toContain('Every diagnostic receipt field is synthetic, nonsecret evidence');
+        expect(readme).toContain('snapshot identifies the owned source and fixture inputs');
+        expect(readme).not.toMatch(/checkpoint|exploration-NNN|hypothesis|nextCommand/);
+        return { exitReason: 'success', transcript: [] } as unknown as SkillTestResult;
+      });
+    } finally { await dispose(fixture); }
+  });
 
   test('caller fixtures canonicalize an aliased temporary parent before checkpoint validation', async () => {
     const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'qc-temp-alias-'));
@@ -642,10 +740,25 @@ describe('real caller-specific native fixture and capture boundary', () => {
       expect(prompt).toContain('do not read or invoke the full parent SKILL.md');
       expect(prompt).toContain('without fetch');
       expect(prompt).toContain('even read-only commands must not be chained');
-      expect(prompt).not.toMatch(/scripts\/probe|invalid input|highest.risk/i);
+      expect(prompt).not.toMatch(/bun scripts\/probe\.ts \d|invalid input|highest.risk/i);
       expect(qaCallerCommandAllowed('pwd && ls -la')).toBe(false);
       expect(qaCallerCommandAllowed('git fetch origin main')).toBe(false);
     } finally { fs.rmSync(fixture.root, { recursive: true, force: true }); }
+  });
+
+  test('all five caller options declare diagnostic checkpoints apart from suite verification', async () => {
+    for (const caseId of QA_CALLER_CASES) {
+      const fixture = createQaCallerFixture(caseId, { installRuntime: false });
+      try {
+        const prompt = qaCallerSessionOptions(fixture, 'free-diagnostic-checkpoint-contract').prompt;
+        expect(prompt).toContain('Use diagnostic-client commands such as `bun scripts/probe.ts <literal>` for exploratory discoveries and their checkpoint evidence.');
+        expect(prompt).toContain('A required `bun run test` is separate suite verification: report it as verification, never as a diagnostic observation or checkpoint anchor/target.');
+        expect(prompt).toContain('Write each diagnostic checkpoint directly to `reports/exploration-NNN.json`, not inside a nested directory.');
+      } finally { await fixture.close(); fs.rmSync(fixture.root, { recursive: true, force: true }); }
+    }
+    expect(qaCallerCommandAllowed('bun scripts/probe.ts 3')).toBe(true);
+    expect(qaCallerCommandAllowed('bun run test')).toBe(true);
+    expect(qaCallerCommandAllowed('bun scripts/probe.ts 3; bun run test')).toBe(false);
   });
 
   test('authorized review bookkeeping leaves the observed product and real Git metadata untouched', async () => {
@@ -770,7 +883,7 @@ describe('real caller-specific native fixture and capture boundary', () => {
       expect(options.allowedTools).toContain('Bash');
       expect(options.prompt).toContain(`This excerpt comes from ${fixture.runtime}/${fixture.caller}/SKILL.md`);
       expect(options.prompt).toContain('not from the excerpt file or product directory');
-      expect(options.prompt).not.toMatch(/exploratory|scripts\/probe|invalid input|highest.risk/i);
+      expect(options.prompt).not.toMatch(/bun scripts\/probe\.ts \d|invalid input|highest.risk/i);
       expect(() => readCallerReceipt(fixture)).toThrow();
       fs.writeFileSync(path.join(fixture.cwd, 'reports/receipt.json'), '{"status":"pass","probes":"none"}');
       expect(() => readCallerReceipt(fixture)).toThrow('Malformed');

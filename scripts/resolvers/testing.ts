@@ -59,7 +59,9 @@ Store conventions as prose context for use in ${ctx.skillName === 'ship' ? 'Step
 
 Absent config files and absent \`tests/\` directories are NOT evidence of "no tests": Django keeps tests in \`<app>/tests.py\`, Go in \`*_test.go\` beside the source, Rust in \`#[test]\` blocks inside \`src/\`. A green \`python manage.py test\` with no \`pytest.ini\` is a tested project, not a bootstrap candidate.
 
-**If BOOTSTRAP_DECLINED** appears: Print "Test bootstrap previously declined — skipping." **Skip the rest of bootstrap.**
+${ctx.skillName === 'ship'
+  ? '**If BOOTSTRAP_DECLINED** appears:\n- Step 5\'s explicit Add tests choice overrides that marker for this invocation only: continue to runtime detection and B2–B3, including framework approval.\n- Otherwise print "Test bootstrap previously declined — skipping" and **skip the rest of bootstrap**.'
+  : '**If BOOTSTRAP_DECLINED** appears: Print "Test bootstrap previously declined — skipping." **Skip the rest of bootstrap.**'}
 
 **If NO ecosystem marker matched:** Use AskUserQuestion:
 "I couldn't detect your project's language. What runtime are you using?"

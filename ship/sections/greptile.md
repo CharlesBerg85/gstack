@@ -2,9 +2,10 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Step 10: Address Greptile review comments (if PR exists)
 
-**Dispatch the fetch + classification as a subagent** using the Agent tool with `subagent_type: "general-purpose"`. The subagent pulls every Greptile comment, runs the escalation detection algorithm, and classifies each comment. Parent receives a structured list and handles user interaction + file edits.
-
-**Foreground required:** pass `run_in_background: false` on the Agent call — subagents run in the BACKGROUND by default since Claude Code v2.1.198. (Merely omitting the flag no longer produces a foreground run; it must be explicitly false.) The dispatch happens ONLY via the Agent tool: invoking the target as a Skill, or executing its workflow inline in your own context, is WRONG even though the skill may appear in your available-skills list — inline execution forfeits the fresh-context isolation this dispatch exists for, and the explicit flag already makes the Agent call block. (Where a step defines an inline FALLBACK, it applies only after a dispatched subagent has failed.)
+Dispatch a subagent through Agent with `subagent_type: "general-purpose"` and
+`run_in_background: false`, using Step 7's shared foreground-dispatch rule.
+It fetches and classifies all Greptile comments,
+including escalation tiers; the parent handles decisions and queues approved fixes.
 
 **Subagent prompt:**
 
@@ -40,7 +41,7 @@ For each comment in `comments`:
 - The comment (file:line or [top-level] + body summary + permalink URL)
 - `RECOMMENDATION: Choose A because [one-line reason]`
 - Options: A) Fix now, B) Acknowledge and ship anyway, C) It's a false positive
-- If user chooses A: queue the approved fix for Step 9, without editing here. After that fix passes review and tests, use the **Fix reply template** from greptile-triage.md (inline diff + explanation) and save per-project/global greptile-history (type: fix).
+- If user chooses A: queue the approved fix without editing here. After that fix passes review and tests, use the **Fix reply template** from greptile-triage.md (inline diff + explanation) and save per-project/global greptile-history (type: fix).
 - If user chooses C: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global greptile-history (type: fp).
 
 **VALID BUT ALREADY FIXED:** Reply using the **Already Fixed reply template** from greptile-triage.md — no AskUserQuestion needed:
@@ -54,13 +55,13 @@ For each comment in `comments`:
   - B) Fix it anyway (if trivial)
   - C) Ignore silently
 - If user chooses A: reply using the **False Positive reply template** from greptile-triage.md (include evidence + suggested re-rank), save to both per-project and global greptile-history (type: fp)
-- If user chooses B: queue the approved fix for Step 9, as above.
+- If user chooses B: queue the approved fix, as above.
 
 **SUPPRESSED:** Skip silently — these are known false positives from previous triage.
 
-**After triage:** With queued fixes, return to Step 9 with their approvals and
-comment references. Step 9.4 owns the edits, tests and fresh reviews. Its zero-fix
-pass returns here, to Step 10: finish the saved replies without asking again about
-completed fixes, and classify any new comments. With no queued fixes, continue to Step 11.
+**After triage:** If fixes were approved, save their approvals and comment references.
+Run Step 9's full review/fix loop, then return here. Finish the saved replies
+without asking again about completed fixes, and classify new comments.
+With no queued fixes, continue to Step 11.
 
 ---

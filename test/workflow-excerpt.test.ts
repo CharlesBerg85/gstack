@@ -63,7 +63,7 @@ describe('workflow judge excerpts', () => {
 
   test('expands ship sections in execution order, not alphabetical order', () => {
     const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
-    const headings = ['## Step 3:', '## Step 4:', '## Step 7:', '## Step 8:', '## Step 9:', '## Step 10:', '## Step 11:', '## Step 12:', '## Step 13:', '## Step 14:'];
+    const headings = ['## Step 3:', '## Step 4:', '## Step 7:', '## Step 8:', '## Step 9:', '## Step 10:', '## Step 11:', '## Step 11.5:', '## Step 12:', '## Step 13:', '## Step 14:'];
     const indices = headings.map(heading => text.indexOf(heading));
     expect(indices.every(index => index >= 0)).toBe(true);
     expect(indices).toEqual([...indices].sort((a, b) => a - b));
@@ -88,12 +88,29 @@ describe('workflow judge excerpts', () => {
 
   test('ship review shortcuts retain dedup and fixes repeat the whole review cycle', () => {
     const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
-    expect(text).toContain("Return to the parent's Exploratory QA step, then continue to Step 9.3 (cross-review dedup)");
+    expect(text).toContain("Continue to Step 9.2 with the core/design-lite findings and an empty specialist list, then the parent's Exploratory QA step and Step 9.3 (cross-review dedup)");
     expect(text).toContain('## Step 9.4: Fix-First and persistence');
-    expect(text.replace(/\s+/g, ' ')).toContain('including design, specialists, Red Team, exploratory QA and dedup');
+    expect(text.replace(/\s+/g, ' ')).toContain('Run checklist/design, specialists (9.1), merge/Red Team (9.2), exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4)');
+    expect(text.replace(/\s+/g, ' ')).toContain('**Fixes applied below the cap:** Run Step 5, affected Steps 6–8, then all of Step 9. Tests must pass or retain approval for the same verified pre-existing failures and scope');
     const audit = text.slice(text.indexOf('## Step 7:'), text.indexOf('## Step 8:'));
     expect(audit).not.toContain('Scope Challenge');
-    expect(text).toContain('Ship anyway retains VERIFY_RESULT=fail');
+    expect(text.replace(/\s+/g, ' ')).toContain('Keep actual outcomes and incomplete flags; VERIFY_RESULT stays fail for plan-check exceptions');
+  });
+
+  test('ship excerpt preserves readable detours, audit fallback and final input decisions', () => {
+    const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules').replace(/\s+/g, ' ');
+    expect(text).toContain('resume the unfinished outer range');
+    expect(text).toContain('a Step 9 retry must finish before Steps 10 and 11 complete');
+    expect(text).toContain('the outer repair returns to Step 11.5');
+    expect(text).toContain('All three snapshots must match');
+    expect(text).toContain('does not mean the failed or unrun probes passed');
+    expect(text).toContain('Fallback recovers the audit; it does not pass or bypass the coverage gate');
+    expect(text).toContain('Skip only the plan completion audit');
+    expect(text).toContain('Continue with Step 8.1, Prior Learnings and Scope Drift');
+    expect(text).toContain('Step 9 QA still runs');
+    expect(text).toContain('Use this example only after confirming that every allowed edit is release metadata');
+    expect(text).not.toContain('Every listed change below is metadata:');
+    expect(text).not.toContain('No plan file found:** Skip entirely');
   });
 
   test('a sliced section is not appended again with its generated header', () => {
@@ -117,9 +134,12 @@ describe('workflow judge excerpts', () => {
     expect(text).toContain('never create an empty commit');
     const review = text.slice(text.indexOf('## Step 9:'), text.indexOf('## Step 10:'));
     expect(review.indexOf('## Confidence Calibration')).toBeLessThan(review.indexOf('1. Read'));
-    expect(review.replace(/\s+/g, ' ')).toContain('if dispatched output is missing, STOP before Step 10');
-    expect(review.replace(/\s+/g, ' ')).toContain('Only a zero-fix pass can continue to Step 10');
-    expect(review.replace(/\s+/g, ' ')).toContain('Require completed, converged coverage or the named QA exception');
+    const flat = review.replace(/\s+/g, ' ');
+    expect(flat).toContain('**No edits in this pass:** Resolve the required-probe gate below. Only after it clears may you continue to Step 10');
+    expect(flat).toContain('**Dispatched reviewer output missing:** STOP');
+    expect(flat).toContain('Retain queued fixes and restore coverage');
+    expect(flat).toContain('**Third fixing cycle reached:** STOP and report recurring findings with `converged:false`; do not run a fourth fixing cycle');
+    expect(flat).toContain('With completed checklist and dispatched reviewers, failed/unavailable required probes block continuation');
   });
 
   test('ship approval gates stay outside the subagent prompts', () => {
@@ -133,7 +153,7 @@ describe('workflow judge excerpts', () => {
       expect(section.indexOf(gate)).toBeGreaterThan(section.indexOf('\n````\n'));
     }
     expect(text).toContain('"partial":N,"not_done":N');
-    expect(text).toContain('each Y response\'s evidence and each D response\'s dropped item');
+    expect(text).toContain('each Y\'d item with the user\'s free-text evidence and each D\'d item with "intentionally dropped"');
   });
 
   test('expands a body before the end marker in the skeleton', () => {
@@ -331,8 +351,8 @@ console.log(JSON.stringify({calls, results}));
   test('ship commits logical chunks without rewriting existing checkpoint commits', () => {
     const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
     const commit = text.slice(text.indexOf('## Step 15:'), text.indexOf('## Step 16:'));
-    expect(commit).toContain('Create small, logical commits');
-    expect(commit).toContain('If all changes are already committed, continue to Step 16');
+    expect(commit).toContain('Make bisectable commits');
+    expect(commit).toContain('if already committed, continue to Step 16');
     expect(commit).toContain('Each commit must work independently');
     expect(commit).not.toMatch(/rebase|reset|squash|fixup|WIP_TODO|gstack-context/);
     expect(text).not.toContain('Step 15.0');

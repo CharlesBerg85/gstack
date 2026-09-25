@@ -4,7 +4,7 @@ name: Periodic Evals
 # tests can't rot invisibly — the class where the autoplan-dual-voice E2E was
 # silently broken for months until a lucky local diff selected it. Engine:
 # scripts/test-paid-shards.ts (the same runner local eval:bg:periodic uses):
-# one planner manifest, 6 ordinary slices plus overlay and Autoplan slices, and a FAIL-CLOSED report — a slice
+# one planner manifest, 7 ordinary slices plus overlay and Autoplan slices, and a FAIL-CLOSED report — a slice
 # whose artifact never landed is a failure, not an absence. The gate-census
 # job is the weekly EVALS_ALL backstop for the gate tier (PR lanes are
 # diff-billed, so without it the full gate census might never execute
@@ -172,7 +172,7 @@ jobs:
           name: paid-plan
           path: /tmp/paid-plan
 
-      - name: Run slice ${{ matrix.slice }}/8
+      - name: Run slice ${{ matrix.slice }}/9
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}

@@ -591,10 +591,21 @@ describe('gen-skill-docs', () => {
       expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md.tmpl'), 'utf8'))
         .toContain('{{QA_EXPLORATORY}}');
       const entry = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf8');
-      expect(entry).toContain("Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads");
+      const directoryRead = skill === 'qa'
+        ? 'Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory'
+        : "Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads";
+      expect(entry).toContain(directoryRead);
+      for (const method of ['system-functional', 'qa-patterns']) {
+        const methodRead = `Read \`sections/${method}.md\` in full.`;
+        expect(entry).toContain(methodRead);
+        expect(entry.indexOf(directoryRead)).toBeLessThan(entry.indexOf(methodRead));
+        const directory = path.resolve(ROOT, skill, skill === 'qa-only' ? '../qa' : '.');
+        expect(fs.realpathSync(path.join(directory, 'sections', `${method}.md`)))
+          .toBe(path.join(ROOT, 'qa', 'sections', `${method}.md`));
+      }
       expect(entry).toContain('**Browser surfaces only:**\nRead `sections/qa-patterns.md` in full.');
       expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md'), 'utf8'))
-        .toContain("Complete the caller's required surface reads first");
+        .toContain('Read the selected surface methods first.');
     }
   });
 
@@ -1154,8 +1165,9 @@ describe('TEST_COVERAGE_AUDIT placeholders', () => {
   });
 
   test('ship SKILL.md contains re-run idempotency behavior', () => {
-    expect(shipSkill).toContain('Re-run behavior (idempotency)');
-    expect(shipSkill).toContain('Every invocation verifies tests, coverage, plan completion, both reviews');
+    expect(shipSkill).toContain('**Route:**');
+    expect(shipSkill.replace(/\s+/g, ' ')).toContain('integrate (1–3) → test and review (4–11.5) → prepare the release (12–15) → verify frozen content (16) → push and publish (17–21)');
+    expect(shipSkill.replace(/\s+/g, ' ')).toContain('Every new invocation repeats Steps 1–16, including both reviews and the docs audit');
     expect(shipSkill.replace(/\s+/g, ' ')).toContain('Steps 12, 17 and 19 prevent duplicate bumps, pushes and PRs, never verification');
   });
 });
@@ -1351,26 +1363,34 @@ describe('PLAN_VERIFICATION_EXEC placeholder', () => {
 
   test('references the shared explorer without invoking an entire QA workflow', () => {
     expect(shipSkill).toContain("From the installed /ship SKILL.md's directory, Read `../qa/sections/scope.md` in full");
-    expect(shipSkill).toContain('Read `sections/exploratory.md` in that QA installation and complete its preflight');
-    expect(shipSkill).toContain('do not invoke an entire QA skill or start duplicate probes');
+    const load = shipSkill.indexOf('Read `sections/exploratory.md` in that QA installation and the selected methods below before continuing');
+    const preflight = shipSkill.indexOf('Run the shared exploratory Charter and preflight now');
+    const probes = shipSkill.indexOf('**3. Run the checks without repairing the product.**');
+    expect(load).toBeGreaterThan(-1);
+    expect(preflight).toBeGreaterThan(load);
+    expect(probes).toBeGreaterThan(preflight);
+    expect(shipSkill).toContain('Do not invoke an entire QA skill or start probes here');
   });
 
   test('keeps declared browser URLs separate from native functional probes', () => {
     expect(shipSkill).toContain('items use the declared project/plan dev URL');
     expect(shipSkill).toContain('functional items use native tools without discovering a web server');
-    expect(shipSkill).toContain('An API URL is\nnot automatically a page');
+    expect(shipSkill.replace(/\s+/g, ' ')).toContain('An API URL is not automatically a page');
   });
 
   test('retains automatic exploration when there is no plan or verification section', () => {
     expect(shipSkill).toContain('If no verification section or no plan file');
-    expect(shipSkill).toContain('The automatic diff-scoped exploratory pass still runs in Step 9');
-    expect(shipSkill).toContain('preserve any plan checks that go beyond the smoke charter');
+    expect(shipSkill).toContain('Automatic diff-scoped QA still runs');
+    expect(shipSkill).toContain('plan checks beyond that smoke budget remain required');
   });
 
   test('blocks unavailable required checks instead of silently skipping them', () => {
-    expect(shipSkill).toContain('noninteractive runs return blocked');
-    expect(shipSkill).toContain('Neither unavailable browser/server nor an\nunreadable section is a passing check or silent waiver');
-    expect(shipSkill).toContain('explicitly risk-accepted by the user');
+    const flat = shipSkill.replace(/\s+/g, ' ');
+    expect(flat).toContain('Noninteractive runs return blocked');
+    expect(flat).toContain("Send failed, blocked or unrun checks through Step 9's required-probe gate, never silently waive them");
+    expect(flat).toContain('Missing/unreadable assets block required QA');
+    expect(flat).toContain('explicitly accept each named probe\'s concrete risk');
+    expect(flat).toContain('Keep actual outcomes and incomplete flags; VERIFY_RESULT stays fail');
   });
 });
 

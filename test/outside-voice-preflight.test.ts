@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { outsideVoiceCommand, outsideVoicePreflight, outsideVoiceInvocation } from '../scripts/resolvers/outside-voice';
-import { generateCodexDocReview, generateCodexPlanReview } from '../scripts/resolvers/review';
+import { generateAdversarialStep, generateCodexDocReview, generateCodexPlanReview } from '../scripts/resolvers/review';
 import { validateOutsideReview } from '../lib/outside-review-result';
 import { HOST_PATHS, type TemplateContext } from '../scripts/resolvers/types';
 import { ALL_HOST_CONFIGS } from '../hosts';
@@ -13,6 +13,27 @@ import { ALL_HOST_CONFIGS } from '../hosts';
 const ROOT = path.resolve(import.meta.dir, '..');
 const TEMP = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-outside-preflight-'));
 afterAll(() => fs.rmSync(TEMP, { recursive: true, force: true }));
+
+test('adversarial outside failures retain the required native pass without duplicate dispatch', () => {
+  for (const host of ALL_HOST_CONFIGS) {
+    for (const skillName of ['ship', 'review']) {
+      const ctx: TemplateContext = { host: host.name, skillName, tmplPath: `${skillName}/SKILL.md.tmpl`, paths: HOST_PATHS[host.name] };
+      const preflight = outsideVoicePreflight(ctx, { disabledBehavior: 'codex-only' });
+      expect(preflight).toMatch(/(?:do not dispatch a duplicate|without duplicating it)/);
+      expect(preflight).not.toMatch(/fall(?:ing)? back to (?:a|the) .*subagent/i);
+      const output = generateAdversarialStep(ctx);
+      expect(output).toContain('adversarial subagent (always runs)');
+      expect(output).toContain('For non-ready modes, retain the native pass above; do not dispatch it again.');
+      expect(output.match(/Retain the required native pass without duplicating it; it cannot complete outside coverage\./g)).toHaveLength(2);
+      expect(output).not.toContain("Use the caller's fallback");
+      expect(output).toContain('Only this optional outside adversarial pass is non-blocking');
+      expect(output).toContain('GATE: MISSING COVERAGE');
+      expect(outsideVoiceInvocation(ctx)).toContain("Use the caller's fallback; missing coverage is never clean/PASS.");
+      const disabled = outsideVoicePreflight(ctx, { disabledBehavior: 'skip-all' });
+      expect(disabled).toMatch(/(?:do NOT fall back|Disabled ends this entire extra review step)/);
+    }
+  }
+});
 
 test('ship design availability is an existing automatic choice, not a new opt-in', () => {
   for (const host of ALL_HOST_CONFIGS) {

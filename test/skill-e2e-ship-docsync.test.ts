@@ -7,7 +7,7 @@ import { runId, describeIfSelected, testConcurrentIfSelected, createEvalCollecto
 import { describeE2ETier } from './helpers/e2e-gate';
 import { docsDispatchIndex, parseDocsCompletion, vetDocsCompletion } from './helpers/docsync-contract';
 import { fixtureDocs, repoSnapshot, changedFiles, DOC_PATH, preserveDocsEvidence, sawSpawnedMarker, type DocsScenario } from './helpers/docsync-fixture';
-import { observeDocsWrites, docsWriteFailures, docsNativeInterface, docsToolFailures, docsCompletedRead } from './helpers/docsync-observer';
+import { observeDocsWrites, docsWriteFailures, docsShipPhase, docsToolFailures, docsCompletedRead, docsSessionOptions } from './helpers/docsync-observer';
 import type { SkillTestResult } from './helpers/session-runner';
 import { runShipDocsFault } from './helpers/docsync-fault-eval';
 
@@ -23,14 +23,12 @@ async function runShipDocs(testName: string, scenario: DocsScenario, dispatchOnl
   const fixture = fixtureDocs(scenario);
   try {
     const skeleton = fs.readFileSync(path.join(fixture.skills, 'ship/SKILL.md'), 'utf8');
-    const start = skeleton.indexOf('## Step 14.5: Documentation audit (every ship)');
-    const end = skeleton.indexOf('## Step 15: Commit');
-    if (start < 0 || end <= start) throw new Error('ship docs phase markers moved');
+    const prBody = fs.readFileSync(path.join(fixture.skills, 'ship/sections/pr-body.md'), 'utf8');
     const phase = path.join(fixture.home, 'phase.md');
     const storePointer = fs.readFileSync(path.join(process.env.DOCSYNC_GENERATED_ROOT || path.resolve(import.meta.dir, '..'), 'ship/sections/apple-release.md'), 'utf8')
       .split('\n').find(line => line.startsWith('**Documentation preflight:**'));
     if (!storePointer) throw new Error('store documentation preflight pointer moved');
-    fs.writeFileSync(phase, scenario === 'store' ? storePointer : skeleton.slice(start, end));
+    fs.writeFileSync(phase, docsShipPhase(skeleton, prBody, scenario, storePointer));
     if (dispatchOnly || scenario === 'legacy') {
       fs.writeFileSync(path.join(fixture.skills, 'document-release/SKILL.md'), `# Ship-owned documentation mode\n\nThis fixture child returns a deliberately obsolete completion. Read the candidate and README; do not run any Git mutation. ${scenario === 'legacy' ? `First read ${DOC_PATH} in full and correct only "Default format: text." to "Default format: JSON." without disturbing the user's note. This simulates partial output before a protocol failure.` : 'Do not edit any files.'}\n\nThe LAST line must be: {"files_updated":[],"commit_sha":null,"pushed":false,"documentation_section":null}\n`);
     }
@@ -42,12 +40,16 @@ async function runShipDocs(testName: string, scenario: DocsScenario, dispatchOnl
     let result: SkillTestResult | undefined;
     let observation: ReturnType<typeof observer.stop>;
     try {
-      result = await runSkillTest({
-      prompt: `Load gstack's /ship workflow. Steps 0–14 are complete in this isolated fixture. Execute the next phase from ${phase}, then stop before the next numbered phase. Skill assets are installed under ${fixture.skills}; HOME=${fixture.home}. Base: main. ${scenario === 'current' ? 'This is a second /ship invocation for an existing open PR; the docs-only branch is already pushed. Earlier audit results are not evidence for this invocation.' : ''} ${scenario === 'store' ? 'The selected store-release source is the current working tree on main. All App Store operations are mocked and out of scope; no permissions to edit source are granted.' : ''} After the phase, write the ship outcome to ${report}. Only if the workflow gate actually allows continuing, run the isolated publication stand-in: bun ${publish}. No real PR, push, store action or later ship phase is authorized. If a decision is required, record the exact blocker and stop; no risk exception is granted. Preserve all partial content.\n\n${docsNativeInterface(fixture, [publish])}`,
-      workingDirectory: fixture.repo, maxTurns: 30,
-      allowedTools: ['Bash', 'Read', 'Grep', 'Glob', 'Write', 'Edit', 'Agent', 'Task'],
-      timeout: Math.max(1, deadline - Date.now() - 15_000), env: fixture.env, testName, runId,
-      });
+      result = await runSkillTest(docsSessionOptions({
+        fixture,
+        phase,
+        report,
+        publish,
+        scenario,
+        testName,
+        runId,
+        timeout: Math.max(1, deadline - Date.now() - 15_000),
+      }));
     } finally {
       observation = observer.stop();
       preserveDocsEvidence(fixture, result ?? { output: 'capture did not return', toolCalls: [] }, runId, testName, { observation });
@@ -108,7 +110,7 @@ async function runShipDocs(testName: string, scenario: DocsScenario, dispatchOnl
           if (scenario === 'updated') expect(fs.readFileSync(path.join(fixture.repo, DOC_PATH), 'utf8')).toMatch(/Default format: JSON\./i);
         }
         const actualMutation = calls.filter(call => call.tool === 'Bash').map(call => String(call.input?.command))
-          .filter(command => /\bgit\s+(?:add|commit|push|reset|checkout|stash|merge|pull|rebase)\b/.test(command));
+          .filter(command => /\bgit\s+(?:add|commit|push|reset|checkout|stash|merge|pull|rebase)(?=[\s;&|<>)]|$)/.test(command));
         expect(actualMutation).toEqual([]);
       }
       passed = true;

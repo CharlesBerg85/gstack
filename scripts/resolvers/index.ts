@@ -39,7 +39,7 @@ import { generateAsideSetup, generateAsideCookbook, generateAsideResearch, gener
 import { generateCommandReference, generateSnapshotFlags, generateBrowseSetup, generateBrowseFallback } from './browse';
 import { generateDesignDocDiscovery } from './design-doc-discovery';
 import { generateSharedLibsRubric } from './shared-libs';
-import { generateQAScope, generateQAExploratory, generateQAFunctional, generateQAResource, generateQAReview, generateQAMethodReads } from './qa';
+import { generateQAScope, generateQAExploratory, generateQAFunctional, generateQAResource, generateQAReview, generateQAReviewPreflight, generateQAMethodReads } from './qa';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
   AUTOPLAN_PUBLICATION_HOOK: generateAutoplanPublicationHook,
@@ -80,6 +80,7 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   QA_FUNCTIONAL: generateQAFunctional,
   QA_RESOURCE: generateQAResource,
   QA_REVIEW: generateQAReview,
+  QA_REVIEW_PREFLIGHT: generateQAReviewPreflight,
   QA_METHOD_READS: generateQAMethodReads,
   DESIGN_METHODOLOGY: generateDesignMethodology,
   DESIGN_HARD_RULES: generateDesignHardRules,

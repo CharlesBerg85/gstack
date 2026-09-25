@@ -445,7 +445,7 @@ branch name wherever the instructions say "the base branch" or `<default>`.
 
 # Pre-Landing PR Review
 
-You are running the `/review` workflow. Analyze the current branch's diff against the base branch for structural issues that tests don't catch.
+Review the branch diff against the base for structural issues tests miss.
 
 ---
 
@@ -457,10 +457,10 @@ sections. Read a section in full before doing its step; do not work from memory.
 | When | Read this section |
 |------|-------------------|
 | finishing Step 1.5's Scope Check | `sections/plan-completion.md` |
+| QA resources before static review | Use Step 4's installed-relative Reads; run QA in Step 4.7 |
 | dispatching the Review Army specialists and merging their findings after the critical pass (Step 4.5) | `sections/review-army.md` |
-| exploratory QA before Fix-First (Step 4.7) | Use that step's installed-relative QA Read directive below |
-| reusing explicitly skipped shared-code advice (Step 5.0) | `sections/shared-code-reuse.md` |
 | running the always-on native adversarial review before fixes (Step 4.8) | `sections/adversarial.md` |
+| reusing explicitly skipped shared-code advice (Step 5.0) | `sections/shared-code-reuse.md` |
 
 ---
 
@@ -500,11 +500,6 @@ Compare the stated intent with the actual changes before reviewing code quality.
 
 > **STOP.** Before finishing Step 1.5's Scope Check, Read `~/.claude/skills/gstack/review/sections/plan-completion.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
-
-Finish Step 1.5 here, before starting the main review. Use the plan audit's
-findings (or its fallback intent sources) to emit one final Scope Check; do not
-publish a preliminary Scope Check that then needs updating. Keep the plan audit
-separate and honor its HIGH-impact discrepancy question before continuing.
 
 ## Step 2: Read the checklist
 
@@ -554,7 +549,7 @@ too (`git ls-files --others --exclude-standard`); the fingerprint includes it.
 
 ## Step 3.4: Workspace-aware queue status (advisory)
 
-Check whether this PR's claimed VERSION still points at a free slot in the queue. Advisory only — never blocks review; just informs the reviewer about landing-order risk.
+Check the claimed VERSION's queue slot. This landing-order advice never blocks review.
 
 ```bash
 BRANCH_VERSION=$(git show HEAD:VERSION 2>/dev/null | tr -d '\r\n[:space:]' || echo "")
@@ -578,16 +573,14 @@ Compare dotted version components as integers from left to right; missing traili
 
 ## Step 3.5: Slop scan (advisory)
 
-Run a slop scan on changed files to catch AI code quality issues (empty catches,
-redundant `return await`, overcomplicated abstractions):
+Scan changed files for empty catches, redundant `return await` and needless abstractions:
 
 ```bash
 bun run slop:diff origin/<base> 2>/dev/null || true
 ```
 
-If findings are reported, include them in the review output as an informational
-diagnostic. Slop findings are advisory, never blocking. If slop:diff is not
-available (e.g., slop-scan not installed), skip this step silently.
+Include findings as non-blocking informational diagnostics. If slop:diff is
+unavailable, skip silently.
 
 ---
 
@@ -665,26 +658,42 @@ Sanitize every query before it leaves the machine: strip hostnames, IPs, file pa
 
 ## Step 4: Critical pass (core review)
 
-Apply the CRITICAL categories from the checklist against the diff:
-SQL & Data Safety, Race Conditions & Concurrency, LLM Output Trust Boundary, Shell Injection, Enum & Value Completeness.
+Load the QA resources below now. Step 4 is read-only; Step 4.7 owns setup, charters and probes.
 
-Also apply the remaining INFORMATIONAL categories that are still in the checklist (Async/Sync Mixing, Column/Field Name Safety, LLM Prompt Issues, Type Coercion, View/Frontend, Time Window Safety, Completeness Gaps, Distribution & CI/CD).
+From the installed /review SKILL.md's directory, choose one path:
+- If the caller directory is `review`, Read `../qa/sections/scope.md` in full.
+- If the caller directory is prefixed `gstack-review`, use `../gstack-qa/sections/scope.md` instead and read it in full.
+Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
+
+Resolve later QA paths in that installed QA directory.
+> **STOP.** Read `sections/exploratory.md` in that QA installation and the selected methods below before continuing.
+> A plan command is a probe, not an exception to this gate.
+**Functional surfaces:**
+Read `sections/system-functional.md` in full.
+
+**Browser surfaces only:**
+Read `sections/browser-setup.md` in full unless already completed;
+Read `sections/qa-patterns.md` in full.
+
+Caller/report templates cannot replace these method Reads.
+
+Apply both checklist passes in order: CRITICAL, then INFORMATIONAL. Respect its suppressions.
 
 **Enum & Value Completeness requires reading code OUTSIDE the diff.** When the diff introduces a new enum value, status, tier, or type constant, use Grep to find all files that reference sibling values, then Read those files to check if the new value is handled. Shared-code analysis also requires reading related callers outside the diff; keep findings anchored to changed code.
 
-**Search-before-recommending:** When recommending a fix pattern (especially for concurrency, caching, auth, or framework-specific behavior), research through Aside (Web research runs in Aside, above):
-- Verify the pattern is current best practice for the framework version in use
-- Check if a built-in solution exists in newer versions before recommending a workaround
-- Verify API signatures against current docs (APIs change between versions)
+**Search-before-recommending:** Research proposed fixes through Aside, especially
+concurrency, caching, auth and framework behavior:
+- Check current best practice for the installed framework version.
+- Look for a newer built-in before proposing a workaround.
+- Verify API signatures against current docs.
 
 ```bash
 _EG="$HOME/.claude/skills/gstack/bin/gstack-egress-lib.sh"; [ -r "$_EG" ] && . "$_EG"; _aside_exec() { if command -v _gstack_egress_run >/dev/null 2>&1; then _gstack_egress_run open aside-agent aside.com aside-exec "user invoked this skill" --no-payload aside exec "$@"; else aside exec "$@"; fi; }
 _aside_exec "Search the web for {framework} {version} {pattern} current best practice and whether a built-in replaces it. Read-only: do not sign in, submit, or change anything. Reply with up to 5 bullets, each with its source URL, then stop."
 ```
 
-Takes seconds, prevents recommending outdated patterns. If the Aside check did not print `READY`, use the WebSearch tool when the host provides it; with neither, note it and proceed with in-distribution knowledge.
-
-Follow the output format specified in the checklist. Respect the suppressions — do NOT flag items listed in the "DO NOT flag" section.
+Without Aside `READY`, use WebSearch if available; with neither, disclose the gap
+and use existing knowledge.
 
 ### Shared-code opportunities (core pass)
 
@@ -739,7 +748,9 @@ GSTACK_SHARED_LIBS_JSON
 
 Use the returned fingerprint; malformed/missing metadata requires revalidation. Real defects follow Fix-First independently: advice or a prior Skip cannot suppress, downgrade or replace them, even with a shared supplied fingerprint.
 
-Core findings use the confidence gates below; Step 4.6 applies its separate specialist gates.
+Core findings use the confidence gates below; Step 4.6 applies its specialist gates.
+Use CRITICAL/INFORMATIONAL labels in the finding format, not the example P1/P2 labels.
+Step 5.8 combines these finding lines with the checklist's action groups.
 
 ## Confidence Calibration
 
@@ -806,9 +817,8 @@ higher confidence.
 
 ### TODOS cross-reference
 
-Read the root `TODOS.md` if present. Report closed items as
-"This PR addresses TODO: <title>". Flag newly needed TODOs as informational findings
-and cite related items when discussing findings. Skip silently if the file is absent.
+If root `TODOS.md` exists, report closed items as "This PR addresses TODO: <title>".
+Flag new TODOs as informational and cite related items. Otherwise skip silently.
 
 ### Documentation staleness check
 
@@ -826,36 +836,43 @@ critical finding or another writer during collection. Skip silently if no docs e
 
 ### Step 4.7: Exploratory QA (before Fix-First)
 
-From the installed /review SKILL.md's directory, choose one path:
-- If the caller directory is `review`, Read `../qa/sections/scope.md` in full.
-- If the caller directory is prefixed `gstack-review`, use `../gstack-qa/sections/scope.md` instead and read it in full.
-Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
+You, the parent agent, run this phase, not specialists.
+Discovery is report-only. Use the caller's report directory or a new owned
+`.gstack/qa-reports` subdirectory. Never overwrite another run.
 
-Read `sections/exploratory.md` in that QA installation and complete its preflight.
-Before probing:
-**Functional surfaces:**
-Read `sections/system-functional.md` in full.
+**1. Complete Step 4's method Reads before probing.**
 
-**Browser surfaces only:**
-Read `sections/browser-setup.md` in full unless already completed;
-Read `sections/qa-patterns.md` in full.
+**2. List the checks that must pass.**
+Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup.
+- Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
+- Explicit plan commands/assertions remain required beyond that bound.
+- Other ideas are optional, untested coverage.
 
-Then list before execution:
-1. Required smoke within the 5-minute/12-probe bound, even on small diffs without a plan/server: pair success with the riskiest changed contract edge/failure.
-2. Explicit plan checks: request/approved-plan commands/assertions, required beyond the bound.
-3. Other ideas: disclose as untested coverage, not required probes.
+**3. Run the checks without repairing the product.**
+Follow the numbered Probe loop in `sections/exploratory.md` for discovery, replays
+and revalidation. Start with a successful operation, then require a successful
+checkpoint Write before each later probe. Replay a defect from its original fixture
+state before proposing a regression test or fix.
 
-Required probes stay required if blocked or unfinished.
+**4. Check for changes before reporting.**
+Before reporting, read updates from any dispatched agents and the user. Compare
+current source, commands and fixture inputs with the recorded inputs, even without
+an update. If source, tests, contracts, commands or fixture inputs changed, repeat affected review and probes
+through the same loop without resetting its checkpoint sequence. Unknown impact
+requires revalidation. Pass only when all required checks pass on the current
+inputs; list every failed, blocked, inconclusive or not-run required check otherwise.
 
-Discovery is report-only. Return verified defects with `path`, `line`, `category`,
-`fingerprint: path:line:category`, `CRITICAL`/`INFORMATIONAL` severity, replay and `test_stub`
-proposals for parent approval. Coverage blockers are not defects.
-Ask for missing setup/permission, never secrets. If unresolved, report incomplete at Step 5.8; a later ship waiver cannot complete these probes.
+Record verified defects for Fix-First with `path`, `line`, `category`,
+`fingerprint: path:line:category`, replay and `test_stub`. Use the checklist category's
+severity; an unmatched functional failure is `functional-contract`, `CRITICAL`.
+Setup/permission blockers are not defects. Test creation needs user approval.
+Ask for setup/permission, never secrets. Unresolved coverage makes Step 5.8 incomplete; a ship waiver cannot complete it.
 
-Include `## Exploratory QA and Verification Results` after the final review findings.
-Read QA's `templates/functional-report-template.md` for this one final QA section.
-Its checkpoint files are supporting evidence. Link each `exploration-NNN.json` there; write no second report.
+Read QA's `templates/functional-report-template.md`. Replace its top-level title with
+`## Exploratory QA and Verification Results` after final findings.
+Keep its fields as subsections. Link every checkpoint; write no second report.
 Separate browser results.
+This QA summary is provisional. Continue to Step 4.8 even if QA is blocked; Step 5.8 decides final review completion.
 
 ---
 
@@ -871,9 +888,9 @@ Terminal failure does not block fixes from independent evidence. Missing require
 output still makes the pass incomplete, even after the reader is stopped.
 
 Combine core, specialist, Step 4.7 QA, Step 4.8 adversarial and VALID & ACTIONABLE Greptile findings.
-For QA findings, the parent assigns confidence (1–10) from replay/code evidence
-using Confidence Calibration; use the checklist's category to choose CRITICAL or
-INFORMATIONAL, not confidence. Run Step 5.0 severity/prior-skip dedup on all
+For QA findings, assign confidence (1–10) from replay/code evidence using Confidence
+Calibration; retain Step 4.7's severity, not a severity inferred from confidence.
+Run Step 5.0 severity/prior-skip dedup on all
 findings before Step 5a classification. Then action every remaining finding.
 Structured approval does not waive advisory/test_stub ASK gates.
 
@@ -1020,28 +1037,31 @@ Before replying to any comment, run the **Escalation Detection** algorithm from 
      and saving the record below. Report nonconvergence and coverage gaps, then STOP
      this invocation, without a clean summary or a fourth pass.
    - No edits: fill the record below.
-2. Revisit every step. Step 4.7 reruns affected probes after source, test, contract,
-   command or fixture changes. Only this invocation's unchanged-input QA evidence
-   is reusable; it does not replace the full review traversal.
+2. On a repeat, execute Steps 3–5 in order. At Step 4.7, reuse only this invocation's
+   unchanged-input QA evidence; rerun affected probes after source, test, contract,
+   command or fixture changes. Reusing a probe never skips a review step.
    A probe is affected when its entrypoint, dependencies, contract or replay inputs
    change. If impact is uncertain, rerun it.
-3. The final zero-edit pass verifies retained actions. Merge once per structural
-   identity and advisory/defect kind. Fixed extractions keep `fixed` and original
-   `evidence_paths`/`helper_target`; fingerprint those, then verify the resulting
-   helper/callers and tests without removed blocks. Current findings, not prior
-   fixes, set recurring defects and unresolved counts/completion.
-4. Re-read all final-snapshot evidence before saving skipped advice; reconfirm the
-   decision or report history without a reusable skip. The logger computes
-   `snapshot_covered_paths` from eligible paths and raw-byte equality with snapshot
-   blobs, rejecting prior-cycle, supplied or prior-record coverage (`[]` if none).
-   Do not build this proof; fixed advice needs no skip coverage.
+3. **Verify completed actions.** On the final zero-edit pass, reconcile this
+   invocation's actions with current findings. Deduplicate by structural identity
+   and advisory/defect kind. For a completed extraction, retain `fixed` and the
+   original `evidence_paths`/`helper_target`; use `sharedLibsFingerprint` on that
+   metadata. Verify the replacement helper, remaining callers and tests without
+   requiring deleted pre-extraction blocks. Current findings determine recurring
+   defects and unresolved counts; earlier fixes do not suppress them.
+4. **Recheck skipped advice.** Re-read its final-snapshot supporting source and
+   reconfirm the decision; otherwise report its history without a reusable skip.
+   The logger computes `snapshot_covered_paths` from eligible paths whose raw bytes
+   equal the bound snapshot blobs (`[]` if none). Never carry prior-cycle, supplied
+   or prior-record coverage forward or build this proof yourself. Fixed advice
+   needs no skip coverage.
 
 ### 2. Fill the record
 
-- `COMPLETED`: true only when the checklist, dispatched specialists, applicable
-  Step 4.7 probes and native Step 4.8 adversarial pass finish. Blocked/inconclusive
-  required probes or failed native review mean false. `/ship` named-risk
-  acceptance cannot complete `/review`.
+- `COMPLETED`: true only when the checklist, dispatched specialists and native
+  Step 4.8 adversarial pass finish, and every required Step 4.7 probe passes.
+  Any failed, blocked, inconclusive or not-run required probe means false, as does
+  a failed native review. `/ship` named-risk acceptance cannot complete `/review`.
 - `CONVERGED`: true only for a completed zero-edit pass; `CYCLES` counts editing
   passes, not findings or reviewer attempts.
 - `STATUS`: `clean` only when completed with zero unresolved non-advisory
@@ -1053,7 +1073,7 @@ Each optional outside pass keeps its own result. An unavailable pass stays
 incomplete in its own record. Native and outside coverage cannot certify each
 other. Step 4.8's structured-review gate still applies.
 
-- Build `specialists` from Step 4.6, including Design:
+- For fewer than 50 changed lines, set `specialists` to `{}`. Otherwise use Step 4.6, including Design:
   `{"dispatched":true,"findings":N,"critical":N,"informational":N}` or
   `{"dispatched":false,"reason":"scope|gated"}` for each considered specialist.
 - Build `findings` from final-pass core, specialist, verified exploratory QA
@@ -1079,10 +1099,13 @@ or replace REVIEW_START at log time; finish only the final core token.
 
 ### Report the final review
 
-Report `Pre-Landing Review: N issues (X critical, Y informational)` from final
-unresolved non-advisory counts. Show actions/advice separately from Step 4.7's
-`## Exploratory QA and Verification Results`. Neither coverage gaps nor advice
-are defects.
+Emit one final report, merging all reviewers rather than concatenating their reports:
+1. `Pre-Landing Review: N issues (X critical, Y informational)` counts final unresolved
+   non-advisory defects. State INCOMPLETE if `COMPLETED` is false, even when N=0.
+2. Use the checklist's action groups with confidence-tagged finding lines. Keep fixed,
+   skipped and advisory items separate from unresolved defects; retain their dispositions.
+3. Append Step 4.7's single `## Exploratory QA and Verification Results` section with
+   current evidence and coverage gaps. Neither coverage gaps nor advice are defects.
 
 ## Capture Learnings
 

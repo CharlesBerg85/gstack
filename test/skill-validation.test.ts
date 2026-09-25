@@ -1275,7 +1275,7 @@ describe('Phase 8e.5 regression test generation', () => {
     expect(content).toContain('Never modify CI configuration or weaken existing tests');
     expect(content.indexOf('### 8a.5. Regression test before repair')).toBeLessThan(content.indexOf('### 8b. Fix'));
     expect(content).toContain('Run its detected command before repair');
-    expect(content).toContain('shared regression/original-probe/adjacent-happy-path gate');
+    expect(content).toContain('Re-run the regression, original failing probe and adjacent happy path');
     const exploratory = fs.readFileSync(path.join(ROOT, 'qa', 'sections', 'exploratory.md'), 'utf-8').replace(/\s+/g, ' ');
     expect(exploratory).toContain('Confirm the regression fails for the defect BEFORE repair');
     expect(exploratory).toContain('then require green regression, original probe and adjacent happy path');
@@ -1381,7 +1381,7 @@ describe('ship step numbering', () => {
   // Drift), 9.1 (Review Army), 9.2 (Findings Merge), 9.3 (Cross-review dedup),
   // 9.4 (Fix-First and persistence), 15.0 (WIP context), 15.1 (Bisectable commits),
   // 15.2 (safe optional WIP consolidation).
-  const ALLOWED_SUBSTEPS = new Set(['0.9', '8.1', '8.2', '9.1', '9.2', '9.3', '9.4', '14.5', '15.0', '15.1', '15.2']);
+  const ALLOWED_SUBSTEPS = new Set(['0.9', '8.1', '8.2', '9.1', '9.2', '9.3', '9.4', '11.5', '14.5', '15.0', '15.1', '15.2']);
 
   test('ship/SKILL.md.tmpl contains no unexpected fractional step numbers', () => {
     const tmpl = fs.readFileSync(path.join(ROOT, 'ship', 'SKILL.md.tmpl'), 'utf-8');
@@ -1410,6 +1410,7 @@ describe('ship step numbering', () => {
     const fractional = headings.filter((n) => n.includes('.'));
     const unexpected = fractional.filter((n) => !ALLOWED_SUBSTEPS.has(n));
     expect(unexpected).toEqual([]);
+    expect(headings.filter((n) => n === '11.5')).toHaveLength(1);
   });
 
   test('review/SKILL.md step numbers unchanged (regression guard for resolver conditionals)', () => {

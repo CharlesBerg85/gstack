@@ -49,8 +49,8 @@ describe('content-binding template drift', () => {
     const ship = rendered('ship/SKILL.md');
     expect(ship).toMatch(/gstack-evidence check --label tests --expect-cmd '[^']+' --label vitest --expect-cmd '[^']+' --max-age 24 --allow-paths CHANGELOG\.md,VERSION,package\.json/);
     expect(ship.replace(/\s+/g, ' ')).toContain("| STALE/MISSING: changed content, command or age, or no proven run | Run `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`, read the result and recheck once");
-    expect(ship.replace(/\s+/g, ' ')).toContain("A failed test run requires Step 5's triage");
-    expect(ship).toContain('New, changed or unwaived failures STOP publication');
+    expect(ship.replace(/\s+/g, ' ')).toContain("**New, changed or unwaived test failure:** STOP publication. Run Steps 5–15, starting with Step 5's triage, then return to Step 16 stage 1");
+    expect(ship).toContain('return to Step 16 stage 1');
   });
 
   test('ship Step 5 lanes run wrapped with per-lane labels', () => {
@@ -112,7 +112,10 @@ describe('content-binding template drift', () => {
     expect(army).toContain('--finish REVIEW_START');
     expect(army.replace(/\s+/g, ' ')).toContain('Complete items 5–6 exactly once with the original REVIEW_START');
     expect(army).toContain('fixes also require `converged:false`');
-    expect(army.replace(/\s+/g, ' ')).toContain('the logged pass remains `converged:false`');
+    const ship = rendered('ship/SKILL.md');
+    expect(army.replace(/\s+/g, ' ')).toContain('**Third fixing cycle reached:** STOP and report recurring findings with `converged:false`; do not run a fourth fixing cycle');
+    expect(ship.replace(/\s+/g, ' ')).toContain('Keep the same attempt counts throughout the invocation');
+    expect(ship.replace(/\s+/g, ' ')).toContain('a repair never resets approvals or expands them');
     expect(army).toContain('--start design-review-lite');
     expect(army).toContain('--finish DESIGN_START');
     const codex = rendered('codex/sections/review-mode.md');

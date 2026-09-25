@@ -2,9 +2,17 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Step 7: Test Coverage Audit
 
-**Dispatch this step as a subagent** using the Agent tool with `subagent_type: "general-purpose"`. The fresh-context subagent runs the audit; the parent only needs the conclusion.
+### Shared subagent dispatch
 
-**Foreground required:** pass `run_in_background: false` on the Agent call — subagents run in the BACKGROUND by default since Claude Code v2.1.198. (Merely omitting the flag no longer produces a foreground run; it must be explicitly false.) The dispatch happens ONLY via the Agent tool: invoking the target as a Skill, or executing its workflow inline in your own context, is WRONG even though the skill may appear in your available-skills list — inline execution forfeits the fresh-context isolation this dispatch exists for, and the explicit flag already makes the Agent call block. (Where a step defines an inline FALLBACK, it applies only after a dispatched subagent has failed.) The parent needs this audit's LAST-line JSON before continuing.
+For Steps 7, 8 and 10, use the Agent tool with `run_in_background: false`.
+Omitting the flag runs the subagent in the background. The explicit flag waits
+for a result while keeping a fresh context. Do not invoke the target as a Skill
+or run it inline instead. Inline work is allowed only under that section's
+documented fallback, after a failed subagent has stopped.
+
+Dispatch the audit through Agent with `subagent_type: "general-purpose"` and
+`run_in_background: false`, using the shared foreground-dispatch rule above.
+Wait for its LAST-line JSON before applying the coverage gate.
 
 **Generation allowance:** Maximum 2 generation passes total per invocation.
 Count each generation-authorized attempt before dispatch/inline execution, including
@@ -256,7 +264,11 @@ Use null for an undetermined or skipped coverage percentage, not zero. Include e
 3. Embed `diagram` verbatim in the PR body's `## Test Coverage` section (Step 19).
 4. Print a one-line summary: `Coverage: {coverage_pct}%, {gaps} gaps. {tests_added.length} tests added.`
 
-**If the subagent fails, times out, returns invalid JSON, or never completes after ~10 minutes:** stop any live backgrounded task, then run the audit inline in the parent. Do not block /ship on subagent failure — partial results are better than none.
+**Audit failure:** On failure, invalid JSON or no completion after ~10 minutes,
+stop the child and confirm it stopped before running the same audit inline.
+Fallback recovers the audit; it does not pass or bypass the coverage gate.
+Apply that gate to the recovered results, including its undetermined-percentage
+and test-only rules. Preserve partial results as incomplete, not passing coverage.
 
 
 **7. Coverage gate:**

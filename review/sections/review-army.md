@@ -43,7 +43,7 @@ Based on the scope signals above, select which specialists to dispatch.
 1. **Testing** — read `~/.claude/skills/gstack/review/specialists/testing.md`
 2. **Maintainability** — read `~/.claude/skills/gstack/review/specialists/maintainability.md`
 
-**If DIFF_LINES < 50:** Skip all specialists. Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Return to the parent's Exploratory QA step, then continue to Step 4.8 (adversarial review), then Step 5. Small diffs skip fan-out, never the parent-owned smoke probes. Core shared-code checks also remain required.
+**If DIFF_LINES < 50:** Skip all specialists. Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Continue to Step 4.6 with the core/design-lite findings and an empty specialist list, then the parent's Exploratory QA step and Step 4.8 (adversarial review), then Step 5. Small diffs skip fan-out, never the parent-owned smoke probes. Core shared-code checks also remain required.
 
 **Conditional (dispatch if the matching scope signal is true):**
 3. **Security** — if SCOPE_AUTH=true, OR if SCOPE_BACKEND=true AND DIFF_LINES > 100. Read `~/.claude/skills/gstack/review/specialists/security.md`

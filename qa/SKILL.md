@@ -511,9 +511,10 @@ If dirty, **STOP** and use AskUserQuestion. Explain that a clean tree keeps QA f
 Execute only the user's choice before continuing setup.
 
 **Prepare report artifacts before browser setup.** Resolve any supplied prior report
-and baseline paths before writing. Use the output override or `.gstack/qa-reports`
-as `REPORT_DIR` only when it is empty; otherwise choose a fresh owned run subdirectory.
-Create the chosen directory and use it for all local reports, baselines and evidence.
+and baseline paths before writing. Select the output override or `.gstack/qa-reports`.
+Create that directory if absent. Use the directory as `REPORT_DIR`
+only when it is empty; otherwise choose a fresh owned run subdirectory.
+Use `run-YYYYMMDDTHHMMSSZ` in UTC, adding a suffix on collision. Keep all local evidence there.
 Never overwrite previous reports, baselines, screenshots or exploration notes.
 A caller's fixed artifact paths and permissions take precedence; if preserving them
 safely is impossible, report the output blocker rather than expanding write authority.
@@ -589,9 +590,8 @@ Prefer the richer of recent project test plans and plans in conversation over gi
 
 ## Phases 1-6: QA Baseline
 
-Follow the shared exploratory loop for every surface. Browser phase names identify techniques.
-
-Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads:
+Read each selected surface's methods below, then run one shared exploratory loop.
+The numbered browser phases label techniques, not another workflow.
 
 **Functional surfaces:**
 Read `sections/system-functional.md` in full.
@@ -666,7 +666,8 @@ A clear, healthy uncovered contract may gain a passing test without product edit
 Apply the shared exploratory section's native unit/integration/E2E rules.
 CSS-only defects may use browser evidence. Missing infrastructure stays coverage debt.
 
-For auto-incrementing `{name}.regression-*.test.{ext}`, choose the max number + 1.
+Use the component's name and native extension in auto-incrementing `{name}.regression-N.test.{ext}`.
+Set N to max number + 1, starting at 1; never replace an existing file.
 Keep valid red regressions; narrowly correct a proved
 fixture/test error or report the unresolved bug.
 
@@ -676,8 +677,8 @@ Read the surrounding source and make the **minimal fix**. No unrelated refactors
 
 ### 8c. Re-test
 
-Apply the shared regression/original-probe/adjacent-happy-path gate and inspect final
-state. Acceptance alone cannot verify a worker repair. Failed/unavailable rechecks stay unresolved.
+Re-run the regression, original failing probe and adjacent happy path. Inspect each
+final state; acceptance alone cannot verify a worker repair. Failed/unavailable rechecks stay unresolved.
 
 For browser defects only:
 
@@ -701,10 +702,11 @@ repairs and valid red regressions/evidence uncommitted; tell the user what remai
 - **best-effort**: fix applied but couldn't fully verify (e.g., needs auth state, external service)
 - **reverted**: regression detected → undo only this run's repair (revert its commit if already committed), retain the valid regression/evidence, and mark the issue "deferred". Never discard user changes.
 
-### 8e.5. Regression Test
+### 8e.5. Regression Test record
 
-Record 8a.5/8c's file, command, attribution, boundary and red/green results or deferred case.
-Do not duplicate the test.
+Record the test created before repair in 8a.5 and its re-test result from 8c:
+file, command, attribution, tested boundary and red/green evidence, or why it is deferred.
+This step records results; it does not create another test.
 Healthy-contract commits use `test(qa): regression test for {contract}`.
 **WTF-likelihood exclusion:** test-only commits do not count toward the heuristic.
 
@@ -803,6 +805,6 @@ already knows. A good test: would this insight save time in a future session? If
 
 ## Additional Rules (qa-specific)
 
-13. **Outside an explicitly approved browser bootstrap:** Only create tests through authorized codification in Phase 8a.5. Never modify CI configuration or weaken existing tests; use new native test files.
+**Outside an explicitly approved browser bootstrap:** Only create tests through authorized codification in Phase 8a.5. Never modify CI configuration or weaken existing tests; use new native test files.
 
 When in doubt, stop and ask.

@@ -1,8 +1,15 @@
 ## Step 8: Plan Completion Audit
 
-**Dispatch this step as a subagent** using the Agent tool with `subagent_type: "general-purpose"`. The subagent reads the plan file and every referenced code file in its own fresh context. Parent gets only the conclusion.
+Complete this section in order:
+1. Dispatch the audit, validate its result and resolve its Gate Logic.
+2. Collect the plan's executable checks in Step 8.1; do not run them yet.
+3. Run Prior Learnings, including its setting question when offered.
+4. Run Step 8.2 Scope Drift, then proceed to Step 9 for review and QA.
 
-{{FOREGROUND_DISPATCH_NOTE}} The Gate Logic below consumes this audit's LAST-line JSON before /ship can proceed.
+**Dispatch this step as a subagent** using Agent, `subagent_type: "general-purpose"`
+and `run_in_background: false`. Use Step 7's shared foreground-dispatch rule.
+The child reads the plan and every referenced
+code file; the parent validates its report and applies the gates below.
 
 **Subagent prompt:** Substitute `<base>` and supply the active plan's absolute path
 or complete text, including relevant user-approved scope changes. If none exists,
@@ -21,21 +28,29 @@ Counts map one-to-one to the classifications above and sum to total_items. No pl
 
 **Parent processing:**
 
-1. Check the task's terminal status; failure takes the audit-failure fallback below. On success, parse its LAST line as JSON with only the contract's seven fields. Every count must be a nonnegative integer, and the classification count sum must equal `total_items`; `summary` must be a string. Missing, extra or invalid fields take the same fallback. Valid no-plan/no-actionable-item reports retain zero counts and their summary.
-2. Store the counts for Step 20 metrics; use `summary` in PR body.
-3. Apply Gate Logic below to `not_done` and `unverifiable` before continuing. Carry approved deferrals, with item text and plan path, to Step 14; keep them separate from dropped scope. `partial` items receive a PR note, not the NOT DONE gate.
-4. Embed `summary` in PR body's `## Plan Completion` section (Step 19). For the UNVERIFIABLE gate, also embed `## Plan Completion — Manual Verifications` with each Y response's evidence and each D response's dropped item.
+1. Check the task's terminal status. Without successful completion and valid LAST-line
+   JSON, use the audit-failure fallback below. Require exactly the seven declared
+   fields: nonnegative integer counts whose classification sum equals `total_items`,
+   and a string `summary`. Missing,
+   extra or invalid fields fail. Valid no-plan/no-actionable reports retain zero counts
+   and their summary.
+2. Store counts for Step 20 and `summary` for Step 19's `## Plan Completion`.
+3. Apply Gate Logic below before continuing. Carry approved deferrals, with item text
+   and plan path, to Step 14; keep them separate from dropped scope. The gate supplies
+   the required PR notes and per-item manual verification evidence.
 
-**If the subagent fails, returns invalid JSON, or has no final output after ~10 minutes:** Stop any still-running background task before an inline fallback using the same extraction/classification logic; never race its late result. If fallback also fails, AskUserQuestion: "Audit failed ({reason}): A) Skip audit and ship anyway, recording the skip in PR body and Step 20 metrics; B) Stop and fix the audit (recommended/default)." Silent fail-open is the failure shape that VAS-449 surfaced.
+**Audit-failure fallback:** On failure, invalid JSON or no final output after ~10
+minutes, stop any live child and confirm it stopped before an inline audit with the same
+extraction/classification logic; never race a late result. If that also fails,
+AskUserQuestion: A) Skip audit and ship, recording the reason in the PR body and
+Step 20 metrics; B) Stop and fix the audit (recommended/default). Silent fail-open
+is the failure shape that VAS-449 surfaced.
 
 ---
 
 {{PLAN_COMPLETION_GATE_SHIP}}
 
 {{PLAN_VERIFICATION_EXEC}}
-
-The parent now runs Prior Learnings and its cross-project setting question when
-offered, before Step 9, even when no plan file was found.
 
 {{LEARNINGS_SEARCH:query=release ship version changelog merge pr}}
 

@@ -50,6 +50,74 @@ function rejected(input: ReturnType<typeof fixture>, message: string) {
   expect(validateQACheckpoints(input).some(failure => failure.includes(message))).toBe(true);
 }
 
+describe('program observations and terminal checkpoint boundaries', () => {
+  test('keeps nonzero tool wrapper metadata outside the unchanged program JSON', () => {
+    const input = fixture();
+    const reply = input.transcript[1].message.content[0];
+    reply.content = `Exit code 1\n${reply.content}`;
+    reply.is_error = true;
+    expect(validateQACheckpoints(input)).toEqual([]);
+    updateNote(input, value => { value.observed.toolExit = 1; });
+    rejected(input, 'Missing unique completed checkpoint');
+  });
+
+  test('rejects a terminal summary even when it preserves the last actual observation', () => {
+    const input = fixture();
+    expect(validateQACheckpoints(input)).toEqual([]);
+    const name = 'exploration-003.json';
+    const previous = input.probes.at(-1)!;
+    const file_path = path.join(input.reportRoot, name);
+    const content = JSON.stringify({ observationCommand: previous.command, observed: previous.observed,
+      hypothesis: 'The required probes are complete and no further diagnostic will be run.', nextCommand: 'none' });
+    fs.writeFileSync(file_path, content);
+    input.transcript.push(use('terminal', 'Write', { file_path, content }), result('terminal', 'File created successfully'));
+    input.files = readQACheckpointFiles(input.reportRoot);
+    input.reportMarkdown += `[Terminal](${name})\n`;
+    rejected(input, `Unrelated, reused or retrospective checkpoint: ${name}`);
+  });
+});
+
+describe('R20 caller receipt bytes in explicitly synthetic event sequences', () => {
+  function capturedReceipts() {
+    const observed = [
+      '{"id":"probe-842dfffa-3e91-4ecf-a62a-9657a2f62d0f","charter":"happy","input":"4","snapshot":"c0ad40e8bc8c7fc014ee2f9b9e9bde99f842add3ddcd1b9f7bf494747a4ae785","status":"pass","stdout":"8\\n","stderr":"","exit":0}',
+      '{"id":"probe-3adf3c33-b883-4570-baf3-d1cfba4c70a7","charter":"plan:nine","input":"9","snapshot":"c0ad40e8bc8c7fc014ee2f9b9e9bde99f842add3ddcd1b9f7bf494747a4ae785","status":"pass","stdout":"18\\n","stderr":"","exit":0}',
+    ];
+    const reportRoot = temporaryRoot();
+    const probes = observed.map(text => ({ command: `bun scripts/probe.ts ${JSON.parse(text).input}`, observed: JSON.parse(text) }));
+    const file_path = path.join(reportRoot, 'exploration-001.json');
+    const content = JSON.stringify({ observationCommand: probes[0].command, observed: probes[0].observed,
+      hypothesis: 'The inclusive upper boundary should preserve the documented successful output.', nextCommand: probes[1].command });
+    fs.writeFileSync(file_path, content, { mode: 0o600 });
+    return { reportRoot, probes, requiredProbes: probes.slice(1), files: readQACheckpointFiles(reportRoot), reportMarkdown: '[Checkpoint](exploration-001.json)',
+      transcript: [use('prior', 'Bash', { command: probes[0].command }), result('prior', observed[0]),
+        use('note', 'Write', { file_path, content }), result('note', 'File created successfully'),
+        use('next', 'Bash', { command: probes[1].command }), result('next', observed[1])] };
+  }
+
+  test.each(['omitted snapshot', 'snapshot summary', 'shortened snapshot', 'renamed identity'])('rejects %s while accepting the complete original native JSON', kind => {
+    const input = capturedReceipts();
+    expect(validateQACheckpoints(input)).toEqual([]);
+    const write = input.transcript[2].message.content[0].input;
+    const note = JSON.parse(write.content);
+    if (kind === 'snapshot summary') note.observed.snapshotChanged = note.observed.snapshot;
+    if (kind === 'renamed identity') note.observed.sourceIdentity = note.observed.snapshot;
+    if (kind === 'shortened snapshot') note.observed.snapshot = note.observed.snapshot.slice(0, 8);
+    else delete note.observed.snapshot;
+    write.content = JSON.stringify(note);
+    fs.writeFileSync(write.file_path, write.content, { mode: 0o600 });
+    input.files = readQACheckpointFiles(input.reportRoot);
+    expect(validateQACheckpoints(input)).toContain('QA checkpoint: Missing unique completed checkpoint before probe: bun scripts/probe.ts 9');
+  });
+
+  test('a terminal note cannot become a causal checkpoint by naming an already completed command', () => {
+    const input = capturedReceipts();
+    input.transcript.push(...input.transcript.splice(2, 2));
+    expect(validateQACheckpoints(input)).toContain('QA checkpoint: Missing unique completed checkpoint before probe: bun scripts/probe.ts 9');
+    expect(validateQACheckpoints(input)).toContain('QA checkpoint: Unrelated, reused or retrospective checkpoint: exploration-001.json');
+  });
+});
+
 function regressionCheckpoint(family: 'cli' | 'webhook' = 'cli') {
   const reportRoot = path.join(temporaryRoot(), 'qa-reports');
   fs.mkdirSync(reportRoot);

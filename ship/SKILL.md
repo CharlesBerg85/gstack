@@ -434,46 +434,56 @@ A step sometimes requires action on an external website the user controls: regis
 
 # Ship: Fully Automated Ship Workflow
 
-**Follow every STOP and AskUserQuestion gate** at its numbered step.
+STOP blocks advancement until the stated repair/resume route clears; without one, end this attempt.
+Answer each AskUserQuestion before continuing.
 Routine authorization never waives those gates or their required user decisions.
 
-**Routine work needs no confirmation:** include uncommitted changes, auto-pick MICRO
-or PATCH under Step 12, draft CHANGELOG/commit messages, split bisectable commits,
-mark completed TODOs and apply auto-fixable review findings.
-Coverage at or above Step 7's target needs no approval: report remaining gaps,
-verify generated tests and commit with Step 15.
+**Routine work needs no confirmation:** include uncommitted changes, choose MICRO/PATCH
+under Step 12, draft CHANGELOG and commits, mark completed TODOs and auto-fix findings.
+At or above Step 7's target, report gaps, verify generated tests and commit in Step 15.
 
-**Re-run behavior (idempotency):**
-Every invocation verifies tests, coverage, plan completion, both reviews,
-VERSION/CHANGELOG, TODOS and docs in Steps 1–15.
-Step 16 verifies final content; Steps 17–20 publish/report and Step 21 offers the
-optional plan-tune nudge. Steps 12, 17 and 19
-prevent duplicate bumps, pushes and PRs, never verification.
+**Route:** integrate (1–3) → test and review (4–11.5) → prepare the release
+(12–15) → verify frozen content (16) → push and publish (17–21).
+Every new invocation repeats Steps 1–16, including both reviews and the docs audit.
+Steps 12, 17 and 19 prevent duplicate bumps, pushes and PRs, never verification.
 
 ### Keep state between steps
 
-Keep one private **invocation record** outside the product tree and retain its
-absolute path. Record versions, `BUMP_LEVEL` and used attempts. Save each approval
-with its finding, files and authorized action; each review's handle, original
-start token, terminal state, output and queued fixes; and each check's command/label,
-result/counts, timestamp, log and consumed inputs. Keep the reviewed tree from
-before Step 12 and the docs candidate/id, accepted hashes or named blocked exception.
-Update this record on every return without resetting these limits:
+Keep one private Markdown **invocation record** outside the product tree and save
+its absolute path. Use these headings so a paused run can resume:
+- **Release:** versions, `BUMP_LEVEL`, reviewed tree and attempt counts.
+- **Decisions:** each approval's finding, files and authorized action. Reuse it only
+  for that same scope; a repair never resets approvals or expands them.
+- **Reviews:** handles, original start tokens, terminal states, outputs and queued fixes.
+- **Checks:** command/label, result/counts, timestamp, log and consumed inputs.
+- **Documentation:** candidate/id, attempts used, accepted hashes or named blocked exception.
+- **Return points:** unfinished repair ranges and their destinations.
 
-| Owner | Limit for this invocation |
-|---|---|
-| Step 7 | 2 generation passes |
-| Step 9 | 3 fixing cycles |
-| Step 11 | One corrected native-review retry |
-| Step 14.5 | Initial audit plus ONE repair/re-audit |
+A **receipt** is saved evidence of a check's command, result and consumed content.
+A review's **start token** is the opaque value returned by `gstack-review-log --start`
+before it reads the diff. Keep `REVIEW_START` for Step 9, a separate `PASS_START` for
+each Step 11 attempt, and `DESIGN_START` for design. Finish each pass with its original
+token; `--finish` stamps the binding fields automatically. Never borrow or replace a token.
+`gstack-wtree` prints a Git tree hash covering tracked and non-ignored untracked files,
+not a commit ID. Use `git diff <old-tree> <new-tree>` to compare these snapshots.
 
-Reuse an approval only for the same finding, files and action. Keep the helpers'
-receipts: these saved results link a review or check to the content it examined.
-A review's start token identifies its captured starting content. The parent owns
-REVIEW_START, each Step 11 attempt owns PASS_START, and design owns DESIGN_START.
-Capture each token before reading and finish that pass with the same token; never
-exchange them. The helper's `wtree` fingerprint identifies a Git tree snapshot of
-tracked and non-ignored untracked files, not just a commit.
+### Ship control flow
+
+You, the **parent** running /ship, own advancement; children return evidence, not
+permission to proceed. Follow the numbered steps. Each step states its own recovery
+and next destination; STOP and AskUserQuestion gates still apply during repairs.
+
+When a step sends you through a repair range, save its first step, last step and
+return destination before starting. Finish the whole range, then return to that
+destination rather than falling through to the next numbered step. If an inner
+repair interrupts it, finish the inner repair, then resume the unfinished outer range.
+For example, a Step 11 repair runs 9–11: a Step 9 retry must finish before Steps 10
+and 11 complete and the outer repair returns to Step 11.5.
+
+Keep the same attempt counts throughout the invocation. A range ending at Step 14
+does not enter Step 14.5. A range that includes Step 14.5 enters its existing audit
+decision, not an unconditional new launch; its initial-plus-ONE limit never resets.
+Permitted repairs continue in this invocation without restarting /ship.
 
 ---
 
@@ -566,8 +576,8 @@ repository-landing asks, including on Apple repos.
    `git diff origin/<base> --stat`, untracked files from status, and
    `git log origin/<base>..HEAD --oneline`.
 
-4. Display historical readiness. Prior CLEAR reviews or dashboard skips never replace
-   Step 9's mandatory review, blocker, ASK or convergence gates.
+4. Display historical readiness using the dashboard below, then finish Step 1.
+   Prior CLEAR reviews or dashboard skips never replace Step 9's gates.
 
 ## Review Readiness Dashboard
 
@@ -641,25 +651,18 @@ Other rows provide context, not a substitute for Eng Review:
 explicitly, never as CLEAR. Display a fresh `clean` result as CLEAR and
 `issues_open` as ISSUES OPEN without changing the stored status.
 
-```
-+====================================================================+
-|                    REVIEW READINESS DASHBOARD                       |
-+====================================================================+
-| Review          | Runs | Last Run            | Status    | Required |
-|-----------------|------|---------------------|-----------|----------|
-| Eng Review      |  1   | 2026-03-16 15:00    | CLEAR     | YES      |
-| CEO Review      |  0   | —                   | —         | no       |
-| Design Review   |  0   | —                   | —         | no       |
-| Adversarial     |  0   | —                   | —         | no       |
-| Outside Voice   |  0   | —                   | —         | no       |
-+--------------------------------------------------------------------+
-| VERDICT: CLEARED — Eng Review passed                                |
-+====================================================================+
-```
+**REVIEW READINESS DASHBOARD**
 
-If Eng Review is not CLEAR, print its actual status and reason: "Eng Review: {status} — {reason}. Ship will run its pre-landing review in Step 9." For diffs >200 lines (`git diff origin/<base> --stat | tail -1`), recommend `/plan-eng-review` or `/autoplan` for architecture review.
+Use one row for each entry in step 1. Only Eng Review is marked required.
 
-If CEO Review is missing, report "CEO Review not run — recommended for product changes" without blocking.
+| Review | Runs | Last run | Status | Required |
+|---|---:|---|---|---|
+| {row and suffix} | {count} | {timestamp or —} | {actual status and reason} | {yes/no} |
+
+VERDICT: {CLEARED or NOT CLEARED} — {reason}
+
+For diffs >200 lines (`git diff origin/<base> --stat | tail -1`), recommend
+`/plan-eng-review` or `/autoplan` for architecture review.
 
 For Design Review: run `source <(~/.claude/skills/gstack/bin/gstack-diff-scope <base> 2>/dev/null)`. If `SCOPE_FRONTEND=true` and no design review exists, mention: "Design Review not run — Step 9 includes the lite check; consider /design-review for a full visual audit."
 
@@ -669,14 +672,15 @@ Continue to Step 2 without asking; Step 9 applies the review gates.
 
 ## Step 2: Distribution Pipeline Check
 
-If the diff introduces a new standalone artifact (CLI binary, library package, tool) — not a web
-service with existing deployment — verify that a distribution pipeline exists.
+Check distribution for new standalone artifacts (CLI binaries, packages, tools),
+not web services with existing deployment.
 
-1. Check if the diff adds a new `cmd/` directory, `main.go`, or `bin/` entry point:
+1. List candidate distribution paths:
    ```bash
    git diff origin/<base> --name-only | grep -E '(cmd/.*/main\.go|bin/|Cargo\.toml|setup\.py|package\.json)' | head -5
    ```
-   Also inspect matching untracked files from Step 1's status.
+   Inspect their diffs and matching untracked files from Step 1. This grep is only
+   a shortlist: editing an existing package manifest alone is not a new artifact.
 
 2. If new artifact detected, check for a release workflow:
    ```bash
@@ -684,15 +688,17 @@ service with existing deployment — verify that a distribution pipeline exists.
    grep -qE 'release|publish|deploy' .gitlab-ci.yml 2>/dev/null && echo "GITLAB_CI_RELEASE"
    ```
 
-3. **If no release pipeline exists and a new artifact was added:** Use AskUserQuestion:
-   - "This PR adds a new binary/tool but there's no CI/CD pipeline to build and publish it.
-     Users won't be able to download the artifact after merge."
-   - A) Add a release workflow now (CI/CD release pipeline — GitHub Actions or GitLab CI depending on platform)
-   - B) Defer — add a P1 distribution TODO in Step 14
-   - C) Not needed — this is internal/web-only, existing deployment covers it
+3. **New artifact without a pipeline:** AskUserQuestion: "Users cannot download this
+   artifact after merge without a release pipeline."
+   - A) Add the platform's release workflow now
+   - B) Defer with a P1 distribution TODO in Step 14
+   - C) Not needed: internal/web-only, covered by existing deployment
 
-4. **If the user chooses A:** Add packaging and publish configuration using this repository's CI conventions. Ask for any unknown distribution target, registry or required access before creating it; never invent credentials. Recheck it against the artifact and include the new workflow in the tests and review below. Do not publish a release during `/ship`.
-5. **If a pipeline exists or no new artifact was detected:** Continue silently.
+4. **If A:** Add packaging/publish configuration using repository CI conventions.
+   Ask for unknown targets, registries or access first; never invent credentials.
+   Recheck against the artifact and include the workflow in tests and review.
+   Do not publish a release during `/ship`.
+5. Otherwise, continue without adding a pipeline.
 
 ---
 
@@ -709,7 +715,8 @@ git merge origin/<base> --no-edit
 **If already up to date:** Continue silently.
 
 If integration changes the artifact or distribution configuration inspected in Step 2,
-repeat that check on the merged content before testing.
+repeat Step 2 on the merged content, including its decisions, then continue to Step 4.
+Otherwise continue to Step 4 directly.
 
 ---
 
@@ -718,10 +725,6 @@ repeat that check on the merged content before testing.
 
 > **STOP.** Before auditing test coverage of the diff (Step 7), Read `~/.claude/skills/gstack/ship/sections/test-coverage.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
-
-In the next section, follow this order: Step 8 audit/gates → Step 8.1 collect
-verification → Prior Learnings → Step 8.2 Scope Drift → Step 9.
-No plan skips only plan-specific work, not Prior Learnings or Scope Drift.
 
 > **STOP.** Before auditing plan completion, verification, and scope drift (Step 8), Read `~/.claude/skills/gstack/ship/sections/plan-completion.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
@@ -735,19 +738,24 @@ No plan skips only plan-specific work, not Prior Learnings or Scope Drift.
 > **STOP.** Before the adversarial review and learnings capture (Step 11), Read `~/.claude/skills/gstack/ship/sections/adversarial.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
 
-Before Step 12, run `~/.claude/skills/gstack/bin/gstack-review-read`. Use this
-invocation's saved handles, tokens and provenance to select its final records:
-- The Step 9.4 item 6 record has `skill:"review"` and `via:"ship"`.
-- The Step 11 native attempt has `skill:"adversarial-review"`. Select the recorded
-  native source, not an outside provider or an older invocation's result.
+## Step 11.5: Bind the reviews
 
-Require the native record's `review_binding.state` to be `verified`. Its `wtree`
-must match the Step 9.4 record's `review_binding.start_wtree` and
-`review_binding.end_wtree`. Save both records and that **reviewed tree** for Step 16.
-Missing or mismatched hashes block release preparation; new tokens cannot certify
-old work. A named probe-risk exception may leave Step 9.4 incomplete, without a
-root `wtree`. Leave its incomplete flags unchanged and keep the user's named
-exception. Matching hashes do not show that the waived probes passed.
+1. **Select the two reviews.** Run `~/.claude/skills/gstack/bin/gstack-review-read`.
+   Select this invocation's final Step 9.4 record (`skill:"review"`, `via:"ship"`)
+   and Step 11 native record (`skill:"adversarial-review"`). Match each to its saved
+   handle, original token and source; reject outside-provider or older invocation records.
+2. **Compare their content.** Require the native record's `review_binding.state`
+   to be `verified`. Compare its `wtree` with Step 9.4's `review_binding.start_wtree`
+   and `review_binding.end_wtree`. All three snapshots must match. Otherwise report
+   **Review records missing or mismatched**. Missing records or fields also block
+   release preparation. Run Steps 9–11, finish their repair loops, then return here
+   to bind the new records. Never attach new tokens to old work.
+3. **Preserve any QA exception.** Compare Step 9.4's start/end snapshots even when
+   a named probe-risk exception leaves its root `wtree` absent. Matching content
+   does not mean the failed or unrun probes passed. Keep Step 9.4's incomplete flags
+   and the user's exception.
+4. **Save the evidence.** Save both records and the matching **reviewed tree** for
+   Step 16, then continue to Step 12.
 
 ## Step 12: Version bump (auto-decide)
 
@@ -758,31 +766,59 @@ Before queue selection, reuse the recorded `BUMP_LEVEL` or save the chosen level
    bun run ~/.claude/skills/gstack/bin/gstack-version-bump classify --base <base>
    ```
    Save the JSON `baseVersion` as `BASE_VERSION`, then read `state` and dispatch:
-   - **FRESH** → do the bump (steps 2-4).
-   - **ALREADY_BUMPED** → keep `NEW_VERSION` at `currentVersion`. If no level was recorded, compare `baseVersion` and `currentVersion` left to right: the first changed major/minor/patch/micro component supplies `BUMP_LEVEL` (a missing fourth component is zero). Then run step 3's queue check. This recovers the level, not permission to bump again.
-   - **DRIFT_STALE_PKG** → run `gstack-version-bump repair`, then reclassify. On success, follow **ALREADY_BUMPED**, including its queue check; on failure, STOP. Repair alone never re-bumps.
-   - **DRIFT_UNEXPECTED** → **STOP**. package.json disagrees with VERSION while VERSION matches base — a manual edit bypassed /ship. Reconcile manually, then re-run.
+   - **FRESH** → choose the level in item 2, then check the queue and write.
+   - **ALREADY_BUMPED** → keep `NEW_VERSION=currentVersion`. If `BUMP_LEVEL` is missing,
+     use the first changed component from `baseVersion` to `currentVersion`
+     (major/minor/patch/micro; an absent fourth component is zero). Continue at item 3,
+     not another automatic bump.
+   - **DRIFT_STALE_PKG** → run `gstack-version-bump repair`, then reclassify.
+     Success follows ALREADY_BUMPED, including its queue check; failure stops.
+     Repair alone never re-bumps.
+   - **DRIFT_UNEXPECTED** → STOP: package.json disagrees with VERSION while VERSION
+     matches base. Reconcile the manual edit, then reclassify.
 
 2. **Decide the bump level** from the diff (agent judgment):
    - **MICRO**: <50 lines, trivial tweaks/config. **PATCH**: 50+ lines, no feature signals.
-   - **MINOR**: AskUserQuestion for any feature signal (new route/page, migration, new module), OR 500+ lines. **MAJOR**: AskUserQuestion for milestones or breaking changes. Offer the recommended level with rationale, a smaller level, or cancel; wait for the answer. Cancel ends this ship attempt before release writes or push; preserve existing work.
-   Save `BUMP_LEVEL` as lowercase `micro`, `patch`, `minor`, or `major`. Queue placement may advance the slot without changing the intended level.
+   - **MINOR**: ask for any feature signal (new route/page, migration, module) or 500+ lines.
+     **MAJOR**: ask for milestones or breaking changes. Use AskUserQuestion: recommended
+     level with rationale, smaller level, or cancel. Wait; cancel stops before release
+     writes or push and preserves existing work.
+   Save lowercase `BUMP_LEVEL`. Queue placement may advance the slot, not the intended level.
 
 3. **Queue-aware pick** (workspace-aware ship):
    ```bash
    QUEUE_JSON=$(bun run ~/.claude/skills/gstack/bin/gstack-next-version --base <base> --bump "$BUMP_LEVEL" --current-version "$BASE_VERSION" 2>/dev/null || echo '{"offline":true}')
    CANDIDATE_VERSION=$(echo "$QUEUE_JSON" | jq -r '.version // empty')
    ```
-   - **Usable candidate** (including `offline:true` with `fallback:"git"`): print warnings and any claimed queue. FRESH sets `NEW_VERSION` to `CANDIDATE_VERSION`. ALREADY_BUMPED compares it with `currentVersion`; if different, ask to rebump (refresh CHANGELOG/PR title) or keep current (CI rejects a collision). Only approval changes the existing version. An active sibling is a workspace listed in JSON `active_siblings`; use its `branch` and `version`. If one holds `>= NEW_VERSION`, ask to advance past it or stop this attempt and sync.
-   - **No usable candidate** (utility failure or empty result): print queue-unverified; FRESH sets `NEW_VERSION` using local `BUMP_LEVEL` arithmetic, while ALREADY_BUMPED keeps `currentVersion`. Do not use an empty candidate as a version.
+   **Qualify first:** require successful utility output and a nonempty valid version.
+   `offline:false` qualifies; `offline:true` qualifies only with `fallback:"git"`.
+   Offline output without that fallback, failure, malformed output or an empty version
+   is unusable, even if it contains a version-looking string.
+
+   - **Usable candidate:** print warnings and claimed queue. FRESH sets `NEW_VERSION=CANDIDATE_VERSION`.
+     ALREADY_BUMPED compares it with `currentVersion`: if different, ask to rebump
+     (refresh CHANGELOG/PR title) or keep current (CI rejects a collision).
+     Only approval changes the existing version. Check JSON `active_siblings` by
+     `branch` and `version`; a sibling holding `>= NEW_VERSION` requires a choice:
+     advance past it, or stop this attempt and sync.
+   - **No usable candidate:** print queue-unverified. FRESH uses local `BUMP_LEVEL`
+     arithmetic; ALREADY_BUMPED keeps `currentVersion`. Never use an empty candidate.
 
 4. **Write the bump** (FRESH, or an approved rebump):
    ```bash
    bun run ~/.claude/skills/gstack/bin/gstack-version-bump write --version "$NEW_VERSION" --regen-digest
    ```
-   The CLI validates 4-digit `MAJOR.MINOR.PATCH.MICRO` (or 3-digit pinned semver), then writes VERSION, the manifest, and existing `package-lock.json` / `npm-shrinkwrap.json` files; it never creates lockfiles. Manifest resolution: `--package-json-path` → `.gstack/package-json-path` → `./package.json` (supports subdirectory packages). npm manifests/locks use the 3-digit translation (`1.67.0.0` → `1.67.0`); VERSION remains authoritative. Exit 3 means a half-write: reclassify and use `repair` for DRIFT_STALE_PKG.
+   The CLI validates `MAJOR.MINOR.PATCH.MICRO` (or pinned 3-digit semver) and writes
+   VERSION, the manifest and existing `package-lock.json` / `npm-shrinkwrap.json`;
+   it never creates lockfiles. Manifest path: `--package-json-path` →
+   `.gstack/package-json-path` → `./package.json`. npm files use the 3-digit translation
+   (`1.67.0.0` → `1.67.0`); VERSION is authoritative. Exit 3 means a half-write:
+   reclassify and `repair` DRIFT_STALE_PKG.
 
-   `--regen-digest` executes repo code with the same privileges as Step 5: `scripts/gen-agents-digest.ts`, only when it and committed `agents-digest/gstack-AGENTS.md` both exist. Check `agentsDigest`: if false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump before continuing. The committed digest must match the generator's output for the selected VERSION; verify that match before push.
+   `--regen-digest` runs repo code with Step 5's privileges: `scripts/gen-agents-digest.ts`,
+   only when it and committed `agents-digest/gstack-AGENTS.md` exist. If `agentsDigest`
+   is false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump.
+   Before push, verify the committed digest matches generation for the selected VERSION.
 
 5. **Record the release decision after a version was actually written**, including
    an approved ALREADY_BUMPED rebump. Skip unchanged versions and manifest-only repairs.
@@ -798,9 +834,13 @@ Before queue selection, reuse the recorded `BUMP_LEVEL` or save the chosen level
 
 Read `~/.claude/skills/gstack/review/TODOS-format.md`.
 
-**1. Open or create:** Read root `TODOS.md`. An earlier explicit "add TODO" choice authorizes creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: "Create a component/priority-organized TODOS.md?" Options: A) Create now, B) Skip. Skip goes directly to item 5 to report declined creation and unsaved follow-ups.
+**1. Open or create:** Read root `TODOS.md`. An explicit "add TODO" choice authorizes
+creation with `# TODOS` and `## Completed`. Otherwise, if missing, ask: A) Create
+a component/priority-organized TODOS.md, B) Skip. Skip goes to item 5.
 
-**2. Organization:** Expect component headings, `**Priority:**` P0–P4 fields, and `## Completed` at the bottom. If disorganized, ask: A) Reorganize (recommended), B) Leave as-is. A preserves all content; B continues without restructuring.
+**2. Organization:** Use component headings, `**Priority:**` P0–P4 and `## Completed`
+at the bottom. If disorganized, ask: A) Reorganize preserving all content
+(recommended), B) Leave as-is.
 
 **3. Add approved deferrals:**
 - Step 2: add the approved distribution follow-up as P1 with the missing pipeline and affected artifact.
@@ -808,9 +848,15 @@ Read `~/.claude/skills/gstack/review/TODOS-format.md`.
 - Step 5: retain P0 test-failure entries already written; deduplicate by failure and source, adding missing approved entries with error output and branch.
 Never turn dropped scope into TODOs or invent unapproved follow-ups. Reuse matching existing entries rather than duplicating them.
 
-**4. Detect completed TODOs:** Check titles, files and behavior against `git diff origin/<base>`, untracked files and `git log origin/<base>..HEAD --oneline`. Move only clearly completed items to `## Completed` with `**Completed:** vX.Y.Z (YYYY-MM-DD)`; leave uncertain items open.
+**4. Detect completed TODOs:** Compare titles, files and behavior with
+`git diff origin/<base>`, untracked files and `git log origin/<base>..HEAD --oneline`.
+Move proven completions to `## Completed` with `**Completed:** vX.Y.Z (YYYY-MM-DD)`;
+leave uncertain items open.
 
-**5. Save the summary:** Report added/deferred items, items marked complete, remaining count, and any creation/reorganization. If creation was declined or a write fails, warn and retain the unpersisted follow-ups in the Step 19 PR summary; never claim they were saved. A TODO write failure remains non-blocking.
+**5. Save the summary:** Report additions, deferrals, completions, remaining count and
+creation/reorganization. If creation was declined or a write failed, warn and retain
+unsaved follow-ups in Step 19's PR summary. Never claim they were saved;
+TODO write failures are non-blocking.
 
 ---
 
@@ -825,18 +871,17 @@ No edits means an executed audit, not a skip; report the section's verified outc
 
 ## Step 15: Commit (bisectable chunks)
 
-Create small, logical commits for `git bisect`. If all changes are already committed, continue to Step 16; never create an empty commit.
+Make bisectable commits; if already committed, continue to Step 16. Never create an empty commit.
 
-1. Group coherent changes with their tests and controller views. Migrations may
-   stand alone or accompany their model; keep feature config/routes and their
-   Step 14.5 documentation corrections together.
+1. Group changes with their tests, config/routes, views and Step 14.5 docs.
+   Migrations may stand alone or accompany their model.
    Under 50 lines across fewer than 4 files may use one commit.
 2. Order dependencies first: infrastructure → models/services → controllers/views.
    Each commit must work independently, without broken imports or missing code.
    Group VERSION + CHANGELOG + TODOS.md after the feature commits.
 3. Use `<type>: <summary>` (feat/fix/chore/refactor/docs) and a brief body.
    Only the final VERSION/CHANGELOG commit gets the release version and co-author
-   trailer; omit both from non-release commits. The version is not a Git tag:
+   trailer. Do not create a Git tag:
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -853,58 +898,62 @@ EOF
 
 **IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
-Follow stages 1–5. Use this recovery map whenever work returns to an earlier step;
-keep the invocation's counts and same-scope approvals throughout.
-
-| Reason for returning | Resume here |
-|---|---|
-| Steps 10–11 queue fixes | Return to a fresh Step 9 pass. Step 9.4 applies fixes, then reruns Step 5, affected Steps 6–8 and all of Step 9 before Steps 10–11. |
-| Stage 2 finds behavioral changes | Run Steps 5–11 in order, recheck metadata in Steps 12–14, then restart stage 1. |
-| Content changes after verification, including during a check | Restart stage 1. A commit that preserves content keeps its evidence valid. |
-| Step 17 push is non-fast-forward | Fetch and inspect the remote branch; merge using Step 3's conflict rules. Resume at Step 5 and follow the normal order through Step 16, then retry Step 17 without rewriting history. |
-| Step 17 has an authentication, hook or network failure | Repair the cause, repeat Step 16 even if content is unchanged, then retry Step 17. Never bypass a failed guard. |
+Run stages 1–5 in order. Recovery instructions below name where to resume.
+If content changes during or after verification, restart at stage 1 and complete
+all five stages before Step 17. Content-preserving commits keep valid evidence.
 
 ### 1. Finish writers and prepare outputs
 
 Inspect writer handles, including the docs child. Confirm terminal completion or termination
 before another writer runs. Timeout or cancellation acknowledgment alone means
-STOP until confirmed; Step 14.5 handles docs recovery.
+STOP until confirmed.
 
 Find declared generation/build commands in project instructions, manifests, build
 files and CI. Run them and save results. If none exists, record not applicable and
 the inspected sources. A missing prerequisite or failed build stops shipping:
-report the command, error and needed repair. Restore the prerequisite or repair
-the cause, then retry stage 1. Stage 2 reviews any content repair as a behavioral
-change. Never invent a substitute command.
+report **Build failed or prerequisite missing**, with the command, error and needed
+repair. Never invent a substitute command.
+**If blocked:** Repair the prerequisite or build, then repeat stage 1. After it passes, continue
+to stage 2; treat any content repair as a behavioral change there.
 
 ### 2. Choose the change route
 
 Capture the current tree with `~/.claude/skills/gstack/bin/gstack-wtree`. Inspect
 `git diff <reviewed-tree> <current-tree>` against the snapshot saved before Step 12.
-Snapshots include tracked and non-ignored untracked files; missing snapshots
-block this comparison, regardless of HEAD equality.
+Missing snapshots block this comparison, regardless of HEAD equality.
 
-If nothing changed, continue to stage 3. Behavior, tests or build-input changes
-take the behavioral-change route above before docs or final receipts; this includes
-prompts/templates. If only authored docs or release metadata changed,
-preserve Step 8's original child report and counts. Recheck affected items using
-their recorded verification and append current references/results to the invocation
-record. If these no longer support an item's classification, return to Step 8's
-audit and decision gates instead of changing its counts yourself. Otherwise
-continue to stage 3 without a new code review.
+Classify the comparison in this order:
+
+1. **Behavior, tests or build inputs changed:** Prompts/templates count as behavior.
+   Run Steps 5–11.5, then Steps 12–14 only. Finish all inner repairs and return to
+   Step 16 stage 1, not Step 14.5. Rebuild and compare again before stage 3 decides
+   documentation freshness.
+2. **Only authored docs or release metadata changed:** Keep Step 8's original child
+   report and counts. Recheck affected plan items using their recorded verification
+   and append current evidence to the invocation record. If a classification is no
+   longer supported, run Step 8's audit and decision gates only, then return to
+   Step 16 stage 1. Never edit the child's counts yourself.
+3. **No changes, or the docs-only checks still support the plan:** Continue to stage 3
+   without a new code review.
 
 ### 3. Resolve documentation freshness
 
-Compare base, release files, docs/templates and generated content with accepted audit hashes:
-
-| Documentation state | Next action |
-|---|---|
-| Accepted audit with unchanged inputs | Continue to stage 4. |
-| Inputs changed; an attempt remains | Use Step 14.5's remaining attempt/recovery, commit approved files through Step 15, then restart stage 1 to regenerate before comparing. |
-| Audit blocked or attempts exhausted | Use Step 14.5's named-risk decision. Continue with the user's explicit exception only after its unwaivable gates clear. |
-
-Keep `Documentation: blocked` for accepted risk. An exception covers only its
-approved scope and exact content; changes need a new decision, not a third audit.
+1. Compare the base, release files, docs/templates and generated content with
+   Step 14.5's accepted audit hashes.
+2. Reuse only this invocation's accepted audit. If its inputs are unchanged,
+   continue to stage 4; a prior invocation's audit never qualifies.
+3. If the user accepted a named documentation risk, retain `Documentation: blocked`,
+   its reason and incomplete scope. That decision covers only its approved scope
+   and exact content. With unchanged content and cleared unwaivable gates, continue
+   to stage 4. Changed content requires the recovery below, not silent reuse.
+4. Otherwise report the changed inputs, blockers and attempts used. Return to
+   Step 14.5's existing audit decision and Blocked recovery, keeping its attempt count.
+   If an attempt remains and a repair is available, complete the permitted repair/re-audit and its validation,
+   then Step 15; return to Step 16 stage 1 to regenerate and compare again.
+   If no attempt remains or no repair is available, STOP unless the user accepts
+   the specific named documentation risk and all unwaivable gates clear. Never run
+   a third audit. After that decision, unchanged approved content goes to stage 4;
+   repaired content goes to stage 1. Returning from a child is not acceptance.
 
 ### 4. Verify the frozen candidate
 
@@ -915,15 +964,16 @@ checks; report unavailable checks.
 saved and current consumed files, fixtures, dependencies and execution parameters.
 Explain why other changes cannot affect it; changed or unknown dependencies require a rerun.
 For model judges, compare the complete expanded request, rubric, parameters and
-builder/runtime dependencies. Cite the original command, result/counts, timestamp
-and log instead of resampling an identical passing judge. Mandatory reviews still run.
+builder/runtime dependencies. Reuse identical passing evidence: cite the original
+command, result/counts, timestamp and log, never resample it. Mandatory reviews still run.
 
 **Check each test lane's receipt as well.** Use its actual Step 5 label/command:
 `--label <lane> --expect-cmd '<exact Step 5 command>'`. Inspect changes since the run;
 `--allow-paths` exempts only release metadata. A `package.json` version-only edit
 can qualify; scripts, dependencies and runtime configuration require live tests.
 Uncertain edits cannot be exempted. Docs, TODO edits, new/generated tests and fixes
-make evidence STALE even without a new code review. Every listed change below is metadata:
+make evidence STALE even without a new code review. Use this example only after
+confirming that every allowed edit is release metadata:
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --label vitest --expect-cmd '<vitest>' --max-age 24 --allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md
@@ -932,24 +982,28 @@ make evidence STALE even without a new code review. Every listed change below is
 | Receipt result | Next action |
 |---|---|
 | FRESH (exit 0) | Cite the label, exit, timestamp and log. |
-| STALE/MISSING: changed content, command or age, or no proven run | Run `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`, read the result and recheck once. A failed test run requires Step 5's triage. |
+| STALE/MISSING: changed content, command or age, or no proven run | Run `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`, read the result and recheck once. Handle failures as described below. |
 | Only receipt storage/readback failed | Independently prove unchanged final content, the same command and valid age from the successful run's evidence. Cite its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH. Without that proof, use STALE/MISSING. |
 
-The bookkeeping row cannot cover stale content. Unchanged green suites need no
-bookkeeping-only rerun. Missing evidence never means pass.
-With no test lanes, require Step 5's explicit untested-scope approval for this
-final content or return to its no-tests decision. Report the gap, never FRESH;
-builds must still pass.
+No test lanes: require Step 5's explicit untested-scope approval for final content,
+or run Steps 5–15, including the no-tests decision, then return to Step 16 stage 1.
+Report the gap, never FRESH; builds must pass.
+
+**New, changed or unwaived test failure:** STOP publication. Run Steps 5–15,
+starting with Step 5's triage, then return to Step 16 stage 1. This recovery also
+applies if a failure appears while reporting in stage 5. Reentry to Step 14.5
+keeps its existing audit count; it does not authorize a third attempt.
 
 ### 5. Report, then push
 
-Commit any uncommitted approved, verified release changes, including generated
-outputs, using Step 15's grouping rules. Preserve unrelated user files.
+Commit only approved, verified release changes left uncommitted after Step 15,
+including generated outputs; use its grouping rules and never create an empty commit.
+Preserve unrelated user files.
 
 Paste build/docs/test results. Reuse waivers only for the same verified
 pre-existing failures and approved scope; cite the actual approval and failing
-counts, never FRESH or all-green. New, changed or unwaived failures STOP publication
-and return to Step 5. Otherwise continue to Step 17.
+counts, never FRESH or all-green. A new, changed or unwaived test failure uses
+stage 4's recovery before publication. Otherwise continue to Step 17.
 
 ---
 
@@ -1033,9 +1087,12 @@ If `ALREADY_PUSHED`, skip the push but continue to Step 18. Otherwise push with 
 git push -u origin <branch-name>
 ```
 
-**If the push fails, STOP.** Report the error; no Step 19 or publication claim.
-Follow the matching Step 16 recovery-map row. Apply its input checks to every edit;
-never force-push.
+**If the push fails, STOP.** No Step 19 or publication claim. Report the error:
+- **Non-fast-forward push:** fetch and inspect the remote, then merge under Step 3's
+  conflict rules. Run Steps 5–16 before returning to Step 17. Never rewrite history.
+- **Authentication, hook or network failure:** repair the cause, then repeat Step 16
+  even if content is unchanged before returning to Step 17. Never bypass failed guards.
+Never force-push.
 Only a successful push or verified `ALREADY_PUSHED` proceeds.
 
 Continue to Step 18. No documentation writer runs after push.
@@ -1088,19 +1145,21 @@ The shell supplies the branch. Run this automatically, without confirmation.
 After a successful ship, show the non-blocking /plan-tune nudge once per machine:
 
 ```bash
-_NUDGE_MARKER="$HOME/.gstack/.plan-tune-nudge-shown"
+eval "$(~/.claude/skills/gstack/bin/gstack-paths)"
+export GSTACK_STATE_ROOT
+_NUDGE_MARKER="$GSTACK_STATE_ROOT/.plan-tune-nudge-shown"
 _QT=$(~/.claude/skills/gstack/bin/gstack-config get question_tuning 2>/dev/null || echo "false")
 if [ ! -f "$_NUDGE_MARKER" ] && [ "$_QT" = "false" ]; then
   echo ""
   echo "gstack can learn from your AskUserQuestion answers. Run /plan-tune to opt in"
   echo "— it captures which prompts you find valuable vs noisy and (with hooks installed)"
   echo "auto-decides your never-ask preferences."
-  touch "$_NUDGE_MARKER"
+  mkdir -p "$GSTACK_STATE_ROOT" && touch "$_NUDGE_MARKER"
 fi
 ```
 
 The marker or enabled question_tuning suppresses it. To re-enable, remove
-`~/.gstack/.plan-tune-nudge-shown` before the next ship.
+`$GSTACK_STATE_ROOT/.plan-tune-nudge-shown` before the next ship.
 
 ---
 

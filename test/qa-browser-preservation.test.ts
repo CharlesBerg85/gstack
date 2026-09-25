@@ -175,7 +175,7 @@ describe('compact QA browser recipes retain native operations', () => {
     for (const skillName of ['qa', 'qa-only']) {
       const loop = generateQAExploratory({ ...ctx, skillName }).replace(/\s+/g, ' ');
       for (const contract of [
-        'not a second probe sequence', 'successful operation\'s output AND durable effects',
+        'the following loop decides when to run each probe', 'successful operation\'s output AND durable effects',
         'Before each next discovery probe, Write a new',
         'Wait for the successful Write result before dispatch',
         'Bash captions, private thinking and retrospective notes do not count',
@@ -205,12 +205,17 @@ describe('compact QA browser recipes retain native operations', () => {
     const loop = generateQAExploratory(ctx).replace(/\s+/g, ' ');
     for (const rule of ['unit for logic', 'real integration for storage/ requests/queues', 'E2E where smaller tests cannot prove journeys or mocks hide the bug', 'Do not automatically use both', 'Mock unrelated services, not the failing boundary', 'Confirm the regression fails for the defect BEFORE repair', 'green regression, original probe and adjacent happy path', 'Never freeze buggy output, weaken tests or delete valid red tests']) expect(loop).toContain(rule);
     expect(section('### 8a.5.', '### 8b.')).toContain("shared exploratory section's native unit/integration/E2E rules");
-    expect(section('### 8c.', '### 8d.')).toContain('shared regression/original-probe/adjacent-happy-path gate');
+    expect(section('### 8c.', '### 8d.')).toContain('Re-run the regression, original failing probe and adjacent happy path');
+    expect(section('### 8e.5.', '### 8f.')).toContain('This step records results; it does not create another test');
   });
 
   test('browser repair verification points at the actual read/flow recipe', () => {
     const verify = fs.readFileSync(path.resolve(import.meta.dir, '../qa/sections/browser-verify.md.tmpl'), 'utf8');
     expect(verify).toContain('Phase 3 read/flow script in qa-patterns with `flow = true`');
+    for (const contract of ['original reproduction', '`flow = false`', 'Keep the error hook',
+      '`GSTACK_STEP_OK` check', 'fresh screenshot names', 'add a suffix if it exists',
+      'Read the copied screenshot', 'Functional repairs never load this section']) expect(verify).toContain(contract);
+    expect(verify).not.toContain('const HOOK =');
     expect(verify).not.toContain('Phase 5 Drive-a-flow');
     const orient = method.slice(method.indexOf('### Phase 3: Orient'), method.indexOf('### Phase 4: Explore'));
     expect(orient).toContain('const flow = false;');

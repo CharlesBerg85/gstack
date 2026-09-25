@@ -34,8 +34,11 @@ describe('pre-publication documentation lifecycle', () => {
     const positions = steps.map(step => gate.indexOf(step));
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(gate.replace(/\s+/g, ' ')).toContain('Use Step 14.5\'s remaining attempt/recovery');
-    expect(body.replace(/\s+/g, ' ')).toContain('| Step 14.5 | Initial audit plus ONE repair/re-audit |');
+    const recovery = body.slice(body.indexOf('### 3. Resolve documentation freshness'), body.indexOf('### 4. Verify the frozen candidate')).replace(/\s+/g, ' ');
+    expect(recovery).toContain('complete the permitted repair/re-audit and its validation, then Step 15');
+    expect(recovery).toContain('return to Step 16 stage 1 to regenerate and compare again');
+    expect(recovery).toContain('Never run a third audit');
+    expect(body.replace(/\s+/g, ' ')).toContain('its initial-plus-ONE limit never resets');
     expect(gate.replace(/\s+/g, ' ')).toContain('Docs, TODO edits, new/generated tests and fixes make evidence STALE');
     const docs = read('ship/sections/documentation.md.tmpl');
     expect(docs.replace(/\s+/g, ' ')).toContain('never a third attempt, even after Step 16 changes');
@@ -121,9 +124,13 @@ describe('pre-publication documentation lifecycle', () => {
   test('PR creation and reruns keep current and blocked audits visible', () => {
     const body = read('ship/sections/pr-body.md.tmpl');
     expect(body).toContain("Use Step 18's `NEW_TITLE`");
-    expect(body).toContain('for both the scan and\npublication');
+    expect(body).toContain('`NEW_TITLE` unchanged; its version prefix is already present');
+    expect(body).toContain('printf \'%s\' "$NEW_TITLE" |');
+    expect(body).toContain('gh pr create --base <base> --title "$NEW_TITLE"');
+    expect(body).toContain('gh pr edit --title "$NEW_TITLE"');
+    expect(body).toContain('glab mr create -b <base> -t "$NEW_TITLE"');
     expect(body).not.toContain('Dispatch /document-release');
-    expect(body).toContain('Never omit this section or reuse an earlier audit');
+    expect(body).toContain("Never omit this section or reuse another invocation's audit");
     expect(body).toContain('gh pr edit --body-file "$PR_BODY_FILE"');
     expect(body).toContain('gstack-redact --from-file "$PR_BODY_FILE"');
     expect(read('ship/SKILL.md.tmpl')).toContain('existing PRs and docs-only changes');

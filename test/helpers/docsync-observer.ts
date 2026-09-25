@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { observeQAWrites, type QAWriteObservation } from './qa-functional-observer';
 import { nativeCalls } from './qa-checkpoint-evidence';
 import type { SkillTestResult } from './session-runner';
-import { DOC_PATH, type fixtureDocs } from './docsync-fixture';
+import { DOC_PATH, type DocsScenario, type fixtureDocs } from './docsync-fixture';
+import { sliceBetween } from './skill-fixture';
 
 export async function observeDocsWrites(fixture: ReturnType<typeof fixtureDocs>) {
   return observeQAWrites(fixture.repo);
@@ -24,30 +25,58 @@ function docsAtomicSources(observation: QAWriteObservation, allowed: string[], c
   if (result.exitReason !== 'success' || !Array.isArray(result.transcript) || docsToolFailures(result, fixture, scripts).length) return denied;
   const failures: string[] = [];
   const target = path.join(fixture.repo, DOC_PATH);
-  const calls = nativeCalls(result.transcript, failures).filter(call => ['Write', 'Edit'].includes(call.name)
+  const native = nativeCalls(result.transcript, failures);
+  const calls = native.filter(call => ['Write', 'Edit'].includes(call.name)
     && typeof call.input.file_path === 'string' && path.resolve(fixture.repo, call.input.file_path) === target);
   if (failures.length || !calls.length || calls.some((call, index) => call.failed || call.end <= call.start || (index > 0 && call.start <= calls[index - 1].end))) return denied;
   const before = observation.before[DOC_PATH];
   const after = observation.after[DOC_PATH];
   if (!/^\d+:[a-f0-9]{64}$/.test(before ?? '') || !/^\d+:[a-f0-9]{64}$/.test(after ?? '') || before.split(':')[0] !== after.split(':')[0]) return denied;
   const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  const encoded = fixture.before?.contents[DOC_PATH];
+  if (typeof encoded !== 'string') return denied;
+  const baseline = Buffer.from(encoded, 'base64');
+  let content = baseline.toString('utf8');
   let contentHash = before.split(':')[1];
+  if (baseline.toString('base64') !== encoded || !Buffer.from(content).equals(baseline) || hash(content) !== contentHash) return denied;
   const seen = new Set([contentHash]);
   for (const call of calls) {
     const event = result.transcript[call.end];
     const payload = event.tool_use_result;
     const results = event.message.content.filter((block: any) => block?.type === 'tool_result');
-    if (results.length !== 1 || (results[0].is_error !== undefined && results[0].is_error !== false) || !payload || payload.filePath !== target
-      || payload.userModified !== false || typeof payload.originalFile !== 'string' || hash(payload.originalFile) !== contentHash) return denied;
-    let content: string;
+    if (results.length !== 1 || (results[0].is_error !== undefined && results[0].is_error !== false)) return denied;
+    const omitted = !Object.hasOwn(event, 'tool_use_result');
+    if (omitted) {
+      if (call.parent === null) return denied;
+      let child = call;
+      const ancestors = new Set<typeof call>();
+      while (child.parent !== null) {
+        const parents = native.filter(candidate => {
+          const blocks = result.transcript[candidate.end]?.message?.content?.filter((block: any) => block?.type === 'tool_result');
+          return blocks?.length === 1 && blocks[0].tool_use_id === child.parent;
+        });
+        if (parents.length !== 1) return denied;
+        const parent = parents[0];
+        const completion = result.transcript[parent.end];
+        const block = completion.message.content.find((block: any) => block?.type === 'tool_result');
+        if (!['Agent', 'Task'].includes(parent.name) || parent.failed || parent.input.run_in_background === true
+          || parent.start >= child.start || parent.end <= child.end || ancestors.has(parent)
+          || (block.is_error !== undefined && block.is_error !== false)) return denied;
+        if (Object.hasOwn(completion, 'tool_use_result')) {
+          if (completion.tool_use_result?.status !== 'completed') return denied;
+        } else if (parent.parent === null) return denied;
+        ancestors.add(parent);
+        child = parent;
+      }
+    } else if (!payload || payload.filePath !== target || payload.userModified !== false || payload.originalFile !== content) return denied;
     if (call.name === 'Write') {
-      if (payload.type !== 'update' || typeof call.input.content !== 'string' || payload.content !== call.input.content) return denied;
+      if (typeof call.input.content !== 'string' || (!omitted && (payload.type !== 'update' || payload.content !== call.input.content))) return denied;
       content = call.input.content;
     } else {
       const { old_string: old, new_string: replacement, replace_all: all = false } = call.input;
       if (typeof old !== 'string' || !old || typeof replacement !== 'string' || typeof all !== 'boolean'
-        || payload.oldString !== old || payload.newString !== replacement || payload.replaceAll !== all) return denied;
-      const parts = payload.originalFile.split(old);
+        || (!omitted && (payload.oldString !== old || payload.newString !== replacement || payload.replaceAll !== all))) return denied;
+      const parts = content.split(old);
       if (parts.length < 2 || (!all && parts.length !== 2)) return denied;
       content = parts.join(replacement);
     }
@@ -109,10 +138,44 @@ export function docsWriteFailures(observation: QAWriteObservation, allowed: stri
 
 export function docsPreambleCommands(fixture: ReturnType<typeof fixtureDocs>): string[] {
   const source = fs.readFileSync(path.join(fixture.skills, 'document-release/SKILL.md'), 'utf8');
-  const section = source.slice(source.indexOf('## Preamble (run first)'));
-  const command = section.match(/```bash\n([\s\S]*?)\n```/)?.[1];
-  if (!command) throw Error('native docs preamble missing');
+  const generated = fs.readFileSync(path.join(process.env.DOCSYNC_GENERATED_ROOT || path.resolve(import.meta.dir, '../..'),
+    'document-release/SKILL.md'), 'utf8');
+  const [command, expected] = [source, generated].map(text => {
+    if ((text.match(/^## Preamble \(run first\)[ \t]*\r?$/gm) ?? []).length !== 1) return undefined;
+    return /^## Preamble \(run first\)[ \t]*\r?\n(?:[ \t]*\r?\n)*```bash[ \t]*\r?\n([\s\S]*?)\r?\n```[ \t]*$/m.exec(text)?.[1];
+  });
+  if (!command || command !== expected) return [];
   return [command, command.replace(/(^|\n)("\$_SS" --skill)/, '$1GSTACK_SESSION_KIND=spawned $2')];
+}
+
+export function docsShipPhase(skeleton: string, prBody: string, scenario: DocsScenario, storePointer: string): string {
+  if (scenario === 'store') return storePointer;
+  return `${sliceBetween(skeleton, '## Step 14.5: Documentation audit (every ship)', '## Step 15: Commit')}\n\n${sliceBetween(prBody, '## Documentation', '## Test plan')}`;
+}
+
+type DocsSessionOptionsInput = {
+  fixture: ReturnType<typeof fixtureDocs>;
+  phase: string;
+  report: string;
+  publish: string;
+  scenario: DocsScenario;
+  testName: string;
+  runId: string;
+  timeout: number;
+};
+
+export function docsSessionOptions(input: DocsSessionOptionsInput): Parameters<typeof import('./session-runner').runSkillTest>[0] {
+  const { fixture, phase, report, publish, scenario, testName, runId, timeout } = input;
+  return {
+    prompt: `Load gstack's /ship workflow. Steps 0–14 are complete in this isolated fixture. Execute the next phase from ${phase}, then stop before the next numbered phase. Skill assets are installed under ${fixture.skills}; HOME=${fixture.home}. Base: main. ${scenario === 'current' ? 'This is a second /ship invocation for an existing open PR; the docs-only branch is already pushed. Earlier audit results are not evidence for this invocation.' : ''} ${scenario === 'store' ? 'The selected store-release source is the current working tree on main. All App Store operations are mocked and out of scope; no permissions to edit source are granted.' : ''} After the phase, write the ship outcome to ${report}. Only if the workflow gate actually allows continuing, run the isolated publication stand-in: bun ${publish}. No real PR, push, store action or later ship phase is authorized. If a decision is required, record the exact blocker and stop; no risk exception is granted. Preserve all partial content.\n\n${docsNativeInterface(fixture, [publish])}`,
+    workingDirectory: fixture.repo,
+    maxTurns: 30,
+    allowedTools: ['Bash', 'Read', 'Grep', 'Glob', 'Write', 'Edit', 'Agent', 'Task'],
+    timeout,
+    env: fixture.env,
+    testName,
+    runId,
+  };
 }
 
 export function docsCommandAllowed(command: string, fixture: ReturnType<typeof fixtureDocs>, scripts: string[] = []): boolean {
@@ -141,6 +204,8 @@ export function docsCommandAllowed(command: string, fixture: ReturnType<typeof f
 
 export function docsNativeInterface(fixture: ReturnType<typeof fixtureDocs>, scripts: string[] = []): string {
   return `Fixture observation interface (applies to parent and every child; include this interface in child prompts): Bash may execute only separate literal pwd, ls, cat, stat, sha256sum, Git read commands (status, diff, show, log, ls-files, rev-parse, merge-base, hash-object without -w, branch --show-current), the exact generated Preamble block with its spawned prefix, or literal installed gstack-skill-start/gstack-skill-end commands for document-release (start requires GSTACK_SESSION_KIND=spawned). No shell composition, custom interpreters, arbitrary scripts, inline eval or memory-mapped writes. The only additional scripts are ${scripts.length ? scripts.join(', ') : 'none'}. Read/Glob/Grep remain available. Use Write/Edit for permitted docs and private JSON/Markdown artifacts under ${fixture.home}; do not rewrite installed skills, config, actor state or scripts. No effects outside the owned fixture. The owner preserves evidence and cleans up. Missing observer coverage blocks acceptance; the Linux kernel monitor covers syscall writes in the product tree, not hostile processes or arbitrary external destinations.
+
+The working directory for parent and child Bash calls is already ${fixture.repo}. Run Git reads directly, for example: git status, git diff --cached, git merge-base main HEAD, git rev-parse HEAD. Do not use Git global options such as -C, -c, --git-dir or --work-tree, and do not prepend cd or another shell wrapper. The literal git subcommand must immediately follow git; an absolute owned repository path does not make git -C an allowed command.
 
 Lifecycle commands in this closed fixture: read skill files at ${fixture.skills} (document-release: ${fixture.skills}/document-release/SKILL.md). Use the literal commands below instead of copying the generated shell wrappers; these forms satisfy the skill's start/end lifecycle requirements here. Run each as a separate, single-line Bash call. Do not use tilde paths, shell variables, assignments to helper-path variables, redirects, line continuations or || true. Do not add a parent PID: the start helper supplies its default.
 

@@ -435,6 +435,89 @@ describe('shared-code legacy interactive actor', () => {
     expect((await createSharedInteractiveToolHandler(() => selected, hooks)('AskUserQuestion', input)).updatedInput.answers)
       .toBe(selected);
   });
+
+  const r20Packets = JSON.parse(fs.readFileSync(path.join(import.meta.dir,
+    'fixtures/shared-libs-index-flags-r20-packets.json'), 'utf8')).cases;
+
+  test('the R20 packet dependency selects all owning native lifecycle cases', () => {
+    expect(selectTests(['test/fixtures/shared-libs-index-flags-r20-packets.json'], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected.sort()).toEqual([
+      'shared-libs-review-index-flags', 'shared-libs-review-lifecycle', 'shared-libs-review-path-eligibility',
+      'shared-libs-review-prior-coverage', 'shared-libs-review-revalidation',
+    ]);
+  });
+
+  test.each(r20Packets)('R20 $scenario attempt $attempt acknowledges the exact complete native packet', async packet => {
+    const input = structuredClone(packet.input), before = structuredClone(input);
+    const answers: unknown[] = [], refusals: Error[] = [];
+    const callback = createSharedInteractiveToolHandler('skip', {
+      nonQuestion: () => { throw new Error('unexpected tool'); }, onQuestion: () => {},
+      onAnswer: (_input, answer) => { answers.push(answer); }, onRefusal: error => { refusals.push(error); },
+    });
+    const expected = Object.fromEntries(input.questions.map((question: any, index: number) =>
+      [question.question, packet.expected_labels[index]]));
+    expect(packet.original_passed).toBe(false);
+    expect(packet.original_exit_reason).toBe('actor_contract');
+    expect(await callback('AskUserQuestion', input)).toEqual({ behavior: 'allow', updatedInput: { ...input, answers: expected } });
+    expect(answers).toEqual([expected]);
+    expect(refusals).toEqual([]);
+    expect(input).toEqual(before);
+  });
+
+  test.each(['No, leave it set', 'No: keep current', 'No, do not change', 'No, Skip', 'No, Leave as-is (Recommended)'])(
+    'negative answer prefixes preserve the exact supported label: %s', async label => {
+      const input = { questions: [{ question: 'Index flag', options: [{ label: 'Clear the flag' }, { label }] }] };
+      const callback = createSharedInteractiveToolHandler('skip', {
+        nonQuestion: () => {}, onQuestion: () => {}, onAnswer: () => {},
+      });
+      expect((await callback('AskUserQuestion', input)).updatedInput.answers).toEqual({ 'Index flag': label });
+    });
+
+  test.each([
+    'The route edit stays invisible to git status/diff and outside snapshot coverage.',
+    'The worker change remains unchanged.',
+    'The source update stays unapplied.',
+    'The parser fix remains hidden from Git.',
+    'The index flag update stays untouched.',
+    'The route edits remain excluded from snapshot coverage.',
+  ])('nominal action subjects with preservation predicates grant no mutation: %s', async description => {
+    const input = structuredClone(r20Packets[1].input);
+    input.questions[1].options[1].description = description;
+    const callback = createSharedInteractiveToolHandler('skip', {
+      nonQuestion: () => {}, onQuestion: () => {}, onAnswer: () => {},
+    });
+    expect((await callback('AskUserQuestion', input)).updatedInput.answers).toEqual({
+      [input.questions[0].question]: 'Skip', [input.questions[1].question]: 'Leave it set',
+    });
+  });
+
+  test.each([
+    { label: 'No, investigate', description: '' },
+    { label: 'No, keep going', description: '' },
+    { label: 'No, leave it set and fix the worker' },
+    { label: 'No, leave it set', description: 'Clear the index flag.' },
+    { label: 'No, leave it set', preview: '// Apply the route fix.' },
+    { description: 'The route edit replaces the parser.' },
+    { description: 'The worker imports the helper.' },
+    { description: 'The route edit stays invisible; fix the worker.' },
+    { description: 'The route edit remains hidden while I will refactor the worker.' },
+    { description: 'The source update stays unapplied until we change the worker.' },
+    { description: 'The parser fix remains hidden after rewriting the helper.' },
+    { description: 'The index flag update stays cleared.' },
+    { description: 'The route edits remain applied.' },
+    { description: 'The route edit stays invisible.', preview: 'The worker change applies the patch.' },
+  ])('R20 preservation packets reject later or mixed mutation commitments atomically: %j', async changed => {
+    const input = structuredClone(r20Packets[1].input);
+    Object.assign(input.questions[1].options[1], changed);
+    const before = structuredClone(input), answers: unknown[] = [], refusals: Error[] = [];
+    const callback = createSharedInteractiveToolHandler('skip', {
+      nonQuestion: () => {}, onQuestion: () => {}, onAnswer: answer => { answers.push(answer); },
+      onRefusal: error => { refusals.push(error); },
+    });
+    await expect(callback('AskUserQuestion', input)).rejects.toThrow('No unambiguous no-change option');
+    expect(answers).toEqual([]);
+    expect(refusals).toHaveLength(1);
+    expect(input).toEqual(before);
+  });
 });
 
 describe('shared-code fixture snapshots', () => {

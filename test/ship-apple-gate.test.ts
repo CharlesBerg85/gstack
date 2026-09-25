@@ -61,4 +61,19 @@ describe("ship Apple gate ordering (R2)", () => {
       expect(section).toContain(anchor);
     }
   });
+
+  test("routine interaction limits cannot waive blocking documentation or safety decisions", () => {
+    for (const name of ["apple-release.md.tmpl", "apple-release.md"]) {
+      const section = readFileSync(join(ROOT, "ship", "sections", name), "utf-8");
+      expect(section).toContain("Plan for two routine interactions");
+      expect(section).toContain("A genuine blocker may require a safety or named documentation-risk decision");
+      expect(section).toContain("STOP for that decision rather than treating release authorization as a waiver");
+      expect(section).toContain("routine interactions and blocking decisions above");
+      expect(section).not.toContain("exactly two interactions, and no others");
+      expect(section).not.toContain("two permitted interactions");
+      expect(section.indexOf("**Documentation preflight:**")).toBeLessThan(section.indexOf("## The one authorization moment"));
+      expect(section).toContain("in `read-only` mode against the selected release source");
+      expect(section).toContain("Resolve blockers or obtain an explicit named documentation-risk exception before distribution");
+    }
+  });
 });

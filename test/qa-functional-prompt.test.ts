@@ -1,8 +1,12 @@
 import { expect, test } from 'bun:test';
 import { qaFunctionalPrompt, QA_FUNCTIONAL_CASES } from './helpers/qa-functional-eval';
 import { qaCommandAllowed } from './helpers/qa-functional-observer';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { parseNDJSON } from './helpers/session-runner';
+import { qaNativeProbes } from './helpers/qa-functional-evidence';
+import { validateQACheckpoints } from './helpers/qa-checkpoint-evidence';
 
 test('the native launcher consumes the family-specific actor boundary', () => {
   const source = readFileSync(join(import.meta.dir, 'helpers/qa-functional-eval.ts'), 'utf8');
@@ -71,6 +75,14 @@ test('fix completion budgets for required repair and avoids duplicating preserve
       expect(prompt).toContain('Include the diagnosis, red/green test results and coverage limits');
       expect(prompt).toContain('After saving both artifacts, return only their paths and the actual completion status');
       expect(prompt).toContain('Never shorten native JSON or omit a required probe, check or field');
+      const stages = ['1. Prove the regression red', '2. On the repaired source', '3. Save the evidence and Markdown artifacts'];
+      const positions = stages.map(stage => prompt.indexOf(stage));
+      expect(positions.every(position => position >= 0)).toBe(true);
+      expect(positions).toEqual([...positions].sort((a, b) => a - b));
+      expect(prompt).toContain('A green test suite does not substitute for these native probes');
+      expect(prompt).toContain('not a signal to stop stage 2');
+      expect(prompt).toContain('report incomplete; do not call it complete with a caveat');
+      expect(prompt).toContain('one causal sentence per checkpoint hypothesis and compact JSON formatting, preserving every field and value');
     } else {
       expect(prompt).not.toContain('This is a fix run');
       expect(prompt).not.toContain('aim under 400 words');
@@ -78,9 +90,84 @@ test('fix completion budgets for required repair and avoids duplicating preserve
   }
 });
 
+test('webhook fix stage retains the required scenarios omitted by both R29 captures', () => {
+  const captured = [
+    { id: 'ecd6da06-abd0-4299-8c33-e1b99a672325', scenarios: ['happy', 'partial', 'partial', 'concurrent-ab', 'partial', 'cancel', 'dependency', 'happy'], missing: ['reject', 'duplicate', 'concurrent-ba'] },
+    { id: '45722f13-a72c-4c01-87cc-8e17285ef8c4', scenarios: ['happy', 'concurrent-ab', 'concurrent-ab', 'concurrent-ab', 'happy', 'cancel', 'dependency'], missing: ['reject', 'duplicate', 'partial', 'concurrent-ba'] },
+  ];
+  const prompt = qaFunctionalPrompt({ family: 'webhook', mode: 'qa' });
+  const verification = prompt.slice(prompt.indexOf('2. On the repaired source'), prompt.indexOf('3. Save the evidence'));
+  const required = ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba', 'cancel', 'dependency'];
+  for (const attempt of captured) {
+    expect(required.filter(scenario => !attempt.scenarios.includes(scenario))).toEqual(attempt.missing);
+    for (const scenario of required) expect(verification).toContain(`\`${scenario}\``);
+  }
+  expect(verification).toContain('every still-unobserved scenario');
+  expect(verification).toContain('recheck earlier scenarios affected by the repair');
+  expect(verification).toContain('None of these scenarios is optional exploration');
+  expect(prompt).toContain('the completion reserve does not end required coverage');
+  expect(qaFunctionalPrompt({ family: 'cli', mode: 'qa' })).not.toContain('`concurrent-ba`');
+});
+
+test('fix-stage checkpoint provenance survives intervening native regression tests', () => {
+  const prompt = qaFunctionalPrompt({ family: 'webhook', mode: 'qa' });
+  expect(prompt).toContain('most recent completed native probe');
+  expect(prompt).toContain('Tests, source edits and clock reads do not replace that observation');
+  expect(prompt).toContain('put red/green test output in the report, not in observed');
+  expect(prompt).toContain('write no checkpoint when there is no next probe');
+});
+
+test('R29 captured webhook bytes bind across a green test; test summaries and altered JSON do not', () => {
+  const captured = {
+    before: '{"scenario":"concurrent-ab","requests":[{"method":"POST","path":"/events","auth":"$QA_SYNTHETIC_AUTH","body":{"id":"delivery","cents":7},"status":202,"response":"{\\"accepted\\":\\"delivery\\"}"}],"order":["a","b"],"interrupted":"","state":{"jobs":{"delivery":{"cents":7,"status":"complete","attempts":2}},"effects":[{"id":"delivery","cents":7},{"id":"delivery","cents":7}]},"stateRoot":"/q/gstack-paid-shard-hyrPGY/tmp/qaf-JaNRb2/.qa-state/concurrent-ab-nVrq2v"}',
+    after: '{"scenario":"concurrent-ab","requests":[{"method":"POST","path":"/events","auth":"$QA_SYNTHETIC_AUTH","body":{"id":"delivery","cents":7},"status":202,"response":"{\\"accepted\\":\\"delivery\\"}"}],"order":["a","b"],"interrupted":"","state":{"jobs":{"delivery":{"cents":7,"status":"complete","attempts":1}},"effects":[{"id":"delivery","cents":7}]},"stateRoot":"/q/gstack-paid-shard-hyrPGY/tmp/qaf-JaNRb2/.qa-state/concurrent-ab-ySExJy"}',
+    green: 'bun test v1.4.0 (34cbb9a40)\n\n 2 pass\n 0 fail\n 4 expect() calls\nRan 2 tests across 2 files. [50.00ms]',
+    checkpoint: '{"observationCommand":"bun test test/worker.regression-1.test.ts","observed":"red before repair: expect(received).toEqual(expected) — effects had two {id:delivery,cents:7} entries; 0 pass 1 fail. After the src/worker.ts post-gate recheck, bun test reported 2 pass 0 fail (native test output, not probe JSON).","hypothesis":"The regression turned green after the post-gate ledger recheck, so the original failing native probe should now show exactly one effect with both workers still released in a then b order.","nextCommand":"bun run probe -- concurrent-ab"}\n',
+  };
+  const reportRoot = realpathSync(mkdtempSync(join(tmpdir(), 'qa-r29-')));
+  const name = 'exploration-004.json';
+  const file = join(reportRoot, name);
+  const command = 'bun run probe -- concurrent-ab';
+  try {
+    for (const variant of ['original summary', 'native JSON', 'raw test output', 'missing stateRoot', 'green result', 'missing Write receipt', 'terminal note']) {
+      const note = JSON.parse(captured.checkpoint);
+      if (variant !== 'original summary') {
+        note.observationCommand = command;
+        note.observed = JSON.parse(captured.before);
+      }
+      if (variant === 'raw test output') { note.observationCommand = 'bun test'; note.observed = captured.green; }
+      if (variant === 'missing stateRoot') delete note.observed.stateRoot;
+      if (variant === 'green result') note.observed = JSON.parse(captured.after);
+      if (variant === 'terminal note') note.nextCommand = 'none';
+      const content = variant === 'original summary' ? captured.checkpoint : JSON.stringify(note);
+      writeFileSync(file, content, { mode: 0o600 });
+      const calls = [
+        { tool: 'Bash', input: { command }, output: `$ bun probe.ts concurrent-ab\n${captured.before}` },
+        { tool: 'Bash', input: { command: 'bun test' }, output: captured.green },
+        { tool: 'Write', input: { file_path: file, content }, output: `File created successfully at: ${file}` },
+        { tool: 'Bash', input: { command }, output: `$ bun probe.ts concurrent-ab\n${captured.after}` },
+      ];
+      const packets = calls.flatMap((call, index) => [
+        { type: 'assistant', message: { content: [{ type: 'tool_use', id: `r29-${index}`, name: call.tool, input: call.input }] } },
+        ...variant === 'missing Write receipt' && call.tool === 'Write' ? [] : [
+          { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: `r29-${index}`, content: call.output }] } },
+        ],
+      ]);
+      const result = parseNDJSON(packets.map(packet => JSON.stringify(packet)));
+      const probes = qaNativeProbes(result);
+      expect(probes).toHaveLength(2);
+      const failures = validateQACheckpoints({ transcript: result.transcript, reportRoot, probes,
+        requiredProbes: probes.slice(1), files: { [name]: content }, reportMarkdown: `[Checkpoint](${name})` });
+      if (variant === 'native JSON') expect(failures).toEqual([]);
+      else expect(failures).toContain(`QA checkpoint: Missing unique completed checkpoint before probe: ${command}`);
+      if (variant === 'original summary') expect(failures).toContain(`QA checkpoint: Unrelated, reused or retrospective checkpoint: ${name}`);
+    }
+  } finally { rmSync(reportRoot, { recursive: true, force: true }); }
+});
+
 test('report-only exploration requires a completed written checkpoint before the next probe', () => {
   const section = readFileSync(join(import.meta.dir, '../qa-only/sections/exploratory.md'), 'utf8');
-  const positions = ['1. First demonstrate a successful operation', '2. **Write before probing.**', '3. Run that exact probe']
+  const positions = ['1. First demonstrate a successful operation', '2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe']
     .map(marker => section.indexOf(marker));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -97,7 +184,11 @@ test('report-only exploration requires a completed written checkpoint before the
 
 test('surface evidence checks defer to one exploratory execution sequence', () => {
   const source = readFileSync(join(import.meta.dir, '../scripts/resolvers/qa.ts'), 'utf8');
-  expect(source).toContain('This loop owns execution order; surface methods supply contracts and evidence checks');
+  expect(source).toContain('the following loop decides when to run each probe (one command or interaction plus its checks)');
+  const positions = ['2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe']
+    .map(marker => source.indexOf(marker));
+  expect(positions.every(position => position >= 0)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
   expect(source).toContain('Do not batch probes across a checkpoint');
   expect(source).toContain('Follow the shared exploratory loop\'s order and written checkpoints');
   expect(source).toContain('Re-run the exact failing command/request from the same initial fixture state');

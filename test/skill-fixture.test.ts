@@ -154,6 +154,45 @@ describe('extractSkillBody (synthetic)', () => {
     expect(out).not.toContain('footer junk');
   });
 
+  test.each([
+    ['plain', '', '# Actual'],
+    ['one-space indent', '', ' # Actual'],
+    ['three-space indent', '', '   # Actual'],
+    ['tab separator', '', '#\tActual'],
+    ['empty title', '', '#'],
+    ['backtick fence', '```md\n# FALSE TITLE\n## FALSE SECTION\n```\n', '# Actual'],
+    ['tilde fence', '~~~md\n# FALSE TITLE\n~~~\n', '# Actual'],
+    ['short nested fence', '````md\n```\n# FALSE TITLE\n```\n````\n', '# Actual'],
+    ['mismatched fence', '~~~md\n```\n# FALSE TITLE\n~~~\n', '# Actual'],
+    ['nonclosing suffix', '```md\n```not-a-close\n# FALSE TITLE\n```\n', '# Actual'],
+    ['indented code', '    # FALSE TITLE\n', '# Actual'],
+    ['missing separator', '#FALSE TITLE\n', '# Actual'],
+    ['quoted title', '> # FALSE TITLE\n', '# Actual'],
+  ])('preserves a post-preamble H1 introduction: %s', (_name, decoy, title) => {
+    const file = path.join(tmpDir, 'title-boundary.md');
+    fs.writeFileSync(file, SYNTHETIC_SKILL.replace(
+      'footer junk, last shared-preamble section\n\n',
+      `footer junk, last shared-preamble section\n${decoy}${title}\nREAL INTRODUCTION\n\n`,
+    ));
+    const out = extractSkillBody(file);
+    expect(out).toBe(extractSkillBody(skillDir).replace(
+      '## Step 1 — Do the thing', `${title}\nREAL INTRODUCTION\n\n## Step 1 — Do the thing`,
+    ));
+    expect(out).not.toContain('FALSE TITLE');
+    expect(out).not.toContain('footer junk');
+    expect(extractSkillSections(file, ['Plan Status Footer']))
+      .toContain(`${decoy}${title}\nREAL INTRODUCTION`);
+  });
+
+  test('a post-preamble H1 and introduction are a complete body without another H2', () => {
+    const file = path.join(tmpDir, 'title-only-body.md');
+    fs.writeFileSync(file, SYNTHETIC_SKILL.slice(0, SYNTHETIC_SKILL.indexOf('## Step 1 — Do the thing'))
+      + '# Actual\nREAL INTRODUCTION\n');
+    const out = extractSkillBody(file);
+    expect(out).toContain('# Actual\nREAL INTRODUCTION');
+    expect(out).not.toContain('footer junk');
+  });
+
   test('throws when the preamble markers are missing', () => {
     const bare = path.join(tmpDir, 'bare');
     fs.mkdirSync(bare, { recursive: true });
@@ -321,6 +360,18 @@ describe('real-skill pins: section lists used by E2E fixtures', () => {
 });
 
 describe('real-skill pins: body/head extraction used by E2E fixtures', () => {
+  test.each(['qa-only', 'skillify', 'context-save', 'context-restore'])(
+    'extractSkillBody(%s) preserves the complete real H1 introduction', (skill) => {
+      const file = path.join(ROOT, skill, 'SKILL.md');
+      const full = fs.readFileSync(file, 'utf8');
+      const title = full.indexOf(`\n# /${skill}`, full.indexOf('## Plan Status Footer'));
+      const nextSection = full.indexOf('\n## ', title);
+      expect(title).toBeGreaterThan(0);
+      expect(nextSection).toBeGreaterThan(title);
+      expect(extractSkillBody(file)).toContain(full.slice(title + 1, nextSection).trimEnd());
+    },
+  );
+
   // scrape/skillify/context-*: skill-e2e-skillify + skill-e2e-context-skills.
   // review/plan-eng-review/ship: skill-e2e-coverage-audit + skill-e2e-triage.
   const BODY_EXTRACTED_SKILLS = [

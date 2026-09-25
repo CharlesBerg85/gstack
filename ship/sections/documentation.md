@@ -8,8 +8,15 @@ Use the invocation record's count: an initial audit plus ONE repair/re-audit,
 never a third attempt, even after Step 16 changes. Increment before each launch
 or inline takeover, including failed launches; inline work follows the same
 validation gates. A stale snapshot is neither a new attempt nor a current audit.
-Record the child handle separately from its result: an exited child with missing
+Save the child handle: an exited child with missing
 output has stopped, but its audit is blocked.
+
+First entry always launches the initial audit. A repair range that crosses Step 14.5
+enters this decision again; it does not authorize another launch or reset the count.
+On reentry, including Step 16 repairs and Step 17 recovery,
+reuse only this invocation's validated audit or named-risk decision whose accepted
+base/input hashes still match; retain its actual status and scope. Otherwise use
+Blocked recovery, not an unconditional launch. Unwaivable gates still apply.
 
 ## Prepare the candidate
 

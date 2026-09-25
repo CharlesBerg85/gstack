@@ -727,9 +727,32 @@ export function reviewRevalidationPrompt(f: SharedLibsFixture, instructions: str
   return `${reviewPrompt(f, instructions, specialistInput)}
 
 Revalidation fixture execution contract:
-- The runtime allows ${SHARED_INTERACTIVE_MAX_TURNS} assistant turns. Batch independent required source reads, Git configuration/attribute checks, and snapshot checks within each phase. Preserve every required evidence check and dependency: capture the real start token before reading the diff, and complete final evidence verification before persistence.
-- The trusted start-record location is ${startRecord}. Replace <REVIEW_START> with the token actually returned by --start; read and verify that record through ${SHARED_LIBS_ROOT}/bin/gstack-review-log --check-shared-libs. Run the checker from the target repo with that literal token and the current finding on stdin. Inspect its complete returned JSON before a separate --finish invocation, including reusable, review_start, fingerprint and snapshot.covered_paths. This mechanical proof does not replace reading the actual authored callers. Use the supplied helper interfaces; discovering helper CLI options is outside this replay.
-- After final verification, combine successful --finish persistence and one complete, untruncated read-back through gstack-review-read in the same tool invocation. Read back only after persistence succeeds, inspect the full current record and binding, then return the final review summary in conversation.
+The runtime allows ${SHARED_INTERACTIVE_MAX_TURNS} assistant turns. Batch independent required source reads and other Git/configuration/attribute inspections only outside the receipt commands below. Preserve every required evidence check and dependency. This is a closed transport interface, not permission to omit workflow stages.
+
+1. Gather base metadata first. From the target repo, run the following as the sole command in its Bash call. Its stdout must contain only the token: no echo, labels, status, diff or other commands. Then read the diff in a subsequent call, preserving Step 3's start-before-diff order.
+
+\`\`\`bash
+${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'))} --start review
+\`\`\`
+
+2. Before checking reuse, directly read every supplied authored evidence path and the helper destination, including the changed worker even when its body appeared in the diff. Use native Read with explicit file paths, or cat/sed with literal path operands. These independent reads may be batched together, but their successful results must return before the checker. No path-variable loops, globs or process substitutions for these required reads. Other required inspections and structural fingerprinting can batch separately from receipt commands.
+
+3. The trusted start-record location is ${startRecord}. Replace <REVIEW_START> with the token actually returned by --start; the checker reads and verifies that record without consuming it. Replace REVIEW_START below with that same literal token and CURRENT_FINDING_JSON with the current finding as literal JSON, retaining the quoted delimiter. Run this as the sole command in its Bash call from the target repo; stdout must be only one JSON value, with no preceding reads/fingerprinting or trailing output. Inspect reusable, review_start, fingerprint and snapshot.covered_paths before any later --finish invocation. This mechanical proof does not replace authored-source review. Use the supplied helper interfaces; discovering helper CLI options is outside this replay.
+
+\`\`\`bash
+${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'))} --check-shared-libs REVIEW_START <<'GSTACK_REVALIDATION_FINDING'
+CURRENT_FINDING_JSON
+GSTACK_REVALIDATION_FINDING
+\`\`\`
+
+4. Record the supplied finding's disposition under its own evidence_paths/helper_target identity. Snapshot-ineligible supporting paths may be excluded from migration, savings and computed coverage; that does not silently remove them from the identity being revalidated. A materially revised proposal is a separate finding, never a replacement for the supplied finding's disposition. Do not make an unsupported proposal look worthwhile or mark it skipped without its actual explicit decision. An unsupported or unfinished supplied finding stays blocked and fails this replay; report it honestly. A false checker result still requires fresh source review and a new decision.
+
+5. Complete final evidence verification and assemble all record metadata in earlier calls. Replace FINAL_REVIEW_JSON below with the complete, shell-quoted literal record and REVIEW_START with the actual literal token. No preliminary commands, metadata substitutions or extra output in this final Bash call: combine successful --finish persistence and one complete, untruncated read-back through gstack-review-read in the same tool invocation exactly as below. Read back only after persistence succeeds, inspect the full current record and binding, then return the final review summary in conversation.
+
+\`\`\`bash
+${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'))} 'FINAL_REVIEW_JSON' --finish REVIEW_START && ${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-read'))}
+\`\`\`
+
 - Failed persistence or verification remains a failure. Late source changes still require the workflow's normal re-review; never skip checks, questions, or convergence rules to finish within the bound.`;
 }
 
@@ -843,7 +866,10 @@ function skippedReviewOption(question: any): any {
       word.replace(/(?:ed|ing)$/, 'e'), word.replace(/(?:ies|ied)$/, 'y'),
       word.replace(/([a-z])\1(?:ed|ing)$/, '$1')].some(form => actions.has(form));
     const changes = commitment.toLowerCase().split(/[,;\n]|[.!?](?:\s|$)|\b(?:and|but|then|while)\b/).some(part => {
-      const clause = part.replace(/^[^a-z]+/, '')
+      const text = part.replace(/^[^a-z]+/, '');
+      const nominal = /^(?:the\s+)?(?:source|code|route|worker|helper|parser|index(?:\s+flag)?)\s+([a-z]+(?:-[a-z]+)*)\s+(?:stays?|remains?)\s+(?:unchanged|untouched|unapplied|hidden|invisible|excluded)\b([\s\S]*)$/.exec(text);
+      if (nominal && isAction(nominal[1])) return (nominal[2].match(/[a-z]+(?:-[a-z]+)*/g) ?? []).some(isAction);
+      const clause = text
         .replace(/^(?:the\s+)?(?:review|reuse|snapshot)\s+coverage\s+(?=(?:will|would|should|must|can|may|does|do)\b)/, '')
         .replace(/^(?:(?:this|that|the|selected|chosen)\s+(?:option|choice|selection)|i|we|you|it|(?:the\s+)?(?:source|code|route|worker|helper|parser|index(?:\s+flag)?))\s+/, '')
         .replace(/^(?:will|would|should|must|can|may|does|do)\s+/, '')

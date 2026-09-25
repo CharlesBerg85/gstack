@@ -94,7 +94,15 @@ Other rows provide context, not a substitute for Eng Review:
 explicitly, never as CLEAR. Display a fresh \`clean\` result as CLEAR and
 \`issues_open\` as ISSUES OPEN without changing the stored status.
 
-\`\`\`
+${ctx.skillName === 'ship' ? `**REVIEW READINESS DASHBOARD**
+
+Use one row for each entry in step 1. Only Eng Review is marked required.
+
+| Review | Runs | Last run | Status | Required |
+|---|---:|---|---|---|
+| {row and suffix} | {count} | {timestamp or —} | {actual status and reason} | {yes/no} |
+
+VERDICT: {CLEARED or NOT CLEARED} — {reason}` : `\`\`\`
 +====================================================================+
 |                    REVIEW READINESS DASHBOARD                       |
 +====================================================================+
@@ -108,7 +116,7 @@ explicitly, never as CLEAR. Display a fresh \`clean\` result as CLEAR and
 +--------------------------------------------------------------------+
 | VERDICT: CLEARED — Eng Review passed                                |
 +====================================================================+
-\`\`\``;
+\`\`\``}`;
   return ctx.skillName === 'plan-eng-review' ? result.replaceAll('\\`', '`') : result;
 }
 
@@ -869,7 +877,7 @@ Read the diff for this branch. First list changed files: \`DIFF_BASE=$(git merge
 
 Think like an attacker and a chaos engineer. Your job is to find ways this code will fail in production. Look for: edge cases, race conditions, security holes, resource leaks, failure modes, silent data corruption, logic errors that produce wrong results silently, error handling that swallows failures, and trust boundary violations. Be adversarial. Be thorough. No compliments — just the problems. For each finding, classify as FIXABLE (you know how to fix it) or INVESTIGATE (needs human judgment). After listing findings, end your output with ONE line in the canonical format \`Recommendation: <action> because <one-line reason naming the most exploitable finding>\` — examples: \`Recommendation: Fix the unbounded retry at queue.ts:78 because it'll DoS the worker pool under sustained 429s\` or \`Recommendation: Ship as-is because the strongest finding is a theoretical race that requires conditions we can't trigger in production\`. The reason must point to a specific finding (or no-fix rationale). Generic reasons like 'because it's safer' do not qualify."
 
-Present findings under an \`ADVERSARIAL REVIEW (${outsideVoiceFor(ctx).nativeLabel} subagent):\` header. **FIXABLE findings** ${isShip ? 'are queued for the next Step 9 pass; do not edit during Step 11' : "are queued for the parent's Fix-First handling at Step 5; do not edit during Step 4.8"}. **INVESTIGATE findings** are presented as informational.
+Present findings under an \`ADVERSARIAL REVIEW (${outsideVoiceFor(ctx).nativeLabel} subagent):\` header. **FIXABLE findings** ${isShip ? 'are queued for the parent; do not edit during Step 11' : "are queued for the parent's Fix-First handling at Step 5; do not edit during Step 4.8"}. **INVESTIGATE findings** are presented as informational.
 
 If the subagent fails or times out, record native coverage as incomplete. Continue independent passes and persistence, not release.
 
@@ -883,7 +891,7 @@ Outside prompt (supply repository context from the parent):
 
 "${CODEX_BOUNDARY}Review the changes on this branch against the base branch. Use the supplied branch diff. If it was not supplied and you have repository tools, run DIFF_BASE=$(git merge-base origin/<base> HEAD) && git diff "$DIFF_BASE". Your job is to find ways this code will fail in production. Think like an attacker and a chaos engineer. Find edge cases, race conditions, security holes, resource leaks, failure modes, and silent data corruption paths. Be adversarial. Be thorough. No compliments — just the problems. End your output with ONE line in the canonical format \`Recommendation: <action> because <one-line reason naming the most exploitable finding>\`. Generic reasons like 'because it's safer' do not qualify; the reason must point to a specific finding or no-fix rationale."
 
-${outsideVoiceInvocation(ctx, { timeoutMs: 540000, diffCommand: 'DIFF_BASE=$(git merge-base origin/<base> HEAD) && git diff "$DIFF_BASE"' })}
+${outsideVoiceInvocation(ctx, { timeoutMs: 540000, nativeAlreadyRequired: true, diffCommand: 'DIFF_BASE=$(git merge-base origin/<base> HEAD) && git diff "$DIFF_BASE"' })}
 
 Set the outer tool timeout to 600000ms so the provider timeout can report its failure.
 
@@ -896,7 +904,7 @@ Present this outside challenge's output verbatim as informational findings.
 
 
 
-If \`CODEX_MODE\` is \`not_installed\` / \`not_authed\` / \`disabled\`: the preflight already printed the reason; run ${outsideVoiceFor(ctx).nativeLabel} adversarial only.
+For non-ready modes, retain the native pass above; do not dispatch it again.
 
 ---
 
@@ -906,7 +914,7 @@ If \`CODEX_MODE\` is \`ready\` and either \`DIFF_TOTAL >= 200\` or the user requ
 
 Prepare a structured review prompt requesting severity-tagged findings ([P1], [P2], [P3]) or an explicit NO_FINDINGS conclusion. Preserve the base-branch scope including committed changes and working-tree changes.
 
-${outsideVoiceInvocation(ctx, { timeoutMs: 540000, structuredBase: '<base>', gate: 'structured', diffCommand: 'DIFF_BASE=$(git merge-base <base> HEAD) && git diff "$DIFF_BASE"' })}
+${outsideVoiceInvocation(ctx, { timeoutMs: 540000, nativeAlreadyRequired: true, structuredBase: '<base>', gate: 'structured', diffCommand: 'DIFF_BASE=$(git merge-base <base> HEAD) && git diff "$DIFF_BASE"' })}
 
 ${outsideVoiceFor(ctx).id === 'codex' ? 'The Codex backend uses `codex review --base` without a positional prompt: those arguments are mutually exclusive. Never drop --base to resolve an argv error; prompt-only review changes the diff scope.' : 'The Claude Code backend receives the parent-captured base diff, including committed and working-tree changes, because review mode cannot execute git.'}
 
@@ -921,7 +929,7 @@ A) Investigate and fix now (recommended)
 B) Continue — review will still complete
 \`\`\`
 
-If A: ${isShip ? 'queue the approved findings for the next Step 9 pass instead of editing here. On returning to Step 11, repeat the same structured invocation and diff scope' : "queue the findings and this approval for Step 5's Fix-First handling. After edits, the full re-review repeats this same structured invocation and diff scope; do not start an inner repair loop"}.
+If A: ${isShip ? 'queue the approved findings without editing here. Every fresh pass repeats the same structured invocation and diff scope' : "queue the findings and this approval for Step 5's Fix-First handling. After edits, the full re-review repeats this same structured invocation and diff scope; do not start an inner repair loop"}.
 If B: retain the acknowledged findings and failed gate; do not report a clean review.
 
 Read stderr for errors (same error handling as ${outsideVoiceFor(ctx).label} adversarial above).
@@ -982,23 +990,20 @@ High-confidence findings (agreed on by multiple sources) should be prioritized f
 
 ${isShip ? `### Finish the adversarial phase
 
-Optional outside failures retain their own incomplete records. Choose the first
-applicable outcome:
+Optional outside failures retain their own incomplete records. Apply these decisions
+in order before leaving Step 11:
 
-1. **Required native review incomplete: STOP before Step 12.** Report the failure
-   and needed repair, and confirm the task stopped. A concrete prerequisite
-   correction permits one recovery retry in this invocation; record its use before
-   launch. Without a correction, with missing access, or after that retry fails,
-   keep ship blocked and ask for the needed repair. Outside-provider output cannot
-   replace this pass.
-2. **Native review completed, with queued fixes:** return to Step 9 before capturing
-   its fresh start token. Step 9.4 owns the edits and the same CYCLES limit.
-   Repeat Steps 9–11 on the new tree. Keep approvals for unchanged Step 10 comments;
-   collect new review evidence. These normal fresh reviews are not recovery retries.
-3. **Native review completed, with no queued fixes:** Continue only after a zero-edit
-   review cycle. Run the memory updates below, then proceed to Step 12.
-
-Every return keeps the original fixing-cycle and recovery-retry counts.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
+1. **Required native review incomplete:** STOP and confirm the native task stopped.
+   Outside-provider output cannot replace this pass. One recovery retry is allowed
+   only after a concrete prerequisite correction and restored access; count it in
+   the invocation record before launch. Capture a fresh PASS_START and persist the
+   new attempt separately, then reconsider these decisions. Without that correction,
+   or if the recovery fails, ask for repair and remain blocked.
+2. **Fixes queued after native completion:** Keep the findings and their approvals.
+   Run Steps 9–11, including full review before fixes. After all inner repairs finish,
+   return to Step 11.5. These fresh reviews after code edits are not recovery retries.
+3. **Native complete with no queued fixes:** Finish the memory updates below,
+   then continue to Step 11.5. Never jump directly to release preparation.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
 
 ---`;
 }
@@ -1489,13 +1494,21 @@ function generatePlanCompletionAuditInner(mode: PlanCompletionMode, part: 'audit
   sections.push(`
 ### Actionable Item Extraction
 
-Read the plan file. Extract every actionable item — anything that describes work to be done. Look for:
+${mode === 'ship' ? `**Separate deliverables from execution-only verification.** Audit implementation and test-creation requirements below.
+For a local execution-only check, retain its command, expected outcome and source verbatim in the summary
+for Step 8.1/9, outside implementation counts. It remains required and pending actual execution,
+never DONE from static inspection and not EXTERNAL-STATE merely because it has not run.
+Keep genuine external-state and human-only checks in this audit with their existing gates.
+A mixed item retains its implementation obligation here and its execution check in Step 8.1/9;
+zero implementation counts do not waive those checks.
+
+Extract deliverables and test-creation work, not the local checks routed above. Look for:` : 'Read the plan file. Extract every actionable item — anything that describes work to be done. Look for:'}
 
 - **Checkbox items:** \`- [ ] ...\` or \`- [x] ...\`
 - **Numbered steps** under implementation headings: "1. Create ...", "2. Add ...", "3. Modify ..."
 - **Imperative statements:** "Add X to Y", "Create a Z service", "Modify the W controller"
 - **File-level specifications:** "New file: path/to/file.ts", "Modify path/to/existing.rb"
-- **Test requirements:** "Test that X", "Add test for Y", "Verify Z"
+- **Test requirements:** ${mode === 'ship' ? '"Add test for Y" or another required test deliverable; route execution-only local verification as above.' : '"Test that X", "Add test for Y", "Verify Z"'}
 - **Data model changes:** "Add column X to table Y", "Create migration for Z"
 
 **Ignore:**
@@ -1507,7 +1520,7 @@ Read the plan file. Extract every actionable item — anything that describes wo
 
 **Cap:** Extract at most 50 items. If the plan has more, note: "Showing top 50 of N plan items — full list in plan file."
 
-**No items found:** If the plan contains no extractable actionable items, skip with: "Plan file contains no actionable items — skipping completion audit."
+**No items found:** ${mode === 'ship' ? 'If no audited deliverables remain, report zero implementation counts and retain pending execution-only checks verbatim in summary for Step 8.1/9. This skips only the implementation audit, never required verification.' : 'If the plan contains no extractable actionable items, skip with: "Plan file contains no actionable items — skipping completion audit."'}
 
 For each item, note:
 - The item text (verbatim or concise summary)
@@ -1619,7 +1632,7 @@ The parent evaluates the completion checklist in priority order, including after
    - RECOMMENDATION per item: Y if the item is concrete and easily verified; N if it's critical-path (auth, DNS, deliverables to other repos) and the user shows hesitation.
 
    **Exit conditions:**
-   - Any N: STOP. Surface the missing items, suggest re-running /ship after they're addressed.
+   - Any N: pause confirmations and reclassify that item as NOT DONE. Apply priority 1: A stops; B defers; C drops. After B/C, resume the remaining confirmations.
    - All Y or D: Continue. Embed \`## Plan Completion — Manual Verifications\` section in PR body listing each Y'd item with the user's free-text evidence and each D'd item with "intentionally dropped".
 
    **Cap.** If there are more than 5 UNVERIFIABLE items, present them as a numbered list first and ask whether the user wants to (1) confirm each individually, (2) stop and reduce scope, or (3) explicitly accept blanket-confirmation with the warning that this is the VAS-449 failure shape. Default and recommended option is (1).
@@ -1628,7 +1641,7 @@ The parent evaluates the completion checklist in priority order, including after
 
 4. **All DONE or CHANGED:** Pass. "Plan completion: PASS — all items addressed." Continue.
 
-**No plan file found:** Skip entirely. "No plan file detected — skipping plan completion audit."
+**No plan file found:** Skip only the plan completion audit. Continue with Step 8.1, Prior Learnings and Scope Drift; Step 9 QA still runs.
 
 **Include in PR body (Step 19):** Add a \`## Plan Completion\` section with the checklist summary.`;
   } else {
@@ -1736,54 +1749,30 @@ export function generatePlanCompletionAuditReview(_ctx: TemplateContext): string
 export function generatePlanVerificationExec(_ctx: TemplateContext): string {
   return `## Step 8.1: Plan Verification
 
-Collect the plan's explicit testing/verification steps for the shared exploratory QA
-pass in Step 9. That pass executes them in report-only discovery mode and returns
-results to the ship parent; do not invoke an entire QA skill or start duplicate probes.
+**Collect now; execute in Step 9.** Do not invoke an entire QA skill or start probes here.
 
-### 1. Check for verification section
+1. Read the plan's \`Verification\`, \`Test plan\`, \`Testing\`, \`How to test\`,
+   \`Manual testing\` and any other explicit checks, including execution-only items
+   retained by Step 8. Save each exact expected outcome, source, surface, probe and
+   safe prerequisites. Clarify unknown outcomes.
+2. Browser items use the declared project/plan dev URL and browser setup at execution;
+   functional items use native tools without discovering a web server. An API URL is
+   not automatically a page. Only browser evidence needs screenshots.
+3. If no verification section or no plan file exists, record no plan-specific items.
+   Automatic diff-scoped QA still runs. Continue to Prior Learnings below.
 
-Using the plan file already discovered in Step 8, look for a verification section. Match any of these headings: \`## Verification\`, \`## Test plan\`, \`## Testing\`, \`## How to test\`, \`## Manual testing\`, or any section with verification items: native commands, API requests, durable state checks, URLs or interactions.
+**Handoff to Step 9.2.1:** Its parent-owned report-only explorer must execute this
+complete list before Fix-First. Before the first plan command, complete Step 9.2.1's
+method Reads and the shared probe loop's preflight. Apply its prerequisite, permission, evidence and
+changed-input revalidation rules. Share current-input proof for overlapping smoke
+probes; plan checks beyond that smoke budget remain required. At command/time
+limits, mark remaining checks not run. Send failed, blocked or unrun checks through
+Step 9's required-probe gate, never silently waive them. Noninteractive runs return blocked.
 
-**If no verification section or no plan file:** Record that there are no plan-specific
-items. The automatic diff-scoped exploratory pass still runs in Step 9.
-
-### 2. Preserve the selected contracts
-
-For every item, retain its exact required outcome, source, surface, supported probe
-and safe prerequisites. Do not silently reduce it to a happy-path smoke. Browser
-items use the declared project/plan dev URL and browser setup only when executed;
-functional items use native tools without discovering a web server. An API URL is
-not automatically a page. Unknown intended outcomes require clarification, not a
-guessed test. Missing tools, safe fixtures or permission mark affected items blocked.
-
-### 3. Execute once and gate in Step 9
-
-Hand the complete list to the parent-owned explorer before Fix-First. It returns each
-item as pass, fail, blocked, not run, inconclusive or not applicable with a reason,
-including exact command/request, expected/observed outputs or durable state and safe
-evidence. Only browser items need screenshots. Share unchanged-input evidence with
-the diff-scoped probes; preserve any plan checks that go beyond the smoke charter.
-
-The Step 9 parent resolves failures through its fix/approval loop and reruns affected
-checks after changes. An applicable required item that fails or cannot run stops
-successful shipping until repaired or explicitly risk-accepted by the user. In
-noninteractive runs return blocked. Neither unavailable browser/server nor an
-unreadable section is a passing check or silent waiver. If the explorer reaches
-its command or time limit, mark the remaining checks not run and ask about their
-risks through the same parent gate.
-
-Set VERIFY_RESULT=pass only when every selected verification item passes. Set
-VERIFY_RESULT=skipped only when there are no plan-specific items. Otherwise set
-VERIFY_RESULT=fail and retain each actual failure, blocker or unrun item.
-Ship anyway retains VERIFY_RESULT=fail and lists the accepted risks in the PR; approval
-never turns failed or unavailable verification into a pass.
-
-### 4. Include in PR body
-
-Add a \`## Verification Results\` section to the PR body (Step 19):
-- If items exist: actual per-status counts, evidence and explicit accepted risks.
-- If no plan-specific items: say so, separately from the automatic Exploratory QA result.
-- Never claim verification from collecting this list; Step 9 must actually execute it.`;
+After execution, set VERIFY_RESULT=pass only if all selected items pass, skipped
+only if none exist, otherwise fail. Risk acceptance keeps the actual failed,
+blocked and unrun outcomes. Report per-status counts, evidence and accepted risks
+in Step 19's \`## Verification Results\`, separately from automatic QA.`;
 }
 
 // ─── Cross-Review Finding Dedup ──────────────────────────────────────

@@ -3,9 +3,10 @@ import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
+import { sharedLibsFingerprint } from '../lib/review-evidence';
 import { hasTrustedSharedLibsCheck, hasTrustedReviewStartRead } from './helpers/shared-libs-review-start-evidence';
 import {
-  createSharedLibsFixture, fixtureGit, fixtureWorkingTree, fixtureWrite, installNormalizingFilter,
+  createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureGit, fixtureWorkingTree, fixtureWrite, installNormalizingFilter,
   reviewLifecycleInstructions, reviewRevalidationPrompt, reviewRecords, seedReviewSources, seedSkippedAdvisory,
   SHARED_LIBS_ROOT, shellQuote, toolCommandTrace,
   type SharedLibsFixture,
@@ -20,7 +21,7 @@ const source = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-shared-libs
 const pathSource = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-shared-libs-paths.test.ts'), 'utf8');
 const pathKinds = ['symlinks', 'submodule', 'ignored', 'legacy', 'assume-unchanged', 'skip-worktree', 'removed-filter'] as const;
 
-async function capture(change: string, prepared?: PathEligibilityFixture) {
+async function capture(change: string, prepared?: PathEligibilityFixture, declared = false) {
   const f = prepared?.fixture ?? createSharedLibsFixture(`checker-${change}`);
   fixtures.push(f);
   let current = prepared?.current;
@@ -46,29 +47,54 @@ async function capture(change: string, prepared?: PathEligibilityFixture) {
     events.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, content: output }] } });
     return output.trim();
   };
-  const instructions = fs.readFileSync(reviewLifecycleInstructions(f), 'utf8');
+  const instructionFile = reviewLifecycleInstructions(f);
+  const instructions = fs.readFileSync(instructionFile, 'utf8');
+  const protocol = declared ? [...reviewRevalidationPrompt(f, instructionFile, path.join(f.root, 'current-advisory.jsonl'))
+    .matchAll(/```bash\n([\s\S]*?)\n```/g)].map(match => match[1]) : [];
+  if (declared) expect(protocol).toHaveLength(3);
   const startCommand = instructions.match(/```bash\n(DIFF_BASE=\$[\s\S]*?)\n```/)?.[1];
   expect(startCommand).toBeDefined();
-  const token = invoke(startCommand!).split('\n')[0];
+  const token = invoke(declared ? protocol[0] : startCommand!).split('\n')[0];
+  if (declared) invoke('git diff origin/main');
   for (const file of current.evidence_paths) invoke(`cat ${shellQuote(file)}`);
   invoke(`bun -e 'const { sharedLibsFingerprint } = await import(process.argv[1]); console.log(sharedLibsFingerprint(JSON.parse(await Bun.stdin.text())));' ${shellQuote(path.join(SHARED_LIBS_ROOT, 'lib/review-evidence.ts'))} <<'FINDING'\n${JSON.stringify(current)}\nFINDING`);
   const checkAt = events.length;
-  const receipt = JSON.parse(invoke(`${shellQuote(helper)} --check-shared-libs ${token} <<'FINDING'\n${JSON.stringify(current)}\nFINDING`));
+  const receipt = JSON.parse(invoke(declared ? protocol[1].replace('REVIEW_START', token).replace('CURRENT_FINDING_JSON', JSON.stringify(current))
+    : `${shellQuote(helper)} --check-shared-libs ${token} <<'FINDING'\n${JSON.stringify(current)}\nFINDING`));
+  const questions: any[] = [];
+  if (declared && !receipt.reusable) {
+    const input = { questions: [{ question: 'Revalidate this supplied authored-source advisory?',
+      options: [{ label: 'Fix', description: 'Apply the extraction.' },
+        { label: 'Skip', description: 'Keep the source and index unchanged; record this advisory decision.' }] }] };
+    const callback = createSharedInteractiveToolHandler('skip', {
+      nonQuestion: () => { throw new Error('No non-question tool is allowed by this free actor'); },
+      onQuestion: value => { questions.push(value); }, onAnswer: () => {},
+    });
+    const id = `decision-${events.length}`;
+    events.push({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'AskUserQuestion', input }] } });
+    const answer = await callback('AskUserQuestion', input);
+    expect(answer.updatedInput.answers).toEqual({ [input.questions[0].question]: 'Skip' });
+    events.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id,
+      content: JSON.stringify(answer.updatedInput.answers) }] } });
+  }
   const finishAt = events.length;
-  invoke(`${shellQuote(helper)} ${shellQuote(JSON.stringify({ skill: 'review', status: 'clean', issues_found: 0,
-    completed: true, converged: true, findings: change === 'unchanged' ? [] : [{ ...current, action: 'skipped' }] }))}
-    --finish ${token}`.replace('\n    ', ' ') + ` && ${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-read'))}`);
+  const record = JSON.stringify({ skill: 'review', status: 'clean', issues_found: 0,
+    completed: true, converged: true, findings: change === 'unchanged' ? [] : [{ ...current, action: 'skipped' }] });
+  invoke(declared ? protocol[2].replace("'FINAL_REVIEW_JSON'", shellQuote(record)).replace('REVIEW_START', token)
+    : `${shellQuote(helper)} ${shellQuote(record)} --finish ${token} && ${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-read'))}`);
   const expected = { helper, repo: f.repo, state: f.state, slug: 'fixture-shared-libs',
     directory: path.join(f.state, 'projects/fixture-shared-libs/.review-starts'),
     branch: fixtureGit(f, 'symbolic-ref', '--quiet', '--short', 'HEAD'), wtree: fixtureWorkingTree(f),
     startedAt: receipt.review_start.started_at, finding: current, reusable: change === 'unchanged',
     coveredPaths: receipt.snapshot.covered_paths };
-  return { f, current, token, receipt, events, checkAt, finishAt, expected, prepared };
+  return { f, current, token, receipt, events, checkAt, finishAt, expected, prepared, ...(declared ? { questions } : {}) };
 }
 
 beforeAll(async () => {
   for (const change of ['unchanged', 'secondary', 'branch', 'filtered']) captures.set(change, await capture(change));
   for (const kind of pathKinds) captures.set(`path-${kind}`, await capture(`path-${kind}`, preparePathEligibilityFixture(kind)));
+  for (const change of ['unchanged', 'secondary', 'branch', 'filtered']) captures.set(`declared-${change}`, await capture(change, undefined, true));
+  for (const kind of pathKinds) captures.set(`declared-path-${kind}`, await capture(`path-${kind}`, preparePathEligibilityFixture(kind), true));
 }, 120_000);
 afterAll(() => { for (const fixture of fixtures) fs.rmSync(fixture.root, { recursive: true, force: true }); });
 
@@ -103,7 +129,7 @@ function pathCallback(run: any, overrides: Record<string, any> = {}) {
     reviewLifecycleInstructions, reviewRevalidationPrompt,
     runSharedInteractive: async (_fixture: any, _name: string, _prompt: string, choice: string) => {
       expect(choice).toBe('skip');
-      return { result: native, questions: [{}] };
+      return { result: native, questions: run.questions ?? [{}] };
     },
     readRequests: () => [], toolCommandTrace, fixtureGit, fixtureWorkingTree, reviewRecords, expect,
     CAPTURE_LONG_MS, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT, ...overrides,
@@ -315,5 +341,92 @@ describe('native executable shared-code checker evidence', () => {
       const adapter = pathCallback(run);
       await expect(adapter.invoke()).rejects.toThrow();
       expect(adapter.rows).toMatchObject([{ scenario: 'symlinks', row: { passed: false } }]);
+    });
+
+  test.each(['unchanged', 'secondary', 'branch', 'filtered'])('declared receipt commands satisfy the real %s revalidation callback', change => {
+    const run = replay(`declared-${change}`);
+    expect(result(run, 0).content.trim()).toBe(run.token);
+    expect(JSON.parse(result(run).content)).toEqual(run.receipt);
+    expect(call(run, run.finishAt).input.command).toContain(`--finish ${run.token} && '${SHARED_LIBS_ROOT}/bin/gstack-review-read'`);
+    expect(run.questions).toHaveLength(change === 'unchanged' ? 0 : 1);
+    const scenario = source.slice(source.indexOf("test('shared-libs-review-revalidation'"));
+    const marker = '}, result => {';
+    const start = scenario.indexOf(marker) + marker.length;
+    const body = scenario.slice(start, scenario.indexOf('\n        });', start));
+    const verify = new Function('deps', 'result', new Bun.Transpiler({ loader: 'ts' }).transformSync(`const {
+      change, questions, expect, toolCommandTrace, reviewRecords, createHash, path, f, current,
+      fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT
+    } = deps; ${body}`));
+    const native = { events: run.events, toolCalls: run.events.filter((event: any) => event.type === 'assistant')
+      .map((event: any) => ({ tool: event.message.content[0].name, input: event.message.content[0].input })) };
+    let checks = 0;
+    verify({ change, questions: run.questions, expect, toolCommandTrace, reviewRecords, createHash, path,
+      f: run.f, current: run.current, fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, SHARED_LIBS_ROOT,
+      hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
+        checks++;
+        expect(events).toBe(run.events);
+        expect(expected).toEqual(run.expected);
+        return hasTrustedSharedLibsCheck(events, expected);
+      } }, native);
+    expect(checks).toBe(1);
+  });
+
+  test.each(pathKinds)('declared receipt commands satisfy the real %s path callback after an actual actor decision', async kind => {
+    const run = replay(`declared-path-${kind}`);
+    run.kind = kind;
+    expect(result(run, 0).content.trim()).toBe(run.token);
+    expect(JSON.parse(result(run).content)).toEqual(run.receipt);
+    expect(run.receipt.reusable).toBe(false);
+    expect(run.questions).toHaveLength(1);
+    let checks = 0;
+    const adapter = pathCallback(run, { hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
+      checks++;
+      expect(expected).toEqual(run.expected);
+      return hasTrustedSharedLibsCheck(events, expected);
+    } });
+    await adapter.invoke();
+    expect(checks).toBe(1);
+    expect(adapter.rows).toMatchObject([{ scenario: kind, row: { passed: true } }]);
+  });
+
+  test.each(['revised-only identity', 'unsupported finding', 'unfinished review', 'missing explicit decision'])(
+    'canonical transport cannot waive %s in the real ignored-path callback', async failure => {
+      const run = replay('declared-path-ignored');
+      run.kind = 'ignored';
+      if (failure === 'missing explicit decision') run.questions = [];
+      const adapter = pathCallback(run, { reviewRecords: (fixture: SharedLibsFixture) => {
+        const records = reviewRecords(fixture);
+        const final = records.at(-1);
+        if (failure === 'revised-only identity') {
+          const revised = { ...final.findings[0], evidence_paths: [
+            'src/retry-worker.ts', 'src/scheduler.ts', 'src/retry-route.ts', 'lib/retry-after.ts',
+          ] };
+          revised.fingerprint = sharedLibsFingerprint(revised);
+          revised.snapshot_covered_paths = [...revised.evidence_paths];
+          expect(revised.fingerprint).not.toBe(run.current.fingerprint);
+          final.findings = [revised];
+        }
+        if (failure === 'unsupported finding') final.findings = [];
+        if (failure === 'unfinished review') final.completed = false;
+        return records;
+      } });
+      await expect(adapter.invoke()).rejects.toThrow();
+      expect(adapter.rows).toMatchObject([{ scenario: 'ignored', row: { passed: false } }]);
+    });
+
+  test.each(['start batching', 'mixed checker stdout', 'finish metadata prelude', 'loop-only caller reads'])(
+    'the unchanged detector still rejects %s after protocol declaration', shape => {
+      const run = replay('declared-unchanged');
+      if (shape === 'start batching') call(run, 0).input.command = `echo start; ${call(run, 0).input.command}; git diff origin/main`;
+      if (shape === 'mixed checker stdout') result(run).content = `checker receipt:\n${result(run).content}\nexit=0`;
+      if (shape === 'finish metadata prelude') call(run, run.finishAt).input.command = `TS=$(date -u); ${call(run, run.finishAt).input.command}`;
+      if (shape === 'loop-only caller reads') {
+        for (const event of run.events) for (const block of event.message.content) {
+          if (block.type === 'tool_use' && block.name === 'Bash' && block.input.command.startsWith('cat ')) {
+            block.input.command = `for f in ${block.input.command.slice(4)}; do cat "$f"; done`;
+          }
+        }
+      }
+      expect(hasTrustedSharedLibsCheck(run.events, run.expected)).toBe(false);
     });
 });

@@ -34,17 +34,19 @@ describe('/ship review fix loop (#2391)', () => {
   });
 
   test('rendered section instructs the bounded in-invocation loop', () => {
-    const content = fs.readFileSync(RENDERED_SITES[0], 'utf-8').replace(/\s+/g, ' ');
-    expect(content).toContain('Below that cap, any fixing pass reruns Step 5');
-    expect(content).toContain('never ask the user to restart `/ship` merely to continue this cycle');
-    expect(content).toContain('3 fixing-cycle limit');
+    const content = fs.readFileSync(path.join(ROOT, 'ship/SKILL.md'), 'utf-8').replace(/\s+/g, ' ');
+    const review = fs.readFileSync(path.join(ROOT, 'ship/sections/review-army.md'), 'utf-8').replace(/\s+/g, ' ');
+    expect(review).toContain('**Fixes applied below the cap:** Run Step 5');
+    expect(content).toContain('Permitted repairs continue in this invocation without restarting /ship');
+    expect(review).toContain('do not run a fourth fixing cycle');
     // The loop re-runs tests AND the review, and only a converged pass continues.
-    expect(content).toContain('any fixing pass reruns Step 5 and affected Steps 6–8');
-    expect(content).toContain('then all of Step 9 from a new start-token capture');
+    expect(review).toContain('Step 5, affected Steps 6–8, then all of Step 9');
+    expect(review).toContain('Every repeat starts before the checklist read and captures a fresh REVIEW_START');
+    expect(review).toContain('**No edits in this pass:** Resolve the required-probe gate below. Only after it clears may you continue to Step 10');
   });
 
   test('the non-convergence stop is a blocker report, not a rerun request', () => {
-    const content = fs.readFileSync(RENDERED_SITES[0], 'utf-8');
-    expect(content).toContain('After a third fixing cycle, STOP and report recurring findings');
+    const content = fs.readFileSync(path.join(ROOT, 'ship/sections/review-army.md'), 'utf-8');
+    expect(content).toContain('**Third fixing cycle reached:** STOP and report recurring findings');
   });
 });

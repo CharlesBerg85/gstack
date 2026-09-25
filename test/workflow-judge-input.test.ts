@@ -250,7 +250,16 @@ describe('workflow judge file bundle', () => {
     const entrypoint = input.files.find(file => file.kind === 'entrypoint');
     expect(entrypoint?.content).toBe(source.slice(source.indexOf(startMarker), source.indexOf(endMarker, source.indexOf(startMarker))));
     expect(entrypoint?.content).toContain('git remote get-url origin');
-    expect(entrypoint?.content).toContain('**Follow every STOP and AskUserQuestion gate**');
+    expect(entrypoint?.content).toContain('STOP blocks advancement until the stated repair/resume route clears; without one, end this attempt');
+    const flow = entrypoint!.content.replace(/\s+/g, ' ');
+    expect(flow).toContain('Every new invocation repeats Steps 1–16, including both reviews and the docs audit');
+    expect(flow).toContain('children return evidence, not permission to proceed');
+    expect(flow).toContain('Each step states its own recovery and next destination');
+    expect(flow).not.toContain('| At step | Outcome |');
+    expect(flow).toContain('`gstack-wtree` prints a Git tree hash');
+    expect(flow).toContain('Offline output without that fallback, failure, malformed output or an empty version is unusable');
+    expect(entrypoint?.content).toContain('Answer each AskUserQuestion before continuing');
+    expect(entrypoint?.content).toContain('Routine authorization never waives those gates or their required user decisions');
     expect(entrypoint?.content).toContain('## Step 0: Detect platform and base branch');
     expect(entrypoint?.content).toContain('gh pr view --json baseRefName');
     expect(entrypoint?.content).toContain('Print the detected base branch name.');

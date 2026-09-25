@@ -2,9 +2,9 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Step 19: Create PR/MR
 
-Repeat Step 18's open PR/MR lookup and record the current result. A lookup error
-or ambiguous matches STOP publication. If the open PR/MR or title changed, return
-to Step 18 to refresh `NEW_TITLE` before composing and scanning fresh results below.
+Recheck Step 18's PR/MR lookup and record it. Errors or ambiguous matches STOP publication.
+If the open PR/MR or title changed, repeat Step 18's identity/title preparation,
+then return here for a new lookup, fresh body and both redaction scans before publishing.
 
 ### Resolve Linked Spec before composing the body
 
@@ -86,7 +86,7 @@ Unavailable/inconclusive is never PASS.>
 
 ## Documentation
 <Embed Step 14.5's vetted nonempty `documentation_section` for this invocation.>
-<Always include the status and reviewed scope: updated, current, or blocked with the actual user's named risk exception. Never omit this section or reuse an earlier audit.>
+<Always include the status and reviewed scope: updated, current, or blocked with the actual user's named risk exception. Never omit this section or reuse another invocation's audit.>
 
 ## Test plan
 - [x] <Each executed test lane's command>: <observed passing summary>
@@ -103,8 +103,8 @@ sections in tool-attributed fences (` ```codex-review ` / ` ```greptile `) so th
 engine WARN-degrades the example credentials those tools quote instead of blocking
 the PR (a live-format credential inside the fence still blocks).
 
-Use Step 18's `NEW_TITLE`, prefixed with `v$NEW_VERSION `, for both the scan and
-publication. In a new shell, restore the saved literal title before this block.
+Use Step 18's `NEW_TITLE` unchanged; its version prefix is already present.
+In a new shell, restore the saved literal title before this block.
 
 ```bash
 : "${NEW_TITLE:?Restore the saved Step 18 title before scanning}"

@@ -24,11 +24,6 @@ _CODEX_CFG=$(~/.claude/skills/gstack/bin/gstack-config get codex_reviews 2>/dev/
 source ~/.claude/skills/gstack/bin/gstack-codex-probe 2>/dev/null || true
 if [ "$_CODEX_CFG" = "disabled" ]; then
   _CODEX_MODE="disabled"
-# Running-under-Codex presence probe (#2519): a live Codex session exports
-# CODEX_THREAD_ID / CODEX_SANDBOX into every shell it spawns (verified
-# against a live `codex exec 'env | grep -i codex'` capture, codex 0.147.0).
-# Nested codex spawns from inside a Codex host multiply token burn
-# (observed: one /review = 15M tokens). A stale own-harness artifact must stop.
 elif { [ -n "${CODEX_THREAD_ID:-}" ] || [ -n "${CODEX_SANDBOX:-}" ] || [ "${GSTACK_ACTIVE_HOST:-}" = codex ]; }; then
   _CODEX_MODE="under_codex"
 elif ! command -v codex >/dev/null 2>&1; then
@@ -52,11 +47,11 @@ echo "CODEX_MODE: $_CODEX_MODE"
 
 Branch on the echoed `CODEX_MODE`:
 - **`disabled`** — the user turned Codex reviews off (`codex_reviews=disabled`). Skip the Codex passes only; the Claude adversarial subagent below STILL runs (it is free and fast). Print: "Codex passes skipped (codex_reviews disabled) — running Claude adversarial only."
-- **`not_installed`** — Codex CLI absent. Print: "Codex not installed — falling back to a Claude subagent (fresh context, but the same harness; model identity is unknown). Install Codex for an actual outside-model read: `npm install -g @openai/codex`." Fall back to the Claude subagent path.
+- **`not_installed`** — Codex CLI absent. Print: "Codex not installed; outside coverage unavailable. Install: `npm install -g @openai/codex`." Keep the required Claude adversarial pass; do not dispatch a duplicate.
 - **`under_codex`** — stale artifact selected its own harness. Print: "Codex outside review unavailable: harness mismatch; no outside process started. Missing coverage. Repair: setup --host codex." Skip the outside invocation and follow the workflow's native-review instructions below. Conflicting inherited harness markers are not grounds to guess another provider.
-- **`not_authed`** — installed but no credentials. Print: "Codex installed but not authenticated — falling back to a Claude subagent (same harness; model identity is unknown). Run `codex login` or set `$CODEX_API_KEY`." Fall back to the Claude subagent path.
-- **`broken_install`** — the CLI is on PATH but cannot execute (spawn ENOENT, non-executable binary, missing vendor payload). Print: "Codex is installed but its binary cannot run — Codex passes skipped. Reinstall: `npm install -g @openai/codex`." Relay the probe's HINT lines and fall back to the Claude subagent path. This state exists because a missing binary used to land in the model probe's fail-open bucket and report `ready`, so every Codex pass was skipped silently (#2742).
-- **`model_unusable`** — authed but the account cannot use gstack's selected Codex model (#2477: HTTP 400 on every call). Relay the probe's HINT lines, tell the user the one-line fix (set `GSTACK_CODEX_MODEL=<supported-model>` or pass an explicit `-c model=...` override), and fall back to the Claude subagent path. The ~10s round trip is cached for 1h; timeouts fail open to `ready`.
+- **`not_authed`** — installed but no credentials. Print: "Codex not authenticated; outside coverage unavailable. Run `codex login` or set `$CODEX_API_KEY`." Keep the required Claude adversarial pass; do not dispatch a duplicate.
+- **`broken_install`** — the CLI is on PATH but cannot execute (spawn ENOENT, non-executable binary, missing vendor payload). Print: "Codex is installed but its binary cannot run — Codex passes skipped. Reinstall: `npm install -g @openai/codex`." Relay the probe's HINT lines. Keep the required Claude adversarial pass; do not dispatch a duplicate.
+- **`model_unusable`** — authed but the account cannot use gstack's selected Codex model (#2477: HTTP 400 on every call). Relay the probe's HINT lines and tell the user the one-line fix (set `GSTACK_CODEX_MODEL=<supported-model>` or pass an explicit `-c model=...` override). Keep the required Claude adversarial pass; do not dispatch a duplicate. The ~10s round trip is cached for 1h; timeouts fail open to `ready`.
 - **`ready`** — run the Codex pass below.
 
 `CODEX_MODE: disabled` means skip the Codex passes ONLY.
@@ -86,7 +81,7 @@ Read the diff for this branch. First list changed files: `DIFF_BASE=$(git merge-
 
 Think like an attacker and a chaos engineer. Your job is to find ways this code will fail in production. Look for: edge cases, race conditions, security holes, resource leaks, failure modes, silent data corruption, logic errors that produce wrong results silently, error handling that swallows failures, and trust boundary violations. Be adversarial. Be thorough. No compliments — just the problems. For each finding, classify as FIXABLE (you know how to fix it) or INVESTIGATE (needs human judgment). After listing findings, end your output with ONE line in the canonical format `Recommendation: <action> because <one-line reason naming the most exploitable finding>` — examples: `Recommendation: Fix the unbounded retry at queue.ts:78 because it'll DoS the worker pool under sustained 429s` or `Recommendation: Ship as-is because the strongest finding is a theoretical race that requires conditions we can't trigger in production`. The reason must point to a specific finding (or no-fix rationale). Generic reasons like 'because it's safer' do not qualify."
 
-Present findings under an `ADVERSARIAL REVIEW (Claude subagent):` header. **FIXABLE findings** are queued for the next Step 9 pass; do not edit during Step 11. **INVESTIGATE findings** are presented as informational.
+Present findings under an `ADVERSARIAL REVIEW (Claude subagent):` header. **FIXABLE findings** are queued for the parent; do not edit during Step 11. **INVESTIGATE findings** are presented as informational.
 
 If the subagent fails or times out, record native coverage as incomplete. Continue independent passes and persistence, not release.
 
@@ -137,7 +132,7 @@ bun "$HOME/.claude/skills/gstack/lib/outside-review-result.ts" review "$_OUTSIDE
 echo 'OUTSIDE_STATUS: completed provider=codex host=claude'
 ```
 
-Show the full response in a `tool-output` fence. Require successful execution and valid markers. Refusal, empty/malformed output, missing score/severity/completion markers, timeout or CLI failure means `outside_status: unavailable`. Use the caller's fallback; missing coverage is never clean/PASS. After either outcome, delete only your private prompt; scratch cleanup is automatic.
+Show the full response in a `tool-output` fence. Require successful execution and valid markers. Refusal, empty/malformed output, missing score/severity/completion markers, timeout or CLI failure means `outside_status: unavailable`. Retain the required native pass without duplicating it; it cannot complete outside coverage. After either outcome, delete only your private prompt; scratch cleanup is automatic.
 
 Set the outer tool timeout to 600000ms so the provider timeout can report its failure.
 
@@ -150,7 +145,7 @@ Present this outside challenge's output verbatim as informational findings.
 
 
 
-If `CODEX_MODE` is `not_installed` / `not_authed` / `disabled`: the preflight already printed the reason; run Claude adversarial only.
+For non-ready modes, retain the native pass above; do not dispatch it again.
 
 ---
 
@@ -196,7 +191,7 @@ bun "$HOME/.claude/skills/gstack/lib/outside-review-result.ts" structured "$_OUT
 echo 'OUTSIDE_STATUS: completed provider=codex host=claude'
 ```
 
-Show the full response in a `tool-output` fence. Require successful execution and valid markers. Refusal, empty/malformed output, missing score/severity/completion markers, timeout or CLI failure means `outside_status: unavailable`. Use the caller's fallback; missing coverage is never clean/PASS. Scratch cleanup is automatic.
+Show the full response in a `tool-output` fence. Require successful execution and valid markers. Refusal, empty/malformed output, missing score/severity/completion markers, timeout or CLI failure means `outside_status: unavailable`. Retain the required native pass without duplicating it; it cannot complete outside coverage. Scratch cleanup is automatic.
 
 The Codex backend uses `codex review --base` without a positional prompt: those arguments are mutually exclusive. Never drop --base to resolve an argv error; prompt-only review changes the diff scope.
 
@@ -211,7 +206,7 @@ A) Investigate and fix now (recommended)
 B) Continue — review will still complete
 ```
 
-If A: queue the approved findings for the next Step 9 pass instead of editing here. On returning to Step 11, repeat the same structured invocation and diff scope.
+If A: queue the approved findings without editing here. Every fresh pass repeats the same structured invocation and diff scope.
 If B: retain the acknowledged findings and failed gate; do not report a clean review.
 
 Read stderr for errors (same error handling as Codex adversarial above).
@@ -272,23 +267,20 @@ High-confidence findings (agreed on by multiple sources) should be prioritized f
 
 ### Finish the adversarial phase
 
-Optional outside failures retain their own incomplete records. Choose the first
-applicable outcome:
+Optional outside failures retain their own incomplete records. Apply these decisions
+in order before leaving Step 11:
 
-1. **Required native review incomplete: STOP before Step 12.** Report the failure
-   and needed repair, and confirm the task stopped. A concrete prerequisite
-   correction permits one recovery retry in this invocation; record its use before
-   launch. Without a correction, with missing access, or after that retry fails,
-   keep ship blocked and ask for the needed repair. Outside-provider output cannot
-   replace this pass.
-2. **Native review completed, with queued fixes:** return to Step 9 before capturing
-   its fresh start token. Step 9.4 owns the edits and the same CYCLES limit.
-   Repeat Steps 9–11 on the new tree. Keep approvals for unchanged Step 10 comments;
-   collect new review evidence. These normal fresh reviews are not recovery retries.
-3. **Native review completed, with no queued fixes:** Continue only after a zero-edit
-   review cycle. Run the memory updates below, then proceed to Step 12.
-
-Every return keeps the original fixing-cycle and recovery-retry counts.
+1. **Required native review incomplete:** STOP and confirm the native task stopped.
+   Outside-provider output cannot replace this pass. One recovery retry is allowed
+   only after a concrete prerequisite correction and restored access; count it in
+   the invocation record before launch. Capture a fresh PASS_START and persist the
+   new attempt separately, then reconsider these decisions. Without that correction,
+   or if the recovery fails, ask for repair and remain blocked.
+2. **Fixes queued after native completion:** Keep the findings and their approvals.
+   Run Steps 9–11, including full review before fixes. After all inner repairs finish,
+   return to Step 11.5. These fresh reviews after code edits are not recovery retries.
+3. **Native complete with no queued fixes:** Finish the memory updates below,
+   then continue to Step 11.5. Never jump directly to release preparation.
 
 ---
 

@@ -114,11 +114,12 @@ export const SECTION_INDEX: ResolverFn = (ctx: TemplateContext, args?: string[])
   ];
   for (const s of manifest.sections) {
     const reference = skill === 'qa' || skill === 'qa-only' ? sectionPath(ctx, skill, s.id) : `\`sections/${s.file}\``;
+    if (skill === 'review' && s.id === 'review-army') {
+      lines.push(`| QA resources before static review | Use Step 4's installed-relative Reads; run QA in Step 4.7 |`);
+    }
     lines.push(`| ${s.trigger} | ${reference} |`);
-    if ((skill === 'review' || skill === 'ship') && s.id === 'review-army') {
-      lines.push(skill === 'review'
-        ? `| exploratory QA before Fix-First (Step 4.7) | Use that step's installed-relative QA Read directive below |`
-        : `| exploratory QA before Fix-First (Step 9.2.1) | Use the QA Read directive in ${reference} |`);
+    if (skill === 'ship' && s.id === 'review-army') {
+      lines.push(`| exploratory QA before Fix-First (Step 9.2.1) | Use the QA Read directive in ${reference} |`);
     }
   }
   return lines.join('\n');

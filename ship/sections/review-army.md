@@ -2,25 +2,13 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Step 9: Pre-Landing Review
 
-Run Step 9, then Step 10's outside comments, then Step 11's adversarial review.
-Only when all three finish without queued fixes can release preparation start.
-Steps 10–11 never edit product code: they return approved findings to a new Step 9
-pass, which reads the current content before Step 9.4 applies fixes.
-
-The parent owns this loop. Set CYCLES to 0 on first entry only and retain it with
-the approvals on every return. Changed finding scope needs a new decision.
-
-Each pass runs checklist/design, specialists (9.1), merge/Red Team (9.2),
-exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4). If fan-out is
-gated/unsupported, continue at 9.2.1, not past QA or Step 11. Step 9.4 decides
-whether to repeat, stop for missing dispatched output, or continue.
-
-**Required-probe parent gate:** If required probes fail or are unavailable, wait for
-a zero-edit pass with completed checklist and dispatched reviewers. Then ask the
-user to stop for repair (recommended) or accept each named probe's concrete risk. Use AskUserQuestion and
-accept risk only on the user's explicit choice, never a skipped fix. Retain actual outcomes and incomplete flags;
-VERIFY_RESULT stays fail for plan-check exceptions. This cannot waive missing
-reviewer output, recurring fixes or independent test/security gates.
+Set CYCLES to 0 on first entry only. Keep existing approvals; changed finding scope
+needs a new decision. Run checklist/design, specialists (9.1), merge/Red Team (9.2),
+exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4).
+Gated/unsupported specialists skip only their dispatch, never QA or Step 11.
+Steps 10–11 queue findings without editing; include those findings in this pass.
+Every repeat starts before the checklist read and captures a fresh REVIEW_START.
+Finish the complete review and QA before applying any fix in Step 9.4.
 
 ## Confidence Calibration
 
@@ -87,9 +75,11 @@ higher confidence.
 
 ### Core checklist
 
+This pass is static; defer product probes to Step 9.2.1.
+
 1. Read `~/.claude/skills/gstack/review/checklist.md`. If the file cannot be read, **STOP** and report the error.
 
-2. Before reading the diff, run `~/.claude/skills/gstack/bin/gstack-review-log --start review` and save its token as REVIEW_START. Then run `git diff origin/<base>`. Read non-ignored untracked source files too (`git ls-files --others --exclude-standard`); the fingerprint includes them. Each full re-review captures a new token here, never at log time.
+2. Before reading the diff, run `~/.claude/skills/gstack/bin/gstack-review-log --start review` and save its token as REVIEW_START. Then run `git diff origin/<base>`. Read non-ignored untracked source files too (`git ls-files --others --exclude-standard`); the snapshot includes them.
 
 3. Apply the review checklist in two passes:
    - **Pass 1 (CRITICAL):** SQL & Data Safety, LLM Output Trust Boundary
@@ -97,8 +87,9 @@ higher confidence.
 
 ### Design-lite checklist
 
-Its numbering is local to this checklist. `/ship` supplies the existing `enabled`
-caller opt-in to its provider check; Step 11 remains a separate required review.
+Its numbering is local to this checklist. When frontend review applies, `/ship`
+automatically attempts this optional design check; `enabled` expresses that choice,
+not a new user question. Step 11 has its own outside-review switch and required native pass.
 
 ## Design Review (conditional, diff-scoped)
 
@@ -277,7 +268,7 @@ Based on the scope signals above, select which specialists to dispatch.
 1. **Testing** — read `~/.claude/skills/gstack/review/specialists/testing.md`
 2. **Maintainability** — read `~/.claude/skills/gstack/review/specialists/maintainability.md`
 
-**If DIFF_LINES < 50:** Skip all specialists. Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Return to the parent's Exploratory QA step, then continue to Step 9.3 (cross-review dedup). Small diffs skip fan-out, never the parent-owned smoke probes. Core shared-code checks also remain required.
+**If DIFF_LINES < 50:** Skip all specialists. Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Continue to Step 9.2 with the core/design-lite findings and an empty specialist list, then the parent's Exploratory QA step and Step 9.3 (cross-review dedup). Small diffs skip fan-out, never the parent-owned smoke probes. Core shared-code checks also remain required.
 
 **Conditional (dispatch if the matching scope signal is true):**
 3. **Security** — if SCOPE_AUTH=true, OR if SCOPE_BACKEND=true AND DIFF_LINES > 100. Read `~/.claude/skills/gstack/review/specialists/security.md`
@@ -493,10 +484,17 @@ If the Red Team fails or times out, confirm it stopped and record its review as 
 
 ### Step 9.2.1: Exploratory QA (before Fix-First)
 
+You, the parent agent, run this phase, not specialists.
+Discovery is report-only. Use the caller's report directory or a new owned
+`.gstack/qa-reports` subdirectory. Never overwrite another run.
+
+**1. Load methods before any QA or explicit-verification probe.**
+
 From the installed /ship SKILL.md's directory, Read `../qa/sections/scope.md` in full. If the caller directory is prefixed `gstack-ship`, use `../gstack-qa/sections/scope.md` instead. Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
-Read `sections/exploratory.md` in that QA installation and complete its preflight.
-Before probing:
+Resolve later QA paths in that installed QA directory.
+> **STOP.** Read `sections/exploratory.md` in that QA installation and the selected methods below before continuing.
+> A plan command is a probe, not an exception to this gate.
 **Functional surfaces:**
 Read `sections/system-functional.md` in full.
 
@@ -504,22 +502,38 @@ Read `sections/system-functional.md` in full.
 Read `sections/browser-setup.md` in full unless already completed;
 Read `sections/qa-patterns.md` in full.
 
-Then list before execution:
-1. Required smoke within the 5-minute/12-probe bound, even on small diffs without a plan/server: pair success with the riskiest changed contract edge/failure.
-2. Explicit plan checks: request/approved-plan commands/assertions, required beyond the bound.
-3. Other ideas: disclose as untested coverage, not required probes.
+Caller/report templates cannot replace these method Reads.
 
-Required probes stay required if blocked or unfinished.
+**2. List the checks that must pass.**
+Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup.
+- Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
+- Explicit plan commands/assertions remain required beyond that bound.
+- Other ideas are optional, untested coverage.
 
-Discovery is report-only. Return verified defects with `path`, `line`, `category`,
-`fingerprint: path:line:category`, `CRITICAL`/`INFORMATIONAL` severity, replay and `test_stub`
-proposals for parent approval. Coverage blockers are not defects.
-Failed/unavailable required checks block ship; return them to Step 9.4. Once fixes settle, the parent asks for setup/permission, repair or explicit named-risk acceptance; otherwise blocked. Missing coverage never passes.
+**3. Run the checks without repairing the product.**
+Follow the numbered Probe loop in `sections/exploratory.md` for discovery, replays
+and revalidation. Start with a successful operation, then require a successful
+checkpoint Write before each later probe. Replay a defect from its original fixture
+state before proposing a regression test or fix.
 
-Include `## Exploratory QA` in the PR body.
-Read QA's `templates/functional-report-template.md` for this one final QA section.
-Its checkpoint files are supporting evidence. Link each `exploration-NNN.json` there; write no second report.
-Separate browser results. Put plan-check outcomes in `## Verification Results`.
+**4. Check for changes before reporting.**
+Before reporting, read updates from any dispatched agents and the user. Compare
+current source, commands and fixture inputs with the recorded inputs, even without
+an update. If source, tests, contracts, commands or fixture inputs changed, repeat affected review and probes
+through the same loop without resetting its checkpoint sequence. Unknown impact
+requires revalidation. Pass only when all required checks pass on the current
+inputs; list every failed, blocked, inconclusive or not-run required check otherwise.
+
+Record verified defects for Fix-First with `path`, `line`, `category`,
+`fingerprint: path:line:category`, replay and `test_stub`. Use the checklist category's
+severity; an unmatched functional failure is `functional-contract`, `CRITICAL`.
+Setup/permission blockers are not defects. Test creation needs user approval.
+After fixes settle, the Step 9.4 parent asks for setup/permission, repair or explicit named-risk acceptance for failed/unavailable checks; otherwise blocked.
+
+Read QA's `templates/functional-report-template.md`. Replace its top-level title with
+`## Exploratory QA` in the PR body.
+Keep its fields as subsections. Link every checkpoint; write no second report.
+Separate browser results. Put plan outcomes in `## Verification Results`.
 
 ### Step 9.3: Cross-review finding dedup
 
@@ -614,13 +628,13 @@ but missing dispatched output still blocks continuation, even with a QA exceptio
   unresolved defects, not original totals. Missing coverage is not a defect.
 - `REVIEW_START`: this pass's Step 9 token captured before reading the diff;
   never recapture at persistence to certify unreviewed fixes.
-- `COMPLETED`: checklist, dispatched specialists/Red Team and applicable probes completed.
-  Blocked, inconclusive or missing required coverage means false, never clean.
+- `COMPLETED`: checklist and dispatched specialists/Red Team finish, and all required probes pass.
+  Failed, blocked, inconclusive or not-run required probes mean false, never clean.
   Record accepted untested risk separately, not as passing verification.
   Undispatched host-unsupported/gated specialists do not block; retain their labels.
 - `CONVERGED`: completed with zero fixes. `CYCLES`: fix cycles performed, initially 0.
 - `quality_score`: Step 9.2's score, or `10.0` when specialists were skipped/unsupported.
-- `specialists`: every considered specialist's Step 9.2 stats:
+- `specialists`: `{}` for a small-diff skip; otherwise every considered specialist's Step 9.2 stats:
   `{"dispatched":true,"findings":N,"critical":N,"informational":N}` or
   `{"dispatched":false,"reason":"scope|gated"}`.
 - `findings`: checklist, specialist and exploratory QA records with
@@ -628,25 +642,30 @@ but missing dispatched output still blocks continuation, even with a QA exceptio
   ACTION: `"auto-fixed"`, `"fixed"` (approved), or `"skipped"` (explicit Skip).
 Save the review output — it goes into the PR body in Step 19.
 
-### Choose the next step
+### Decide whether to repeat Step 9
 
-Update the invocation record, keeping the **3 fixing-cycle limit** across returns
-from Steps 10, 11 and 16. First, if dispatched output is missing, STOP before
-Step 10: name the failed/missing specialist or Red Team and retain applied fixes.
-Gated/host-unsupported reviewers were not dispatched and do not trigger this stop.
-Once coverage is available, rerun Step 5 and affected Steps 6–8 if code changed,
-then start Step 9 again within the same limit.
+After persistence, record missing dispatched output, CYCLES and applied fixes in
+the invocation record. Apply these decisions in order:
 
-After a third fixing cycle, STOP and report recurring findings; the logged pass
-remains `converged:false`. Below that cap, any fixing pass reruns Step 5 and
-affected Steps 6–8, then all of Step 9 from a new start-token capture, including
-design, specialists, Red Team, exploratory QA and dedup. Tests must be green or
-have the same explicit Step 5 waiver.
+1. **Dispatched reviewer output missing:** STOP and name each failed specialist or
+   Red Team. Retain queued fixes and restore coverage. If this pass made edits,
+   resume at the next decision; otherwise run a fresh complete Step 9. A successful
+   peer or a QA exception cannot replace missing dispatched coverage.
+2. **Third fixing cycle reached:** STOP and report recurring findings with
+   `converged:false`; do not run a fourth fixing cycle.
+3. **Fixes applied below the cap:** Run Step 5, affected Steps 6–8, then all of
+   Step 9. Tests must pass or retain approval for the same verified pre-existing
+   failures and scope. Keep CYCLES and scoped approvals across this repeat.
+4. **No edits in this pass:** Resolve the required-probe gate below. Only after it
+   clears may you continue to Step 10. Undispatched gated/unsupported specialists
+   do not block independently, but never replace QA or required native review.
 
-Only a zero-fix pass can continue to Step 10. Resolve failed/unavailable required
-probes through the parent gate above: skipping a fix does not pass its probe.
-Require completed, converged coverage or the named QA exception. Steps 10–11
-return their queued fixes here without resetting the limit; never ask the user
-to restart `/ship` merely to continue this cycle.
+**Required-probe parent gate:** With completed checklist and dispatched reviewers,
+failed/unavailable required probes block continuation.
+Use AskUserQuestion: stop for repair (recommended), or explicitly accept each
+named probe's concrete risk. Skipping a fix is not risk acceptance or a passing
+probe. Keep actual outcomes and incomplete flags; VERIFY_RESULT stays fail for
+plan-check exceptions. This cannot waive missing reviewer output, recurring fixes
+or independent test/security gates.
 
 ---

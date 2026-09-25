@@ -51,6 +51,39 @@ test('historical misplaced spawned prefix remains rejected while corrected pream
 });
 
 test.each([
+  ['missing preamble heading', '## Other section\n\n```bash\n"$_SS" --skill "document-release" --model "claude" --parent-pid "$PPID"\n```\n'],
+  ['missing preamble code fence', '## Preamble (run first)\n\nNo executable preamble is present.\n'],
+  ['unrelated fenced code', '## Preamble (run first)\n\n```text\nnot shell\n```\n\n```bash\necho not the preamble\n```\n'],
+  ['malformed Bash block', '## Preamble (run first)\n\n```bash\necho unrelated command\n```\n'],
+])('malformed source with %s grants no generated-shell exception', (label, content) => {
+  const file = path.join(fixture.skills, 'document-release/SKILL.md');
+  const original = fs.readFileSync(file, 'utf8');
+  try {
+    fs.writeFileSync(file, content);
+    expect(docsPreambleCommands(fixture), label).toEqual([]);
+    expect(docsCommandAllowed('git status --porcelain', fixture)).toBe(true);
+    expect(docsCommandAllowed('bun arbitrary.ts', fixture)).toBe(false);
+    expect(docsCommandAllowed('git status && node attack.js', fixture)).toBe(false);
+  } finally {
+    fs.writeFileSync(file, original);
+  }
+});
+
+test('appending shell to the preamble block invalidates the exact generated command', () => {
+  const file = path.join(fixture.skills, 'document-release/SKILL.md');
+  const original = fs.readFileSync(file, 'utf8');
+  const [command] = docsPreambleCommands(fixture);
+  try {
+    fs.writeFileSync(file, `## Preamble (run first)\n\n\`\`\`bash\n${command}\necho unauthorized\n\`\`\`\n`);
+    expect(docsPreambleCommands(fixture)).toEqual([]);
+    expect(docsCommandAllowed(command, fixture)).toBe(false);
+    expect(docsCommandAllowed('git status --porcelain', fixture)).toBe(true);
+  } finally {
+    fs.writeFileSync(file, original);
+  }
+});
+
+test.each([
   '~/.claude/skills/gstack/bin/gstack-skill-end --skill "document-release" --outcome success \\\n  --session-id "176-1790299423-4e0464a5" --tel-start "1790299423" --used-browse no \\\n  --error-message "" --failed-step "" 2>/dev/null || true',
   '~/.claude/skills/gstack/bin/gstack-skill-end --skill "document-release" --outcome success --session-id "933-1790299569-1f0c2bb1" --tel-start "1790299569" --used-browse no --error-message "" --failed-step "" 2>/dev/null || true',
 ])('historical end wrapper remains rejected: %s', command => {
@@ -68,4 +101,19 @@ test('lifecycle instructions neither widen command authority nor grant mutation 
     expect(docsCommandAllowed(lifecycleCommands()[0] + suffix, fixture)).toBe(false);
   }
   expect(docsCommandAllowed('bun arbitrary.ts', fixture)).toBe(false);
+});
+
+test('Git guidance uses the existing working directory without authorizing global options', () => {
+  const guidance = docsNativeInterface(fixture);
+  expect(guidance).toContain(`working directory for parent and child Bash calls is already ${fixture.repo}`);
+  expect(guidance).toContain('literal git subcommand must immediately follow git');
+  expect(guidance).toContain('does not make git -C an allowed command');
+  for (const command of ['git status', 'git diff --cached', 'git merge-base main HEAD', 'git rev-parse HEAD']) {
+    expect(guidance).toContain(command);
+    expect(docsCommandAllowed(command, fixture)).toBe(true);
+  }
+  for (const command of [`git -C ${fixture.repo} status`, `git --git-dir ${fixture.repo}/.git status`,
+    `git --work-tree ${fixture.repo} status`, 'git -c core.pager=cat status', `cd ${fixture.repo} && git status`]) {
+    expect(docsCommandAllowed(command, fixture)).toBe(false);
+  }
 });

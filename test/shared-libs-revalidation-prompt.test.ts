@@ -79,6 +79,21 @@ describe('bounded shared-code revalidation prompt', () => {
     expect(contract).not.toContain('choose Skip');
   });
 
+  test('declares isolated receipt commands, direct reads and a separate supplied-finding disposition', () => {
+    const prompt = reviewRevalidationPrompt(f, instructions, input);
+    const commands = [...prompt.matchAll(/```bash\n([\s\S]*?)\n```/g)].map(match => match[1]);
+    expect(commands).toHaveLength(3);
+    expect(commands[0]).toBe(`'${SHARED_LIBS_ROOT}/bin/gstack-review-log' --start review`);
+    expect(commands[1]).toBe(`'${SHARED_LIBS_ROOT}/bin/gstack-review-log' --check-shared-libs REVIEW_START <<'GSTACK_REVALIDATION_FINDING'\nCURRENT_FINDING_JSON\nGSTACK_REVALIDATION_FINDING`);
+    expect(commands[2]).toBe(`'${SHARED_LIBS_ROOT}/bin/gstack-review-log' 'FINAL_REVIEW_JSON' --finish REVIEW_START && '${SHARED_LIBS_ROOT}/bin/gstack-review-read'`);
+    for (const requirement of ['sole command', 'only the token', 'only one JSON value', 'literal path operands',
+      'even when its body appeared in the diff', 'No path-variable loops', 'before the checker',
+      'metadata in earlier calls', 'No preliminary commands', 'materially revised proposal is a separate finding',
+      'unsupported or unfinished supplied finding stays blocked', 'without its actual explicit decision']) {
+      expect(prompt).toContain(requirement);
+    }
+  });
+
   test('the actual revalidation capture uses the wrapper and preserves the skip actor', async () => {
     const scenario = source.slice(source.indexOf("test('shared-libs-review-revalidation'"));
     const marker = "'shared-libs-review-revalidation', async () => {";

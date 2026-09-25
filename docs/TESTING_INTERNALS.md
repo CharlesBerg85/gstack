@@ -240,7 +240,7 @@ with matching before/after inputs. The audited workflow-judge adapter hashes the
 actual expanded prompt, source/fixture/rubric/runner closure, installed SDK,
 model parameters and runtime. Missing/unknown inputs force execution. Receipts
 are scoped to the same repository and PR, expire after 24 hours, and contain
-public scores and provenance rather than prompts or secrets. Only the 15 cases
+public scores and provenance rather than prompts or secrets. Only the 16 cases
 using `runWorkflowJudge` are eligible; the other 11 quality cases remain fresh.
 CI supplies the scoped cache/runtime configuration; local runs are fresh by
 default. Cached scores must
@@ -313,8 +313,8 @@ including two minutes for cleanup. No per-case budget grows. Overlay wrappers
 have a 1,830-second minimum shard wall and run without Bun retries; see the
 [overlay contract](OVERLAY_BENCHMARK_CONTRACT.md) for their unchanged work budget.
 
-The quality file reserves 6,660 seconds for all 26 cases and their existing
-retry, plus cleanup. Each still has 120 seconds of model work. Its 15 workflow
+The quality file reserves 6,920 seconds for all 27 cases and their existing
+retry, plus cleanup. Each still has 120 seconds of model work. Its 16 workflow
 judges own their deadline and abort signal, with five seconds for terminal
 recording inside a ten-second Bun grace; the other 11 retain their existing
 120-second Bun timeout. Late responses cannot create records or cache passes.
@@ -336,15 +336,15 @@ its source and policy identifier. Custom drivers must resolve each job instead
 of passing their ordinary 1800-second default as an explicit Autoplan cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
 The current paid census has 117 files: 57 gate-tier and 102 periodic-tier.
-`eval:bg:pr` and `eval:bg:periodic` have 86460/66840-second outer caps; the PR
+`eval:bg:pr` and `eval:bg:periodic` have 86760/67140-second outer caps; the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
-wrapper reserves 46800 seconds, and release reserves 113580 seconds for both
+wrapper reserves 47040 seconds, and release reserves 114120 seconds for both
 tiers. Legacy monolithic
 `eval:bg`/`eval:bg:all` retain their shorter 5400/7200-second caps and do not
 promise two complete Autoplan attempts; use the sharded periodic path for this policy.
 
-Periodic CI plans `--slices 8 --autoplan-slice`: the eighth runs only Autoplan.
-When overlays are selected, the seventh is reserved for their serial wrappers;
+Periodic CI plans `--slices 9 --autoplan-slice`: the ninth runs only Autoplan.
+When overlays are selected, the eighth is reserved for their serial wrappers;
 registered finding files are distributed across the remaining ordinary slices
 by their supervised walls. Each slice job has a 360-minute cap; Autoplan retains
 its 172-minute shard wall. Reconciliation rejects missing, duplicated or misplaced

@@ -44,7 +44,7 @@ test('review settles adversarial attempts before fixing and has one full-pass ba
 test('review small-diff and failed-reader paths retain QA and the required adversarial pass', () => {
   const army = generateReviewArmy({ skillName: 'review', tmplPath: 'review/SKILL.md.tmpl',
     host: 'claude', paths: HOST_PATHS.claude });
-  expect(army).toContain('then continue to Step 4.8 (adversarial review), then Step 5');
+  expect(army).toContain("Continue to Step 4.6 with the core/design-lite findings and an empty specialist list, then the parent's Exploratory QA step and Step 4.8 (adversarial review), then Step 5");
   expect(army).toContain('Missing dispatched coverage remains incomplete, never completed or clean');
   expect(army).toContain('Continue independent Step 4.7 QA and Step 4.8 adversarial review');
   expect(army).not.toContain("Exploratory QA step, then continue to Step 5.");
@@ -53,8 +53,8 @@ test('review small-diff and failed-reader paths retain QA and the required adver
 
 test('review defines QA confidence, severity, impact selection and numeric version comparison', () => {
   const flat = skill.replace(/\s+/g, ' ');
-  expect(flat).toContain('For QA findings, the parent assigns confidence (1–10) from replay/code evidence');
-  expect(flat).toContain("use the checklist's category to choose CRITICAL or INFORMATIONAL, not confidence");
+  expect(flat).toContain('For QA findings, assign confidence (1–10) from replay/code evidence');
+  expect(flat).toContain("retain Step 4.7's severity, not a severity inferred from confidence");
   expect(flat).toContain('A probe is affected when its entrypoint, dependencies, contract or replay inputs change');
   expect(flat).toContain('If impact is uncertain, rerun it');
   expect(flat).toContain('Compare dotted version components as integers from left to right');
@@ -63,12 +63,53 @@ test('review defines QA confidence, severity, impact selection and numeric versi
 test('review emits scope check after the plan audit and before the checklist', () => {
   const markers = [
     '{{SCOPE_DRIFT}}', '{{SECTION:plan-completion}}',
-    'Finish Step 1.5 here', '## Step 2: Read the checklist',
+    '## Step 2: Read the checklist',
   ];
   const positions = markers.map(marker => skill.indexOf(marker));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
-  expect(skill).toContain('emit one final Scope Check; do not\npublish a preliminary Scope Check');
+  const audit = readFileSync(join(root, 'review/sections/plan-completion.md'), 'utf8').replace(/\s+/g, ' ');
+  expect(audit).toContain('After the audit and any high-impact decision, emit the single final Scope Check');
+  expect(audit).toContain("Step 1.5's provisional notes and this plan context");
+  expect(audit).toContain('Emit Step 1.5\'s Scope Check once without plan fields');
+  expect(skill).not.toContain('Finish Step 1.5 here');
+});
+
+test('review composes confidence-tagged findings into one final report with explicit incomplete coverage', () => {
+  const flat = skill.replace(/\s+/g, ' ');
+  expect(flat).toContain('Use CRITICAL/INFORMATIONAL labels in the finding format, not the example P1/P2 labels');
+  expect(flat).toContain("Step 5.8 combines these finding lines with the checklist's action groups");
+  const report = flat.slice(flat.indexOf('### Report the final review'), flat.indexOf('{{LEARNINGS_LOG}}'));
+  expect(report).toContain('Emit one final report, merging all reviewers rather than concatenating their reports');
+  expect(report).toContain('counts final unresolved non-advisory defects');
+  expect(report).toContain('State INCOMPLETE if `COMPLETED` is false, even when N=0');
+  expect(report).toContain("Use the checklist's action groups with confidence-tagged finding lines");
+  expect(report).toContain('Keep fixed, skipped and advisory items separate from unresolved defects; retain their dispositions');
+  expect(report).toContain("Append Step 4.7's single `## Exploratory QA and Verification Results` section");
+  expect(report).toContain('Neither coverage gaps nor advice are defects');
+});
+
+test('small-diff persistence uses an empty specialist map without manufacturing skipped coverage', () => {
+  expect(skill).toContain('For fewer than 50 changed lines, set `specialists` to `{}`');
+  const ship = readFileSync(join(root, 'ship/sections/review-army.md.tmpl'), 'utf8');
+  expect(ship).toContain('`specialists`: `{}` for a small-diff skip');
+  expect(skill).toContain('every required Step 4.7 probe passes');
+  expect(ship).toContain('all required probes pass');
+});
+
+test('caller QA runs charter and setup after resource loading and has a severity for unmatched functional failures', () => {
+  for (const skillName of ['review', 'ship']) {
+    const body = generateQAReview({ skillName, tmplPath: '', host: 'claude', paths: HOST_PATHS.claude });
+    const preparation = body.indexOf('Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup');
+    const probes = body.indexOf('**3. Run the checks without repairing the product.**');
+    expect(preparation).toBeGreaterThan(body.indexOf('**2. List the checks that must pass.**'));
+    expect(probes).toBeGreaterThan(preparation);
+    expect(body.replace(/\s+/g, ' ')).toContain('an unmatched functional failure is `functional-contract`, `CRITICAL`');
+    expect(body).toContain('Setup/permission blockers are not defects');
+    expect(body).toContain('Test creation needs user approval');
+    expect(body).toContain('Record verified defects for Fix-First');
+    expect(body).not.toContain('for parent approval');
+  }
 });
 
 test('review prepares context and deduplicates before classifying findings', () => {
@@ -88,14 +129,14 @@ test('review owns the complete persistence contract after the adversarial read',
   expect(skill.indexOf('{{SECTION:adversarial}}')).toBeLessThan(skill.indexOf('## Step 5.8: Persist Eng Review result'));
   expect(adversarial).not.toContain('### Before persisting Eng Review (Step 5.8)');
   for (const contract of [
-    'repeat Steps 3–5', 'at most 3 fix cycles', 'final zero-edit pass verifies',
-    'per structural identity', 'advisory/defect kind',
-    'original `evidence_paths`/`helper_target`', 'without removed blocks',
-    'Current findings, not prior fixes', 'recurring defects and unresolved counts/completion',
+    'repeat Steps 3–5', 'at most 3 fix cycles', 'final zero-edit pass, reconcile',
+    'by structural identity', 'advisory/defect kind',
+    'original `evidence_paths`/`helper_target`', 'without requiring deleted pre-extraction blocks',
+    'Current findings determine recurring defects and unresolved counts', 'earlier fixes do not suppress them',
     'snapshot_covered_paths',
-    'raw-byte equality', 'prior-cycle, supplied or prior-record coverage',
+    'raw bytes equal the bound snapshot blobs', 'prior-cycle, supplied or prior-record coverage',
     'REVIEW_START', 'COMPLETED', 'CONVERGED', 'CYCLES', 'Step 4.7',
-    'native Step 4.8 adversarial pass', 'failed native review mean false',
+    'native Step 4.8 adversarial pass', 'means false, as does a failed native review',
     'optional outside', 'incomplete in its own record', 'named-risk',
     'zero counts', '`completed:false`', '`specialists`', '`findings`',
     'verified exploratory QA findings',
@@ -119,20 +160,54 @@ test('review distinguishes required native coverage from optional outside covera
   expect(section).not.toContain('All errors are non-blocking');
   expect(section).toContain('The native pass is required for Step 5.8 completion');
   expect(skill).toContain('Core findings use the confidence gates below');
-  expect(skill).toContain('Step 4.6 applies its separate specialist gates');
+  expect(skill).toContain('Step 4.6 applies its specialist gates');
 });
 
 test('review identifies probe selection, report assets and the detected diff base', () => {
   const generated = generateQAReview({ skillName: 'review', tmplPath: 'review/SKILL.md.tmpl',
     host: 'claude', paths: HOST_PATHS.claude });
   const checklist = readFileSync(join(root, 'review/checklist.md'), 'utf8');
-  expect(generated).toContain('Required smoke within the 5-minute/12-probe bound, even on small diffs without a plan/server');
-  expect(generated).toContain('pair success with the riskiest changed contract edge/failure');
-  expect(generated).toContain('`CRITICAL`/`INFORMATIONAL` severity');
-  expect(generated).toContain("Read QA's `templates/functional-report-template.md` for this one final QA section");
-  expect(generated).toContain('Its checkpoint files are supporting evidence');
+  expect(generated).toContain('Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case');
+  expect(generated).toContain('Small diffs and missing plans/servers do not waive this smoke');
+  expect(generated.replace(/\s+/g, ' ')).toContain("Use the checklist category's severity; an unmatched functional failure is `functional-contract`, `CRITICAL`");
+  expect(generated).toContain('Setup/permission blockers are not defects');
+  expect(generated).toContain('Test creation needs user approval');
+  expect(generated).toContain("Read QA's `templates/functional-report-template.md`. Replace its top-level title with");
+  expect(generated).toContain('Link every checkpoint; write no second report');
   expect(checklist).toContain('merge-base diff from the caller');
   expect(checklist).not.toContain('git diff origin/main');
+});
+
+test('caller QA defines execution, evidence ownership and report adaptation before handoff', () => {
+  for (const skillName of ['review', 'ship']) {
+    const generated = generateQAReview({ skillName, tmplPath: `${skillName}/SKILL.md.tmpl`,
+      host: 'claude', paths: HOST_PATHS.claude }).replace(/\s+/g, ' ');
+    for (const contract of [
+      'You, the parent agent, run this phase',
+      'Never overwrite another run',
+      'Follow the numbered Probe loop in `sections/exploratory.md`',
+      'Start with a successful operation',
+      'a successful checkpoint Write before each later probe',
+      'Before reporting, read updates from any dispatched agents',
+      'Compare current source, commands and fixture inputs with the recorded inputs, even without an update',
+      'source, tests, contracts, commands or fixture inputs changed',
+      "Use the checklist category's severity",
+      'Replace its top-level title with',
+      'Keep its fields as subsections',
+    ]) expect(generated).toContain(contract);
+    if (skillName === 'review') {
+      expect(generated).toContain('This QA summary is provisional');
+      expect(generated).toContain('Continue to Step 4.8 even if QA is blocked');
+      expect(generated).toContain('Step 5.8 decides final review completion');
+    }
+  }
+});
+
+test('review section index follows the actual pre-fix execution order', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'review/sections/manifest.json'), 'utf8'));
+  expect(manifest.sections.map((section: { id: string }) => section.id)).toEqual([
+    'plan-completion', 'review-army', 'adversarial', 'shared-code-reuse',
+  ]);
 });
 
 test('review finalization ownership: initialize invocation state and capture the core token before reading', () => {
@@ -176,14 +251,18 @@ test('review finalization ownership: late findings use Fix-First before the boun
 test('review finalization ownership: affected QA reuse cannot replace a full review or erase decisions', () => {
   const step = skill.slice(skill.indexOf('## Step 5.8: Persist Eng Review result'));
   const flat = step.replace(/\s+/g, ' ');
-  expect(flat).toContain('Revisit every step');
-  expect(flat).toContain('Step 4.7 reruns affected probes after source, test, contract, command or fixture changes');
-  expect(flat).toContain("Only this invocation's unchanged-input QA evidence is reusable");
-  expect(flat).toContain('it does not replace the full review traversal');
-  expect(flat).toContain('final zero-edit pass verifies retained actions');
+  expect(flat).toContain('On a repeat, execute Steps 3–5 in order');
+  expect(flat).toContain('rerun affected probes after source, test, contract, command or fixture changes');
+  expect(flat).toContain("At Step 4.7, reuse only this invocation's unchanged-input QA evidence");
+  expect(flat).toContain('Reusing a probe never skips a review step');
+  expect(flat).toContain("final zero-edit pass, reconcile this invocation's actions with current findings");
   expect(flat).toContain('original `evidence_paths`/`helper_target`');
-  expect(flat).toContain('Current findings, not prior fixes');
-  expect(flat).toContain('Re-read all final-snapshot evidence before saving skipped advice');
+  expect(flat).toContain('Current findings determine recurring defects and unresolved counts; earlier fixes do not suppress them');
+  expect(flat).toContain('Re-read its final-snapshot supporting source and reconfirm the decision');
+  expect(flat).toContain('otherwise report its history without a reusable skip');
+  expect(flat).toContain('The logger computes `snapshot_covered_paths` from eligible paths whose raw bytes equal the bound snapshot blobs');
+  expect(flat).toContain('Never carry prior-cycle, supplied or prior-record coverage forward or build this proof yourself');
+  expect(flat).toContain('Fixed advice needs no skip coverage');
   expect(flat).toContain('include this invocation\'s revalidated decisions');
 });
 
@@ -191,7 +270,8 @@ test('review finalization ownership: required native completion and optional out
   const step = skill.slice(skill.indexOf('### 2. Fill the record'));
   const flat = step.replace(/\s+/g, ' ');
   expect(flat).toContain('native Step 4.8 adversarial pass finish');
-  expect(flat).toContain('required probes or failed native review mean false');
+  expect(flat).toContain('every required Step 4.7 probe passes');
+  expect(flat).toContain('Any failed, blocked, inconclusive or not-run required probe means false, as does a failed native review');
   expect(flat).toContain('`/ship` named-risk acceptance cannot complete `/review`');
   expect(flat).toContain('Each optional outside pass keeps its own result.');
   expect(flat).toContain('An unavailable pass stays incomplete in its own record.');
@@ -218,7 +298,11 @@ test('review finalization ownership: the plan audit retains its high-impact gate
   expect(plan).toContain('resolve that gate before the final Scope Check');
   expect(plan).not.toContain('never blocks the review');
   expect(plan).toContain('{{PLAN_COMPLETION_AUDIT_REVIEW}}');
-  expect(skill).toContain('honor its HIGH-impact discrepancy question before continuing');
+  const audit = readFileSync(join(root, 'review/sections/plan-completion.md'), 'utf8');
+  const gate = audit.indexOf('**HIGH-impact discrepancies** trigger AskUserQuestion');
+  expect(gate).toBeGreaterThan(-1);
+  expect(gate).toBeLessThan(audit.indexOf('After the audit and any high-impact decision, emit the single final Scope Check'));
+  expect(audit).toContain('then it gates via AskUserQuestion');
 });
 
 for (const skillName of ['review', 'ship']) {

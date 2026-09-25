@@ -55,6 +55,37 @@ afterAll(() => fs.rmSync(owned, { recursive: true, force: true }));
 
 describe('QA-only cross-host lazy rendering', () => {
   for (const host of ALL_HOST_CONFIGS) {
+    test(`${host.name} review loads QA methods before static review and reuses them before probes`, () => {
+      const directory = host.name === 'claude' ? 'review' : `${host.hostSubdir}/skills/gstack-review`;
+      const text = fs.readFileSync(path.join(rendered, directory, 'SKILL.md'), 'utf8');
+      const start = text.indexOf('## Step 4: Critical pass (core review)');
+      const core = text.indexOf('Apply both checklist passes in order', start);
+      const exploration = text.indexOf('### Step 4.7: Exploratory QA', core);
+      expect(start).toBeGreaterThan(-1);
+      expect(core).toBeGreaterThan(start);
+      expect(exploration).toBeGreaterThan(core);
+      const preparation = text.slice(start, core);
+      const scope = preparation.indexOf('sections/scope.md');
+      const loop = preparation.indexOf('sections/exploratory.md');
+      const methods = preparation.indexOf('sections/system-functional.md');
+      expect(scope).toBeGreaterThan(-1);
+      expect(loop).toBeGreaterThan(scope);
+      expect(methods).toBeGreaterThan(loop);
+      expect(preparation).toContain('**Browser surfaces only:**');
+      expect(preparation).toContain('sections/browser-setup.md');
+      expect(preparation).toContain('sections/qa-patterns.md');
+      expect(preparation).toContain('Load the QA resources below now. Step 4 is read-only; Step 4.7 owns setup, charters and probes');
+      expect(text.slice(exploration)).toContain("Complete Step 4's method Reads before probing");
+      expect(text.slice(exploration)).toContain('Run the shared exploratory Charter and preflight now');
+      if (usesLazySections(host.name, 'review')) {
+        const index = text.slice(text.indexOf('## Section index'), text.indexOf('## Step 1:'));
+        expect(index).toContain("Use Step 4's installed-relative Reads; run QA in Step 4.7");
+        expect(index.indexOf('QA resources before static review')).toBeLessThan(index.indexOf('sections/review-army.md'));
+      } else {
+        expect(text).not.toContain('## Section index');
+      }
+    });
+
     for (const skill of QA_SKILLS) {
       test(`${host.name} ${skill} resolves a passive manifest without inlining its body`, () => {
         const ctx = context(host.name, skill);
@@ -164,17 +195,26 @@ describe('QA-only cross-host lazy rendering', () => {
         expect(entry).toContain(`**Functional surfaces:**\n${functionalRead}`);
         expect(entry).toContain(generateQAMethodReads(context(host.name, skill)));
         expect(entry.indexOf(functionalRead)).toBeLessThan(entry.lastIndexOf(sectionPath(context(host.name, skill), skill, 'exploratory')));
-        expect(explorer).toContain("Complete the caller's required surface reads first");
+        expect(explorer).toContain('Read the selected surface methods first.');
         if (skill === 'qa') {
           expect(entry).toContain('`--quick` also selects Quick exploration; `--exhaustive` changes only the fix tier.');
           expect(entry).toContain('Regression mode preserves the selected fix tier.');
           for (const tier of ['**Quick:** Fix critical + high severity only', '**Standard:** + medium severity (default)', '**Exhaustive:** + low/cosmetic severity']) expect(entry).toContain(tier);
         } else {
           expect(entry).toContain('Never fix bugs or write product tests');
+          const browserSetup = entry.indexOf('## Browser Setup (conditional)');
+          const selectedChecks = entry.indexOf('## Run the Selected Checks');
+          expect(browserSetup).toBeGreaterThan(0);
+          expect(selectedChecks).toBeGreaterThan(browserSetup);
+          expect(selectedChecks).toBeLessThan(entry.indexOf(functionalRead));
+          expect(entry.slice(browserSetup, selectedChecks)).not.toContain(functionalRead);
+          expect(entry).toContain('Complete the scope Read above, then the applicable method Reads below');
+          expect(entry).toContain('Knowing the target is functional does not replace those Reads');
           expect(entry).toContain('For mixed Regression, the argument is the prior combined report');
           expect(entry).toContain('use separate browser and functional sections in this same report');
-          expect(explorer).toContain('Report discoveries and propose tests');
-          expect(explorer).toContain('the report; do not create them');
+          expect(explorer).toContain('## 3. Parent handoff');
+          expect(explorer).toContain('Return test_stub proposals');
+          expect(explorer).toContain('never create tests or freeze buggy output');
           expect(explorer).not.toMatch(/before repair|For \/review and \/ship|every new \/ship/);
         }
       }
@@ -394,7 +434,7 @@ describe('installed QA pointers', () => {
               }
               const explorer = fs.readFileSync(path.join(path.dirname(entry), 'sections/exploratory.md'), 'utf8');
               expect(body).toContain(generateQAMethodReads(context(host.name, skill)));
-              expect(explorer).toContain("Complete the caller's required surface reads first");
+              expect(explorer).toContain('Read the selected surface methods first.');
               const qaName = host.name === 'claude' && !prefix ? 'qa' : 'gstack-qa';
               const qaDirectory = path.join(registry, qaName);
               const functional = fs.readFileSync(path.join(qaDirectory, 'sections/system-functional.md'), 'utf8');
@@ -408,9 +448,8 @@ describe('installed QA pointers', () => {
               fs.renameSync(resolvedReport, `${resolvedReport}.absent`);
               try {
                 expect(() => fs.readFileSync(report, 'utf8')).toThrow('ENOENT');
-                expect(explorer).toContain(skill === 'qa-only'
-                  ? 'its affected probes as blocked; continue other safe probes'
-                  : 'Missing/unreadable assets block required');
+                expect(explorer).toMatch(/Missing or unreadable assets, prerequisites or permission\s+block affected probes, not independent safe checks/);
+                expect(explorer).toContain('Pass requires all required current-input contracts to pass with no required remainder');
               } finally {
                 fs.renameSync(`${resolvedReport}.absent`, resolvedReport);
               }

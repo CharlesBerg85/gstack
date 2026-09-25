@@ -188,6 +188,12 @@ describe('selectTests', () => {
     expect(result.selected.sort()).toEqual(['plan-eng-review/SKILL.md sections', 'ship/SKILL.md workflow']);
   });
 
+  test('ship controller guards select their workflow judge', () => {
+    const result = selectTests(['test/ship-control-flow.test.ts'], LLM_JUDGE_TOUCHFILES);
+    expect(result.reason).toBe('diff');
+    expect(result.selected).toEqual(['ship/SKILL.md workflow']);
+  });
+
   test('bounded shared-code planning selects its consumed resolvers, excluding other Eng sections', () => {
     const entrypoint = fs.readFileSync(path.join(ROOT, 'plan-eng-review/SKILL.md'), 'utf8');
     const review = fs.readFileSync(path.join(ROOT, 'plan-eng-review/sections/review-sections.md'), 'utf8');

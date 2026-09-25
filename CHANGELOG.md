@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.90.3.0] - 2026-09-25
+## [1.91.1.0] - 2026-09-25
 
 QA can test APIs, CLIs, jobs, workers and webhooks with the project's own tools,
 without starting a browser. Review and ship now run bounded exploratory checks,
@@ -22,6 +22,7 @@ and every ship audits relevant documentation before final verification and publi
 
 - Repeated QA runs preserve prior reports, baselines and exploration notes. Browser techniques follow the same checkpointed probe order as functional QA, and mixed reports keep each surface's evidence and scores separate.
 - Ship's two-pass test-generation allowance includes the initial attempt, failures and zero-test results. Duplicate design findings share one action while retaining both reviewers' evidence, statistics and the stricter approval requirement.
+- Ship uses one parent-owned routing table for repairs and late changes. Nested repairs preserve their return destination, and release preparation requires matching review records before version or documentation writes.
 - Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
 
 ## [1.90.2.0] - 2026-09-24

@@ -58,9 +58,11 @@ test('publication reports unavailable triage separately from an empty successful
 
 test('publication refreshes the open review and title without treating lookup failure as absence', () => {
   const lookup = template.slice(0, template.indexOf('### Resolve Linked Spec'));
-  expect(lookup).toContain("Repeat Step 18's open PR/MR lookup");
-  expect(lookup.replace(/\s+/g, ' ')).toContain('A lookup error or ambiguous matches STOP publication');
-  expect(lookup.replace(/\s+/g, ' ')).toContain('If the open PR/MR or title changed, return to Step 18');
+  expect(lookup).toContain("Recheck Step 18's PR/MR lookup and record it");
+  expect(lookup.replace(/\s+/g, ' ')).toContain('Errors or ambiguous matches STOP publication');
+  expect(lookup.replace(/\s+/g, ' ')).toContain("If the open PR/MR or title changed, repeat Step 18's identity/title preparation");
+  expect(lookup.replace(/\s+/g, ' ')).toContain('then return here for a new lookup, fresh body and both redaction scans before publishing');
+  expect(lookup).not.toContain('Ship control flow');
   expect(lookup).not.toContain('|| echo "NO_PR"');
   expect(lookup).not.toContain('|| echo "NO_MR"');
   expect(template).toContain('Exit 1 or any other error blocks');

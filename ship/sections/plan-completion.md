@@ -2,9 +2,16 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Step 8: Plan Completion Audit
 
-**Dispatch this step as a subagent** using the Agent tool with `subagent_type: "general-purpose"`. The subagent reads the plan file and every referenced code file in its own fresh context. Parent gets only the conclusion.
+Complete this section in order:
+1. Dispatch the audit, validate its result and resolve its Gate Logic.
+2. Collect the plan's executable checks in Step 8.1; do not run them yet.
+3. Run Prior Learnings, including its setting question when offered.
+4. Run Step 8.2 Scope Drift, then proceed to Step 9 for review and QA.
 
-**Foreground required:** pass `run_in_background: false` on the Agent call — subagents run in the BACKGROUND by default since Claude Code v2.1.198. (Merely omitting the flag no longer produces a foreground run; it must be explicitly false.) The dispatch happens ONLY via the Agent tool: invoking the target as a Skill, or executing its workflow inline in your own context, is WRONG even though the skill may appear in your available-skills list — inline execution forfeits the fresh-context isolation this dispatch exists for, and the explicit flag already makes the Agent call block. (Where a step defines an inline FALLBACK, it applies only after a dispatched subagent has failed.) The Gate Logic below consumes this audit's LAST-line JSON before /ship can proceed.
+**Dispatch this step as a subagent** using Agent, `subagent_type: "general-purpose"`
+and `run_in_background: false`. Use Step 7's shared foreground-dispatch rule.
+The child reads the plan and every referenced
+code file; the parent validates its report and applies the gates below.
 
 **Subagent prompt:** Substitute `<base>` and supply the active plan's absolute path
 or complete text, including relevant user-approved scope changes. If none exists,
@@ -46,13 +53,21 @@ done
 
 ### Actionable Item Extraction
 
-Read the plan file. Extract every actionable item — anything that describes work to be done. Look for:
+**Separate deliverables from execution-only verification.** Audit implementation and test-creation requirements below.
+For a local execution-only check, retain its command, expected outcome and source verbatim in the summary
+for Step 8.1/9, outside implementation counts. It remains required and pending actual execution,
+never DONE from static inspection and not EXTERNAL-STATE merely because it has not run.
+Keep genuine external-state and human-only checks in this audit with their existing gates.
+A mixed item retains its implementation obligation here and its execution check in Step 8.1/9;
+zero implementation counts do not waive those checks.
+
+Extract deliverables and test-creation work, not the local checks routed above. Look for:
 
 - **Checkbox items:** `- [ ] ...` or `- [x] ...`
 - **Numbered steps** under implementation headings: "1. Create ...", "2. Add ...", "3. Modify ..."
 - **Imperative statements:** "Add X to Y", "Create a Z service", "Modify the W controller"
 - **File-level specifications:** "New file: path/to/file.ts", "Modify path/to/existing.rb"
-- **Test requirements:** "Test that X", "Add test for Y", "Verify Z"
+- **Test requirements:** "Add test for Y" or another required test deliverable; route execution-only local verification as above.
 - **Data model changes:** "Add column X to table Y", "Create migration for Z"
 
 **Ignore:**
@@ -64,7 +79,7 @@ Read the plan file. Extract every actionable item — anything that describes wo
 
 **Cap:** Extract at most 50 items. If the plan has more, note: "Showing top 50 of N plan items — full list in plan file."
 
-**No items found:** If the plan contains no extractable actionable items, skip with: "Plan file contains no actionable items — skipping completion audit."
+**No items found:** If no audited deliverables remain, report zero implementation counts and retain pending execution-only checks verbatim in summary for Step 8.1/9. This skips only the implementation audit, never required verification.
 
 For each item, note:
 - The item text (verbatim or concise summary)
@@ -145,12 +160,23 @@ Counts map one-to-one to the classifications above and sum to total_items. No pl
 
 **Parent processing:**
 
-1. Check the task's terminal status; failure takes the audit-failure fallback below. On success, parse its LAST line as JSON with only the contract's seven fields. Every count must be a nonnegative integer, and the classification count sum must equal `total_items`; `summary` must be a string. Missing, extra or invalid fields take the same fallback. Valid no-plan/no-actionable-item reports retain zero counts and their summary.
-2. Store the counts for Step 20 metrics; use `summary` in PR body.
-3. Apply Gate Logic below to `not_done` and `unverifiable` before continuing. Carry approved deferrals, with item text and plan path, to Step 14; keep them separate from dropped scope. `partial` items receive a PR note, not the NOT DONE gate.
-4. Embed `summary` in PR body's `## Plan Completion` section (Step 19). For the UNVERIFIABLE gate, also embed `## Plan Completion — Manual Verifications` with each Y response's evidence and each D response's dropped item.
+1. Check the task's terminal status. Without successful completion and valid LAST-line
+   JSON, use the audit-failure fallback below. Require exactly the seven declared
+   fields: nonnegative integer counts whose classification sum equals `total_items`,
+   and a string `summary`. Missing,
+   extra or invalid fields fail. Valid no-plan/no-actionable reports retain zero counts
+   and their summary.
+2. Store counts for Step 20 and `summary` for Step 19's `## Plan Completion`.
+3. Apply Gate Logic below before continuing. Carry approved deferrals, with item text
+   and plan path, to Step 14; keep them separate from dropped scope. The gate supplies
+   the required PR notes and per-item manual verification evidence.
 
-**If the subagent fails, returns invalid JSON, or has no final output after ~10 minutes:** Stop any still-running background task before an inline fallback using the same extraction/classification logic; never race its late result. If fallback also fails, AskUserQuestion: "Audit failed ({reason}): A) Skip audit and ship anyway, recording the skip in PR body and Step 20 metrics; B) Stop and fix the audit (recommended/default)." Silent fail-open is the failure shape that VAS-449 surfaced.
+**Audit-failure fallback:** On failure, invalid JSON or no final output after ~10
+minutes, stop any live child and confirm it stopped before an inline audit with the same
+extraction/classification logic; never race a late result. If that also fails,
+AskUserQuestion: A) Skip audit and ship, recording the reason in the PR body and
+Step 20 metrics; B) Stop and fix the audit (recommended/default). Silent fail-open
+is the failure shape that VAS-449 surfaced.
 
 ---
 
@@ -184,7 +210,7 @@ The parent evaluates the completion checklist in priority order, including after
    - RECOMMENDATION per item: Y if the item is concrete and easily verified; N if it's critical-path (auth, DNS, deliverables to other repos) and the user shows hesitation.
 
    **Exit conditions:**
-   - Any N: STOP. Surface the missing items, suggest re-running /ship after they're addressed.
+   - Any N: pause confirmations and reclassify that item as NOT DONE. Apply priority 1: A stops; B defers; C drops. After B/C, resume the remaining confirmations.
    - All Y or D: Continue. Embed `## Plan Completion — Manual Verifications` section in PR body listing each Y'd item with the user's free-text evidence and each D'd item with "intentionally dropped".
 
    **Cap.** If there are more than 5 UNVERIFIABLE items, present them as a numbered list first and ask whether the user wants to (1) confirm each individually, (2) stop and reduce scope, or (3) explicitly accept blanket-confirmation with the warning that this is the VAS-449 failure shape. Default and recommended option is (1).
@@ -193,63 +219,36 @@ The parent evaluates the completion checklist in priority order, including after
 
 4. **All DONE or CHANGED:** Pass. "Plan completion: PASS — all items addressed." Continue.
 
-**No plan file found:** Skip entirely. "No plan file detected — skipping plan completion audit."
+**No plan file found:** Skip only the plan completion audit. Continue with Step 8.1, Prior Learnings and Scope Drift; Step 9 QA still runs.
 
 **Include in PR body (Step 19):** Add a `## Plan Completion` section with the checklist summary.
 
 ## Step 8.1: Plan Verification
 
-Collect the plan's explicit testing/verification steps for the shared exploratory QA
-pass in Step 9. That pass executes them in report-only discovery mode and returns
-results to the ship parent; do not invoke an entire QA skill or start duplicate probes.
+**Collect now; execute in Step 9.** Do not invoke an entire QA skill or start probes here.
 
-### 1. Check for verification section
+1. Read the plan's `Verification`, `Test plan`, `Testing`, `How to test`,
+   `Manual testing` and any other explicit checks, including execution-only items
+   retained by Step 8. Save each exact expected outcome, source, surface, probe and
+   safe prerequisites. Clarify unknown outcomes.
+2. Browser items use the declared project/plan dev URL and browser setup at execution;
+   functional items use native tools without discovering a web server. An API URL is
+   not automatically a page. Only browser evidence needs screenshots.
+3. If no verification section or no plan file exists, record no plan-specific items.
+   Automatic diff-scoped QA still runs. Continue to Prior Learnings below.
 
-Using the plan file already discovered in Step 8, look for a verification section. Match any of these headings: `## Verification`, `## Test plan`, `## Testing`, `## How to test`, `## Manual testing`, or any section with verification items: native commands, API requests, durable state checks, URLs or interactions.
+**Handoff to Step 9.2.1:** Its parent-owned report-only explorer must execute this
+complete list before Fix-First. Before the first plan command, complete Step 9.2.1's
+method Reads and the shared probe loop's preflight. Apply its prerequisite, permission, evidence and
+changed-input revalidation rules. Share current-input proof for overlapping smoke
+probes; plan checks beyond that smoke budget remain required. At command/time
+limits, mark remaining checks not run. Send failed, blocked or unrun checks through
+Step 9's required-probe gate, never silently waive them. Noninteractive runs return blocked.
 
-**If no verification section or no plan file:** Record that there are no plan-specific
-items. The automatic diff-scoped exploratory pass still runs in Step 9.
-
-### 2. Preserve the selected contracts
-
-For every item, retain its exact required outcome, source, surface, supported probe
-and safe prerequisites. Do not silently reduce it to a happy-path smoke. Browser
-items use the declared project/plan dev URL and browser setup only when executed;
-functional items use native tools without discovering a web server. An API URL is
-not automatically a page. Unknown intended outcomes require clarification, not a
-guessed test. Missing tools, safe fixtures or permission mark affected items blocked.
-
-### 3. Execute once and gate in Step 9
-
-Hand the complete list to the parent-owned explorer before Fix-First. It returns each
-item as pass, fail, blocked, not run, inconclusive or not applicable with a reason,
-including exact command/request, expected/observed outputs or durable state and safe
-evidence. Only browser items need screenshots. Share unchanged-input evidence with
-the diff-scoped probes; preserve any plan checks that go beyond the smoke charter.
-
-The Step 9 parent resolves failures through its fix/approval loop and reruns affected
-checks after changes. An applicable required item that fails or cannot run stops
-successful shipping until repaired or explicitly risk-accepted by the user. In
-noninteractive runs return blocked. Neither unavailable browser/server nor an
-unreadable section is a passing check or silent waiver. If the explorer reaches
-its command or time limit, mark the remaining checks not run and ask about their
-risks through the same parent gate.
-
-Set VERIFY_RESULT=pass only when every selected verification item passes. Set
-VERIFY_RESULT=skipped only when there are no plan-specific items. Otherwise set
-VERIFY_RESULT=fail and retain each actual failure, blocker or unrun item.
-Ship anyway retains VERIFY_RESULT=fail and lists the accepted risks in the PR; approval
-never turns failed or unavailable verification into a pass.
-
-### 4. Include in PR body
-
-Add a `## Verification Results` section to the PR body (Step 19):
-- If items exist: actual per-status counts, evidence and explicit accepted risks.
-- If no plan-specific items: say so, separately from the automatic Exploratory QA result.
-- Never claim verification from collecting this list; Step 9 must actually execute it.
-
-The parent now runs Prior Learnings and its cross-project setting question when
-offered, before Step 9, even when no plan file was found.
+After execution, set VERIFY_RESULT=pass only if all selected items pass, skipped
+only if none exist, otherwise fail. Risk acceptance keeps the actual failed,
+blocked and unrun outcomes. Report per-status counts, evidence and accepted risks
+in Step 19's `## Verification Results`, separately from automatic QA.
 
 ## Prior Learnings
 
