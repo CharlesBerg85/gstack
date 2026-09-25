@@ -514,16 +514,24 @@ package.json (npm rejects it). Rationale and translation rules live in the
 `lib/version-source.ts` header; `test/gstack-version-bump.test.ts` pins the
 contract.
 
-**Garry's release policy for gstack:** Choose and approve the version without
-asking. Default to PATCH (`X.Y.Z+1.0`), including substantial additive work;
-diff size alone does not require MINOR. Use a larger bump only when treating the
-change as a patch would be plainly inappropriate, such as a breaking public
-contract. Make that judgment autonomously.
+**Choose versions autonomously; default to PATCH.** Garry delegates release
+version decisions to the agent. Do not ask him to choose or approve a version,
+including when an already-approved version collides with another PR. This policy
+overrides generic version-approval prompts in `/ship` and `/document-release`.
 
-When main or another PR claims the current slot, use `gstack-next-version` to
-advance to the next available slot at the chosen bump level. Refresh the release
-metadata and prepare the PR for Garry to merge. This authorizes version choices,
-not merging or deployment.
+Prefer **PATCH (X.Y.Z+1.0)** for ordinary releases, including fixes, additions,
+refactors, test infrastructure and coordinated multi-file work. Diff size alone
+is not a reason to choose MINOR. Choose **MINOR (X.Y+1.0.0)** or **MAJOR
+(X+1.0.0.0)** only when calling the release a patch would be plainly misleading
+("ridiculous"), such as an incompatible public-interface change or a genuinely
+new product-scale release. Make that judgment without another approval question.
+
+Use `bin/gstack-next-version` to check the live release queue before publishing.
+If a slot is claimed, advance to the next available version at the chosen bump
+level and use `bin/gstack-version-bump` to synchronize release metadata. A higher
+base version does not itself require a MINOR bump. Keep the PR ready for Garry to
+merge; autonomous version decisions do not authorize merging, deploying or
+skipping required validation.
 
 **VERSION and CHANGELOG are branch-scoped.** Every feature branch that ships gets its
 own version bump and CHANGELOG entry. The entry describes what THIS branch adds —
