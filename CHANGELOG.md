@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.91.1.0] - 2026-09-25
+## [1.91.3.0] - 2026-09-25
 
 QA can test APIs, CLIs, jobs, workers and webhooks with the project's own tools,
 without starting a browser. Review and ship now run bounded exploratory checks,
@@ -22,8 +22,20 @@ and every ship audits relevant documentation before final verification and publi
 
 - Repeated QA runs preserve prior reports, baselines and exploration notes. Browser techniques follow the same checkpointed probe order as functional QA, and mixed reports keep each surface's evidence and scores separate.
 - Ship's two-pass test-generation allowance includes the initial attempt, failures and zero-test results. Duplicate design findings share one action while retaining both reviewers' evidence, statistics and the stricter approval requirement.
-- Ship uses one parent-owned routing table for repairs and late changes. Nested repairs preserve their return destination, and release preparation requires matching review records before version or documentation writes.
+- Ship keeps repair and late-change instructions in the steps that own them. Nested repairs preserve their return destination, and release preparation requires matching review records before version or documentation writes.
 - Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
+## [1.91.1.0] - 2026-09-25
+
+### Fixed
+
+- Find Impeccable installed through the Claude Code plugin marketplace, including a trusted custom `CLAUDE_CONFIG_DIR`. Preserve traditional skill installs and the existing explicit-engine, PATH and standalone-cache priority.
+- Select plugin versions deterministically with strict semver ordering and support for hash-named versions. Keep a selected installation's launcher, engine and engine version together instead of borrowing an older plugin's engine.
+- Use the same strict ordering for the standalone engine cache, retaining its semver-only policy and precedence. Do not follow cache directory symlinks or repository configuration links into unrelated filesystem trees.
+- Preserve repository and symlink execution boundaries, sanitize discovery diagnostics, and quote or suppress launcher hints when a filename cannot be represented safely. Discovery never downloads or runs a launcher; engine compatibility warnings and install consent remain unchanged.
+- Compare canonical HOME paths at the trust boundary, so home-directory aliases and dotfiles repositories do not hide user-installed engines or admit private home files as scan targets.
+- Add plugin discovery, handoff, malformed-version and adversarial-path regressions, plus Windows-safe discovery cases selected by the native Windows test lane.
+
+Includes the plugin-cache discovery contribution from @SomSamantray in #2976.
 
 ## [1.90.2.0] - 2026-09-24
 
