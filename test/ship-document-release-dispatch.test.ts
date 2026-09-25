@@ -34,9 +34,9 @@ describe('pre-publication documentation lifecycle', () => {
     const positions = steps.map(step => gate.indexOf(step));
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
-    expect(gate.replace(/\s+/g, ' ')).toContain('Step 14.5 using its remaining attempt');
+    expect(gate.replace(/\s+/g, ' ')).toContain('Use Step 14.5\'s remaining attempt/recovery');
     expect(body.replace(/\s+/g, ' ')).toContain('| Step 14.5 | Initial audit plus ONE repair/re-audit |');
-    expect(gate.replace(/\s+/g, ' ')).toContain('authored docs, new tests, fixes and TODO edits make evidence STALE');
+    expect(gate.replace(/\s+/g, ' ')).toContain('Docs, TODO edits, new/generated tests and fixes make evidence STALE');
     const docs = read('ship/sections/documentation.md.tmpl');
     expect(docs.replace(/\s+/g, ' ')).toContain('never a third attempt, even after Step 16 changes');
     expect(docs.replace(/\s+/g, ' ')).toContain('Otherwise STOP before commit/publication and do not launch another child');

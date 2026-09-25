@@ -82,19 +82,19 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
     const entry = fs.readFileSync(path.join(SHIP_DIR, 'SKILL.md'), 'utf8');
     const gate = entry.slice(entry.indexOf('## Step 16:'), entry.indexOf('## Step 17:'));
     const text = gate.replace(/\s+/g, ' ');
-    expect(text).toContain('STALE/MISSING (changed content, command or age, or no proven run)');
-    expect(text).toContain('If only receipt storage/readback failed');
-    expect(text).toContain('independently prove unchanged final content, the same command and valid age');
+    expect(text).toContain('STALE/MISSING: changed content, command or age, or no proven run');
+    expect(text).toContain('Only receipt storage/readback failed');
+    expect(text).toContain('Independently prove unchanged final content, the same command and valid age');
     expect(text).toContain('from the successful run\'s evidence');
     expect(text).toContain('exact command, exit, timestamp and log');
     expect(text).toContain('as **ledger unavailable**');
     expect(text).toContain('**ledger unavailable**, never FRESH');
-    expect(text).toContain('unchanged green suites do not need a rerun just to repair bookkeeping');
-    expect(text).toContain("a failed test run requires Step 5's triage");
+    expect(text).toContain('unchanged green suites need no bookkeeping-only rerun');
+    expect(text).toContain("A failed test run requires Step 5's triage");
     expect(text).toContain('Reuse waivers only for the same verified pre-existing failures and approved scope');
     expect(text).toContain('New, changed or unwaived failures STOP publication');
-    expect(text).toContain('authored docs, new tests, fixes and TODO edits make evidence STALE');
-    expect(text).toContain('Stale content cannot take this exception');
+    expect(text).toContain('Docs, TODO edits, new/generated tests and fixes make evidence STALE');
+    expect(text).toContain('The last row permits bookkeeping repair only, never stale content');
     expect(text).toContain('Without that proof, use STALE/MISSING');
   });
 

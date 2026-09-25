@@ -95,8 +95,11 @@ pushes and PRs, never verification.
 
 ## Step 0.9: Apple target detection
 
-If the repo has an `.xcodeproj`, `.xcworkspace`, or Swift app package AND the ask
-is App Store/TestFlight distribution, **STOP and Read
+If the ask is App Store/TestFlight distribution, look for an `.xcodeproj`,
+`.xcworkspace`, or Swift app product. Read `Package.swift` and its entrypoint to
+distinguish an app from a library/CLI. If unclear, use AskUserQuestion to identify
+the target and wait before choosing a release path.
+For a confirmed app, **STOP and Read
 `~/.claude/skills/gstack/ship/sections/apple-release.md` FIRST**. Store distribution proceeds
 through that adapter from the current branch, including a clean base branch.
 The branch gate and repository-landing pipeline below apply ONLY to
@@ -166,7 +169,7 @@ Merge the base ref fetched in Step 1 so tests and reviews cover the integrated c
 git merge origin/<base> --no-edit
 ```
 
-**If there are merge conflicts:** Try to auto-resolve if they are simple (VERSION, schema.rb, CHANGELOG ordering). If conflicts are complex or ambiguous, **STOP** and show them.
+**If there are merge conflicts:** Try to auto-resolve if they are simple (VERSION, schema.rb, CHANGELOG ordering). For complex or ambiguous conflicts, **STOP**, show the conflicting choices, use AskUserQuestion for the needed resolution decision, and wait for the answer before editing or continuing.
 
 **If already up to date:** Continue silently.
 
@@ -191,12 +194,12 @@ No plan skips only plan-specific work, not Prior Learnings or Scope Drift.
 
 {{SECTION:adversarial}}
 
-Before Step 12, run `~/.claude/skills/gstack/bin/gstack-review-read`. Save this
-invocation's final native review's verified `wtree` as the **reviewed tree**, with
-its record and the final core record. Require the core's `start_wtree` and
-`end_wtree` to match it. Missing or mismatched hashes block release preparation;
-never capture a new token to certify old work. A named QA exception retains the
-core's incomplete flags: matching content does not turn waived probes into passes.
+Before Step 12, run `~/.claude/skills/gstack/bin/gstack-review-read`. Compare this
+invocation's final native review's verified `wtree` with the final core record's
+`start_wtree` and `end_wtree`. When all three match, save that **reviewed tree** and
+both records for Step 16. Missing or mismatched hashes block release preparation;
+a new token cannot certify old work. Keep the core's actual incomplete flags and
+any named QA exception: matching content proves identity, not that waived probes passed.
 
 ## Step 12: Version bump (auto-decide)
 
@@ -234,7 +237,7 @@ Save `BUMP_LEVEL` in the invocation record before queue selection, and
    ```
    The CLI validates 4-digit `MAJOR.MINOR.PATCH.MICRO` (or 3-digit pinned semver), then writes VERSION, the manifest, and existing `package-lock.json` / `npm-shrinkwrap.json` files; it never creates lockfiles. Manifest resolution: `--package-json-path` → `.gstack/package-json-path` → `./package.json` (supports subdirectory packages). npm manifests/locks use the 3-digit translation (`1.67.0.0` → `1.67.0`); VERSION remains authoritative. Exit 3 means a half-write: reclassify and use `repair` for DRIFT_STALE_PKG.
 
-   `--regen-digest` executes repo code with the same privileges as Step 5: `scripts/gen-agents-digest.ts`, only when it and committed `agents-digest/gstack-AGENTS.md` both exist. Check `agentsDigest`: if false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump before continuing. Its VERSION stamp is freshness-gated.
+   `--regen-digest` executes repo code with the same privileges as Step 5: `scripts/gen-agents-digest.ts`, only when it and committed `agents-digest/gstack-AGENTS.md` both exist. Check `agentsDigest`: if false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump before continuing. The committed digest must match the generator's output for the selected VERSION; verify that match before push.
 
 5. **Record the release decision after a version was actually written**, including
    an approved ALREADY_BUMPED rebump. Skip when the version is unchanged; manifest
@@ -306,106 +309,95 @@ EOF
 
 **IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
-Work through these five stages with the same invocation record and limits.
+Follow stages 1–5 with the same invocation record and limits on every return.
+Any later content edit, including one made by a check, restarts stage 1; a commit
+that preserves content keeps its evidence valid.
 
 ### 1. Finish writers and prepare outputs
 
-Inspect all writer handles, including the docs child. Before another writer runs,
-require terminal completion or confirmed termination, not merely a timeout or
-cancellation acknowledgment. If unconfirmed, STOP; resume only after confirming
-the writer stopped (use Step 14.5's recovery for its child).
+Inspect writer handles, including the docs child. Confirm terminal completion or termination
+before another writer runs. Timeout or cancellation acknowledgment alone means
+STOP until confirmed; Step 14.5 handles docs recovery.
 
-Run generation/build commands declared in project scripts or CI and record their
-results. If none exists, record not applicable and the inspected source. Missing
-prerequisites for a declared command, or a failed build, block push.
+Find declared generation/build commands in project instructions, manifests, build
+files and CI. Run them and save results. If none exists, record not applicable and
+the inspected sources. Missing prerequisites or a failed build block push;
+never invent a substitute.
 
 ### 2. Choose the change route
 
-Run `~/.claude/skills/gstack/bin/gstack-wtree` for the current tree, then inspect
-`git diff <reviewed-tree> <current-tree>` using the saved fingerprint from before
-Step 12. This compares with the last Steps 9–11 review, not the original branch
-diff, and includes new non-ignored files. Missing snapshots block this comparison;
-never infer it from HEAD equality. With no content changes, continue to stage 3;
-a commit alone is not a content change.
+Capture the current tree with `~/.claude/skills/gstack/bin/gstack-wtree`. Inspect
+`git diff <reviewed-tree> <current-tree>` against the snapshot saved before Step 12.
+Snapshots include tracked and non-ignored untracked files; missing snapshots
+block this comparison, regardless of HEAD equality.
 
-If only authored docs or release metadata changed, recheck affected Step 8 plan
-items against the new content and update their completion/verification evidence.
-Then continue to stage 3 without a new code review.
+| What changed since review? | Next action |
+|---|---|
+| Nothing | Continue to stage 3. |
+| Only authored docs or release metadata | Update affected Step 8 completion/verification evidence, then continue to stage 3 without a new code review. |
+| Behavior, tests or build inputs | Revisit tests (5), eval selection (6), coverage (7), plan obligations (8) and full review (9–11). Recheck metadata (12–14), then restart stage 1. |
 
-If behavior, tests or build inputs changed, revisit Step 5 tests, Step 6 eval
-selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11. Recheck
-release metadata in Steps 12–14, then restart stage 1. Prompts/templates are
-behavioral, not automatically documentation. Take this route before collecting
-final receipts or refreshing docs; keep all existing attempt limits.
+Treat prompts/templates as behavioral inputs. Complete the behavioral route
+before refreshing docs or collecting final receipts.
 
 ### 3. Resolve documentation freshness
 
-Compare the base, release files, docs/templates and generated content with the
-accepted docs hashes. If unchanged, continue to stage 4. If changed, return to
-Step 14.5 using its remaining attempt. After recovery, commit approved files in
-Step 15 and restart stage 1, so generation runs before the next comparison.
+Compare base, release files, docs/templates and generated content with accepted audit hashes:
 
-A blocked audit or exhausted attempts require Step 14.5's explicit user decision
-on the named documentation risk. Continue only after its unwaivable gates clear.
-An exception applies only to the same scope/content; changes need a new decision,
-never a third audit. The result remains `Documentation: blocked`, not current.
+| Documentation state | Next action |
+|---|---|
+| Accepted audit with unchanged inputs | Continue to stage 4. |
+| Inputs changed; an attempt remains | Use Step 14.5's remaining attempt/recovery, commit approved files through Step 15, then restart stage 1 to regenerate before comparing. |
+| Audit blocked or attempts exhausted | Use Step 14.5's named-risk decision. Continue with the user's explicit exception only after its unwaivable gates clear. |
+
+Keep `Documentation: blocked` for accepted risk. An exception covers only its
+approved scope and exact content; changes need a new decision, not a third audit.
 
 ### 4. Verify the frozen candidate
 
-Keep inputs frozen through verification and push. Run declared docs/link/generated-file
-checks and report any unavailable check. Docs-only changes skip code review, not
-test freshness: authored docs and TODO edits change the verified tree.
+Freeze inputs through verification and push. Run declared docs/link/generated-file
+checks; report unavailable checks.
 
-**Input identity for every reused check:** Its saved evidence proves that its consumed files,
-fixtures, dependencies and execution parameters are unchanged. Compare hashes or
-complete bytes and explain why other changes cannot affect it; unknown or changed
-dependencies require a rerun. For a model judge, compare the complete expanded
-request, rubric, parameters and builder/runtime dependencies. Cite the original
-command, result/counts, timestamp and log rather than resampling an identical
-passing judge. Mandatory reviews still run.
+**Reuse a check when its inputs match.** Compare hashes or complete bytes of its
+saved and current consumed files, fixtures, dependencies and execution parameters.
+Explain why other changes cannot affect it; changed or unknown dependencies require a rerun.
+For model judges, compare the complete expanded request, rubric, parameters and
+builder/runtime dependencies. Cite the original command, result/counts, timestamp
+and log instead of resampling an identical passing judge. Mandatory reviews still run.
 
-**Test suites also need their freshness receipts.**
-For EACH Step 5 test lane, use its actual label/command:
-`--label <lane> --expect-cmd '<exact Step 5 command>'`.
-
-Inspect changes since each lane ran. Use `--allow-paths` only for release metadata;
-exclude any path with behavioral changes. Manifest scripts, dependencies and
-runtime configuration require live tests, even in `package.json`. This example
-assumes metadata-only changes in every listed path:
+**Check each test lane's receipt as well.** Use its actual Step 5 label/command:
+`--label <lane> --expect-cmd '<exact Step 5 command>'`. Inspect changes since the run;
+`--allow-paths` exempts only release metadata. Docs, TODO edits, new/generated tests
+and fixes make evidence STALE even without a new code review. Behavioral paths,
+including manifest scripts, dependencies and runtime configuration, require live
+tests even in `package.json`. Every listed change in this example is metadata:
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --label vitest --expect-cmd '<vitest>' --max-age 24 --allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md
 ```
 
-Do not exempt `TODOS.md` or generated tests: authored docs, new tests, fixes and
-TODO edits make evidence STALE. With no Step 5 lanes, require its explicit
-untested-scope approval, still applicable to the final content. Otherwise return
-to Step 5's no-tests decision. Report the gap, never FRESH; declared builds must pass.
+| Receipt result | Next action |
+|---|---|
+| FRESH (exit 0) | Cite the label, exit, timestamp and log. |
+| STALE/MISSING: changed content, command or age, or no proven run | Run `~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`, read the result and recheck once. A failed test run requires Step 5's triage. |
+| Only receipt storage/readback failed | Independently prove unchanged final content, the same command and valid age from the successful run's evidence. Cite its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH. Without that proof, use STALE/MISSING. |
 
-For FRESH (exit 0), cite the label, exit, timestamp and log. For STALE/MISSING
-(changed content, command or age, or no proven run), run
-`~/.claude/skills/gstack/bin/gstack-evidence run --label <lane> -- '<command>'`,
-read the result and recheck once. A failed freshness check selects this live run;
-a failed test run requires Step 5's triage. Missing evidence never means pass.
-
-If only receipt storage/readback failed, independently prove unchanged final
-content, the same command and valid age from the successful run's evidence. Cite
-its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH.
-Without that proof, use STALE/MISSING. Stale content cannot take this exception;
-unchanged green suites do not need a rerun just to repair bookkeeping.
+A failed freshness check selects a live run, not a failed-test verdict. The last
+row permits bookkeeping repair only, never stale content; unchanged green suites
+need no bookkeeping-only rerun. Missing evidence never means pass.
+With no test lanes, require Step 5's explicit untested-scope approval for this
+final content or return to its no-tests decision. Report the gap, never FRESH;
+builds must still pass.
 
 ### 5. Report, then push
 
-Inspect the selected release files for uncommitted content. Commit any remaining
-approved, verified changes, including generated outputs, using Step 15's grouping
-rules. Preserve unrelated user files. A commit without content changes keeps the
-evidence valid; any content change returns to stage 1 before publication.
+Commit any uncommitted approved, verified release changes, including generated
+outputs, using Step 15's grouping rules. Preserve unrelated user files.
 
 Paste build/docs/test results. Reuse waivers only for the same verified
-pre-existing failures and approved scope; cite approval and failing counts,
-never FRESH or all-green. New, changed or unwaived failures STOP publication and
-return to Step 5. Any later edit, even by a check, restarts stage 1 without
-resetting limits. Otherwise continue to Step 17.
+pre-existing failures and approved scope; cite the actual approval and failing
+counts, never FRESH or all-green. New, changed or unwaived failures STOP publication
+and return to Step 5. Otherwise continue to Step 17.
 
 ---
 
@@ -505,9 +497,17 @@ Only a successful push or verified `ALREADY_PUSHED` proceeds.
 
 ## Step 18: Prepare publication metadata
 
-Prepare the title now; Step 19 scans and publishes it:
-1. For an existing open PR/MR, read its current title with `gh pr view --json title -q .title`
-   (GitLab: `glab mr view -F json | jq -r .title`) and run
+First look up open PRs/MRs for `<branch-name>` on the detected platform:
+
+- GitHub: `gh pr list --head <branch-name> --state open --json number,title,url`
+- GitLab: `glab mr list --source-branch <branch-name> --output json` (defaults to open).
+
+A successful empty array means new; one match supplies the existing title/identity.
+Lookup failure or ambiguous matches **STOP** for resolution, never mean no PR.
+Save the result for Step 19's recheck.
+
+Prepare the title from that result; Step 19 scans and publishes it:
+1. For an existing open PR/MR, use the matched title and run
    `~/.claude/skills/gstack/bin/gstack-pr-title-rewrite.sh "$NEW_VERSION" "<current title>"`.
 2. For a new PR/MR, compose `v<NEW_VERSION> <type>: <summary>`.
 3. Save the result as `NEW_TITLE` for Step 19. Every created or updated title MUST

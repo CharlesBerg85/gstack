@@ -48,8 +48,8 @@ describe('content-binding template drift', () => {
   test('ship Step 16 carries the evidence check (mechanized IRON LAW)', () => {
     const ship = rendered('ship/SKILL.md');
     expect(ship).toMatch(/gstack-evidence check --label tests --expect-cmd '[^']+' --label vitest --expect-cmd '[^']+' --max-age 24 --allow-paths CHANGELOG\.md,VERSION,package\.json/);
-    expect(ship.replace(/\s+/g, ' ')).toContain('A failed freshness check selects this live run');
-    expect(ship.replace(/\s+/g, ' ')).toContain("a failed test run requires Step 5's triage");
+    expect(ship.replace(/\s+/g, ' ')).toContain('A failed freshness check selects a live run, not a failed-test verdict');
+    expect(ship.replace(/\s+/g, ' ')).toContain("A failed test run requires Step 5's triage");
     expect(ship).toContain('New, changed or unwaived failures STOP publication');
   });
 

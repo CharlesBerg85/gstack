@@ -522,8 +522,11 @@ branch name wherever the instructions say "the base branch" or `<default>`.
 
 ## Step 0.9: Apple target detection
 
-If the repo has an `.xcodeproj`, `.xcworkspace`, or Swift app package AND the ask
-is App Store/TestFlight distribution, **STOP and Read
+If the ask is App Store/TestFlight distribution, look for an `.xcodeproj`,
+`.xcworkspace`, or Swift app product. Read `Package.swift` and its entrypoint to
+distinguish an app from a library/CLI. If unclear, use AskUserQuestion to identify
+the target and wait before choosing a release path.
+For a confirmed app, **STOP and Read
 `$GSTACK_ROOT/ship/sections/apple-release.md` FIRST**. Store distribution proceeds
 through that adapter from the current branch, including a clean base branch.
 The branch gate and repository-landing pipeline below apply ONLY to
@@ -679,7 +682,7 @@ Merge the base ref fetched in Step 1 so tests and reviews cover the integrated c
 git merge origin/<base> --no-edit
 ```
 
-**If there are merge conflicts:** Try to auto-resolve if they are simple (VERSION, schema.rb, CHANGELOG ordering). If conflicts are complex or ambiguous, **STOP** and show them.
+**If there are merge conflicts:** Try to auto-resolve if they are simple (VERSION, schema.rb, CHANGELOG ordering). For complex or ambiguous conflicts, **STOP**, show the conflicting choices, use AskUserQuestion for the needed resolution decision, and wait for the answer before editing or continuing.
 
 **If already up to date:** Continue silently.
 
@@ -1618,8 +1621,9 @@ The Step 9 parent resolves failures through its fix/approval loop and reruns aff
 checks after changes. An applicable required item that fails or cannot run stops
 successful shipping until repaired or explicitly risk-accepted by the user. In
 noninteractive runs return blocked. Neither unavailable browser/server nor an
-unreadable section is a passing check or silent waiver. Bound exhaustion leaves the
-remaining items not run and goes through the same gate.
+unreadable section is a passing check or silent waiver. If the explorer reaches
+its command or time limit, mark the remaining checks not run and ask about their
+risks through the same parent gate.
 
 Set VERIFY_RESULT=pass only when every selected verification item passes. Set
 VERIFY_RESULT=skipped only when there are no plan-specific items. Otherwise set
@@ -2779,26 +2783,27 @@ ADVERSARIAL REVIEW SYNTHESIS (always-on, N lines):
 
 High-confidence findings (agreed on by multiple sources) should be prioritized for fixes.
 
-Before Step 12: STOP if the required native pass did not complete.
-Optional outside failures retain their own incomplete records.
-- With queued fixes, return to Step 9 before capturing its fresh start token.
-  Step 9.4 owns their edits and the same CYCLES limit. Repeat Steps 9–11 on the new tree.
-  Reuse unchanged Step 10 comment decisions, not the old review evidence.
-- With no queued fixes and a completed native pass, proceed to Step 12.
-  Continue only after a zero-edit review cycle with no queued fixes.
+### Finish the adversarial phase
+
+Optional outside failures retain their own incomplete records. Choose the first
+applicable outcome:
+
+1. **Required native review incomplete: STOP before Step 12.** Report the failure
+   and needed repair, and confirm the task stopped. A concrete prerequisite
+   correction permits one recovery retry in this invocation; record its use before
+   launch. Without a correction, with missing access, or after that retry fails,
+   keep ship blocked and ask for the needed repair. Outside-provider output cannot
+   replace this pass.
+2. **Native review completed, with queued fixes:** return to Step 9 before capturing
+   its fresh start token. Step 9.4 owns the edits and the same CYCLES limit.
+   Repeat Steps 9–11 on the new tree. Keep approvals for unchanged Step 10 comments;
+   collect new review evidence. These normal fresh reviews are not recovery retries.
+3. **Native review completed, with no queued fixes:** Continue only after a zero-edit
+   review cycle. Run the memory updates below, then proceed to Step 12.
+
+Every return keeps the original fixing-cycle and recovery-retry counts.
 
 ---
-
-If the required native pass did not complete, STOP and report the failure and
-needed repair. Once it is confirmed stopped, a concrete prerequisite correction
-permits one recovery retry during this invocation. Record that retry before
-launch; later review cycles do not reset it. Without a correction, with missing
-access, or after that retry fails, keep ship blocked and ask for the needed repair.
-Normal fresh reviews after code fixes are not recovery retries and still follow
-Step 9's fixing-cycle limit. Outside-provider output never replaces the native pass.
-
-Run the following memory updates only after the review phase finishes without queued
-fixes. Then proceed to Step 12; a return to Step 9 skips these updates for now.
 
 ## Capture Learnings
 
@@ -2829,24 +2834,26 @@ already knows. A good test: would this insight save time in a future session? If
 
 ### Refresh learnings for the headline feature on this branch
 
-Step 8's Prior Learnings pull used broad release terms. Before VERSION/CHANGELOG, search for this branch's headline feature to find relevant versioning or changelog pitfalls.
+Step 8 used broad release terms. Before VERSION/CHANGELOG, search for versioning
+or changelog pitfalls tied to this branch's headline feature.
 
-Pick ONE keyword that names the headline feature you're shipping. The keyword should be a noun: the primary skill or module name, the central feature noun, or the binary you changed. The keyword MUST be alphanumeric or hyphen only — no quotes, slashes, dots, colons, or whitespace. If your candidate has any of those, simplify to just the alphanumeric stem.
-
-Worked examples (ship-specific): good keywords are `learnings-search`, `pacing`, `worktree-ship`. Bad: `the branch headline`, `v1.31.1.0`, `feat: token-or search`.
+Use ONE noun naming the skill, module, feature or changed binary. The keyword must
+be alphanumeric or hyphen only; simplify other characters. For example, use
+`token-or-search`, not `feat: token-or search`.
 
 ```bash
 $GSTACK_ROOT/bin/gstack-learnings-search --query "<your-keyword>" --limit 5 2>/dev/null || true
 ```
 
-If any learnings come back, name which one applies to the version bump or CHANGELOG framing in one sentence. If none come back, continue without reference — the absence is itself useful information.
+Name an applicable learning and its effect on the version bump or CHANGELOG in
+one sentence. If none applies, continue without a reference.
 
-Before Step 12, run `$GSTACK_ROOT/bin/gstack-review-read`. Save this
-invocation's final native review's verified `wtree` as the **reviewed tree**, with
-its record and the final core record. Require the core's `start_wtree` and
-`end_wtree` to match it. Missing or mismatched hashes block release preparation;
-never capture a new token to certify old work. A named QA exception retains the
-core's incomplete flags: matching content does not turn waived probes into passes.
+Before Step 12, run `$GSTACK_ROOT/bin/gstack-review-read`. Compare this
+invocation's final native review's verified `wtree` with the final core record's
+`start_wtree` and `end_wtree`. When all three match, save that **reviewed tree** and
+both records for Step 16. Missing or mismatched hashes block release preparation;
+a new token cannot certify old work. Keep the core's actual incomplete flags and
+any named QA exception: matching content proves identity, not that waived probes passed.
 
 ## Step 12: Version bump (auto-decide)
 
@@ -2884,7 +2891,7 @@ Save `BUMP_LEVEL` in the invocation record before queue selection, and
    ```
    The CLI validates 4-digit `MAJOR.MINOR.PATCH.MICRO` (or 3-digit pinned semver), then writes VERSION, the manifest, and existing `package-lock.json` / `npm-shrinkwrap.json` files; it never creates lockfiles. Manifest resolution: `--package-json-path` → `.gstack/package-json-path` → `./package.json` (supports subdirectory packages). npm manifests/locks use the 3-digit translation (`1.67.0.0` → `1.67.0`); VERSION remains authoritative. Exit 3 means a half-write: reclassify and use `repair` for DRIFT_STALE_PKG.
 
-   `--regen-digest` executes repo code with the same privileges as Step 5: `scripts/gen-agents-digest.ts`, only when it and committed `agents-digest/gstack-AGENTS.md` both exist. Check `agentsDigest`: if false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump before continuing. Its VERSION stamp is freshness-gated.
+   `--regen-digest` executes repo code with the same privileges as Step 5: `scripts/gen-agents-digest.ts`, only when it and committed `agents-digest/gstack-AGENTS.md` both exist. Check `agentsDigest`: if false, run `bun scripts/gen-agents-digest.ts` and stage the digest with the bump before continuing. The committed digest must match the generator's output for the selected VERSION; verify that match before push.
 
 5. **Record the release decision after a version was actually written**, including
    an approved ALREADY_BUMPED rebump. Skip when the version is unchanged; manifest
@@ -3102,106 +3109,95 @@ EOF
 
 **IRON LAW: NO COMPLETION CLAIMS WITHOUT FRESH VERIFICATION EVIDENCE.**
 
-Work through these five stages with the same invocation record and limits.
+Follow stages 1–5 with the same invocation record and limits on every return.
+Any later content edit, including one made by a check, restarts stage 1; a commit
+that preserves content keeps its evidence valid.
 
 ### 1. Finish writers and prepare outputs
 
-Inspect all writer handles, including the docs child. Before another writer runs,
-require terminal completion or confirmed termination, not merely a timeout or
-cancellation acknowledgment. If unconfirmed, STOP; resume only after confirming
-the writer stopped (use Step 14.5's recovery for its child).
+Inspect writer handles, including the docs child. Confirm terminal completion or termination
+before another writer runs. Timeout or cancellation acknowledgment alone means
+STOP until confirmed; Step 14.5 handles docs recovery.
 
-Run generation/build commands declared in project scripts or CI and record their
-results. If none exists, record not applicable and the inspected source. Missing
-prerequisites for a declared command, or a failed build, block push.
+Find declared generation/build commands in project instructions, manifests, build
+files and CI. Run them and save results. If none exists, record not applicable and
+the inspected sources. Missing prerequisites or a failed build block push;
+never invent a substitute.
 
 ### 2. Choose the change route
 
-Run `$GSTACK_ROOT/bin/gstack-wtree` for the current tree, then inspect
-`git diff <reviewed-tree> <current-tree>` using the saved fingerprint from before
-Step 12. This compares with the last Steps 9–11 review, not the original branch
-diff, and includes new non-ignored files. Missing snapshots block this comparison;
-never infer it from HEAD equality. With no content changes, continue to stage 3;
-a commit alone is not a content change.
+Capture the current tree with `$GSTACK_ROOT/bin/gstack-wtree`. Inspect
+`git diff <reviewed-tree> <current-tree>` against the snapshot saved before Step 12.
+Snapshots include tracked and non-ignored untracked files; missing snapshots
+block this comparison, regardless of HEAD equality.
 
-If only authored docs or release metadata changed, recheck affected Step 8 plan
-items against the new content and update their completion/verification evidence.
-Then continue to stage 3 without a new code review.
+| What changed since review? | Next action |
+|---|---|
+| Nothing | Continue to stage 3. |
+| Only authored docs or release metadata | Update affected Step 8 completion/verification evidence, then continue to stage 3 without a new code review. |
+| Behavior, tests or build inputs | Revisit tests (5), eval selection (6), coverage (7), plan obligations (8) and full review (9–11). Recheck metadata (12–14), then restart stage 1. |
 
-If behavior, tests or build inputs changed, revisit Step 5 tests, Step 6 eval
-selection, Step 7 coverage, Step 8 plan obligations and full Steps 9–11. Recheck
-release metadata in Steps 12–14, then restart stage 1. Prompts/templates are
-behavioral, not automatically documentation. Take this route before collecting
-final receipts or refreshing docs; keep all existing attempt limits.
+Treat prompts/templates as behavioral inputs. Complete the behavioral route
+before refreshing docs or collecting final receipts.
 
 ### 3. Resolve documentation freshness
 
-Compare the base, release files, docs/templates and generated content with the
-accepted docs hashes. If unchanged, continue to stage 4. If changed, return to
-Step 14.5 using its remaining attempt. After recovery, commit approved files in
-Step 15 and restart stage 1, so generation runs before the next comparison.
+Compare base, release files, docs/templates and generated content with accepted audit hashes:
 
-A blocked audit or exhausted attempts require Step 14.5's explicit user decision
-on the named documentation risk. Continue only after its unwaivable gates clear.
-An exception applies only to the same scope/content; changes need a new decision,
-never a third audit. The result remains `Documentation: blocked`, not current.
+| Documentation state | Next action |
+|---|---|
+| Accepted audit with unchanged inputs | Continue to stage 4. |
+| Inputs changed; an attempt remains | Use Step 14.5's remaining attempt/recovery, commit approved files through Step 15, then restart stage 1 to regenerate before comparing. |
+| Audit blocked or attempts exhausted | Use Step 14.5's named-risk decision. Continue with the user's explicit exception only after its unwaivable gates clear. |
+
+Keep `Documentation: blocked` for accepted risk. An exception covers only its
+approved scope and exact content; changes need a new decision, not a third audit.
 
 ### 4. Verify the frozen candidate
 
-Keep inputs frozen through verification and push. Run declared docs/link/generated-file
-checks and report any unavailable check. Docs-only changes skip code review, not
-test freshness: authored docs and TODO edits change the verified tree.
+Freeze inputs through verification and push. Run declared docs/link/generated-file
+checks; report unavailable checks.
 
-**Input identity for every reused check:** Its saved evidence proves that its consumed files,
-fixtures, dependencies and execution parameters are unchanged. Compare hashes or
-complete bytes and explain why other changes cannot affect it; unknown or changed
-dependencies require a rerun. For a model judge, compare the complete expanded
-request, rubric, parameters and builder/runtime dependencies. Cite the original
-command, result/counts, timestamp and log rather than resampling an identical
-passing judge. Mandatory reviews still run.
+**Reuse a check when its inputs match.** Compare hashes or complete bytes of its
+saved and current consumed files, fixtures, dependencies and execution parameters.
+Explain why other changes cannot affect it; changed or unknown dependencies require a rerun.
+For model judges, compare the complete expanded request, rubric, parameters and
+builder/runtime dependencies. Cite the original command, result/counts, timestamp
+and log instead of resampling an identical passing judge. Mandatory reviews still run.
 
-**Test suites also need their freshness receipts.**
-For EACH Step 5 test lane, use its actual label/command:
-`--label <lane> --expect-cmd '<exact Step 5 command>'`.
-
-Inspect changes since each lane ran. Use `--allow-paths` only for release metadata;
-exclude any path with behavioral changes. Manifest scripts, dependencies and
-runtime configuration require live tests, even in `package.json`. This example
-assumes metadata-only changes in every listed path:
+**Check each test lane's receipt as well.** Use its actual Step 5 label/command:
+`--label <lane> --expect-cmd '<exact Step 5 command>'`. Inspect changes since the run;
+`--allow-paths` exempts only release metadata. Docs, TODO edits, new/generated tests
+and fixes make evidence STALE even without a new code review. Behavioral paths,
+including manifest scripts, dependencies and runtime configuration, require live
+tests even in `package.json`. Every listed change in this example is metadata:
 
 ```bash
 $GSTACK_ROOT/bin/gstack-evidence check --label tests --expect-cmd '<tests>' --label vitest --expect-cmd '<vitest>' --max-age 24 --allow-paths CHANGELOG.md,VERSION,package.json,agents-digest/gstack-AGENTS.md
 ```
 
-Do not exempt `TODOS.md` or generated tests: authored docs, new tests, fixes and
-TODO edits make evidence STALE. With no Step 5 lanes, require its explicit
-untested-scope approval, still applicable to the final content. Otherwise return
-to Step 5's no-tests decision. Report the gap, never FRESH; declared builds must pass.
+| Receipt result | Next action |
+|---|---|
+| FRESH (exit 0) | Cite the label, exit, timestamp and log. |
+| STALE/MISSING: changed content, command or age, or no proven run | Run `$GSTACK_ROOT/bin/gstack-evidence run --label <lane> -- '<command>'`, read the result and recheck once. A failed test run requires Step 5's triage. |
+| Only receipt storage/readback failed | Independently prove unchanged final content, the same command and valid age from the successful run's evidence. Cite its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH. Without that proof, use STALE/MISSING. |
 
-For FRESH (exit 0), cite the label, exit, timestamp and log. For STALE/MISSING
-(changed content, command or age, or no proven run), run
-`$GSTACK_ROOT/bin/gstack-evidence run --label <lane> -- '<command>'`,
-read the result and recheck once. A failed freshness check selects this live run;
-a failed test run requires Step 5's triage. Missing evidence never means pass.
-
-If only receipt storage/readback failed, independently prove unchanged final
-content, the same command and valid age from the successful run's evidence. Cite
-its exact command, exit, timestamp and log as **ledger unavailable**, never FRESH.
-Without that proof, use STALE/MISSING. Stale content cannot take this exception;
-unchanged green suites do not need a rerun just to repair bookkeeping.
+A failed freshness check selects a live run, not a failed-test verdict. The last
+row permits bookkeeping repair only, never stale content; unchanged green suites
+need no bookkeeping-only rerun. Missing evidence never means pass.
+With no test lanes, require Step 5's explicit untested-scope approval for this
+final content or return to its no-tests decision. Report the gap, never FRESH;
+builds must still pass.
 
 ### 5. Report, then push
 
-Inspect the selected release files for uncommitted content. Commit any remaining
-approved, verified changes, including generated outputs, using Step 15's grouping
-rules. Preserve unrelated user files. A commit without content changes keeps the
-evidence valid; any content change returns to stage 1 before publication.
+Commit any uncommitted approved, verified release changes, including generated
+outputs, using Step 15's grouping rules. Preserve unrelated user files.
 
 Paste build/docs/test results. Reuse waivers only for the same verified
-pre-existing failures and approved scope; cite approval and failing counts,
-never FRESH or all-green. New, changed or unwaived failures STOP publication and
-return to Step 5. Any later edit, even by a check, restarts stage 1 without
-resetting limits. Otherwise continue to Step 17.
+pre-existing failures and approved scope; cite the actual approval and failing
+counts, never FRESH or all-green. New, changed or unwaived failures STOP publication
+and return to Step 5. Otherwise continue to Step 17.
 
 ---
 
@@ -3301,9 +3297,17 @@ Only a successful push or verified `ALREADY_PUSHED` proceeds.
 
 ## Step 18: Prepare publication metadata
 
-Prepare the title now; Step 19 scans and publishes it:
-1. For an existing open PR/MR, read its current title with `gh pr view --json title -q .title`
-   (GitLab: `glab mr view -F json | jq -r .title`) and run
+First look up open PRs/MRs for `<branch-name>` on the detected platform:
+
+- GitHub: `gh pr list --head <branch-name> --state open --json number,title,url`
+- GitLab: `glab mr list --source-branch <branch-name> --output json` (defaults to open).
+
+A successful empty array means new; one match supplies the existing title/identity.
+Lookup failure or ambiguous matches **STOP** for resolution, never mean no PR.
+Save the result for Step 19's recheck.
+
+Prepare the title from that result; Step 19 scans and publishes it:
+1. For an existing open PR/MR, use the matched title and run
    `$GSTACK_ROOT/bin/gstack-pr-title-rewrite.sh "$NEW_VERSION" "<current title>"`.
 2. For a new PR/MR, compose `v<NEW_VERSION> <type>: <summary>`.
 3. Save the result as `NEW_TITLE` for Step 19. Every created or updated title MUST
@@ -3313,19 +3317,9 @@ Every report/PR includes this invocation's audit, including `current` or accepte
 
 ## Step 19: Create PR/MR
 
-**Idempotency check:** Check if a PR/MR already exists for this branch.
-
-**If GitHub:**
-```bash
-gh pr view --json url,number,state -q 'if .state == "OPEN" then "PR #\(.number): \(.url)" else "NO_PR" end' 2>/dev/null || echo "NO_PR"
-```
-
-**If GitLab:**
-```bash
-glab mr view -F json 2>/dev/null | jq -r 'if .state == "opened" then "MR_EXISTS" else "NO_MR" end' 2>/dev/null || echo "NO_MR"
-```
-
-Record whether an open PR/MR exists; both paths compose and scan fresh results below.
+Repeat Step 18's open PR/MR lookup and record the current result. A lookup error
+or ambiguous matches STOP publication. If the open PR/MR or title changed, return
+to Step 18 to refresh `NEW_TITLE` before composing and scanning fresh results below.
 
 ### Resolve Linked Spec before composing the body
 
@@ -3375,9 +3369,9 @@ unavailable results as passing.>
 <If evals ran: suite names, pass/fail counts, cost dashboard summary. If skipped: "No prompt-related files changed — evals skipped.">
 
 ## Greptile Review
-<If Greptile comments were found: bullet list with [FIXED] / [FALSE POSITIVE] / [ALREADY FIXED] tag + one-line summary per comment>
-<If no Greptile comments found: "No Greptile comments.">
-<If no PR existed during Step 10: omit this section entirely>
+<Step 10 complete: list comments with [FIXED] / [FALSE POSITIVE] / [ALREADY FIXED], or "No Greptile comments." for a successful empty fetch.>
+<Step 10 unavailable: include `Greptile triage: UNAVAILABLE (dispatch failed)` and the actual reason.>
+<Step 10 no_pr: omit this section.>
 
 ## Scope Drift
 <If scope drift ran: "Scope Check: CLEAN" or list of drift/creep findings>
@@ -3425,8 +3419,7 @@ engine WARN-degrades the example credentials those tools quote instead of blocki
 the PR (a live-format credential inside the fence still blocks).
 
 Use Step 18's `NEW_TITLE`, prefixed with `v$NEW_VERSION `, for both the scan and
-publication. If the open PR/MR or title changed since Step 18, refresh it there first.
-In a new shell, restore the saved literal title before running this block.
+publication. In a new shell, restore the saved literal title before this block.
 
 ```bash
 : "${NEW_TITLE:?Restore the saved Step 18 title before scanning}"
@@ -3439,14 +3432,19 @@ cat > "$PR_BODY_FILE" <<'PR_BODY_EOF'
 PR_BODY_EOF
 $GSTACK_ROOT/bin/gstack-redact --from-file "$PR_BODY_FILE" --repo-visibility "$REDACT_VIS" --self-email "$(git config user.email 2>/dev/null)" --json
 case $? in
+  0) ;;
   3) echo "BLOCKED — credential in PR body. Rotate + redact, do not create the PR."; exit 1 ;;
   2) echo "MEDIUM findings — confirm per finding (sterner on public) before proceeding." ;;
+  *) echo "BLOCKED — PR body scan failed. Repair the scanner and repeat before publication."; exit 1 ;;
 esac
 printf '%s' "$NEW_TITLE" | $GSTACK_ROOT/bin/gstack-redact --repo-visibility "$REDACT_VIS" --json
 ```
 
-HIGH blocks (exit 3, no skip). MEDIUM → AskUserQuestion (PII subset offers
-`--auto-redact`).
+Check both scan results: exit 0 permits publication; exit 2 requires
+AskUserQuestion per MEDIUM finding (PII offers `--auto-redact`); exit 3 blocks for
+HIGH findings. Exit 1 or any other error blocks until the scanner works and both
+scans pass. When visibility lookup is unavailable, including on GitLab, `unknown`
+uses the scanner's public-strict policy.
 
 For every create/edit command below, send the same scanned bytes. Never re-render
 the body. In a new shell, restore the literal `PR_BODY_FILE` path and `NEW_TITLE`.

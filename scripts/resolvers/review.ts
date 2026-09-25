@@ -980,13 +980,25 @@ ADVERSARIAL REVIEW SYNTHESIS (always-on, N lines):
 
 High-confidence findings (agreed on by multiple sources) should be prioritized for fixes.
 
-${isShip ? `Before Step 12: STOP if the required native pass did not complete.
-Optional outside failures retain their own incomplete records.
-- With queued fixes, return to Step 9 before capturing its fresh start token.
-  Step 9.4 owns their edits and the same CYCLES limit. Repeat Steps 9–11 on the new tree.
-  Reuse unchanged Step 10 comment decisions, not the old review evidence.
-- With no queued fixes and a completed native pass, proceed to Step 12.
-  Continue only after a zero-edit review cycle with no queued fixes.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
+${isShip ? `### Finish the adversarial phase
+
+Optional outside failures retain their own incomplete records. Choose the first
+applicable outcome:
+
+1. **Required native review incomplete: STOP before Step 12.** Report the failure
+   and needed repair, and confirm the task stopped. A concrete prerequisite
+   correction permits one recovery retry in this invocation; record its use before
+   launch. Without a correction, with missing access, or after that retry fails,
+   keep ship blocked and ask for the needed repair. Outside-provider output cannot
+   replace this pass.
+2. **Native review completed, with queued fixes:** return to Step 9 before capturing
+   its fresh start token. Step 9.4 owns the edits and the same CYCLES limit.
+   Repeat Steps 9–11 on the new tree. Keep approvals for unchanged Step 10 comments;
+   collect new review evidence. These normal fresh reviews are not recovery retries.
+3. **Native review completed, with no queued fixes:** Continue only after a zero-edit
+   review cycle. Run the memory updates below, then proceed to Step 12.
+
+Every return keeps the original fixing-cycle and recovery-retry counts.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
 
 ---`;
 }
@@ -1756,8 +1768,9 @@ The Step 9 parent resolves failures through its fix/approval loop and reruns aff
 checks after changes. An applicable required item that fails or cannot run stops
 successful shipping until repaired or explicitly risk-accepted by the user. In
 noninteractive runs return blocked. Neither unavailable browser/server nor an
-unreadable section is a passing check or silent waiver. Bound exhaustion leaves the
-remaining items not run and goes through the same gate.
+unreadable section is a passing check or silent waiver. If the explorer reaches
+its command or time limit, mark the remaining checks not run and ask about their
+risks through the same parent gate.
 
 Set VERIFY_RESULT=pass only when every selected verification item passes. Set
 VERIFY_RESULT=skipped only when there are no plan-specific items. Otherwise set

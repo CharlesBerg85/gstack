@@ -270,26 +270,27 @@ ADVERSARIAL REVIEW SYNTHESIS (always-on, N lines):
 
 High-confidence findings (agreed on by multiple sources) should be prioritized for fixes.
 
-Before Step 12: STOP if the required native pass did not complete.
-Optional outside failures retain their own incomplete records.
-- With queued fixes, return to Step 9 before capturing its fresh start token.
-  Step 9.4 owns their edits and the same CYCLES limit. Repeat Steps 9–11 on the new tree.
-  Reuse unchanged Step 10 comment decisions, not the old review evidence.
-- With no queued fixes and a completed native pass, proceed to Step 12.
-  Continue only after a zero-edit review cycle with no queued fixes.
+### Finish the adversarial phase
+
+Optional outside failures retain their own incomplete records. Choose the first
+applicable outcome:
+
+1. **Required native review incomplete: STOP before Step 12.** Report the failure
+   and needed repair, and confirm the task stopped. A concrete prerequisite
+   correction permits one recovery retry in this invocation; record its use before
+   launch. Without a correction, with missing access, or after that retry fails,
+   keep ship blocked and ask for the needed repair. Outside-provider output cannot
+   replace this pass.
+2. **Native review completed, with queued fixes:** return to Step 9 before capturing
+   its fresh start token. Step 9.4 owns the edits and the same CYCLES limit.
+   Repeat Steps 9–11 on the new tree. Keep approvals for unchanged Step 10 comments;
+   collect new review evidence. These normal fresh reviews are not recovery retries.
+3. **Native review completed, with no queued fixes:** Continue only after a zero-edit
+   review cycle. Run the memory updates below, then proceed to Step 12.
+
+Every return keeps the original fixing-cycle and recovery-retry counts.
 
 ---
-
-If the required native pass did not complete, STOP and report the failure and
-needed repair. Once it is confirmed stopped, a concrete prerequisite correction
-permits one recovery retry during this invocation. Record that retry before
-launch; later review cycles do not reset it. Without a correction, with missing
-access, or after that retry fails, keep ship blocked and ask for the needed repair.
-Normal fresh reviews after code fixes are not recovery retries and still follow
-Step 9's fixing-cycle limit. Outside-provider output never replaces the native pass.
-
-Run the following memory updates only after the review phase finishes without queued
-fixes. Then proceed to Step 12; a return to Step 9 skips these updates for now.
 
 ## Capture Learnings
 
@@ -320,14 +321,16 @@ already knows. A good test: would this insight save time in a future session? If
 
 ### Refresh learnings for the headline feature on this branch
 
-Step 8's Prior Learnings pull used broad release terms. Before VERSION/CHANGELOG, search for this branch's headline feature to find relevant versioning or changelog pitfalls.
+Step 8 used broad release terms. Before VERSION/CHANGELOG, search for versioning
+or changelog pitfalls tied to this branch's headline feature.
 
-Pick ONE keyword that names the headline feature you're shipping. The keyword should be a noun: the primary skill or module name, the central feature noun, or the binary you changed. The keyword MUST be alphanumeric or hyphen only — no quotes, slashes, dots, colons, or whitespace. If your candidate has any of those, simplify to just the alphanumeric stem.
-
-Worked examples (ship-specific): good keywords are `learnings-search`, `pacing`, `worktree-ship`. Bad: `the branch headline`, `v1.31.1.0`, `feat: token-or search`.
+Use ONE noun naming the skill, module, feature or changed binary. The keyword must
+be alphanumeric or hyphen only; simplify other characters. For example, use
+`token-or-search`, not `feat: token-or search`.
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-learnings-search --query "<your-keyword>" --limit 5 2>/dev/null || true
 ```
 
-If any learnings come back, name which one applies to the version bump or CHANGELOG framing in one sentence. If none come back, continue without reference — the absence is itself useful information.
+Name an applicable learning and its effect on the version bump or CHANGELOG in
+one sentence. If none applies, continue without a reference.

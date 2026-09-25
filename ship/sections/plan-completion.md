@@ -231,8 +231,9 @@ The Step 9 parent resolves failures through its fix/approval loop and reruns aff
 checks after changes. An applicable required item that fails or cannot run stops
 successful shipping until repaired or explicitly risk-accepted by the user. In
 noninteractive runs return blocked. Neither unavailable browser/server nor an
-unreadable section is a passing check or silent waiver. Bound exhaustion leaves the
-remaining items not run and goes through the same gate.
+unreadable section is a passing check or silent waiver. If the explorer reaches
+its command or time limit, mark the remaining checks not run and ask about their
+risks through the same parent gate.
 
 Set VERIFY_RESULT=pass only when every selected verification item passes. Set
 VERIFY_RESULT=skipped only when there are no plan-specific items. Otherwise set
