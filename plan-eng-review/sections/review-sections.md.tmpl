@@ -1,18 +1,7 @@
 ## Review preparation
 
-After startup, prepare in this order:
-1. Select the report file and permissions under **Review record and write policy**.
-2. Run **Prior Learnings** and resolve its configuration question.
-3. Run **Retrospective learning** on existing target paths.
-4. Read **Confidence Calibration** and **Decision procedure** as rules, not review passes.
-
-Then run **Scope Challenge A → B → C**, followed by Sections 1–4 in order.
-
-**Setup selectors stop at B.** Context Recovery/prerequisites, Prior Learnings
-configuration, target and Scope Challenge complexity selectors use their local
-rules without a pre-answer ledger. Scope Challenge B saves actual selector
-answers afterward; it does not use this remedy loop.
-These answers approve no engineering remedy. C starts the remedy loop below.
+Follow the blocks below in order after startup. Confidence Calibration and
+Decision procedure are reference rules, not additional review passes.
 
 ## Review record and write policy
 
@@ -50,7 +39,7 @@ path authorizes no other; implementation edits require explicit authority.
 | Working plan, ledger and complete review report | Selected report file | Ask for a permitted destination if the user can supply one; wait without completion telemetry. If none is permitted, complete the review in chat as **not persisted**, then use **Blocked outcome**. |
 | QA Test Plan and task JSONL | Discovery paths below | Present each completely as **not persisted** and continue. |
 | TODOS.md | The project's TODO file | Present accepted TODO content as **not persisted** and continue. |
-| Required Review Log | The helper's state location | Present its fields as **not persisted**; the final gate cannot pass without this log. At finish step 3, use **Blocked outcome**. |
+| Required Review Log | The helper's state location | Present its fields as **not persisted**; at Review Log, use **Blocked outcome** instead of publishing a saved review. The final gate cannot pass without this log. |
 | Best-effort metadata/learning logs | Helper-defined locations | Skip forbidden writes; otherwise keep their best-effort behavior. |
 
 The QA Test Plan and task JSONL intentionally use legacy discovery paths under
@@ -70,7 +59,7 @@ parent directories, then write that header, an unchanged copy of the original
 plan (for plan targets), and the scope record or ledger being saved. Recheck option 3's collision before
 creation; use a suffix rather than overwrite. Do not add findings or fixes before
 Scope Challenge C. Put records before an existing `## GSTACK REVIEW REPORT`, or
-at EOF if absent; create that terminal report only in Required outputs step 2.
+at EOF if absent; create that terminal report only at Plan File Review Report.
 
 **Read-only review:** At each scope/decision record save, present the complete
 record, grid and authorized amendments as **not persisted** instead. At both
@@ -103,13 +92,20 @@ building proposed code. Keep suppressed findings for the output appendix.
 
 ## Decision procedure
 
-Run this six-step loop for findings from Scope Challenge, Sections 1–4, Outside
+Use this transaction for findings from Scope Challenge, Sections 1–4, Outside
 Voice, late changes and TODO choices. Finish one choice before the next.
+
+Context Recovery/prerequisites, Prior Learnings configuration and the initial
+target selector use their own menus, without a pre-answer ledger. Scope Challenge
+B also uses its own selectors and post-answer scope record. These selections
+approve no engineering remedy; navigation likewise grants no implementation scope.
 
 Use the preamble's tool resolution, failure fallback and authorized auto-decision
 rules. Use Review record and write policy for every save below.
 
-### 1. Establish current state
+### Prepare an unanswered choice
+
+**Establish current state.**
 
 Read the request, source and actual answers. Give each finding a number, severity,
 confidence, file:line and reviewer. Record two separate facts:
@@ -129,8 +125,10 @@ proof forward without asking again. Otherwise leave the remedy pending. Reopen
 an approved choice only for a concrete new risk, contradictory evidence or a
 changed assumption. Explain the reason and retain earlier values, complete
 briefs and answers in History. Record remaining unknowns and uncertain risks.
+If no new answer is needed, continue the calling section; otherwise prepare one
+pending choice below.
 
-### 2. Separate independent choices
+**Separate independent choices.**
 
 Before drafting options, list each current value and proposed change: behavior,
 approach, guarantee or bound. Include response timing, resources, lifetimes and
@@ -147,7 +145,7 @@ selectable runtime outcomes do not. Optional depths of one verification form
 one choice. Separate instrumentation, follow-ups, guarantees and policies need
 their own choices, and their tests wait for approval.
 
-### 3. Compare one choice
+**Compare one choice.**
 
 Select one pending ID. Prepare its question in this order:
 
@@ -188,8 +186,8 @@ Use these three checks for every column:
 with every row in its grid column. They must make the same commitments and retain
 the same conditions. Put all deliberation in the native question/descriptions;
 a saved-only Pros/cons block cannot supply missing decision context. Repair
-contradictions now. If you discover another independent choice, return to step 2
-before sending the question.
+contradictions now. If you discover another independent choice, separate it and
+rebuild this comparison before saving or sending the question.
 
 For example, jitter and a delay cap can be chosen independently. A menu of “both / cap only / neither” bundles them by omitting “jitter only.” Ask about jitter first:
 
@@ -200,7 +198,7 @@ For example, jitter and a delay cap can be chosen independently. A menu of “bo
 
 After the jitter answer, carry that value into both options of the later cap question.
 
-### 4. Save the pending record
+**Pending-record checkpoint.**
 
 Save the record, complete grid and exact `currentDecision` using the report
 placement above. Include every native field, the recommendation
@@ -220,7 +218,7 @@ to History. Do not leave duplicate Question, Header or Options fields.
 Finding: <number, severity, confidence, file:line and reviewer>
 Plan baseline: <last approved value, exact scope and answer reference; otherwise the original proposal>
 Runtime evidence: <observed value and source/probe; unknown if unverified>
-Comparison grid: <complete grid from step 3>
+Comparison grid: <complete comparison grid>
 Question D2:
 <currentDecision.question in full, including its D2 title and recommendation>
 Header: <currentDecision.header>
@@ -237,19 +235,20 @@ History: <earlier values, briefs, answers and reason for reopening>
 ```
 
 Check the Write/Edit result, then use Read to fetch the entire saved record.
-Compare every native field with `currentDecision` and the whole grid with step 3.
+Compare every native field with `currentDecision` and the whole saved grid with
+the prepared comparison.
 Read after the final edit, even if Edit says the content is current in context.
 Grep, chat references, summaries and planned writes do not verify the record.
 Repair any difference and repeat the complete Read before asking. A failed save
 blocks the question; unreadable or unverifiable records use **Recovery routing**.
 
 If any payload field changes, including a shortened label or formatting edit,
-repeat step 3, replace the whole saved payload and Read it again. An older
+rebuild the comparison, replace the whole saved payload and Read it again. An older
 comparison or a critic's advice cannot substitute for this verification.
 
-### 5. Ask and wait
+### Send once and wait
 
-Send `AskUserQuestion({ questions: [currentDecision] })` after step 4. Send one
+Send `AskUserQuestion({ questions: [currentDecision] })` only after the pending-record checkpoint passes. Send one
 question object for one choice; other IDs wait. Copy the verified question,
 header, labels and descriptions literally. Do not add or strip brief paragraphs
 or rebuild options. Authorized prose and auto-decisions use this same verified
@@ -261,12 +260,13 @@ When Question Tuning is enabled, copying the verified question preserves its
 call, start the next section or call ExitPlanMode while the choice awaits an
 answer. An obvious fix still needs an answer unless exact prior approval covers it.
 
-### 6. Apply and refresh
+### Record the answer
 
 Read the selected saved label, full description and grid column together. Carry
 all commitments, conditions, unchanged values and pending choices forward. If
 they conflict or bundle independent choices, preserve the actual answer, explain
-the conflict and repeat steps 2–5 for another answer. Do not reinterpret a caption,
+the conflict and return to **Prepare an unanswered choice** for a new verified
+brief and another answer. Do not reinterpret a caption,
 drop a commitment or advance with conflicting approvals.
 
 Replace the whole adjacent `State` / `Actual answer` / `Accepted scope` block
@@ -282,11 +282,11 @@ amendments. Leave other choices unchanged.
 Check the save result, then Read the entire resolution block, including State.
 Verify that its unique state, actual answer and accepted scope match the complete
 selected option and grid column. An answer-only search or current-in-context hint
-cannot replace Read. Correct
-any discrepancy before advancing; apply the write policy to failures.
+cannot replace Read. Correct any discrepancy before advancing; apply the write
+policy to failures.
 
-Return to step 1 with the updated working plan and answer for the next choice
-in the calling section; when finished, resume that section. Keep chosen values
+For the next choice, use the updated working plan and answer; when finished,
+continue the calling section. Keep chosen values
 fixed in later questions, and explain when a choice has become irrelevant rather
 than asking it again. Start the next section only when no answer is pending in
 this section. Keep unresolved risks and verification visible; resolve risk and
@@ -302,7 +302,11 @@ changes or write findings into the plan yet.
 
 - **What already solves each sub-problem?** Inspect helpers, libraries, callers and reusable outputs: behavior and dependency/deployment boundaries. Cite authored sources; label proposed callers with their motivating plan requirement and assumptions.
 - **What minimum changes achieve the goal?** Flag work deferrable without blocking it; challenge scope creep.
-- **Complexity check:** Count files and new classes/services; seek fewer moving parts. Use these counts in B.
+- **Complexity check:** Count the selected work, not files read only as evidence:
+  for a plan, its proposed changed files and new classes/services; for a diff,
+  changed files and classes/services introduced by that diff; for a file/directory,
+  files in that selected scope and any explicitly proposed new classes/services.
+  Count each once, label estimates, and seek fewer moving parts. Use these counts in B.
 - **Search check:** For each new architectural pattern, infrastructure component
    or concurrency approach, research built-ins, current practice and pitfalls
    through Aside (entrypoint readiness), one read-only request per pattern:
@@ -329,7 +333,8 @@ changes or write findings into the plan yet.
 
 ### B. Resolve complexity selectors
 
-Below both thresholds, skip B's questions and go directly to **C. Resolve findings**.
+With fewer than 8 files AND fewer than 2 new classes/services, skip B's questions
+and go directly to **C. Resolve findings**.
 At 8+ files or 2+ new classes/services, STOP before Section 1. Use the
 preamble's decision-brief format for this complexity gate, in this order:
 
@@ -370,7 +375,13 @@ Run C whether B was completed or skipped.
 2. Resolve each remedy through Decision procedure, reusing exact answers.
    Findings and scope answers approve no remedies.
 3. Report accepted/rejected/deferred/pending dispositions from those answers.
-   Continue to Section 1 only when no answer is pending.
+
+Record the Scope Challenge result from actual accepted changes: with a scope
+reduction, `scope reduced per recommendation`; otherwise `scope accepted as-is`,
+including when B was skipped. A smaller arrangement that preserves scope is not
+a scope reduction. This result supplies MODE; it approves no pending remedy.
+Keep it current if later approved choices change scope.
+Continue to Section 1 only when no answer is pending.
 
 ## Review Sections (after scope is agreed)
 
@@ -445,31 +456,11 @@ Option C records accepted implementation scope; still do not edit product code.
 
 ## Required outputs
 
-Run this finish sequence after Approval readiness passes. Each step requires
-the preceding step to succeed. The headings below supply its formats, not a
-second review cycle. The write policy governs forbidden writes and failed saves.
-
-For recovery or changed outputs, use the entrypoint's **Recovery routing**.
-
-1. **Prepare the review body.** Use the output reference below to complete the
-   working plan, Implementation Tasks and Completion summary. Derive unresolved
-   choices from each record's current State, actual answer and accepted scope;
-   leave them pending. Save permitted auxiliary artifacts under the write policy.
-2. **Save and Read back.** Use Plan File Review Report to save the complete body
-   and append its terminal `## GSTACK REVIEW REPORT`. Pass that writer's Read-back
-   gate before logging; chat-only output cannot pass it.
-3. **Log the saved review.** Run Review Log with the saved Completion summary's
-   values. Only a successful required log permits publication as a saved review.
-4. **Publish.** Display the Review Readiness Dashboard, then present the saved
-   Completion summary to the user.
-5. **Choose navigation.** Use Next Steps — Review Chaining and wait for its answer.
-   Navigation grants no implementation authority. A substantive change follows
-   **Recovery routing → Late change or missing work** before navigation resumes.
-6. **Finish.** Run Learning hooks, then return to the entrypoint's Section
-   self-check and read-only EXIT PLAN MODE GATE. Run these checks in every host
-   mode; its final instructions govern telemetry, cache refresh and exit.
-
-### Output reference — review body
+After Approval readiness passes, complete the working plan and the body sections
+below. Derive unresolved choices from each record's current State, actual answer
+and accepted scope; leave them pending. Apply the write policy to all artifacts.
+Check the Test Plan already produced in Test review; update that artifact only
+if later approved decisions changed its requirements. Do not recreate unchanged output.
 
 Place `Suppressed findings` as a body appendix before the terminal
 `## GSTACK REVIEW REPORT`; nothing follows that terminal report.
@@ -538,7 +529,9 @@ From final decisions/outputs; publish after report Read-back and Review Log:
 
 ## Review Log
 
-Use these commands in finish step 3, after successful Read-back. The required review log and best-effort decision log each follow the write policy.
+Run these commands only after Plan File Review Report's successful Read-back,
+using the saved Completion summary's values. Chat-only output cannot pass that
+gate. The required review log and best-effort decision log each follow the write policy.
 
 ```bash
 ~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"plan-eng-review","timestamp":"TIMESTAMP","status":"STATUS","unresolved":N,"critical_gaps":N,"issues_found":N,"mode":"MODE","commit":"COMMIT"}' || exit $?
@@ -553,15 +546,18 @@ Substitute values from the Completion Summary:
 - **STATUS**: "clean" if `issues_found=0`, `unresolved=0` and `critical_gaps=0`; else "issues_open". Count resolved findings too; "issues_open" can mean mapped work, not failure.
 - **unresolved**: this review's "Unresolved decisions" count; do not include prior reviews
 - **critical_gaps**: number from "Failure modes: ___ critical gaps flagged"
-- **issues_found**: total issues found across all review sections (Architecture + Code Quality + Performance + Test gaps)
+- **issues_found**: four-section count only (Architecture + Code Quality + Performance + Test gaps). Report Scope Challenge and Outside Voice findings separately.
 - **MODE**: FULL_REVIEW for the Scope Challenge result "scope accepted as-is"; SCOPE_REDUCED for "scope reduced per recommendation".
 - **COMMIT**: output of `git rev-parse --short HEAD`
+
+Only a successful required log permits publication as a saved review. Display
+the Review Readiness Dashboard below, then present the saved Completion summary.
 
 {{REVIEW_DASHBOARD}}
 
 ## Next Steps — Review Chaining
 
-In finish step 5, offer applicable routes from the published dashboard:
+After publishing, offer applicable routes from the dashboard and wait for the answer:
 - **A) Run /plan-design-review:** unreviewed UI scope (frontend, CSS, views or
   interactions in the diagram/findings).
 - **B) Run /plan-ceo-review:** optionally, an unreviewed significant product change
@@ -577,10 +573,12 @@ copy the working plan's task prerequisites, dependencies and execution order
 without adding or strengthening them in the question or descriptions. A test
 required before editing one function does not make every independent lane wait.
 A next-step answer approves no implementation change.
+A substantive change follows **Recovery routing → Late change or missing work**
+before navigation resumes.
 
 ## Learning hooks
 
-In finish step 6, keep the working plan/approvals fixed. Review operational learnings
+After navigation, keep the working plan/approvals fixed. Review operational learnings
 per preamble; use Capture Learnings below for other discoveries. Never log twice.
 
 {{LEARNINGS_LOG}}
@@ -588,3 +586,6 @@ per preamble; use Capture Learnings below for other discoveries. Never log twice
 {{GBRAIN_SAVE_RESULTS}}
 
 {{BRAIN_WRITE_BACK}}
+
+Return to the entrypoint's Section self-check and read-only EXIT PLAN MODE GATE
+in every host mode. Its final instructions govern telemetry, cache refresh and exit.

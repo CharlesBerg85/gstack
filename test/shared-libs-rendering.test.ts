@@ -108,9 +108,9 @@ describe('shared-code skill distribution', () => {
     const headings = ['## AskUserQuestion Format', '## My engineering preferences',
       '## Review record and write policy', '**Plan-review evidence:**',
       '## Confidence Calibration', '## Decision procedure',
-      '### 1. Establish current state', '### 2. Separate independent choices',
-      '### 3. Compare one choice', '### 4. Save the pending record',
-      '### 5. Ask and wait', '### 6. Apply and refresh',
+      '### Prepare an unanswered choice', '**Separate independent choices.**',
+      '**Compare one choice.**', '**Pending-record checkpoint.**',
+      '### Send once and wait', '### Record the answer',
       '### 2. Code quality review', '### Shared-code evaluation rubric', '**Blocked outcome:**'];
     const positions = headings.map(heading => excerpt.indexOf(heading));
     expect(positions.every(index => index >= 0)).toBe(true);

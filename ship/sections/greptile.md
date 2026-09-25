@@ -12,18 +12,25 @@
 >
 > For each comment, assign: `classification` (`valid_actionable`, `already_fixed`, `false_positive`, `suppressed`), `escalation_tier` (1 or 2), the file:line or [top-level] tag, body summary, and permalink URL.
 >
-> If no PR exists, `gh` fails, the API errors, or there are zero comments, output: `{"total":0,"comments":[]}` and stop.
->
-> Otherwise, output a single JSON object on the LAST LINE of your response:
-> `{"total":N,"comments":[{"classification":"...","escalation_tier":N,"ref":"file:line","summary":"...","permalink":"url"},...]}`
+> Return one JSON object on the LAST LINE:
+> `{"status":"complete|no_pr|unavailable","total":N,"comments":[{"classification":"...","escalation_tier":N,"ref":"file:line","summary":"...","permalink":"url"},...],"reason":"..."}`
+> Use `complete` only after a successful fetch, including zero comments; `no_pr` only after confirming no PR exists; `unavailable` for `gh`/API errors or incomplete classification. The latter two return zero total and an empty array. State the failure reason for `unavailable`; otherwise use an empty reason.
 
 **Parent processing:**
 
-Parse the LAST line as JSON.
+Parse the LAST line as JSON. Require the declared status, a nonnegative integer
+total matching the comments array, and the status/reason invariants above. An
+unknown or missing status is unavailable, never an empty successful review.
 
-If `total` is 0, skip this step silently. Continue to Step 11.
+For `no_pr`, record "Greptile: no PR exists"; for `complete` with zero comments,
+record "Greptile: fetched, zero comments". Both continue to Step 11.
 
-**If the subagent fails, returns invalid JSON, or never completes (backgrounded despite the flag, or no final output after ~10 minutes — stop waiting; if a backgrounded task is still running, stop it first so a late result never lands mid-ship):** print `Greptile triage did not complete — review the PR comments manually` and continue to Step 11, recording the triage as UNAVAILABLE — not as zero comments — in the PR body: add the literal line `Greptile triage: UNAVAILABLE (dispatch failed)` to the review-results section Step 19 assembles (an unavailable triage must not read as a clean one; Step 20's metrics schema carries no triage field, so the PR body is the record). Do not block /ship on the triage subagent.
+**Unavailable triage:** A returned `unavailable`, failed dispatch, invalid result,
+or missing completion after ~10 minutes takes this route. Stop a running child
+and confirm it stopped before continuing. Print `Greptile triage did not complete — review the PR comments manually`.
+Include `Greptile triage: UNAVAILABLE (dispatch failed)` and the actual reason in
+Step 19's review results; Step 20 has no triage field. Continue to Step 11 without
+claiming zero comments or completed triage. This optional triage does not block ship.
 
 Otherwise, print: `+ {total} Greptile comments ({valid_actionable} valid, {already_fixed} already fixed, {false_positive} FP)`.
 
@@ -51,10 +58,9 @@ For each comment in `comments`:
 
 **SUPPRESSED:** Skip silently — these are known false positives from previous triage.
 
-**After triage:** With queued fixes, return to Step 9 with their approvals and comment
-references. Its normal fix/test/review cycle owns the edits and commits: rerun Step 5
-and affected Steps 6–8, then the full Step 9 before continuing to Step 11. On returning
-here, finish the saved replies without asking again about completed fixes. With no
-queued fixes, continue to Step 11.
+**After triage:** With queued fixes, return to Step 9 with their approvals and
+comment references. Step 9.4 owns the edits, tests and fresh reviews. Its zero-fix
+pass returns here, to Step 10: finish the saved replies without asking again about
+completed fixes, and classify any new comments. With no queued fixes, continue to Step 11.
 
 ---

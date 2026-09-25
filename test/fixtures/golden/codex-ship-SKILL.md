@@ -442,8 +442,6 @@ A step sometimes requires action on an external website the user controls: regis
 
 # Ship: Fully Automated Ship Workflow
 
-Run `/ship` through to the PR URL, honoring every safety and user-decision gate.
-
 **Follow every STOP and AskUserQuestion gate** at its numbered step.
 Routine authorization never waives those gates or their required user decisions.
 
@@ -457,24 +455,35 @@ verify generated tests and commit with Step 15.
 metadata, audit docs and commit in 12–15. Step 16 checks the final content before
 17–20 publish/report; Step 21 offers the optional plan-tune nudge.
 
-Keep one **invocation record** outside the product tree and retain its absolute
-path. Record used attempt counts, versions and `BUMP_LEVEL`; approvals with their finding, files and
-action; each review's handle, original token, terminal state, output and queued
-fixes; and each check's command/label, result/counts, timestamp, log and inputs.
-Keep the docs candidate/id, accepted hashes or named blocked exception there too.
+### Keep state between steps
 
-Update this note on every return. It does not replace helper receipts or reset
-limits: Step 7 permits 2 generation passes, Step 9 permits 3 fixing cycles,
-Step 11 permits one corrected native-review retry, and Step 14.5 permits an initial
-audit plus ONE repair/re-audit. Reuse an approval
-only for the same finding, files and action.
+Keep one private **invocation record** outside the product tree and retain its
+absolute path. Use these entries rather than reconstructing prior work from chat:
 
-Review helpers return a `*_START` token identifying the content about to be read,
-including tracked and non-ignored untracked files (`wtree`), not just a commit.
-The parent Step 9 pass owns REVIEW_START. Each Step 11 reviewer attempt owns a
-separate PASS_START; design review owns DESIGN_START. Keep each with its owner.
-Capture it before each pass reads its inputs and finish that pass with the same
-token. Never exchange tokens between passes.
+| Entry | Save when it becomes available |
+|---|---|
+| Attempts | Counts used under the limits below |
+| Release | Versions and `BUMP_LEVEL` |
+| Decisions | Approval, finding, files and authorized action |
+| Reviews | Each handle, original start token, terminal state, output and queued fixes; the reviewed tree before Step 12 |
+| Checks | Command/label, result/counts, timestamp, log and consumed inputs |
+| Documentation | Candidate/id, accepted hashes or the named blocked exception |
+
+Update this note on every return. It does not replace helper receipts or reset limits:
+
+| Owner | Limit for this invocation |
+|---|---|
+| Step 7 | 2 generation passes |
+| Step 9 | 3 fixing cycles |
+| Step 11 | One corrected native-review retry |
+| Step 14.5 | Initial audit plus ONE repair/re-audit |
+
+Reuse an approval only for the same finding, files and action. Each review also
+keeps its own token: the parent owns REVIEW_START, each Step 11 attempt owns
+PASS_START, and design review owns DESIGN_START. Capture it before each pass reads
+its inputs and finish that pass with the same token. Never exchange tokens between
+passes. The helper binds the token to tracked and non-ignored untracked content,
+not just a commit; its `wtree` field is the corresponding Git tree fingerprint.
 
 **Re-run behavior (idempotency):**
 Every invocation verifies tests, coverage, plan completion, both reviews,
@@ -2152,18 +2161,25 @@ to restart `/ship` merely to continue this cycle.
 >
 > For each comment, assign: `classification` (`valid_actionable`, `already_fixed`, `false_positive`, `suppressed`), `escalation_tier` (1 or 2), the file:line or [top-level] tag, body summary, and permalink URL.
 >
-> If no PR exists, `gh` fails, the API errors, or there are zero comments, output: `{"total":0,"comments":[]}` and stop.
->
-> Otherwise, output a single JSON object on the LAST LINE of your response:
-> `{"total":N,"comments":[{"classification":"...","escalation_tier":N,"ref":"file:line","summary":"...","permalink":"url"},...]}`
+> Return one JSON object on the LAST LINE:
+> `{"status":"complete|no_pr|unavailable","total":N,"comments":[{"classification":"...","escalation_tier":N,"ref":"file:line","summary":"...","permalink":"url"},...],"reason":"..."}`
+> Use `complete` only after a successful fetch, including zero comments; `no_pr` only after confirming no PR exists; `unavailable` for `gh`/API errors or incomplete classification. The latter two return zero total and an empty array. State the failure reason for `unavailable`; otherwise use an empty reason.
 
 **Parent processing:**
 
-Parse the LAST line as JSON.
+Parse the LAST line as JSON. Require the declared status, a nonnegative integer
+total matching the comments array, and the status/reason invariants above. An
+unknown or missing status is unavailable, never an empty successful review.
 
-If `total` is 0, skip this step silently. Continue to Step 11.
+For `no_pr`, record "Greptile: no PR exists"; for `complete` with zero comments,
+record "Greptile: fetched, zero comments". Both continue to Step 11.
 
-**If the subagent fails, returns invalid JSON, or never completes (backgrounded despite the flag, or no final output after ~10 minutes — stop waiting; if a backgrounded task is still running, stop it first so a late result never lands mid-ship):** print `Greptile triage did not complete — review the PR comments manually` and continue to Step 11, recording the triage as UNAVAILABLE — not as zero comments — in the PR body: add the literal line `Greptile triage: UNAVAILABLE (dispatch failed)` to the review-results section Step 19 assembles (an unavailable triage must not read as a clean one; Step 20's metrics schema carries no triage field, so the PR body is the record). Do not block /ship on the triage subagent.
+**Unavailable triage:** A returned `unavailable`, failed dispatch, invalid result,
+or missing completion after ~10 minutes takes this route. Stop a running child
+and confirm it stopped before continuing. Print `Greptile triage did not complete — review the PR comments manually`.
+Include `Greptile triage: UNAVAILABLE (dispatch failed)` and the actual reason in
+Step 19's review results; Step 20 has no triage field. Continue to Step 11 without
+claiming zero comments or completed triage. This optional triage does not block ship.
 
 Otherwise, print: `+ {total} Greptile comments ({valid_actionable} valid, {already_fixed} already fixed, {false_positive} FP)`.
 
@@ -2191,11 +2207,10 @@ For each comment in `comments`:
 
 **SUPPRESSED:** Skip silently — these are known false positives from previous triage.
 
-**After triage:** With queued fixes, return to Step 9 with their approvals and comment
-references. Its normal fix/test/review cycle owns the edits and commits: rerun Step 5
-and affected Steps 6–8, then the full Step 9 before continuing to Step 11. On returning
-here, finish the saved replies without asking again about completed fixes. With no
-queued fixes, continue to Step 11.
+**After triage:** With queued fixes, return to Step 9 with their approvals and
+comment references. Step 9.4 owns the edits, tests and fresh reviews. Its zero-fix
+pass returns here, to Step 10: finish the saved replies without asking again about
+completed fixes, and classify any new comments. With no queued fixes, continue to Step 11.
 
 ---
 
@@ -2555,6 +2570,13 @@ $GSTACK_ROOT/bin/gstack-learnings-search --query "<your-keyword>" --limit 5 2>/d
 
 If any learnings come back, name which one applies to the version bump or CHANGELOG framing in one sentence. If none come back, continue without reference — the absence is itself useful information.
 
+Before Step 12, run `$GSTACK_ROOT/bin/gstack-review-read`. Save this
+invocation's final native review's verified `wtree` as the **reviewed tree**, with
+its record and the final core record. Require the core's `start_wtree` and
+`end_wtree` to match it. Missing or mismatched hashes block release preparation;
+never capture a new token to certify old work. A named QA exception retains the
+core's incomplete flags: matching content does not turn waived probes into passes.
+
 ## Step 12: Version bump (auto-decide)
 
 Use **`gstack-version-bump`** for classify/write/repair and `gstack-next-version`
@@ -2811,14 +2833,6 @@ EOF
 
 Work through these five stages with the same invocation record and limits.
 
-Reuse a check only when its saved evidence proves that its consumed files,
-fixtures, dependencies and execution parameters are unchanged. Compare hashes or
-complete bytes and explain why other changes cannot affect it; unknown or changed
-dependencies require a rerun. For a model judge, compare the complete expanded
-request, rubric, parameters and builder/runtime dependencies. Cite the original
-command, result/counts, timestamp and log rather than resampling an identical
-passing judge. This does not replace mandatory reviews or stage 4's test receipts.
-
 ### 1. Finish writers and prepare outputs
 
 Inspect all writer handles, including the docs child. Before another writer runs,
@@ -2832,8 +2846,12 @@ prerequisites for a declared command, or a failed build, block push.
 
 ### 2. Choose the change route
 
-Compare content with the last Steps 9–11 review, not the original branch diff.
-If unchanged, continue to stage 3; a commit alone is not a content change.
+Run `$GSTACK_ROOT/bin/gstack-wtree` for the current tree, then inspect
+`git diff <reviewed-tree> <current-tree>` using the saved fingerprint from before
+Step 12. This compares with the last Steps 9–11 review, not the original branch
+diff, and includes new non-ignored files. Missing snapshots block this comparison;
+never infer it from HEAD equality. With no content changes, continue to stage 3;
+a commit alone is not a content change.
 
 If only authored docs or release metadata changed, recheck affected Step 8 plan
 items against the new content and update their completion/verification evidence.
@@ -2862,6 +2880,16 @@ never a third audit. The result remains `Documentation: blocked`, not current.
 Keep inputs frozen through verification and push. Run declared docs/link/generated-file
 checks and report any unavailable check. Docs-only changes skip code review, not
 test freshness: authored docs and TODO edits change the verified tree.
+
+**Input identity for every reused check:** Its saved evidence proves that its consumed files,
+fixtures, dependencies and execution parameters are unchanged. Compare hashes or
+complete bytes and explain why other changes cannot affect it; unknown or changed
+dependencies require a rerun. For a model judge, compare the complete expanded
+request, rubric, parameters and builder/runtime dependencies. Cite the original
+command, result/counts, timestamp and log rather than resampling an identical
+passing judge. Mandatory reviews still run.
+
+**Test suites also need their freshness receipts.**
 For EACH Step 5 test lane, use its actual label/command:
 `--label <lane> --expect-cmd '<exact Step 5 command>'`.
 

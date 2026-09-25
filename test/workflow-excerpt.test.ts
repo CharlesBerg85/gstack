@@ -165,7 +165,7 @@ describe('workflow judge excerpts', () => {
     const { skillPath, startMarker, endMarker } = ENG_REVIEW_EXCERPT;
     const eng = readWorkflowExcerpt(skillPath, startMarker, endMarker);
     const stages = ['## Review preparation', '## Retrospective learning', '## Confidence Calibration', '## Decision procedure',
-      '### 1. Establish current state', '## Scope Challenge', '### A. Assess the target',
+      '### Prepare an unanswered choice', '## Scope Challenge', '### A. Assess the target',
       '### B. Resolve complexity selectors', '### C. Resolve findings', '## Review Sections',
       '### 1. Architecture review', '### 2. Code quality review', '### 3. Test review', '### 4. Performance review']
       .map(heading => eng.indexOf(heading));
@@ -174,11 +174,10 @@ describe('workflow judge excerpts', () => {
     expect(eng.match(/^## Decision procedure$/gm)).toHaveLength(1);
     const procedure = eng.slice(eng.indexOf('## Decision procedure'), eng.indexOf('## Scope Challenge'));
     const headings = marked.lexer(procedure).filter(token => token.type === 'heading' && token.depth === 3);
-    expect(headings.map(token => token.text)).toEqual(['1. Establish current state', '2. Separate independent choices', '3. Compare one choice',
-      '4. Save the pending record', '5. Ask and wait', '6. Apply and refresh']);
-    expect(procedure).toContain("### 4. Save the pending record");
-    expect(procedure).toContain('### 5. Ask and wait');
-    expect(procedure).toContain("### 6. Apply and refresh");
+    expect(headings.map(token => token.text)).toEqual(['Prepare an unanswered choice', 'Send once and wait', 'Record the answer']);
+    expect(procedure).toContain("**Pending-record checkpoint.**");
+    expect(procedure).toContain('### Send once and wait');
+    expect(procedure).toContain("### Record the answer");
     const outputs = ['### TODOS.md updates', '## Approval readiness', '## Required outputs', '## Implementation Tasks',
       '### Unresolved decisions', '### Completion summary', '## Plan File Review Report',
       '### Write to the report file', '## Review Log'].map(heading => eng.indexOf(heading));
@@ -278,7 +277,7 @@ console.log(JSON.stringify({calls, results}));
     expectOutsideReviewControlFlow(eng, '**Construct the plan review prompt**');
     expect(eng).toContain('Agreement between reviewers is evidence, not approval');
     expect(eng).toContain('new or reopened choices still need their own answers');
-    const pendingDecision = eng.slice(eng.indexOf('### 5. Ask and wait'), eng.indexOf("### 6. Apply and refresh"));
+    const pendingDecision = eng.slice(eng.indexOf('### Send once and wait'), eng.indexOf("### Record the answer"));
     expect(pendingDecision).toContain("**STOP until the actual answer arrives.**");
     expect(pendingDecision.replace(/\s+/g, ' ')).toContain("Do not apply a remedy, make another call, start the next section or call ExitPlanMode while the choice awaits an answer");
     expect(eng.replace(/\s+/g, ' ')).toContain("Use a scoped Edit to save this record and only the authorized working-plan amendments. Leave other choices unchanged");

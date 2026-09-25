@@ -37,7 +37,7 @@ Review the selected target. Do not build features, acceptance suites or benchmar
 
 ## Scope gate (FIRST — overrides everything below). This is a hard STOP.
 
-Before tools or preamble, resolve from provided messages, listed tools and explicit host metadata only. Do not probe for session state.
+Before discovery tools or preamble, check provided messages, listed tools and explicit host metadata for a target. If none is resolved, ask with the selector below. Do not probe for session state.
 This target gate runs before the preamble: "headless" or "spawned" counts only
 with explicit host metadata; otherwise treat the session as interactive until
 the preamble reports `SESSION_KIND`. This only selects the target; later
@@ -64,7 +64,7 @@ C) A specific file, directory, or path.
 
 Recommendation: A when a branch diff exists, otherwise B. Reply with A, B, or C. STOP and wait for the answer.
 
-After target selection, every question uses the preamble's full decision brief, transport and continuous D-numbering. Setup, prerequisite and preparation questions do not approve engineering remedies.
+After target selection, use the preamble's full decision brief, transport and continuous D-numbering. Setup questions approve no engineering remedies.
 
 **Startup sequence** (after target selection):
 1. Run the Preamble, including Context Recovery and its setup questions.
@@ -656,8 +656,8 @@ Scope Challenge is mandatory before Section 1.
 Use this routing at every STOP or failed verification; do not restart the review.
 
 **Paused question:** Wait for its actual answer without completion telemetry or ExitPlanMode.
-For a remedy, resume Decision procedure step 6; for a selector, resume its local
-rule. A missing-result call that may have surfaced is still pending; do not duplicate it.
+Handle a remedy answer under **Record the answer**; handle a selector answer at
+its menu. A missing-result call that may have surfaced is still pending; do not duplicate it.
 
 **Repairable write/read failure:** Stop before the dependent question or output.
 Use that step's stated recovery, then repeat its full Read-back verification.
@@ -665,11 +665,12 @@ If no recovery is specified or it fails, follow **Blocked outcome**. Never turn
 a failed permitted save into a chat-only success.
 
 **Late change or missing work:** Return to the affected review stage; new or
-reopened choices use Decision procedure. Repeat Approval readiness, then Required
-outputs steps 1–4 for changed outputs before choosing navigation again. Refresh
-affected tests, tasks, dependencies and parallelization. Unchanged saved outputs
-may reuse their successful Review Log. If a final gate discovers stale evidence,
-follow **Blocked outcome** first; resume on this repair path.
+reopened choices use Decision procedure. Refresh affected tests, tasks,
+dependencies and parallelization. Repeat Approval readiness, then continue through
+Required outputs, report Read-back, Review Log and dashboard for changed outputs
+before choosing navigation again. Unchanged saved outputs may reuse their
+successful Review Log. If a final gate discovers stale evidence, follow
+**Blocked outcome** first; resume on this repair path.
 
 **Blocked outcome:** Stop the review and report `BLOCKED`, the missing path/work, actual attempts and what is needed to resume. Label complete chat-only output **not persisted**; it supplies no saved-review or completion credit. If startup values and a permitted telemetry command are available, run **Telemetry (run last)** once with `OUTCOME=error` and the actual `ERROR_MESSAGE`/`FAILED_STEP`. Do not call ExitPlanMode. Resume at the failed step using Recovery routing.
 
@@ -687,9 +688,7 @@ checks the completed work; only the later ExitPlanMode call is plan-mode-only.
 Confirm Approval readiness passed for the current decisions. This is a
 read-only verification, not a new approval or output-writing step. If it is
 stale, report the stale verification and stop before success telemetry;
-follow **Blocked outcome**. A resumed repair starts at Decision procedure for
-changed choices, then Approval readiness, then repeats affected outputs,
-Read-back, Review Log and dashboard.
+follow **Blocked outcome**. Resume under **Recovery routing → Late change or missing work**.
 
 Verify all five checks against the selected report file:
 1. Read the report file after your most recent write.

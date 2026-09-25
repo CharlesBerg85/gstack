@@ -61,6 +61,23 @@ test('artifact completion preserves exact evidence before concise linked reporti
   expect(source).toContain('completionReserveMs: timeout / 4');
 });
 
+test('fix completion budgets for required repair and avoids duplicating preserved evidence', () => {
+  for (const entry of QA_FUNCTIONAL_CASES) {
+    const prompt = qaFunctionalPrompt(entry);
+    if (entry.mode === 'qa') {
+      expect(prompt).toContain('a reproduced in-tier defect requires the authorized native regression, repair and verification');
+      expect(prompt).toContain('retain its headings and required fields');
+      expect(prompt).toContain('link to evidence.json and checkpoints for details already recorded there');
+      expect(prompt).toContain('Include the diagnosis, red/green test results and coverage limits');
+      expect(prompt).toContain('After saving both artifacts, return only their paths and the actual completion status');
+      expect(prompt).toContain('Never shorten native JSON or omit a required probe, check or field');
+    } else {
+      expect(prompt).not.toContain('This is a fix run');
+      expect(prompt).not.toContain('aim under 400 words');
+    }
+  }
+});
+
 test('report-only exploration requires a completed written checkpoint before the next probe', () => {
   const section = readFileSync(join(import.meta.dir, '../qa-only/sections/exploratory.md'), 'utf8');
   const positions = ['1. First demonstrate a successful operation', '2. **Write before probing.**', '3. Run that exact probe']

@@ -35,7 +35,7 @@ describe('pre-publication documentation lifecycle', () => {
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(gate.replace(/\s+/g, ' ')).toContain('Step 14.5 using its remaining attempt');
-    expect(body.replace(/\s+/g, ' ')).toContain('Step 14.5 permits an initial audit plus ONE repair/re-audit');
+    expect(body.replace(/\s+/g, ' ')).toContain('| Step 14.5 | Initial audit plus ONE repair/re-audit |');
     expect(gate.replace(/\s+/g, ' ')).toContain('authored docs, new tests, fixes and TODO edits make evidence STALE');
     const docs = read('ship/sections/documentation.md.tmpl');
     expect(docs.replace(/\s+/g, ' ')).toContain('never a third attempt, even after Step 16 changes');

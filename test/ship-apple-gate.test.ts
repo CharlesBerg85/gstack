@@ -21,6 +21,14 @@ const GATE_TEXT =
   'If on the base branch or the repo\'s default branch, **abort**: "You\'re on the base branch. Ship from a feature branch."';
 
 describe("ship Apple gate ordering (R2)", () => {
+  test("the section index requires a store-distribution request, not merely an Apple repository", () => {
+    const manifest = JSON.parse(readFileSync(join(ROOT, "ship", "sections", "manifest.json"), "utf-8"));
+    const apple = manifest.sections.find((section: { id: string }) => section.id === "apple-release");
+    expect(apple.trigger).toContain("App Store/TestFlight distribution is requested for an Apple app");
+    expect(apple.trigger).toContain("an Apple repository-landing request follows the normal pipeline");
+    expect(SKELETON).toContain("is App Store/TestFlight distribution");
+  });
+
   test("the Apple adapter read directive precedes the branch gate", () => {
     const appleRead = SKELETON.indexOf("sections/apple-release.md");
     const gate = SKELETON.indexOf(GATE_TEXT);

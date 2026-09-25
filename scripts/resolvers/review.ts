@@ -121,7 +121,7 @@ export function generatePlanFileReviewReport(ctx: TemplateContext): string {
   const storagePolicy = ceo ? 'Step 0 storage policy' : 'Review record and write policy';
   const result = `## Plan File Review Report
 
-${beforeLog ? (conditionalWrites ? (eng ? 'In finish step 2, save the working plan and complete review body with the terminal report below. Apply **Review record and write policy**.' : `Produce the complete accepted plan and review output, including this report, under the ${storagePolicy} before announcing completion.`) : 'Save the accepted plan changes and full review output, including the report below, before logging or announcing completion.') : `After displaying the Review Readiness Dashboard in conversation output, also update the
+${beforeLog ? (conditionalWrites ? (eng ? 'After Required outputs are prepared, save the working plan and complete review body with the terminal report below. Apply **Review record and write policy**.' : `Produce the complete accepted plan and review output, including this report, under the ${storagePolicy} before announcing completion.`) : 'Save the accepted plan changes and full review output, including the report below, before logging or announcing completion.') : `After displaying the Review Readiness Dashboard in conversation output, also update the
 **plan file** itself so review status is visible to anyone reading the plan.`}
 
 ### ${ctx.skillName === 'plan-eng-review' ? 'Use the selected report file' : 'Detect the plan file'}
@@ -340,9 +340,7 @@ checks the completed work; only the later ExitPlanMode call is plan-mode-only.
 Confirm Approval readiness passed for the current decisions. This is a
 read-only verification, not a new approval or output-writing step. If it is
 stale, report the stale verification and stop before success telemetry;
-follow **Blocked outcome**. A resumed repair starts at Decision procedure for
-changed choices, then Approval readiness, then repeats affected outputs,
-Read-back, Review Log and dashboard.
+follow **Blocked outcome**. Resume under **Recovery routing → Late change or missing work**.
 
 Verify all five checks against the selected report file:
 1. Read the report file after your most recent write.

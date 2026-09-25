@@ -40,7 +40,7 @@ test('every host expands its real bootstrap after the mandatory entry gate', () 
 });
 
 test('entry binds a current target and delays bootstrap until scope resolves', () => {
-  expect(scope).toContain('Before tools or preamble, resolve from provided messages, listed tools and explicit host metadata only');
+  expect(scope).toContain('Before discovery tools or preamble, check provided messages, listed tools and explicit host metadata for a target');
   expect(scope).toContain('Do not probe for session state');
   expect(scope).toContain('When no exception above applied:');
   expect(scope).toContain('First tool call = AskUserQuestion (tool_use). Send this exact menu and wait');

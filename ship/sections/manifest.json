@@ -8,7 +8,7 @@
       "id": "apple-release",
       "file": "apple-release.md",
       "title": "Apple App Store / TestFlight release adapter",
-      "trigger": "the ship target is an Apple platform app (.xcodeproj, .xcworkspace, or an app-product Swift package) \u2014 read at Step 0.9, before Step 1's branch gate and repository-landing preflight; store distribution never routes through the branch/PR ceremony"
+      "trigger": "App Store/TestFlight distribution is requested for an Apple app (.xcodeproj, .xcworkspace, or an app-product Swift package) \u2014 read at Step 0.9 before the branch gate; an Apple repository-landing request follows the normal pipeline"
     },
     {
       "id": "tests",
