@@ -127,8 +127,9 @@ test('live periodic census fits the declared CI wall including setup', () => {
     const workers = files.some(isOverlayTestFile) ? Math.min(periodicWorkers, OVERLAY_MAX_ACTIVE_SHARDS) : periodicWorkers;
     return paidShardWallUpperBoundMs(files, workers);
   });
-  expect(Math.max(...walls)).toBe(339 * 60_000);
+  expect(Math.max(...walls)).toBe(288 * 60_000);
   expect(periodicJob['timeout-minutes']).toBe(360);
+  expect(periodicJob.strategy['max-parallel']).toBe(8);
   expect(Math.max(...walls) + 20 * 60_000).toBeLessThanOrEqual(periodicJob['timeout-minutes'] * 60_000);
   expect(m.entries.filter(e => e.status === 'planned')).toHaveLength(102);
   const overlays = m.entries.filter(e => e.status === 'planned' && e.slice === periodicSliceCount - 1);
@@ -181,10 +182,10 @@ test('current detach supervision covers the live-census floor', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '../package.json'), 'utf8'));
   const periodicTimeout = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
   const gateTimeout = Number(pkg.scripts['eval:bg:gate'].match(/--timeout\s+(\d+)/)[1]);
-  expect(floorFor('gate')).toBe(46_757);
-  expect(gateTimeout).toBe(46_800);
-  expect(floorFor('periodic')).toBe(66_812);
-  expect(periodicTimeout).toBe(66_840);
+  expect(floorFor('gate')).toBe(47_030);
+  expect(gateTimeout).toBe(47_040);
+  expect(floorFor('periodic')).toBe(67_085);
+  expect(periodicTimeout).toBe(67_140);
 });
 
 for (const jobs of [1, 2, 3]) test(`FIFO bound covers partial durations with ${jobs} workers`, () => {

@@ -96,7 +96,7 @@ jobs:
       - name: Emit run manifest (ALL periodic tests minus reasoned excludes)
         env:
           EVALS_ALL: "1"
-        run: EVALS_TIER=periodic bun --no-install run scripts/test-paid-shards.ts --tier periodic --emit-plan /tmp/paid-plan/manifest.json --slices 8 --autoplan-slice
+        run: EVALS_TIER=periodic bun --no-install run scripts/test-paid-shards.ts --tier periodic --emit-plan /tmp/paid-plan/manifest.json --slices 9 --autoplan-slice
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -118,8 +118,8 @@ jobs:
   eval-slices:
     runs-on: ubicloud-standard-8
     needs: [build-image, plan-slices]
-    # Eight slices retain every registered case and retry. The complete
-    # census needs at most 339m per slice, plus 20 minutes setup/upload.
+    # Nine slices retain every registered case and retry. The complete
+    # census needs at most 288m per slice, plus 20 minutes setup/upload.
     timeout-minutes: 360
     permissions:
       contents: read
@@ -132,8 +132,9 @@ jobs:
       options: --user runner
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
-        slice: [1, 2, 3, 4, 5, 6, 7, 8]
+        slice: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
