@@ -44,10 +44,13 @@ test('ship design availability is an existing automatic choice, not a new opt-in
     expect(output).toContain('Step 11 keeps its separate outside-review switch');
     expect(output).toContain('`CODEX_MODE` reports provider availability, not user consent');
     expect(output).not.toContain('Honor this caller’s existing opt-in/skip choice');
+    expect(output).not.toContain('This caller has its own opt-in/skip control');
     const other = outsideVoicePreflight({ ...ctx, skillName: 'review' }, { disabledBehavior: 'opt-in' });
     expect(other).toContain('Honor this caller’s existing opt-in/skip choice');
     expect(other).not.toContain('No additional opt-in is needed');
-    expect(output.match(/```bash\n([\s\S]*?)\n```/)![1]).toBe(other.match(/```bash\n([\s\S]*?)\n```/)![1]);
+    expect(other).toContain('_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.');
+    expect(output.match(/```bash\n([\s\S]*?)\n```/)![1]).toBe(other.match(/```bash\n([\s\S]*?)\n```/)![1].replace(
+      '_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.', '_OUTSIDE_CFG=enabled'));
   }
 });
 

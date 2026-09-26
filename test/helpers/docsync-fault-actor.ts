@@ -1,28 +1,35 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { DOC_PATH, fixtureDocs } from './docsync-fixture';
+import { DOC_PATH, docsCandidate, gitAt, fixtureDocs } from './docsync-fixture';
+import { extractDocsDispatch } from './docsync-contract';
+import { docsNativeInterface } from './docsync-observer';
 
 export type DocsFault = 'missing-marker' | 'missing-asset' | 'launch-failure' | 'timeout-unsettled' |
-  'late-result' | 'stale-before' | 'stale-after' | 'recovery';
+  'late-result' | 'stale-before' | 'stale-after' | 'recovery' | 'legacy-completion';
 export interface ActorEvent { action: string; audit_id?: string; task_id?: string; detail?: string; }
 export interface DocsActorState {
   root: string;
   scenario: DocsFault;
   events: ActorEvent[];
-  tasks: Array<{ id: string; audit_id: string; settled: boolean; stopRequested: boolean; elapsed_ms: number;
-    prompt: string; candidate: string; prompt_sha256: string; candidate_sha256: string }>;
+  tasks: Array<{ id: string | null; audit_id: string; settled: boolean; stopRequested: boolean; elapsed_ms: number;
+    prompt: string; candidate: string; prompt_sha256: string; candidate_sha256: string;
+    observed_candidate: ReturnType<typeof docsCandidate> }>;
   repaired: boolean;
   armed: boolean;
   lateChanged: boolean;
   acceptedId: string | null;
 }
 
+export function docsActorCanRepair(scenario: DocsFault): boolean {
+  return scenario === 'recovery' || scenario === 'late-result';
+}
+
 function owned(root: string, file: string): string {
   const absolute = path.resolve(file);
   if (!absolute.startsWith(fs.realpathSync(root) + path.sep)) throw Error('actor path outside fixture');
   const existing = fs.existsSync(absolute) ? absolute : path.dirname(absolute);
-  if (!fs.realpathSync(existing).startsWith(fs.realpathSync(root) + path.sep)) throw Error('actor symlink escape');
+  if (fs.realpathSync(existing) !== fs.realpathSync(root) && !fs.realpathSync(existing).startsWith(fs.realpathSync(root) + path.sep)) throw Error('actor symlink escape');
   return absolute;
 }
 
@@ -57,7 +64,7 @@ export function docsActorCommand(file: string, action: string, args: Record<stri
     let exit = 0;
     const last = () => {
       const task = s.tasks.find(t => t.id === args.task_id);
-      if (!task) throw Error('unknown fixture child');
+      if (!task || !args.task_id) throw Error('unknown fixture child');
       return task;
     };
     const complete = (auditId: string, status: 'current' | 'updated' | 'blocked', blockers: string[] = [], updated: string[] = []) => {
@@ -69,22 +76,49 @@ export function docsActorCommand(file: string, action: string, args: Record<stri
       });
     };
     try {
-      if (action === 'dispatch') {
+      if (action === 'prepare') {
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,79}$/.test(args.audit_id ?? '')) throw Error('prepare requires a fresh literal audit id');
+        if (s.tasks.some(t => !t.settled)) throw Error('attempted snapshot with unsettled writer');
+        const repo = path.join(s.root, 'repo');
+        const skills = path.join(s.root, '.claude/skills/gstack');
+        const candidateFile = owned(s.root, path.join(s.root, `candidate-${args.audit_id}.json`));
+        const promptFile = owned(s.root, path.join(s.root, `prompt-${args.audit_id}.md`));
+        if (fs.existsSync(candidateFile) || fs.existsSync(promptFile)) throw Error('prepare cannot overwrite a saved snapshot or prompt');
+        const candidate = docsCandidate(repo, args.audit_id, 'edit', gitAt(repo, 'rev-parse', 'main'));
+        const source = extractDocsDispatch(fs.readFileSync(path.join(skills, 'ship/sections/documentation.md'), 'utf8'));
+        const prompt = source.replaceAll('${HOME}', s.root).replaceAll('<branch>', candidate.branch)
+          .replaceAll('<base>', 'main').replaceAll('<candidate-path>', candidateFile)
+          .replaceAll('<audit-id>', args.audit_id).replaceAll('<mode>', candidate.mode)
+          + '\n\n' + docsNativeInterface({ home: s.root, repo, skills });
+        fs.writeFileSync(candidateFile, JSON.stringify(candidate), { flag: 'wx', mode: 0o600 });
+        fs.writeFileSync(promptFile, prompt, { flag: 'wx', mode: 0o600 });
+        s.events.push({ action, audit_id: args.audit_id, detail: JSON.stringify({ candidate, prompt }) });
+        text = JSON.stringify({ audit_id: args.audit_id, candidate: candidateFile, prompt: promptFile });
+      } else if (action === 'dispatch') {
         if (!args.audit_id || args.run_in_background !== 'false') throw Error('dispatch requires identity and explicit foreground flag');
         if (s.tasks.some(t => !t.settled)) throw Error('attempted writer overlap');
-        if (s.tasks.some(t => t.audit_id === args.audit_id)) throw Error('reused audit identity');
+        if (s.events.some(e => e.action === 'dispatch' && e.audit_id === args.audit_id)) throw Error('reused audit identity');
         const prompt = fs.readFileSync(owned(s.root, args.prompt), 'utf8');
         const candidate = fs.readFileSync(owned(s.root, args.candidate));
         if (!prompt.includes('document-release') || !prompt.includes('files_updated') || !prompt.includes(args.audit_id)) throw Error('dispatch did not carry the actual workflow prompt');
-        const task = { id: `fixture-child-${s.tasks.length + 1}`, audit_id: args.audit_id, settled: true, stopRequested: false, elapsed_ms: 0,
+        const task = { id: s.scenario === 'launch-failure' ? null : `fixture-child-${s.tasks.length + 1}`, audit_id: args.audit_id, settled: true, stopRequested: false, elapsed_ms: 0,
           prompt, candidate: candidate.toString('utf8'), prompt_sha256: createHash('sha256').update(prompt).digest('hex'),
-          candidate_sha256: createHash('sha256').update(candidate).digest('hex') };
-        s.tasks.push(task);
-        s.events.push({ action, audit_id: args.audit_id, task_id: task.id });
+          candidate_sha256: createHash('sha256').update(candidate).digest('hex'),
+          observed_candidate: docsCandidate(path.join(s.root, 'repo'), args.audit_id, 'edit', gitAt(path.join(s.root, 'repo'), 'rev-parse', 'main')) };
+        s.events.push({ action, audit_id: args.audit_id, ...(task.id === null ? {} : { task_id: task.id }) });
         if (s.scenario === 'missing-asset') throw Error('missing installed asset must block before dispatch');
+        s.tasks.push(task);
         if (s.scenario === 'launch-failure') {
           exit = 23;
           text = 'Child launch failed: injected unavailable worker. No child was started.';
+          save(file, s);
+          return { text, exit };
+        }
+        if (s.scenario === 'legacy-completion') {
+          const doc = owned(s.root, path.join(s.root, 'repo', DOC_PATH));
+          fs.writeFileSync(doc, fs.readFileSync(doc, 'utf8').replace('Default format: text.', 'Default format: JSON.'));
+          s.events.push({ action: 'partial-doc-edit', audit_id: args.audit_id, detail: DOC_PATH });
+          text = 'SESSION_KIND: spawned\n' + JSON.stringify({ files_updated: [], commit_sha: null, pushed: false, documentation_section: null });
         } else if (s.scenario === 'missing-marker' || s.scenario === 'recovery' && !s.repaired) {
           text = complete(args.audit_id, 'blocked', ['Missing spawned marker']);
         } else if (s.scenario === 'timeout-unsettled' || s.scenario === 'late-result' && s.tasks.length === 1) {
@@ -114,17 +148,17 @@ export function docsActorCommand(file: string, action: string, args: Record<stri
       } else if (action === 'status') {
         const task = last();
         task.elapsed_ms += task.stopRequested ? 300_001 : 600_001;
-        s.events.push({ action, task_id: task.id, detail: task.settled ? 'settled' : 'running' });
+        s.events.push({ action, task_id: args.task_id, detail: task.settled ? 'settled' : 'running' });
         text = JSON.stringify({ task_id: task.id, status: task.settled ? 'stopped' : 'running', settled: task.settled,
           elapsed_ms: task.elapsed_ms, virtual_clock: true });
       } else if (action === 'stop') {
         const task = last();
         task.stopRequested = true;
         if (s.scenario !== 'timeout-unsettled') task.settled = true;
-        s.events.push({ action, task_id: task.id, detail: task.settled ? 'settled' : 'unsettled' });
+        s.events.push({ action, task_id: args.task_id, detail: task.settled ? 'settled' : 'unsettled' });
         text = JSON.stringify({ task_id: task.id, stop_requested: true, settled: task.settled });
       } else if (action === 'repair') {
-        if (!['recovery', 'late-result'].includes(s.scenario) || s.repaired || !s.tasks.length || s.tasks.some(t => !t.settled)) throw Error('repair not available');
+        if (!docsActorCanRepair(s.scenario) || s.repaired || !s.tasks.length || s.tasks.some(t => !t.settled)) throw Error('repair not available');
         s.repaired = true;
         s.events.push({ action, detail: 'fixture transport/marking repaired' });
         text = 'Fixture transport/marking repaired; future dispatches use the corrected launcher.';
@@ -159,6 +193,25 @@ export function docsActorHook(file: string, input: string) {
 }
 
 export function installDocsActor(fixture: ReturnType<typeof fixtureDocs>, scenario: DocsFault): string {
+  fs.writeFileSync(fixture.invocation, `# Bounded ship fixture invocation
+
+This is synthetic prior-stage state supplied by the test, not evidence that real reviews or checks ran. Steps 0–14 are complete only within this isolated documentation-phase fixture. Do not reconstruct or rerun them.
+
+## Release
+Base main (${gitAt(fixture.repo, 'rev-parse', 'main')}); HEAD ${fixture.before.head}; VERSION 0.1.0.0; package version 0.1.0; BUMP_LEVEL not applicable to this bounded phase. Existing metadata is intentional fixture input, not a request to repair release preparation.
+## Decisions
+No risk exceptions or risky edits approved. Preserve unrelated and partial content. No real publication or later ship steps authorized.
+## Reviews
+Earlier review stages are synthetic and outside this fixture. No live review handles or tokens are asserted.
+## Checks
+Earlier check stages are synthetic and outside this fixture. No test receipts are asserted.
+## Documentation
+Attempts used: 0. No accepted audit, hashes, exception or child handle. The supplied candidate.json is initial fixture input, not an accepted audit.
+## Next steps
+1. CURRENT: documentation phase (Step 14.5, or store documentation preflight).
+2. Save the result and optionally execute the authorized local publication stand-in if the actual documentation gate permits it.
+3. STOP before Step 15 or any store action.
+`, { mode: 0o600 });
   const file = path.join(fixture.home, 'actor-state.json');
   save(file, { root: fixture.home, scenario, events: [], tasks: [], repaired: false, armed: false, lateChanged: false, acceptedId: null });
   const configFile = path.join(fixture.env.CLAUDE_CONFIG_DIR, 'settings.json');

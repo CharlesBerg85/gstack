@@ -205,7 +205,7 @@ describe('ship/SKILL.md — Plan Completion gate invariants (VAS-449 remediation
     expect(preflight).toContain('git fetch origin <base>');
     expect(preflight).toMatch(/fetch fails[^\n]+STOP/);
     expect(entry).not.toContain('auto-generate and commit, or flag');
-    expect(entry).toContain('commit in Step 15');
+    expect(entry).toContain('Step 15 commits those tests');
   });
 
   test('bisectable commits proceed directly to verification without rewriting existing history', () => {

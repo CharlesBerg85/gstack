@@ -30,6 +30,7 @@ mock.module(observerModule, () => ({ ...observers,
     return { ...options, prompt: options.prompt + '\\nOPTIONS_BUILDER_USED' };
   },
   docsShipPhase(...args) { return observers.docsShipPhase(...args) + '\\nPHASE_BUILDER_USED'; },
+  docsBoundedStageInterface(...args) { return observers.docsBoundedStageInterface(...args) + '\\nBOUNDED_BUILDER_USED'; },
 }));
 mock.module(path.join(root, 'test/helpers/e2e-gate.ts'), () => ({
   describeE2ETier: () => (_name, body) => body(),
@@ -46,14 +47,23 @@ mock.module(path.join(root, 'test/helpers/e2e-helpers.ts'), () => ({
 mock.module(path.join(root, 'test/helpers/session-runner.ts'), () => ({
   async runSkillTest(options) {
     launched++;
-    expect(options.prompt).toContain('OPTIONS_BUILDER_USED');
-    expect(options.prompt).toContain('Execute the next phase from ' + path.join(fixture.home, 'phase.md'));
-    expect(options.prompt).toContain('No real PR, push, store action or later ship phase is authorized.');
-    expect(options.prompt).toContain('no risk exception is granted');
+    if (options.testName === 'ship-docsync-failure') {
+      expect(options.prompt).toContain('BOUNDED_BUILDER_USED');
+      expect(options.prompt).toContain('Execute the actual next phase from ' + path.join(fixture.home, 'phase.md'));
+      expect(options.prompt).toContain('deterministic child transport instead of Agent/Task');
+      expect(options.prompt).toContain('no user risk exception or risky edit is approved');
+      expect(options.allowedTools).toEqual(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']);
+    } else {
+      expect(options.prompt).toContain('OPTIONS_BUILDER_USED');
+      expect(options.prompt).toContain('Execute the next phase from ' + path.join(fixture.home, 'phase.md'));
+      expect(options.prompt).toContain('No real PR, push, store action or later ship phase is authorized.');
+      expect(options.prompt).toContain('no risk exception is granted');
+      expect(options.allowedTools).toEqual(['Bash', 'Read', 'Grep', 'Glob', 'Write', 'Edit', 'Agent', 'Task']);
+    }
     expect(options.workingDirectory).toBe(fixture.repo);
     expect(options.maxTurns).toBe(30);
     expect(options.timeout).toBeGreaterThan(0);
-    expect(options.allowedTools).toEqual(['Bash', 'Read', 'Grep', 'Glob', 'Write', 'Edit', 'Agent', 'Task']);
+    expect(fs.readFileSync(path.join(fixture.skills, 'document-release/SKILL.md'), 'utf8')).not.toContain('This fixture child returns a deliberately obsolete completion');
     const phase = fs.readFileSync(path.join(fixture.home, 'phase.md'), 'utf8');
     expect(phase).toContain('PHASE_BUILDER_USED');
     if (options.testName === 'ship-docsync-store') {

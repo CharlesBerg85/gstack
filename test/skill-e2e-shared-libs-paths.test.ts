@@ -9,7 +9,9 @@ import {
   fixtureGit, fixtureWorkingTree, reviewLifecycleInstructions, reviewRevalidationPrompt, reviewRecords, SHARED_LIBS_ROOT,
   runSharedInteractive, toolCommandTrace, readRequests, SharedCaptureAccumulator, type SharedLibsFixture,
 } from './helpers/shared-libs-eval-fixture';
-import { preparePathEligibilityFixture, type PathEligibilityCase } from './helpers/shared-libs-path-fixture';
+import {
+  preparePathEligibilityFixture, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt, type PathEligibilityCase,
+} from './helpers/shared-libs-path-fixture';
 import { hasTrustedSharedLibsCheck } from './helpers/shared-libs-review-start-evidence';
 
 const describeE2E = describeE2ETier('gate');
@@ -73,17 +75,22 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
       try {
         const prepared = preparePathEligibilityFixture(kind);
         f = prepared.fixture;
+        const prerequisites = checkPathReviewPrerequisites(f, prepared.resumed.input);
+        expect(prerequisites.settled, `${kind}: fixture prerequisites must be settled before capture`).toBe(true);
         const sourceBefore = new Map(prepared.current.evidence_paths.map((source: string) =>
           [source, fs.readFileSync(path.join(prepared.fixture.repo, source), 'utf8')]));
         const instructions = reviewLifecycleInstructions(f);
         const supplied = path.join(f.root, 'current-advisory.jsonl');
         fs.writeFileSync(supplied, JSON.stringify({ ...prepared.current, specialist: 'maintainability' }) + '\n');
-        const prompt = reviewRevalidationPrompt(f, instructions, supplied)
+        const prompt = reviewRevalidationPrompt(f, instructions, supplied, prepared.resumed)
           + '\nAll named caller sources are first-party authored runtime code. Inspect them directly, including any Git/path boundary, before deciding whether the previous review decision can be reused. The fixture contains no generated caller sources.';
         const capture = await runSharedInteractive(f, testId, prompt, 'skip');
         result = capture.result;
         expect(result.exitReason, `${kind}: ${result.output}`).toBe('success');
         expect(result.toolCalls.length).toBeGreaterThan(0);
+        expect(checkPathReviewPrerequisites(f, prepared.resumed.input), `${kind}: prerequisite state must remain unchanged`).toEqual(prerequisites);
+        expect(hasPathReviewPrerequisiteReceipt(result.events ?? [], prepared.resumed.checkCommand, prerequisites),
+          `${kind}: consume current synthetic prerequisites before persistence`).toBe(true);
         expect(capture.questions.length, `${kind}: old decision must be revalidated and presented again`).toBeGreaterThan(0);
         const trace = toolCommandTrace(result).join('\n');
         expect(trace).toContain('gstack-review-read');
@@ -147,6 +154,7 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
             duration_ms: result?.durationMs ?? 0, cost_usd: result?.costUsd ?? 0,
             model: result?.model, turns_used: result?.turnsUsed ?? 0,
             transcript: [{ scenario: kind, error: scenarioError, diagnostic: captureDiagnostic,
+              prerequisite_source: 'synthetic-fixture-input', prerequisite_native_coverage: false,
               cost_known: result?.costKnown, provider_requests: f ? readRequests(f) : [] }, ...(result?.events ?? [])],
             output: `[${kind}]${scenarioError ? ` ${scenarioError}` : ''}\n${result?.output ?? ''}`,
             error: scenarioError,

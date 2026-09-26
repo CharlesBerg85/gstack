@@ -18,6 +18,35 @@ test('cache extraction preserves every byte of the original workflow request and
   expect(createHash('sha256').update(prompt).digest('hex')).toBe('71cc9c777bf28ff0efd610259b411e3539852f83a0888fa0e92469331f8b9a43');
 });
 
+test('ship clarity targets frontier readers without excusing missing decisions or authority', () => {
+  const source = readFileSync(join(ROOT, 'test/skill-llm-eval.test.ts'), 'utf8');
+  const registration = source.match(/testIfSelected\('ship\/SKILL\.md workflow',[\s\S]*?await runWorkflowJudge\(\{([\s\S]*?)\n    \}\);/);
+  expect(registration).not.toBeNull();
+  const options = new Function('QA_DISCOVERY_REFERENCES', `return ({${registration![1]}});`)(QA_DISCOVERY_REFERENCES);
+  expect(options.agentCapability).toBe('frontier');
+  expect(options.thresholds).toBeUndefined();
+  const input = readWorkflowJudgeInput({ root: ROOT, ...options });
+  const prompt = buildWorkflowJudgePrompt(options, input);
+  expect(prompt).toContain('GPT-5.6 Sol-level capability or stronger');
+  expect(prompt).toContain('Length, technical vocabulary and multiple explicit recovery paths alone are not clarity defects');
+  expect(prompt).toContain('Do not invent missing policies, permissions or evidence');
+  expect(prompt).toContain('Clarity 4 means the target agent can determine the next permitted action on each applicable path');
+  expect(prompt).toContain('Score clarity 3 or lower when execution still requires guessing');
+  expect(prompt).toContain('conflicting order, undefined decisions, unclear authority or missing input/output handling');
+  expect(prompt).toContain('cite the specific file/step and explain the competing actions or missing decision');
+  expect(prompt.endsWith(input.text)).toBe(true);
+  expect(prompt).toContain('"clarity": N, "completeness": N, "actionability": N, "reasoning": "brief explanation"');
+});
+
+test('frontier calibration bounds reporting without reducing the evaluated source bundle', () => {
+  const input = { files: [], text: 'Entire source bundle remains present.' };
+  const prompt = buildWorkflowJudgePrompt({ judgeContext: 'a workflow', judgeGoal: 'how to finish', agentCapability: 'frontier' }, input);
+  expect(prompt).toContain('Evaluate the whole workflow, but keep the JSON reasoning under 150 words with at most two decisive examples');
+  expect(prompt).toContain('For a clarity defect, cite the specific file/step and explain the competing actions or missing decision');
+  expect(prompt).not.toContain('For each clarity defect');
+  expect(prompt.endsWith(input.text)).toBe(true);
+});
+
 afterEach(() => {
   for (const root of scratchRoots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -254,7 +283,7 @@ describe('workflow judge file bundle', () => {
     const flow = entrypoint!.content.replace(/\s+/g, ' ');
     expect(flow).toContain('Every new invocation repeats Steps 1–16, including both reviews and the docs audit');
     expect(flow).toContain('children return evidence, not permission to proceed');
-    expect(flow).toContain('Each step states its own recovery and next destination');
+    expect(flow).toContain('Follow the saved work list');
     expect(flow).not.toContain('| At step | Outcome |');
     expect(flow).toContain('`gstack-wtree` prints a Git tree hash');
     expect(flow).toContain('Offline output without that fallback, failure, malformed output or an empty version is unusable');

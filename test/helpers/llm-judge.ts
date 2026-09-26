@@ -156,14 +156,14 @@ export async function callJudge<T>(
     }
   }
 
-  if (response.stop_reason === 'max_tokens') {
-    throw new Error(`Judge response truncated at max_tokens=${maxTokens} (model=${resolvedModel})`);
-  }
   const text = response.content
     .filter(block => block.type === 'text')
     .map(block => block.text)
     .join('\n');
   try {
+    if (response.stop_reason === 'max_tokens') {
+      throw new Error(`Judge response truncated at max_tokens=${maxTokens} (model=${resolvedModel})`);
+    }
     if (response.stop_reason === 'refusal') throw new JudgeRefusalError(response);
     if (opts?.jsonSchema !== undefined) {
       if (response.stop_reason !== 'end_turn') throw new Error(`Structured judge did not complete: stop_reason=${response.stop_reason}`);

@@ -35,8 +35,8 @@ describe('pre-publication documentation lifecycle', () => {
     expect(positions.every(position => position >= 0)).toBe(true);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     const recovery = body.slice(body.indexOf('### 3. Resolve documentation freshness'), body.indexOf('### 4. Verify the frozen candidate')).replace(/\s+/g, ' ');
-    expect(recovery).toContain('complete the permitted repair/re-audit and its validation, then Step 15');
-    expect(recovery).toContain('return to Step 16 stage 1 to regenerate and compare again');
+    expect(recovery).toContain('Validate the outcome before Step 15');
+    expect(recovery).toContain('restart Step 16 stage 1 to regenerate and compare again');
     expect(recovery).toContain('Never run a third audit');
     expect(body.replace(/\s+/g, ' ')).toContain('its initial-plus-ONE limit never resets');
     expect(gate.replace(/\s+/g, ' ')).toContain('Docs, TODO edits, new/generated tests and fixes make evidence STALE');
@@ -114,7 +114,7 @@ describe('pre-publication documentation lifecycle', () => {
       'never a third attempt, even after Step 16 changes',
       'Confirm the child stopped before any repair, retry, inline takeover or other writer',
       'request stop and inspect its status; the request alone is insufficient',
-      'If an attempt remains and a concrete launch/input/permission correction or reviewed patch repair is available',
+      'If an attempt remains and either the audited inputs changed or a concrete launch/input/permission correction or reviewed patch repair is available',
       'using current inputs and a fresh id/snapshot, run the remaining attempt, then validate it through Parent processing',
       'Otherwise STOP before commit/publication',
       'do not launch another child']) expect(body).toContain(text);

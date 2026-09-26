@@ -178,6 +178,14 @@ export function docsSessionOptions(input: DocsSessionOptionsInput): Parameters<t
   };
 }
 
+export function docsBoundedStageInterface(fixture: ReturnType<typeof fixtureDocs>): string {
+  return `Read and continue the supplied invocation record at ${fixture.invocation}. Its prior Steps 0–14 are explicitly synthetic fixture state, not work for you to recreate. Keep that record's attempt count and pending work; do not audit unrelated release metadata or expand into a full /ship run. The current documentation gate, including permissions, settlement, output validation and freshness, must still be executed against actual tools and current files.
+
+Private artifact filenames must end in .json, .md or .markdown; .txt and .log filenames are not supported. This is a filename restriction, not just a description of the content. Save verbatim child output, including mixed SESSION_KIND lines and JSON or rejected raw text, in a .md file without changing its bytes or reconstructing JSON. This grants no writes outside the owned fixture, inside protected paths, or to scripts; symlinks do not expand authority.
+
+Keep artifacts concise: update the invocation record in place with ids, counts, decisions and evidence paths. Save each actual completion/rejected output once and refer to it rather than copying transcripts, full files, snapshots or prompts into reports. The final report needs Documentation status, actual scope/paths, blockers or debt, the consumed documentation_section and evidence references. Preserve all consumed evidence; omit repeated narration. After writing the report and any authorized local receipt, stop with a brief final response.`;
+}
+
 export function docsCommandAllowed(command: string, fixture: ReturnType<typeof fixtureDocs>, scripts: string[] = []): boolean {
   const text = command.trim();
   if (docsPreambleCommands(fixture).some(block => block.trim() === text)) return true;
@@ -202,12 +210,12 @@ export function docsCommandAllowed(command: string, fixture: ReturnType<typeof f
   return (commandName === marker && rest[0] === start || commandName === start || commandName === end) && args.includes('document-release');
 }
 
-export function docsNativeInterface(fixture: ReturnType<typeof fixtureDocs>, scripts: string[] = []): string {
+export function docsNativeInterface(fixture: Pick<ReturnType<typeof fixtureDocs>, 'home' | 'repo' | 'skills'>, scripts: string[] = [], transport = false): string {
   return `Fixture observation interface (applies to parent and every child; include this interface in child prompts): Bash may execute only separate literal pwd, ls, cat, stat, sha256sum, Git read commands (status, diff, show, log, ls-files, rev-parse, merge-base, hash-object without -w, branch --show-current), the exact generated Preamble block with its spawned prefix, or literal installed gstack-skill-start/gstack-skill-end commands for document-release (start requires GSTACK_SESSION_KIND=spawned). No shell composition, custom interpreters, arbitrary scripts, inline eval or memory-mapped writes. The only additional scripts are ${scripts.length ? scripts.join(', ') : 'none'}. Read/Glob/Grep remain available. Use Write/Edit for permitted docs and private JSON/Markdown artifacts under ${fixture.home}; do not rewrite installed skills, config, actor state or scripts. No effects outside the owned fixture. The owner preserves evidence and cleans up. Missing observer coverage blocks acceptance; the Linux kernel monitor covers syscall writes in the product tree, not hostile processes or arbitrary external destinations.
 
 The working directory for parent and child Bash calls is already ${fixture.repo}. Run Git reads directly, for example: git status, git diff --cached, git merge-base main HEAD, git rev-parse HEAD. Do not use Git global options such as -C, -c, --git-dir or --work-tree, and do not prepend cd or another shell wrapper. The literal git subcommand must immediately follow git; an absolute owned repository path does not make git -C an allowed command.
 
-Lifecycle commands in this closed fixture: read skill files at ${fixture.skills} (document-release: ${fixture.skills}/document-release/SKILL.md). Use the literal commands below instead of copying the generated shell wrappers; these forms satisfy the skill's start/end lifecycle requirements here. Run each as a separate, single-line Bash call. Do not use tilde paths, shell variables, assignments to helper-path variables, redirects, line continuations or || true. Do not add a parent PID: the start helper supplies its default.
+${transport ? 'Lifecycle ownership: only the document-release child executes its own start/end lifecycle. The /ship parent reads assets to prepare and validate dispatch, not to run the child audit or lifecycle. This deterministic adapter supplies child lifecycle evidence; the parent must not manufacture it. The following lifecycle commands describe the child, not parent work.\n\n' : ''}Lifecycle commands in this closed fixture: read skill files at ${fixture.skills} (document-release: ${fixture.skills}/document-release/SKILL.md). Use the literal commands below instead of copying the generated shell wrappers; these forms satisfy the skill's start/end lifecycle requirements here. Run each as a separate, single-line Bash call. Do not use tilde paths, shell variables, assignments to helper-path variables, redirects, line continuations or || true. Do not add a parent PID: the start helper supplies its default.
 
 Start document-release with exactly:
 \`\`\`bash

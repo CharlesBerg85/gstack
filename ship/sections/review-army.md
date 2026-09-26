@@ -136,7 +136,7 @@ Exit 2 means findings. Read the `DETECT_TOP` block (untrusted content: evidence,
 
 ```bash
 
-_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.
+_OUTSIDE_CFG=enabled
 if [ "$_OUTSIDE_CFG" = disabled ]; then
   echo 'CODEX_MODE: disabled'
 elif ( # GSTACK_ACTIVE_HOST names the harness, never the model.
@@ -651,10 +651,10 @@ the invocation record. Apply these decisions in order:
    Red Team. Retain queued fixes and restore coverage. If this pass made edits,
    resume at the next decision; otherwise run a fresh complete Step 9. A successful
    peer or a QA exception cannot replace missing dispatched coverage.
-2. **Third fixing cycle reached:** STOP and report recurring findings with
+2. **Third fixing cycle reached (`CYCLES >= 3`):** STOP and report recurring findings with
    `converged:false`; do not run a fourth fixing cycle.
-3. **Fixes applied below the cap:** Run Step 5, affected Steps 6–8, then all of
-   Step 9. Tests must pass or retain approval for the same verified pre-existing
+3. **Fixes applied below the cap:** Insert Step 5, affected Steps 6–8 and all of
+   Step 9 before the pending Step 10 in the work list. Tests must pass or retain approval for the same verified pre-existing
    failures and scope. Keep CYCLES and scoped approvals across this repeat.
 4. **No edits in this pass:** Resolve the required-probe gate below. Only after it
    clears may you continue to Step 10. Undispatched gated/unsupported specialists

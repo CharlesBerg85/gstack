@@ -2,19 +2,17 @@
 
 Store-only releases audit `read-only` before distribution, without branch gates or source-write authority.
 
-Use the invocation record's count: an initial audit plus ONE repair/re-audit,
+**Attempt budget:** an initial audit plus ONE repair/re-audit in the invocation record,
 never a third attempt, even after Step 16 changes. Increment before each launch
 or inline takeover, including failed launches; inline work follows the same
 validation gates. A stale snapshot is neither a new attempt nor a current audit.
-Save the child handle: an exited child with missing
-output has stopped, but its audit is blocked.
+Save the child handle. An exited child with missing output is stopped, but its audit is blocked.
 
-First entry always launches the initial audit. A repair range that crosses Step 14.5
-enters this decision again; it does not authorize another launch or reset the count.
-On reentry, including Step 16 repairs and Step 17 recovery,
-reuse only this invocation's validated audit or named-risk decision whose accepted
+**Entry:** First entry always launches the initial audit.
+On reentry, reuse only this invocation's validated audit or named-risk decision whose accepted
 base/input hashes still match; retain its actual status and scope. Otherwise use
-Blocked recovery, not an unconditional launch. Unwaivable gates still apply.
+Blocked recovery, not an unconditional launch.
+Reentry never resets the count or authorizes a launch.
 
 ## Prepare the candidate
 
@@ -29,7 +27,7 @@ Blocked recovery, not an unconditional launch. Unwaivable gates still apply.
 3. Discover docs roots/authored templates per audit-scope and pause other writers.
    Save a private candidate outside the product tree with a fresh `audit_id`, mode
    (`edit`/`read-only`), base SHA, HEAD, selected paths, docs roots, index entries,
-   existing dirty/untracked paths and hashes of release files, generated outputs
+   existing dirty/untracked paths and hashes of the selected release paths, generated outputs
    and docs/templates. Use NUL-safe lists and resolve symlinks inside the repo.
    Fill the prompt placeholders with literal candidate values.
 
@@ -98,8 +96,9 @@ auto-commit or push unexpected child commits.
    running/unknown handle, request stop and inspect its status; the request alone
    is insufficient. If still unconfirmed after one further ~5-minute window,
    STOP ship. Reject late results from abandoned ids.
-2. If an attempt remains and a concrete launch/input/permission correction or
-   reviewed patch repair is available, apply it with user approval for risky edits.
+2. If an attempt remains and either the audited inputs changed or
+   a concrete launch/input/permission correction or reviewed patch repair is available,
+   apply any repair with user approval for risky edits.
    Repeat Prepare using current inputs and a fresh id/snapshot, run the remaining
    attempt, then validate it through Parent processing.
 3. Otherwise STOP before commit/publication and do not launch another child.

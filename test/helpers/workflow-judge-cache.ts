@@ -15,6 +15,7 @@ export interface WorkflowCacheOptions {
   root: string; testName: string; skillPath: string; startMarker: string; endMarker: string | null;
   judgeContext: string; judgeGoal: string; thresholds: Thresholds; prompt: string; attempt: number;
   references?: readonly string[];
+  agentCapability?: 'frontier';
   env?: NodeJS.ProcessEnv;
 }
 export interface WorkflowJudgeReuse {

@@ -18,6 +18,9 @@ import {
   sharedReadOnlyViolations, standaloneInstructions, toolCommandTrace, type SharedLibsFixture,
   SharedCaptureAccumulator, type SharedCaptureAttempt, SHARED_LIBS_ROOT,
 } from './helpers/shared-libs-eval-fixture';
+import {
+  seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt, createLifecyclePrerequisiteActor,
+} from './helpers/shared-libs-path-fixture';
 
 const describeE2E = describeE2ETier('gate');
 const collector = e2eTierEnabled('gate') ? new EvalCollector('e2e') : null;
@@ -42,7 +45,9 @@ async function recordCapture(attempt: SharedCaptureAttempt, scenario: string, na
       duration_ms: result?.duration ?? result?.durationMs ?? 0,
       cost_usd: result?.costEstimate?.estimatedCost ?? result?.costUsd ?? 0,
       model: result?.model, turns_used: result?.costEstimate?.turnsUsed ?? result?.turnsUsed ?? 0,
-      transcript: [...(result?.transcript ?? result?.events ?? []), { fixture_requests: result?.providerRequests ?? [] }], output: result?.output ?? '',
+      transcript: [...(result?.transcript ?? result?.events ?? []), { fixture_requests: result?.providerRequests ?? [],
+        ...(result?.fixtureStageReceipts ? { prerequisite_receipts: result.fixtureStageReceipts } : {}),
+        ...(result?.fixturePrerequisiteSource ? { prerequisite_source: result.fixturePrerequisiteSource, prerequisite_native_coverage: false } : {}) }], output: result?.output ?? '',
       error: [failure ? String(failure) : '', result?.costKnown === false
         ? 'No terminal billing event; actual cost is unknown. Raw usage is retained in the transcript.' : ''].filter(Boolean).join('\n') || undefined,
       exit_reason: result?.exitReason ?? 'capture_threw' });
@@ -150,12 +155,14 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
         seedReviewSources(f);
         const instructions = reviewLifecycleInstructions(f);
         const input = specialistFixture(f);
+        const stageActor = createLifecyclePrerequisiteActor(f);
         let questions: any[] = [];
         await recordCapture(attempt, choose, 'shared-libs-review-lifecycle', async () => {
-          const capture = await runSharedInteractive(f, 'shared-libs-review-lifecycle', reviewPrompt(f, instructions, input), choose);
+          const capture = await runSharedInteractive(f, 'shared-libs-review-lifecycle', reviewPrompt(f, instructions, input, stageActor), choose, { stageActor });
           questions = capture.questions;
           return capture.result;
         }, result => {
+          expect(stageActor.verify(result.events ?? []), 'consume a current invoked synthetic stage result before final persistence').toBe(true);
           expect(questions.length).toBeGreaterThan(0);
           const worker = fs.readFileSync(path.join(f.repo, 'src/retry-worker.ts'), 'utf8');
           expect(worker).not.toContain('unusedRetryDiagnostic');
@@ -219,12 +226,17 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
         const input = path.join(f.root, 'current-advisory.jsonl');
         const { action: _priorAction, ...current } = prior;
         fs.writeFileSync(input, JSON.stringify({ ...current, specialist: 'maintainability' }) + '\n');
+        const resumed = seedPathReviewPrerequisites(f);
+        const prerequisites = checkPathReviewPrerequisites(f, resumed.input);
+        expect(prerequisites.settled).toBe(true);
         let questions: any[] = [];
         await recordCapture(attempt, change, 'shared-libs-review-revalidation', async () => {
-          const capture = await runSharedInteractive(f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input), 'skip');
+          const capture = await runSharedInteractive(f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { prerequisiteSource: 'synthetic-fixture-input' });
           questions = capture.questions;
           return capture.result;
         }, result => {
+          expect(checkPathReviewPrerequisites(f, resumed.input)).toEqual(prerequisites);
+          expect(hasPathReviewPrerequisiteReceipt(result.events ?? [], resumed.checkCommand, prerequisites)).toBe(true);
           if (change === 'unchanged') expect(questions.length).toBe(0);
           else expect(questions.length).toBeGreaterThan(0);
           const trace = toolCommandTrace(result).join('\n');

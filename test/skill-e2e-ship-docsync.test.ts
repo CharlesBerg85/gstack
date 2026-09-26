@@ -29,9 +29,6 @@ async function runShipDocs(testName: string, scenario: DocsScenario, dispatchOnl
       .split('\n').find(line => line.startsWith('**Documentation preflight:**'));
     if (!storePointer) throw new Error('store documentation preflight pointer moved');
     fs.writeFileSync(phase, docsShipPhase(skeleton, prBody, scenario, storePointer));
-    if (dispatchOnly || scenario === 'legacy') {
-      fs.writeFileSync(path.join(fixture.skills, 'document-release/SKILL.md'), `# Ship-owned documentation mode\n\nThis fixture child returns a deliberately obsolete completion. Read the candidate and README; do not run any Git mutation. ${scenario === 'legacy' ? `First read ${DOC_PATH} in full and correct only "Default format: text." to "Default format: JSON." without disturbing the user's note. This simulates partial output before a protocol failure.` : 'Do not edit any files.'}\n\nThe LAST line must be: {"files_updated":[],"commit_sha":null,"pushed":false,"documentation_section":null}\n`);
-    }
     const report = path.join(fixture.home, 'ship-report.md');
     const receipt = path.join(fixture.home, 'publication.json');
     const publish = path.join(fixture.home, 'fixture-publish.ts');
@@ -127,7 +124,7 @@ describeE2E('Ship doc-sync lifecycle E2E (gate)', () => {
     testConcurrentIfSelected('ship-docsync', () => runShipDocs('ship-docsync', 'legacy', true), CAPTURE_LONG_MS);
     testConcurrentIfSelected('ship-docsync-completion', () => runShipDocs('ship-docsync-completion', 'updated'), CAPTURE_LONG_MS);
     testConcurrentIfSelected('ship-docsync-current', () => runShipDocs('ship-docsync-current', 'current'), CAPTURE_LONG_MS);
-    testConcurrentIfSelected('ship-docsync-failure', () => runShipDocs('ship-docsync-failure', 'legacy'), CAPTURE_LONG_MS);
+    testConcurrentIfSelected('ship-docsync-failure', () => runShipDocsFault('ship-docsync-failure', 'legacy-completion', collector, CAPTURE_LONG_MS), CAPTURE_LONG_MS);
     testConcurrentIfSelected('ship-docsync-store', () => runShipDocs('ship-docsync-store', 'store'), CAPTURE_LONG_MS);
     testConcurrentIfSelected('ship-docsync-missing-marker', () => runShipDocsFault('ship-docsync-missing-marker', 'missing-marker', collector), CAPTURE_MS);
     testConcurrentIfSelected('ship-docsync-missing-asset', () => runShipDocsFault('ship-docsync-missing-asset', 'missing-asset', collector), CAPTURE_MS);

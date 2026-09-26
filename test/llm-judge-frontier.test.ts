@@ -106,7 +106,33 @@ describe('frontier Claude judge compatibility', () => {
     } as never);
     await expect(callJudge('score this', 'claude-fable-5-1', { max_tokens: 1024 }))
       .rejects.toThrow('Judge response truncated at max_tokens=1024');
-    expect(diagnostics).not.toHaveBeenCalled();
+    expect(diagnostics).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(diagnostics.mock.calls[0][0])).toMatchObject({ stopReason: 'max_tokens', textBlocks: ['{"score":4}'] });
+  });
+
+  test('retains public truncation evidence without accepting a score or exposing private blocks', async () => {
+    const text = '{"clarity":4,"completeness":4,"actionability":4,"reasoning":"Partial response"}';
+    create.mockResolvedValue({
+      id: 'msg_truncated', _request_id: 'req_truncated', model: 'claude-fable-5-1', stop_reason: 'max_tokens',
+      content: [
+        { type: 'thinking', thinking: 'PRIVATE_THINKING', signature: 'PRIVATE_SIGNATURE' },
+        { type: 'text', text },
+        { type: 'redacted_thinking', data: 'PRIVATE_REDACTED' },
+      ],
+      usage: { input_tokens: 1000, output_tokens: 8192, thinking: 'PRIVATE_USAGE' },
+    } as never);
+    await expect(callJudge('score the complete workflow', 'claude-fable-5-1'))
+      .rejects.toThrow('Judge response truncated at max_tokens=8192');
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0].max_tokens).toBe(8192);
+    expect(diagnostics).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(diagnostics.mock.calls[0][0])).toEqual({
+      type: 'llm-judge-response-parse-error', responseId: 'msg_truncated', requestId: 'req_truncated',
+      model: 'claude-fable-5-1', stopReason: 'max_tokens',
+      usage: { input_tokens: 1000, output_tokens: 8192, cache_creation_input_tokens: null, cache_read_input_tokens: null },
+      textBlocks: [text], error: { name: 'Error', message: 'Judge response truncated at max_tokens=8192 (model=claude-fable-5-1)' },
+    });
+    expect(diagnostics.mock.calls[0][0]).not.toContain('PRIVATE_');
   });
 
   test('keeps text-only responses and explicit model options working', async () => {

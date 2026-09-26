@@ -1000,8 +1000,9 @@ in order before leaving Step 11:
    new attempt separately, then reconsider these decisions. Without that correction,
    or if the recovery fails, ask for repair and remain blocked.
 2. **Fixes queued after native completion:** Keep the findings and their approvals.
-   Run Steps 9–11, including full review before fixes. After all inner repairs finish,
-   return to Step 11.5. These fresh reviews after code edits are not recovery retries.
+   Insert Steps 9, 10 and 11 before the pending Step 11.5 in the work list.
+   Step 9 completes full review before fixes; any further repair inserts its checks
+   ahead of the remaining items. These fresh reviews after code edits are not recovery retries.
 3. **Native complete with no queued fixes:** Finish the memory updates below,
    then continue to Step 11.5. Never jump directly to release preparation.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
 

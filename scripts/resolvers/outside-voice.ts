@@ -85,7 +85,7 @@ export function outsideVoicePreflight(ctx: TemplateContext, opts: { disabledBeha
     : `bun -e 'const {resolveClaudeCommand} = await import(process.argv[1]); process.exit(resolveClaudeCommand() ? 0 : 1)' "${bin}/../lib/claude-bin.ts"`;
   return `\`\`\`bash
 ${outsideVoiceRuntime(ctx)}
-${opts.disabledBehavior === 'opt-in' ? '_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.' : `_OUTSIDE_CFG=$("${bin}/gstack-config" get codex_reviews 2>/dev/null || echo enabled)`}
+${opts.disabledBehavior === 'opt-in' ? (ctx.skillName === 'ship' ? '_OUTSIDE_CFG=enabled' : '_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.') : `_OUTSIDE_CFG=$("${bin}/gstack-config" get codex_reviews 2>/dev/null || echo enabled)`}
 if [ "$_OUTSIDE_CFG" = disabled ]; then
   echo 'CODEX_MODE: disabled'
 elif ( ${outsideVoiceGuard(ctx)}

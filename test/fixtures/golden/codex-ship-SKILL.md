@@ -448,7 +448,8 @@ Routine authorization never waives those gates or their required user decisions.
 
 **Routine work needs no confirmation:** include uncommitted changes, choose MICRO/PATCH
 under Step 12, draft CHANGELOG and commits, mark completed TODOs and auto-fix findings.
-At or above Step 7's target, report gaps, verify generated tests and commit in Step 15.
+When Step 7 coverage meets its target, report remaining gaps and verify generated
+tests without another permission question. Step 15 commits those tests.
 
 **Route:** integrate (1–3) → test and review (4–11.5) → prepare the release
 (12–15) → verify frozen content (16) → push and publish (17–21).
@@ -465,7 +466,7 @@ its absolute path. Use these headings so a paused run can resume:
 - **Reviews:** handles, original start tokens, terminal states, outputs and queued fixes.
 - **Checks:** command/label, result/counts, timestamp, log and consumed inputs.
 - **Documentation:** candidate/id, attempts used, accepted hashes or named blocked exception.
-- **Return points:** unfinished repair ranges and their destinations.
+- **Next steps:** one ordered work list, with the current step marked.
 
 A **receipt** is saved evidence of a check's command, result and consumed content.
 A review's **start token** is the opaque value returned by `gstack-review-log --start`
@@ -478,15 +479,20 @@ not a commit ID. Use `git diff <old-tree> <new-tree>` to compare these snapshots
 ### Ship control flow
 
 You, the **parent** running /ship, own advancement; children return evidence, not
-permission to proceed. Follow the numbered steps. Each step states its own recovery
-and next destination; STOP and AskUserQuestion gates still apply during repairs.
+permission to proceed. Follow the saved work list:
 
-When a step sends you through a repair range, save its first step, last step and
-return destination before starting. Finish the whole range, then return to that
-destination rather than falling through to the next numbered step. If an inner
-repair interrupts it, finish the inner repair, then resume the unfinished outer range.
-For example, a Step 11 repair runs 9–11: a Step 9 retry must finish before Steps 10
-and 11 complete and the outer repair returns to Step 11.5.
+1. Start with Steps 1–21 in order, including 11.5 and 14.5. Advance only after
+   the current item's gates clear.
+2. Expand a repair into individual steps and insert them before the still-pending
+   work. This replaces the current item, whose actual result stays in the record.
+   Add its destination only if not already the next pending step.
+3. For another repair, repeat rule 2 without discarding pending work.
+   The saved list takes precedence over ordinary next-step
+   sentences inside a repair. A range never adds unlisted steps.
+
+**Example:** Step 11 fixes insert `9 → 10 → 11` before 11.5. A further Step 9 fix
+affecting 6–8 makes the list `5 → 6 → 7 → 8 → 9 → 10 → 11 → 11.5`.
+The unchanged release steps follow. STOP and AskUserQuestion gates still apply during repairs.
 
 Keep the same attempt counts throughout the invocation. A range ending at Step 14
 does not enter Step 14.5. A range that includes Step 14.5 enters its existing audit
@@ -1858,7 +1864,7 @@ else
   fi
   GSTACK_BIN="$GSTACK_ROOT/bin"
 fi
-_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.
+_OUTSIDE_CFG=enabled
 if [ "$_OUTSIDE_CFG" = disabled ]; then
   echo 'CODEX_MODE: disabled'
 elif ( # GSTACK_ACTIVE_HOST names the harness, never the model.
@@ -2163,10 +2169,10 @@ the invocation record. Apply these decisions in order:
    Red Team. Retain queued fixes and restore coverage. If this pass made edits,
    resume at the next decision; otherwise run a fresh complete Step 9. A successful
    peer or a QA exception cannot replace missing dispatched coverage.
-2. **Third fixing cycle reached:** STOP and report recurring findings with
+2. **Third fixing cycle reached (`CYCLES >= 3`):** STOP and report recurring findings with
    `converged:false`; do not run a fourth fixing cycle.
-3. **Fixes applied below the cap:** Run Step 5, affected Steps 6–8, then all of
-   Step 9. Tests must pass or retain approval for the same verified pre-existing
+3. **Fixes applied below the cap:** Insert Step 5, affected Steps 6–8 and all of
+   Step 9 before the pending Step 10 in the work list. Tests must pass or retain approval for the same verified pre-existing
    failures and scope. Keep CYCLES and scoped approvals across this repeat.
 4. **No edits in this pass:** Resolve the required-probe gate below. Only after it
    clears may you continue to Step 10. Undispatched gated/unsupported specialists
@@ -2554,8 +2560,9 @@ in order before leaving Step 11:
    new attempt separately, then reconsider these decisions. Without that correction,
    or if the recovery fails, ask for repair and remain blocked.
 2. **Fixes queued after native completion:** Keep the findings and their approvals.
-   Run Steps 9–11, including full review before fixes. After all inner repairs finish,
-   return to Step 11.5. These fresh reviews after code edits are not recovery retries.
+   Insert Steps 9, 10 and 11 before the pending Step 11.5 in the work list.
+   Step 9 completes full review before fixes; any further repair inserts its checks
+   ahead of the remaining items. These fresh reviews after code edits are not recovery retries.
 3. **Native complete with no queued fixes:** Finish the memory updates below,
    then continue to Step 11.5. Never jump directly to release preparation.
 
@@ -2611,28 +2618,29 @@ one sentence. If none applies, continue without a reference.
    and Step 11 native record (`skill:"adversarial-review"`). Match each to its saved
    handle, original token and source; reject outside-provider or older invocation records.
 2. **Compare their content.** Require the native record's `review_binding.state`
-   to be `verified`. Compare its `wtree` with Step 9.4's `review_binding.start_wtree`
-   and `review_binding.end_wtree`. All three snapshots must match. Otherwise report
-   **Review records missing or mismatched**. Missing records or fields also block
-   release preparation. Run Steps 9–11, finish their repair loops, then return here
-   to bind the new records. Never attach new tokens to old work.
-3. **Preserve any QA exception.** Compare Step 9.4's start/end snapshots even when
-   a named probe-risk exception leaves its root `wtree` absent. Matching content
+   to be `verified`. All three snapshots must match: its `wtree`, Step 9.4's
+   `review_binding.start_wtree` and `review_binding.end_wtree`. A mismatch or missing
+   record/field blocks release preparation: report **Review records missing or mismatched**
+   and insert `9 → 10 → 11 → 11.5` before Step 12. Bind the new records at 11.5.
+   Never attach new tokens to old work.
+3. **Preserve any QA exception.** A named probe-risk exception may leave Step 9.4's
+   root `wtree` absent; item 2 still compares its start/end snapshots. Matching content
    does not mean the failed or unrun probes passed. Keep Step 9.4's incomplete flags
    and the user's exception.
-4. **Save the evidence.** Save both records and the matching **reviewed tree** for
-   Step 16, then continue to Step 12.
+4. **Save the evidence.** Save both records and matching **reviewed tree** for
+   Step 16. Continue to Step 12.
 
 ## Step 12: Version bump (auto-decide)
 
-Before queue selection, reuse the recorded `BUMP_LEVEL` or save the chosen level.
+Item 3 needs `BUMP_LEVEL`: reuse this invocation's saved level. Otherwise FRESH
+chooses it in item 2 and ALREADY_BUMPED derives it in item 1.
 
 1. **Classify state** — pure reader, never writes:
    ```bash
    bun run $GSTACK_ROOT/bin/gstack-version-bump classify --base <base>
    ```
    Save the JSON `baseVersion` as `BASE_VERSION`, then read `state` and dispatch:
-   - **FRESH** → choose the level in item 2, then check the queue and write.
+   - **FRESH** → use the recorded level or choose it in item 2, then check the queue and write.
    - **ALREADY_BUMPED** → keep `NEW_VERSION=currentVersion`. If `BUMP_LEVEL` is missing,
      use the first changed component from `baseVersion` to `currentVersion`
      (major/minor/patch/micro; an absent fourth component is zero). Continue at item 3,
@@ -2649,7 +2657,8 @@ Before queue selection, reuse the recorded `BUMP_LEVEL` or save the chosen level
      **MAJOR**: ask for milestones or breaking changes. Use AskUserQuestion: recommended
      level with rationale, smaller level, or cancel. Wait; cancel stops before release
      writes or push and preserves existing work.
-   Save lowercase `BUMP_LEVEL`. Queue placement may advance the slot, not the intended level.
+   Save lowercase `BUMP_LEVEL`. A claimed version may move the next available number
+   forward, but cannot change the chosen MICRO/PATCH/MINOR/MAJOR level.
 
 3. **Queue-aware pick** (workspace-aware ship):
    ```bash
@@ -2777,19 +2786,17 @@ No edits means an executed audit, not a skip; report the section's verified outc
 
 Store-only releases audit `read-only` before distribution, without branch gates or source-write authority.
 
-Use the invocation record's count: an initial audit plus ONE repair/re-audit,
+**Attempt budget:** an initial audit plus ONE repair/re-audit in the invocation record,
 never a third attempt, even after Step 16 changes. Increment before each launch
 or inline takeover, including failed launches; inline work follows the same
 validation gates. A stale snapshot is neither a new attempt nor a current audit.
-Save the child handle: an exited child with missing
-output has stopped, but its audit is blocked.
+Save the child handle. An exited child with missing output is stopped, but its audit is blocked.
 
-First entry always launches the initial audit. A repair range that crosses Step 14.5
-enters this decision again; it does not authorize another launch or reset the count.
-On reentry, including Step 16 repairs and Step 17 recovery,
-reuse only this invocation's validated audit or named-risk decision whose accepted
+**Entry:** First entry always launches the initial audit.
+On reentry, reuse only this invocation's validated audit or named-risk decision whose accepted
 base/input hashes still match; retain its actual status and scope. Otherwise use
-Blocked recovery, not an unconditional launch. Unwaivable gates still apply.
+Blocked recovery, not an unconditional launch.
+Reentry never resets the count or authorizes a launch.
 
 ## Prepare the candidate
 
@@ -2804,7 +2811,7 @@ Blocked recovery, not an unconditional launch. Unwaivable gates still apply.
 3. Discover docs roots/authored templates per audit-scope and pause other writers.
    Save a private candidate outside the product tree with a fresh `audit_id`, mode
    (`edit`/`read-only`), base SHA, HEAD, selected paths, docs roots, index entries,
-   existing dirty/untracked paths and hashes of release files, generated outputs
+   existing dirty/untracked paths and hashes of the selected release paths, generated outputs
    and docs/templates. Use NUL-safe lists and resolve symlinks inside the repo.
    Fill the prompt placeholders with literal candidate values.
 
@@ -2873,8 +2880,9 @@ auto-commit or push unexpected child commits.
    running/unknown handle, request stop and inspect its status; the request alone
    is insufficient. If still unconfirmed after one further ~5-minute window,
    STOP ship. Reject late results from abandoned ids.
-2. If an attempt remains and a concrete launch/input/permission correction or
-   reviewed patch repair is available, apply it with user approval for risky edits.
+2. If an attempt remains and either the audited inputs changed or
+   a concrete launch/input/permission correction or reviewed patch repair is available,
+   apply any repair with user approval for risky edits.
    Repeat Prepare using current inputs and a fresh id/snapshot, run the remaining
    attempt, then validate it through Parent processing.
 3. Otherwise STOP before commit/publication and do not launch another child.
@@ -2942,9 +2950,10 @@ Missing snapshots block this comparison, regardless of HEAD equality.
 Classify the comparison in this order:
 
 1. **Behavior, tests or build inputs changed:** Prompts/templates count as behavior.
-   Run Steps 5–11.5, then Steps 12–14 only. Finish all inner repairs and return to
-   Step 16 stage 1, not Step 14.5. Rebuild and compare again before stage 3 decides
-   documentation freshness.
+   Insert `5–11.5 → 12–14 → 16` before the pending Step 17, then stop this step.
+   This repair excludes Step 14.5 because the rebuild can change generated docs.
+   Step 16 restarts at stage 1: rebuild and compare again before stage 3 decides
+   documentation freshness. Further repairs use the same work list.
 2. **Only authored docs or release metadata changed:** Keep Step 8's original child
    report and counts. Recheck affected plan items using their recorded verification
    and append current evidence to the invocation record. If a classification is no
@@ -2955,22 +2964,28 @@ Classify the comparison in this order:
 
 ### 3. Resolve documentation freshness
 
-1. Compare the base, release files, docs/templates and generated content with
-   Step 14.5's accepted audit hashes.
-2. Reuse only this invocation's accepted audit. If its inputs are unchanged,
-   continue to stage 4; a prior invocation's audit never qualifies.
-3. If the user accepted a named documentation risk, retain `Documentation: blocked`,
-   its reason and incomplete scope. That decision covers only its approved scope
-   and exact content. With unchanged content and cleared unwaivable gates, continue
-   to stage 4. Changed content requires the recovery below, not silent reuse.
-4. Otherwise report the changed inputs, blockers and attempts used. Return to
-   Step 14.5's existing audit decision and Blocked recovery, keeping its attempt count.
-   If an attempt remains and a repair is available, complete the permitted repair/re-audit and its validation,
-   then Step 15; return to Step 16 stage 1 to regenerate and compare again.
-   If no attempt remains or no repair is available, STOP unless the user accepts
-   the specific named documentation risk and all unwaivable gates clear. Never run
-   a third audit. After that decision, unchanged approved content goes to stage 4;
-   repaired content goes to stage 1. Returning from a child is not acceptance.
+Compare the base and hashes of the selected release paths, generated
+outputs and docs/templates with Step 14.5's saved values. A prior invocation's
+audit or risk decision never qualifies.
+
+| Outcome | Action |
+|---|---|
+| This invocation's accepted audit matches all inputs | Continue to stage 4. |
+| User-accepted named documentation risk covers the same approved scope and exact content, and unwaivable gates clear | Continue to stage 4; retain `Documentation: blocked`, its reason and incomplete scope. |
+| Missing, stale or blocked | Use recovery below. Never silently refresh hashes. |
+
+Report changed inputs, blockers and attempts used:
+
+- **An attempt remains, with changed inputs or an available repair:** insert
+  `14.5 → 15 → 16` before Step 17. Use Blocked recovery with the existing count.
+  Validate the outcome before Step 15,
+  then restart Step 16 stage 1 to regenerate and compare again.
+- **Otherwise:** STOP unless the user accepts
+  the specific named documentation risk and all unwaivable gates clear, under
+  Step 14.5's Blocked recovery rules. Unchanged approved content goes to stage 4;
+  repaired content goes to stage 1.
+
+Never run a third audit. Child return is not acceptance.
 
 ### 4. Verify the frozen candidate
 

@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { prepareWorkflowJudgeCache, validWorkflowJudgeScore, workflowJudgeDependencies, type WorkflowCacheOptions } from './helpers/workflow-judge-cache';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt } from './helpers/workflow-judge-input';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES } from './helpers/workflow-judge-input';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
@@ -124,6 +124,20 @@ test('runtime/model/threshold changes miss, and retries never reuse or publish',
   expect(retry.lookup()).toBeNull(); retry.publish(scores); expect(f.entries()).toHaveLength(1);
 });
 
+test('frontier reader calibration cannot reuse a score from the unspecified-reader rubric', () => {
+  const f = fixture(); f.cache().publish(scores);
+  const original = f.opts.prompt;
+  f.opts.agentCapability = 'frontier'; f.refreshPrompt();
+  expect(f.opts.prompt).not.toBe(original);
+  expect(f.cache().lookup()).toBeNull();
+  f.cache().publish(scores);
+  expect(f.entries()).toHaveLength(2);
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+  delete f.opts.agentCapability; f.refreshPrompt();
+  expect(f.opts.prompt).toBe(original);
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+});
+
 test('failed assertions, missing provenance, and missing imported dependencies cannot supply a receipt', () => {
   const f = fixture(); f.cache().publish({ ...scores, clarity: 3 }); expect(f.entries()).toHaveLength(0);
   f.opts.env = { ...f.env, EVALS_RUN_ID: '' }; f.cache().publish(scores); expect(f.entries()).toHaveLength(0);
@@ -189,6 +203,28 @@ function actualCallback(f: ReturnType<typeof fixture>, overrides: {
     JudgeRefusalError, getCookieWorkflowManualReview, DEFAULT_JUDGE_MAX_TOKENS);
   return { run, records, signals, prompts, attempts, options: { ...f.opts, suite: 'Cache regression' } };
 }
+
+test('the registered ship callback sends the frontier rubric and still rejects subthreshold clarity', async () => {
+  const source = fs.readFileSync(path.join(import.meta.dir, 'skill-llm-eval.test.ts'), 'utf8');
+  const registration = source.match(/testIfSelected\('ship\/SKILL\.md workflow',[\s\S]*?await runWorkflowJudge\(\{([\s\S]*?)\n    \}\);/);
+  expect(registration).not.toBeNull();
+  const registered = new Function('QA_DISCOVERY_REFERENCES', `return ({${registration![1]}});`)(QA_DISCOVERY_REFERENCES);
+  const f = fixture();
+  Object.assign(f.env, { EVALS_FRESH: '1' });
+  const options = { ...registered, skillPath: f.opts.skillPath, startMarker: f.opts.startMarker,
+    endMarker: f.opts.endMarker, references: [] };
+  const passing = actualCallback(f);
+  await passing.run(options);
+  expect(passing.prompts).toHaveLength(1);
+  expect(passing.prompts[0]).toContain('GPT-5.6 Sol-level capability or stronger');
+  expect(passing.records[0]).toMatchObject({ passed: true, execution: 'executed' });
+  const failing = actualCallback(f, { judge: async () => ({ ...scores, clarity: 3 }) });
+  await expect(failing.run(options)).rejects.toThrow();
+  expect(failing.prompts).toEqual(passing.prompts);
+  expect(failing.records[0]).toMatchObject({ passed: false, execution: 'executed',
+    exit_reason: 'validation_failed', judge_scores: { clarity: 3 } });
+  expect(f.entries()).toHaveLength(0);
+});
 
 test('the actual workflow callback executes once, reuses with provenance, and preserves assertion failures', async () => {
   const f = fixture(); const first = actualCallback(f);

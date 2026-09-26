@@ -113,7 +113,7 @@ describe('content-binding template drift', () => {
     expect(army.replace(/\s+/g, ' ')).toContain('Complete items 5–6 exactly once with the original REVIEW_START');
     expect(army).toContain('fixes also require `converged:false`');
     const ship = rendered('ship/SKILL.md');
-    expect(army.replace(/\s+/g, ' ')).toContain('**Third fixing cycle reached:** STOP and report recurring findings with `converged:false`; do not run a fourth fixing cycle');
+    expect(army.replace(/\s+/g, ' ')).toContain('**Third fixing cycle reached (`CYCLES >= 3`):** STOP and report recurring findings with `converged:false`; do not run a fourth fixing cycle');
     expect(ship.replace(/\s+/g, ' ')).toContain('Keep the same attempt counts throughout the invocation');
     expect(ship.replace(/\s+/g, ' ')).toContain('a repair never resets approvals or expands them');
     expect(army).toContain('--start design-review-lite');

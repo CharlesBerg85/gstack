@@ -15,7 +15,7 @@ test('ship STOP blocks advancement while retaining the stated repair route', () 
   const review = compact(read('ship/sections/review-army.md.tmpl'));
   expect(review).toContain('**Dispatched reviewer output missing:** STOP');
   expect(review).toContain('Retain queued fixes and restore coverage');
-  expect(review).toContain('**Third fixing cycle reached:** STOP');
+  expect(review).toContain('**Third fixing cycle reached (`CYCLES >= 3`):** STOP');
   expect(entry).toContain('Routine authorization never waives those gates or their required user decisions');
 });
 
@@ -46,8 +46,8 @@ test('docs reentry distinguishes the initial audit from same-invocation accepted
   const docs = compact(read('ship/sections/documentation.md.tmpl'));
   const entry = docs.slice(0, docs.indexOf('## Prepare the candidate'));
   expect(entry).toContain('First entry always launches the initial audit');
-  expect(entry).toContain('On reentry, including Step 16 repairs and Step 17 recovery');
-  expect(entry).toContain('A repair range that crosses Step 14.5 enters this decision again; it does not authorize another launch or reset the count');
+  expect(entry).toContain('On reentry, reuse only this invocation\'s validated audit or named-risk decision');
+  expect(entry).toContain('Reentry never resets the count or authorizes a launch');
   expect(entry).toContain("this invocation's validated audit or named-risk decision");
   expect(entry).toContain('base/input hashes still match');
   expect(entry).toContain('retain its actual status and scope');
@@ -60,7 +60,7 @@ test('docs reentry distinguishes the initial audit from same-invocation accepted
 test('late behavioral repairs rebuild before the docs decision and commit only remaining changes', () => {
   const entry = compact(read('ship/SKILL.md.tmpl'));
   expect(entry).toContain('A range ending at Step 14 does not enter Step 14.5');
-  expect(entry).toContain('Rebuild and compare again before stage 3 decides documentation freshness');
+  expect(entry).toContain('rebuild and compare again before stage 3 decides documentation freshness');
   const commit = entry.slice(entry.indexOf('### 5. Report, then push'), entry.indexOf('## Step 17:'));
   expect(commit).toContain('left uncommitted after Step 15');
   expect(commit).toContain('never create an empty commit');

@@ -91,7 +91,7 @@ describe('workflow judge excerpts', () => {
     expect(text).toContain("Continue to Step 9.2 with the core/design-lite findings and an empty specialist list, then the parent's Exploratory QA step and Step 9.3 (cross-review dedup)");
     expect(text).toContain('## Step 9.4: Fix-First and persistence');
     expect(text.replace(/\s+/g, ' ')).toContain('Run checklist/design, specialists (9.1), merge/Red Team (9.2), exploratory QA (9.2.1), dedup (9.3), then fixes and logging (9.4)');
-    expect(text.replace(/\s+/g, ' ')).toContain('**Fixes applied below the cap:** Run Step 5, affected Steps 6–8, then all of Step 9. Tests must pass or retain approval for the same verified pre-existing failures and scope');
+    expect(text.replace(/\s+/g, ' ')).toContain('**Fixes applied below the cap:** Insert Step 5, affected Steps 6–8 and all of Step 9 before the pending Step 10 in the work list. Tests must pass or retain approval for the same verified pre-existing failures and scope');
     const audit = text.slice(text.indexOf('## Step 7:'), text.indexOf('## Step 8:'));
     expect(audit).not.toContain('Scope Challenge');
     expect(text.replace(/\s+/g, ' ')).toContain('Keep actual outcomes and incomplete flags; VERIFY_RESULT stays fail for plan-check exceptions');
@@ -99,9 +99,9 @@ describe('workflow judge excerpts', () => {
 
   test('ship excerpt preserves readable detours, audit fallback and final input decisions', () => {
     const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules').replace(/\s+/g, ' ');
-    expect(text).toContain('resume the unfinished outer range');
-    expect(text).toContain('a Step 9 retry must finish before Steps 10 and 11 complete');
-    expect(text).toContain('the outer repair returns to Step 11.5');
+    expect(text).toContain('For another repair, repeat rule 2 without discarding pending work');
+    expect(text).toContain('A further Step 9 fix affecting 6–8 makes the list `5 → 6 → 7 → 8 → 9 → 10 → 11 → 11.5`');
+    expect(text).toContain('The unchanged release steps follow');
     expect(text).toContain('All three snapshots must match');
     expect(text).toContain('does not mean the failed or unrun probes passed');
     expect(text).toContain('Fallback recovers the audit; it does not pass or bypass the coverage gate');
@@ -138,7 +138,7 @@ describe('workflow judge excerpts', () => {
     expect(flat).toContain('**No edits in this pass:** Resolve the required-probe gate below. Only after it clears may you continue to Step 10');
     expect(flat).toContain('**Dispatched reviewer output missing:** STOP');
     expect(flat).toContain('Retain queued fixes and restore coverage');
-    expect(flat).toContain('**Third fixing cycle reached:** STOP and report recurring findings with `converged:false`; do not run a fourth fixing cycle');
+    expect(flat).toContain('**Third fixing cycle reached (`CYCLES >= 3`):** STOP and report recurring findings with `converged:false`; do not run a fourth fixing cycle');
     expect(flat).toContain('With completed checklist and dispatched reviewers, failed/unavailable required probes block continuation');
   });
 

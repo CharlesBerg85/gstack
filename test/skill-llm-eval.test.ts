@@ -600,6 +600,7 @@ async function runWorkflowJudge(opts: {
   references?: readonly string[];
   judgeContext: string;
   judgeGoal: string;
+  agentCapability?: 'frontier';
   thresholds?: { clarity: number; completeness: number; actionability: number };
   readInput?: () => WorkflowJudgeInput;
 }) {
@@ -728,6 +729,7 @@ describeIfSelected('Ship & Release skill evals', ['ship/SKILL.md workflow', 'doc
     await runWorkflowJudge({
       testName: 'ship/SKILL.md workflow',
       suite: 'Ship & Release skill evals',
+      agentCapability: 'frontier',
       // The contract now precedes platform detection; keep the complete workflow.
       skillPath: 'ship/SKILL.md',
       startMarker: '# Ship:',

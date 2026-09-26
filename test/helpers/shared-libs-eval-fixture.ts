@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { extractSkillSections, sliceBetween } from './skill-fixture';
 import type { EvalCollector, EvalTestEntry } from './eval-store';
+import type { HookCallback } from '@anthropic-ai/claude-agent-sdk';
 
 export const SHARED_LIBS_ROOT = path.resolve(import.meta.dir, '../..');
 export const SHARED_INTERACTIVE_MAX_TURNS = 30;
@@ -713,18 +714,43 @@ export function specialistFixture(f: SharedLibsFixture): string {
   return file;
 }
 
-export function reviewPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string): string {
+export interface SharedReviewResume {
+  input: string;
+  checkCommand: string;
+}
+
+export interface SharedReviewStageActor {
+  actorCommand: string;
+  hooks: { PreToolUse: Array<{ hooks: HookCallback[] }> };
+  history(): any[];
+  verify(events: any[]): boolean;
+}
+
+export function reviewPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string, resumed?: SharedReviewResume | Pick<SharedReviewStageActor, 'actorCommand'>): string {
+  const scope = resumed && 'actorCommand' in resumed ? `This is an edit-capable component replay with an explicitly declared SYNTHETIC prerequisite actor, not an end-to-end QA/adversarial evaluation. Completed maintainability findings are supplied in ${specialistInput}; verify them against real source. Execute the core/checklist, merge, Fix-First decisions, approved source edits, re-review, convergence and final persistence yourself.
+At the Step 4.7/4.8 prerequisite boundary of each review pass, invoke the following as the sole command in its Bash call. The registered fixture actor simulates the otherwise stubbed QA and native adversarial stages at that invocation, checks fixture isolation and authored evidence/identity, and returns a NEW synthetic result bound to that exact current state and tool-use ID. It never executes target code. Read and consume the complete returned JSON, not a previously saved receipt.
+\`\`\`sh
+${resumed.actorCommand}
+\`\`\`
+All prior receipts are preserved. Source-changing cycles invalidate earlier results: after edits, repeat the core review and invoke the actor again on the new zero-edit pass before final persistence. Never refresh an old receipt's hashes or relabel it as a new invocation. Missing, failed, stale or wrong-state results require noncompletion. The actor cannot complete core/checklist review, approve edits, answer decision questions or establish convergence for you. Apply the production COMPLETED/CONVERGED rules to your own work plus the current supplied results; never ask the question actor to override completion. Other specialists and outside providers are not dispatched in this component fixture. In the summary identify these as simulated fixture-stage interactions, not actual QA or native adversarial execution; they receive no actual native coverage credit.`
+    : resumed ? `This is a bounded, no-edit resumed-stage fixture. The completed maintainability result is supplied in ${specialistInput}; verify its findings against real source. Read ${resumed.input}: it supplies clearly labeled SYNTHETIC settled Step 4.7 QA and Step 4.8 native adversarial prerequisite results for this isolated fixture state, not evidence that this model executed those stages and never actual native coverage credit. Other specialists and outside providers are not dispatched in this fixture. Do not dispatch or rerun them.
+Execute the core/checklist, merge, Fix-First decisions, source/identity/snapshot checks and final persistence yourself. Do not edit target source or Git index flags. A finding that requires edits blocks this bounded replay: report it honestly, without suppressing it or claiming completion. Before final persistence, after your final source checks, run this fixture prerequisite check as the sole command in its Bash call and inspect the entire JSON result:
+\`\`\`sh
+${resumed.checkCommand}
+\`\`\`
+Only a current result with settled:true supplies the required QA and native adversarial prerequisites; it does not complete your own remaining work. Apply the workflow's unchanged COMPLETED and CONVERGED rules to that combined evidence. Missing, failed, blocked, malformed or stale prerequisites require noncompletion, never an override based on scope. Any source, branch, base, index or configuration change invalidates these supplied results and blocks this bounded no-edit replay; do not regenerate them or claim completion. In the final summary identify QA and native adversarial results as synthetic fixture inputs, not stages you executed.`
+    : `This is a fixture of the core, merge, Fix-First, and final persistence stages. Specialist input for the merge stage is supplied in ${specialistInput}; verify it against the real source. Do not dispatch additional specialists or outside providers. Never claim that omitted stages completed.
+Required reviewer coverage for this scoped replay is the core/checklist review plus the supplied completed maintainability result. Verify the supplied findings against actual source. Other specialist and provider stages are outside this invocation's scope, not unavailable required reviewers. If a required stage or its result actually fails or is missing, preserve the workflow's non-completion rules.`;
   return `Read the fixture workflow at ${instructions} first. Review this repository's current diff against origin/main using that workflow and the actual checklist at ${SHARED_LIBS_ROOT}/review/checklist.md.
-This is a fixture of the core, merge, Fix-First, and final persistence stages. Specialist input for the merge stage is supplied in ${specialistInput}; verify it against the real source. Do not dispatch additional specialists or outside providers. Never claim that omitted stages completed.
-Required reviewer coverage for this scoped replay is the core/checklist review plus the supplied completed maintainability result. Verify the supplied findings against actual source. Other specialist and provider stages are outside this invocation's scope, not unavailable required reviewers. If a required stage or its result actually fails or is missing, preserve the workflow's non-completion rules.
+${scope}
 The installed gstack helpers under ${SHARED_LIBS_ROOT}/bin and ${SHARED_LIBS_ROOT}/lib, plus the provider wrappers under ${f.bin}, are trusted harness infrastructure. Invoke their required interfaces; auditing their implementation or the fixture request logs is outside the target review. Still inspect target repository source, Git configuration and attributes, actual snapshot coverage, and prior/final persisted review records as the workflow requires.
-Execute the included workflow, including its real start captures, decision questions, any approved edits, convergence checks and final review record. The user will answer AskUserQuestion. This is a code review, not a standalone recent-history audit. Return the final review summary in conversation.`;
+Execute the included workflow, including its real start captures, decision questions, ${resumed && !('actorCommand' in resumed) ? 'zero-edit convergence checks' : 'any approved edits, convergence checks'} and final review record. The user will answer AskUserQuestion. This is a code review, not a standalone recent-history audit. Return the final review summary in conversation.`;
 }
 
 /** The revalidation replay measures the review lifecycle, not helper CLI discovery. */
-export function reviewRevalidationPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string): string {
+export function reviewRevalidationPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string, resumed?: SharedReviewResume): string {
   const startRecord = path.join(f.state, 'projects/fixture-shared-libs/.review-starts/<REVIEW_START>.json');
-  return `${reviewPrompt(f, instructions, specialistInput)}
+  return `${reviewPrompt(f, instructions, specialistInput, resumed)}
 
 Revalidation fixture execution contract:
 The runtime allows ${SHARED_INTERACTIVE_MAX_TURNS} assistant turns. Batch independent required source reads and other Git/configuration/attribute inspections only outside the receipt commands below. Preserve every required evidence check and dependency. This is a closed transport interface, not permission to omit workflow stages.
@@ -841,7 +867,9 @@ function skippedReviewOption(question: any): any {
     const describedRetention = !!preservedObject
       && !/^\w+ing\b/i.test(preservedObject)
       && (/^(?:(?:duplicated|original|prior|tracked|untracked)\s+)*(?:(?:index|skip-worktree|assume-unchanged)\s+)?(?:flags?|code|source|implementations?|copies|copy|files?|routes?|workers?|helpers?|parsers?|changes?|contents?|state|branches|branch|worktrees?)$/i.test(preservedObject)
-        || qualifiedIndexState.test(preservedObject));
+        || qualifiedIndexState.test(preservedObject)
+        || /^bits?$/i.test(preservedObject) && /\bbits?\s+set\s*$/i.test(preservation?.[1] ?? '')
+          && /\b(?:git|index|skip-worktree|assume-unchanged)\b[^?.!]*\b(?:bits?|flags?)\b/i.test(question.question ?? ''));
     const description = (option.description ?? '').replace(/[‘’]/g, "'").trim();
     const declinesChange = /^(?:do not|don't)\s+(?:apply|change|edit|fix|refactor|extract|modify|touch|clear|remove|update|replace|add|migrate|implement|reuse|import)\b/i;
     const inapplicable = /^not applicable$/i.test(label)
@@ -875,6 +903,7 @@ function skippedReviewOption(question: any): any {
         .replace(/^(?:will|would|should|must|can|may|does|do)\s+/, '')
         .replace(/^(?:(?:please|also|still|just|now|be)\s+)+/, '');
       if (/^(?:not|does not|don't|doesn't|won't|without|no)\b/.test(clause)) return false;
+      if (/\bgit\s+update-index\b/.test(clause)) return true;
       const first = clause.match(/^[a-z]+(?:-[a-z]+)*/)?.[0];
       const futureMatch = clause.match(/\b(?:will|would|should|must|can|may)\s+(?:(?:still|also|now|just|[a-z]+ly)\s+)*(?:be\s+)?(?:(?:still|also|now|just|[a-z]+ly)\s+)*([a-z]+(?:-[a-z]+)*)/);
       const future = futureMatch?.[1];
@@ -944,7 +973,8 @@ export function createSharedInteractiveToolHandler(choose: 'approve' | 'skip' | 
 }
 
 /** A real SDK capture supplies actual AskUserQuestion answers; no response/decision prose is forged. */
-export async function runSharedInteractive(f: SharedLibsFixture, testName: string, prompt: string, choose: 'approve' | 'skip' | SharedQuestionSelector) {
+export async function runSharedInteractive(f: SharedLibsFixture, testName: string, prompt: string, choose: 'approve' | 'skip' | SharedQuestionSelector,
+  fixtureOptions?: { stageActor?: SharedReviewStageActor; prerequisiteSource?: 'synthetic-fixture-input' }) {
   // Keep the real review fetch step hermetic while preserving all actual local Git/record operations.
   installSourceShims(f);
   const { runAgentSdkTest, passThroughNonAskUserQuestion, resolveClaudeBinary } = await import('./agent-sdk-runner');
@@ -973,7 +1003,8 @@ export async function runSharedInteractive(f: SharedLibsFixture, testName: strin
         timer = setTimeout(() => abortController.abort(), CAPTURE_MS);
         captureStartedAt = Date.now();
         fs.mkdirSync(diagnosticDirectory, { recursive: true });
-        const source = query({ ...args, options: { ...args.options, abortController } });
+        const source = query({ ...args, options: { ...args.options, abortController,
+          ...(fixtureOptions?.stageActor ? { hooks: fixtureOptions.stageActor.hooks } : {}) } });
         return new Proxy(source, {
           get(target, key) {
             if (key === Symbol.asyncIterator) return async function* () {
@@ -1003,6 +1034,8 @@ export async function runSharedInteractive(f: SharedLibsFixture, testName: strin
     return { result: Object.assign(result, {
       providerRequests: readRequests(f),
       costKnown: streamed.some(event => event.type === 'result' && typeof event.total_cost_usd === 'number'),
+      ...(fixtureOptions ? { fixturePrerequisiteSource: fixtureOptions.stageActor ? 'synthetic-fixture-stage-actor' : fixtureOptions.prerequisiteSource } : {}),
+      ...(fixtureOptions?.stageActor ? { fixtureStageReceipts: fixtureOptions.stageActor.history() } : {}),
     }), questions };
   } catch (cause) {
     const assistantTurns = streamed.filter(event => event.type === 'assistant');
@@ -1017,6 +1050,8 @@ export async function runSharedInteractive(f: SharedLibsFixture, testName: strin
       costUsd: terminal?.total_cost_usd ?? 0, costKnown: typeof terminal?.total_cost_usd === 'number',
       model: assistantTurns.find(event => event.message?.model)?.message.model,
       providerRequests: readRequests(f),
+      ...(fixtureOptions ? { fixturePrerequisiteSource: fixtureOptions.stageActor ? 'synthetic-fixture-stage-actor' : fixtureOptions.prerequisiteSource } : {}),
+      ...(fixtureOptions?.stageActor ? { fixtureStageReceipts: fixtureOptions.stageActor.history() } : {}),
     };
     const error = actorFailure ?? (cause instanceof Error ? cause : new Error(String(cause)));
     Object.assign(error, { sharedCapture: { result: partial, questions, diagnostic } });

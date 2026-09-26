@@ -3,11 +3,14 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  createSharedInteractiveToolHandler, reviewPrompt, reviewRevalidationPrompt,
+  createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureWrite, reviewPrompt, reviewRevalidationPrompt,
   SHARED_INTERACTIVE_MAX_TURNS, SHARED_LIBS_ROOT, type SharedLibsFixture,
 } from './helpers/shared-libs-eval-fixture';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { hasTrustedSharedLibsCheck } from './helpers/shared-libs-review-start-evidence';
+import { seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt,
+  type PathEligibilityFixture } from './helpers/shared-libs-path-fixture';
+import * as fixtureHelpers from './helpers/shared-libs-eval-fixture';
 
 const f = { root: '/fixture root', repo: '/fixture root/repo', state: '/fixture root/state',
   bin: '/fixture root/bin' } as SharedLibsFixture;
@@ -31,35 +34,66 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
   const removed: string[] = [];
   const attempts: any[] = [];
   const fixtures = new Map<string, SharedLibsFixture>();
+  const prepared = new Map<string, PathEligibilityFixture>();
   const afterCompletion = () => { throw new Error('A non-success capture reached completion checks'); };
   const exercise = new Function('deps', `const { captures, preparePathEligibilityFixture, fs, path,
     reviewLifecycleInstructions, reviewPrompt, reviewRevalidationPrompt, runSharedInteractive, readRequests,
     toolCommandTrace, sourceReadTrace, fixtureGit, fixtureWorkingTree, reviewRecords, expect, CAPTURE_LONG_MS,
-    hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT } = deps;
+    hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt } = deps;
     ${transpile(pathsSource.slice(start, end))} return exerciseEligibility;`)({
     captures: { runAttempt: async (name: string, kinds: string[], timeout: number, work: any) => {
       attempts.push({ name, kinds, timeout });
       return work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) });
     } },
     preparePathEligibilityFixture: (kind: string) => {
-      const root = path.join('/fixture root', kind);
-      const fixture = { root, repo: path.join(root, 'repo'), state: path.join(root, 'state'),
-        bin: path.join(root, 'bin') } as SharedLibsFixture;
-      fixtures.set(kind, fixture);
-      return { fixture, current: { evidence_paths: ['src/retry-route.ts'] } };
+      const fixture = createSharedLibsFixture(`prompt-${kind}`);
+      fixtureWrite(fixture, 'src/retry-route.ts', 'authored caller');
+      const value = { fixture, current: { evidence_paths: ['src/retry-route.ts'] },
+        sourcePaths: ['src/retry-route.ts'], rawPaths: [], beforeTree: '', resumed: seedPathReviewPrerequisites(fixture) };
+      prepared.set(kind, value);
+      fixtures.set(kind, value.fixture);
+      return value;
     },
-    fs: { readFileSync: () => 'authored caller', writeFileSync: () => {},
-      rmSync: (root: string) => { removed.push(root); } }, path,
+    fs: { ...fs, rmSync: (root: string) => { removed.push(root); fs.rmSync(root, { recursive: true, force: true }); } }, path,
     reviewLifecycleInstructions: (fixture: SharedLibsFixture) => path.join(fixture.root, 'review-lifecycle.md'),
     reviewPrompt, reviewRevalidationPrompt, runSharedInteractive: capture, readRequests: () => [],
     toolCommandTrace: afterCompletion, sourceReadTrace: afterCompletion,
     fixtureGit: afterCompletion, fixtureWorkingTree: afterCompletion, reviewRecords: afterCompletion, expect, CAPTURE_LONG_MS,
-    hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT,
+    hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt,
   });
-  return { exercise, rows, removed, attempts, fixtures };
+  return { exercise, rows, removed, attempts, fixtures, prepared };
 }
 
 describe('bounded shared-code revalidation prompt', () => {
+  test('edit-capable replay declares fresh actor invocations instead of refreshing settled input', () => {
+    const prompt = reviewPrompt(f, instructions, input, { actorCommand: 'cat /fixture/stage-output.json' });
+    expect(prompt).toContain('explicitly declared SYNTHETIC prerequisite actor');
+    for (const rule of ['each review pass', 'NEW synthetic result', 'exact current state and tool-use ID',
+      'All prior receipts are preserved', 'Source-changing cycles invalidate earlier results',
+      'invoke the actor again on the new zero-edit pass', "Never refresh an old receipt's hashes",
+      'Missing, failed, stale or wrong-state results require noncompletion', 'cannot complete core/checklist review',
+      'no actual native coverage credit']) expect(prompt).toContain(rule);
+    expect(prompt).not.toContain('Required reviewer coverage for this scoped replay');
+    expect(prompt).not.toContain('Do not edit target source');
+  });
+
+  test('resumed path scope supplies prerequisites without replacing completion or default caller instructions', () => {
+    const resumed = { input: '/isolated/synthetic-prerequisites.json', checkCommand: 'fixture-prerequisite-check' };
+    const original = reviewRevalidationPrompt(f, instructions, input);
+    const prompt = reviewRevalidationPrompt(f, instructions, input, resumed);
+    expect(original).toContain('Required reviewer coverage for this scoped replay is the core/checklist review plus the supplied completed maintainability result.');
+    expect(prompt).not.toContain('Required reviewer coverage for this scoped replay');
+    expect(prompt).toContain('SYNTHETIC settled Step 4.7 QA and Step 4.8 native adversarial');
+    for (const requirement of ['not evidence that this model executed those stages', 'never actual native coverage credit',
+      'Missing, failed, blocked, malformed or stale prerequisites require noncompletion', 'unchanged COMPLETED and CONVERGED rules',
+      'Any source, branch, base, index or configuration change invalidates', 'do not regenerate them',
+      'A finding that requires edits blocks this bounded replay', resumed.input, resumed.checkCommand]) expect(prompt).toContain(requirement);
+    expect(prompt.slice(prompt.indexOf('Revalidation fixture execution contract:')))
+      .toBe(original.slice(original.indexOf('Revalidation fixture execution contract:')));
+    const production = fs.readFileSync(path.join(SHARED_LIBS_ROOT, 'review/SKILL.md.tmpl'), 'utf8');
+    expect(production).toContain('Step 4.8 adversarial pass finish, and every required Step 4.7 probe passes.');
+  });
+
   test('adds execution guidance after the complete shared prompt without supplying an answer or token', () => {
     const base = reviewPrompt(f, instructions, input);
     const prompt = reviewRevalidationPrompt(f, instructions, input);
@@ -102,19 +136,65 @@ describe('bounded shared-code revalidation prompt', () => {
     expect(start).toBeGreaterThan(marker.length);
     expect(end).toBeGreaterThan(start);
     const result = { exitReason: 'success' };
+    const resumed = { input: '/fixture root/resumed-review-prerequisites.json', checkCommand: 'fixture-prerequisite-check' };
     const calls: any[] = [];
     const callback = transpile(`async function invokeCapture() { ${scenario.slice(start, end)} }`);
-    const invoke = new Function('deps', `const { f, instructions, input, reviewRevalidationPrompt, runSharedInteractive } = deps;
+    const invoke = new Function('deps', `const { f, instructions, input, resumed, reviewRevalidationPrompt, runSharedInteractive } = deps;
       let questions = []; ${callback} return invokeCapture;`)({
-      f, instructions, input, reviewRevalidationPrompt,
+      f, instructions, input, resumed, reviewRevalidationPrompt,
       runSharedInteractive: async (...args: any[]) => { calls.push(args); return { result, questions: [] }; },
     });
     expect(await invoke()).toBe(result);
-    expect(calls).toEqual([[f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input), 'skip']]);
+    expect(calls).toEqual([[f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { prerequisiteSource: 'synthetic-fixture-input' }]]);
     const lifecycle = source.slice(source.indexOf("test('shared-libs-review-lifecycle'"), source.indexOf("test('shared-libs-review-revalidation'"));
-    expect(lifecycle).toContain('reviewPrompt(f, instructions, input)');
+    expect(lifecycle).toContain('reviewPrompt(f, instructions, input, stageActor)');
     expect(lifecycle).not.toContain('reviewRevalidationPrompt(');
   });
+
+  test('all four registered revalidation variants supply prerequisites only after their state changes', async () => {
+    const contexts = new Map<string, any>(), labels = new Map<string, string>(), rows: any[] = [];
+    let registered: () => Promise<void>;
+    const record = source.slice(source.indexOf('async function recordCapture('), source.indexOf('\nfunction assertReadOnly('));
+    const registration = source.slice(source.indexOf("  test('shared-libs-review-revalidation'"), source.lastIndexOf('\n});'));
+    new Function('deps', `const { test, captures, fs, path, expect, CAPTURE_LONG_MS,
+      createSharedLibsFixture, seedReviewSources, fixtureWrite, installNormalizingFilter, seedSkippedAdvisory,
+      fixtureWorkingTree, fixtureGit, reviewLifecycleInstructions, seedPathReviewPrerequisites, checkPathReviewPrerequisites,
+      reviewRevalidationPrompt, runSharedInteractive } = deps; ${transpile(record + registration)}`)({
+      ...fixtureHelpers, fs, path, expect, CAPTURE_LONG_MS,
+      test: (name: string, body: () => Promise<void>, timeout: number) => {
+        expect(name).toBe('shared-libs-review-revalidation'); expect(timeout).toBe(CAPTURE_LONG_MS); registered = body;
+      },
+      captures: { runAttempt: async (_name: string, cases: string[], _timeout: number, work: any) => {
+        expect(cases).toEqual(['unchanged', 'secondary', 'branch', 'filtered']);
+        return work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) });
+      } },
+      createSharedLibsFixture: (label: string) => { const f = fixtureHelpers.createSharedLibsFixture(label); labels.set(f.root, label); return f; },
+      seedPathReviewPrerequisites: (f: SharedLibsFixture) => {
+        const resumed = seedPathReviewPrerequisites(f), checked = checkPathReviewPrerequisites(f, resumed.input);
+        expect(checked.settled).toBe(true);
+        const label = labels.get(f.root)!;
+        expect(checked.context.binding.branch).toBe(label === 'revalidate-branch' ? 'feature-a' : 'feature/a');
+        const caller = fs.readFileSync(path.join(f.repo, 'src/retry-route.ts'), 'utf8');
+        if (label === 'revalidate-secondary') expect(caller).toContain('Caller integration changed after the skipped review');
+        if (label === 'revalidate-filtered') expect(caller).toContain('RAW-ONLY changed caller bytes after the skipped review');
+        contexts.set(f.root, { resumed, checked });
+        return resumed;
+      }, checkPathReviewPrerequisites,
+      runSharedInteractive: async (f: SharedLibsFixture, name: string, prompt: string, choice: string, options: any) => {
+        expect(name).toBe('shared-libs-review-revalidation'); expect(choice).toBe('skip');
+        expect(options).toEqual({ prerequisiteSource: 'synthetic-fixture-input' });
+        const supplied = contexts.get(f.root);
+        expect(checkPathReviewPrerequisites(f, supplied.resumed.input)).toEqual(supplied.checked);
+        expect(prompt).toBe(reviewRevalidationPrompt(f, path.join(f.root, 'review-lifecycle.md'), path.join(f.root, 'current-advisory.jsonl'), supplied.resumed));
+        throw new Error('Free revalidation boundary reached');
+      },
+    });
+    await expect(registered!()).rejects.toThrow('Free revalidation boundary reached');
+    expect(contexts.size).toBe(4);
+    expect(rows).toHaveLength(4);
+    expect(rows.every(({ row }) => row.passed === false)).toBe(true);
+    for (const root of contexts.keys()) expect(fs.existsSync(root)).toBe(false);
+  }, 30_000);
 
   test('the actual interactive runner uses the declared existing limit without changing clocks or actor', async () => {
     const start = helper.indexOf('export async function runSharedInteractive(');
@@ -139,8 +219,9 @@ describe('bounded shared-code revalidation prompt', () => {
         resolveClaudeBinary: () => '/fixture/claude' },
       provider: { query: () => { throw new Error('No provider may run in this free adapter'); } },
     });
-    await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip');
+    const plain = await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip');
     expect(shimCalls).toBe(1);
+    expect(plain.result.fixturePrerequisiteSource).toBeUndefined();
     expect(observed.maxTurns).toBe(SHARED_INTERACTIVE_MAX_TURNS);
     expect(observed.maxTurns).toBe(30);
     expect(observed.maxRetries).toBe(0);
@@ -148,6 +229,8 @@ describe('bounded shared-code revalidation prompt', () => {
     expect(observed.allowedTools).toContain('AskUserQuestion');
     expect(CAPTURE_MS).toBe(300_000);
     expect(CAPTURE_LONG_MS).toBe(600_000);
+    const supplied = await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip', { prerequisiteSource: 'synthetic-fixture-input' });
+    expect(supplied.result.fixturePrerequisiteSource).toBe('synthetic-fixture-input');
   });
 
   test('actual recordCapture rejects native max-turns even after verified CURRENT persistence', async () => {
@@ -195,7 +278,7 @@ describe('bounded shared-code revalidation prompt', () => {
     for (const kind of kinds) {
       const fixture = adapter.fixtures.get(kind)!;
       const expected = reviewRevalidationPrompt(fixture, path.join(fixture.root, 'review-lifecycle.md'),
-        path.join(fixture.root, 'current-advisory.jsonl'))
+        path.join(fixture.root, 'current-advisory.jsonl'), adapter.prepared.get(kind)!.resumed)
         + '\nAll named caller sources are first-party authored runtime code. Inspect them directly, including any Git/path boundary, before deciding whether the previous review decision can be reused. The fixture contains no generated caller sources.';
       expect(calls.find(call => call[0] === fixture)).toEqual([fixture, name, expected, 'skip']);
       expect(adapter.rows.find(row => row.scenario === kind)?.row.passed).toBe(false);

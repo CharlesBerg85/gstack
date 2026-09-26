@@ -24,15 +24,31 @@ export const QA_DISCOVERY_REFERENCES = [
   'qa/templates/functional-report-template.md',
 ];
 
-/** Exact existing rubric/request text; extraction must not resample a new prompt. */
-export function buildWorkflowJudgePrompt(opts: { judgeContext: string; judgeGoal: string }, input: WorkflowJudgeInput): string {
+export function buildWorkflowJudgePrompt(opts: {
+  judgeContext: string;
+  judgeGoal: string;
+  agentCapability?: 'frontier';
+}, input: WorkflowJudgeInput): string {
   return `You are evaluating the quality of ${opts.judgeContext} for an AI coding agent.
 
 The agent reads these source files to learn ${opts.judgeGoal}. Shared preamble definitions and
 external tools/files are documented separately; do not penalize their absence from this bundle.
 On-demand sections retain their original file boundaries and Read instructions; the section
 index refers to those files, not duplicate work. The bundle order is not execution order.
-Judge the actual instructions, including contradictory ordering or missing decisions.
+Judge the actual instructions, including contradictory ordering or missing decisions.${opts.agentCapability === 'frontier' ? `
+
+Target reader: a frontier coding agent with GPT-5.6 Sol-level capability or stronger.
+Assume it can follow explicit cross-references, track saved state and a bounded work list,
+and distinguish conditional branches. Length, technical vocabulary and multiple explicit recovery paths alone are not clarity defects.
+Do not invent missing policies, permissions or evidence to make a workflow executable.
+
+Clarity 4 means the target agent can determine the next permitted action on each applicable path;
+5 additionally means those paths are easy to locate and understand.
+Score clarity 3 or lower when execution still requires guessing because of
+conflicting order, undefined decisions, unclear authority or missing input/output handling.
+Evaluate the whole workflow, but keep the JSON reasoning under 150 words with at most two decisive examples.
+For a clarity defect, cite the specific file/step and explain the competing actions or missing decision.
+Keep completeness and actionability independent: reader capability does not supply missing requirements.` : ''}
 
 Rate on three dimensions (1-5 scale):
 - **clarity** (1-5): Can an agent follow the instructions without ambiguity?

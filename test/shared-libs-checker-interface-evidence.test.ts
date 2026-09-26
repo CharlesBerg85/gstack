@@ -11,7 +11,9 @@ import {
   SHARED_LIBS_ROOT, shellQuote, toolCommandTrace,
   type SharedLibsFixture,
 } from './helpers/shared-libs-eval-fixture';
-import { preparePathEligibilityFixture, type PathEligibilityFixture } from './helpers/shared-libs-path-fixture';
+import {
+  preparePathEligibilityFixture, seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt, type PathEligibilityFixture,
+} from './helpers/shared-libs-path-fixture';
 import { CAPTURE_LONG_MS } from './helpers/eval-budgets';
 
 const helper = path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log');
@@ -49,7 +51,9 @@ async function capture(change: string, prepared?: PathEligibilityFixture, declar
   };
   const instructionFile = reviewLifecycleInstructions(f);
   const instructions = fs.readFileSync(instructionFile, 'utf8');
-  const protocol = declared ? [...reviewRevalidationPrompt(f, instructionFile, path.join(f.root, 'current-advisory.jsonl'))
+  const resumed = prepared?.resumed ?? seedPathReviewPrerequisites(f);
+  const prerequisites = checkPathReviewPrerequisites(f, resumed.input);
+  const protocol = declared ? [...reviewRevalidationPrompt(f, instructionFile, path.join(f.root, 'current-advisory.jsonl'), resumed)
     .matchAll(/```bash\n([\s\S]*?)\n```/g)].map(match => match[1]) : [];
   if (declared) expect(protocol).toHaveLength(3);
   const startCommand = instructions.match(/```bash\n(DIFF_BASE=\$[\s\S]*?)\n```/)?.[1];
@@ -77,6 +81,11 @@ async function capture(change: string, prepared?: PathEligibilityFixture, declar
     events.push({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id,
       content: JSON.stringify(answer.updatedInput.answers) }] } });
   }
+  {
+    const settled = JSON.parse(invoke(resumed.checkCommand));
+    expect(settled).toEqual(checkPathReviewPrerequisites(f, resumed.input));
+    expect(settled).toMatchObject({ synthetic: true, native_coverage: false, settled: true, current: true });
+  }
   const finishAt = events.length;
   const record = JSON.stringify({ skill: 'review', status: 'clean', issues_found: 0,
     completed: true, converged: true, findings: change === 'unchanged' ? [] : [{ ...current, action: 'skipped' }] });
@@ -87,7 +96,7 @@ async function capture(change: string, prepared?: PathEligibilityFixture, declar
     branch: fixtureGit(f, 'symbolic-ref', '--quiet', '--short', 'HEAD'), wtree: fixtureWorkingTree(f),
     startedAt: receipt.review_start.started_at, finding: current, reusable: change === 'unchanged',
     coveredPaths: receipt.snapshot.covered_paths };
-  return { f, current, token, receipt, events, checkAt, finishAt, expected, prepared, ...(declared ? { questions } : {}) };
+  return { f, current, token, receipt, events, checkAt, finishAt, expected, prepared, resumed, prerequisites, ...(declared ? { questions } : {}) };
 }
 
 beforeAll(async () => {
@@ -120,24 +129,130 @@ function pathCallback(run: any, overrides: Record<string, any> = {}) {
   const exercise = new Function('deps', new Bun.Transpiler({ loader: 'ts' }).transformSync(`const {
     captures, preparePathEligibilityFixture, fs, path, reviewLifecycleInstructions, reviewRevalidationPrompt,
     runSharedInteractive, readRequests, toolCommandTrace, fixtureGit, fixtureWorkingTree, reviewRecords, expect,
-    CAPTURE_LONG_MS, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT } = deps;
+    CAPTURE_LONG_MS, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT,
+    checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt } = deps;
     ${pathSource.slice(readStart, end)} return exerciseEligibility;`))({
     captures: { runAttempt: async (_name: string, _kinds: string[], _timeout: number, work: any) =>
       work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) }) },
     preparePathEligibilityFixture: () => run.prepared,
     fs: { ...fs, rmSync: (directory: string) => { expect(directory).toBe(run.f.root); } }, path,
     reviewLifecycleInstructions, reviewRevalidationPrompt,
-    runSharedInteractive: async (_fixture: any, _name: string, _prompt: string, choice: string) => {
+    runSharedInteractive: async (fixture: any, _name: string, prompt: string, choice: string) => {
       expect(choice).toBe('skip');
+      expect(fixture).toBe(run.prepared.fixture);
+      expect(prompt).toContain(reviewRevalidationPrompt(fixture, path.join(fixture.root, 'review-lifecycle.md'),
+        path.join(fixture.root, 'current-advisory.jsonl'), run.prepared.resumed));
       return { result: native, questions: run.questions ?? [{}] };
     },
     readRequests: () => [], toolCommandTrace, fixtureGit, fixtureWorkingTree, reviewRecords, expect,
-    CAPTURE_LONG_MS, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT, ...overrides,
+    CAPTURE_LONG_MS, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT,
+    checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt, ...overrides,
   });
   return { rows, invoke: () => exercise('shared-libs-review-path-eligibility', [run.kind]) };
 }
 
 describe('native executable shared-code checker evidence', () => {
+  test('the actual path callback consumes the current synthetic prerequisite result without claiming native coverage', async () => {
+    const run = replay('declared-path-assume-unchanged');
+    run.kind = 'assume-unchanged';
+    let verified = 0;
+    const adapter = pathCallback(run, { hasPathReviewPrerequisiteReceipt: (events: any[], command: string, expected: any) => {
+      verified++;
+      expect(command).toBe(run.prepared.resumed.checkCommand);
+      expect(expected).toMatchObject({ synthetic: true, native_coverage: false, settled: true, current: true });
+      expect(expected.context.binding.repo).toBe(run.f.repo);
+      expect(expected.context.binding.state).toBe(run.f.state);
+      expect(expected.context.binding.index).toMatch(/^h /m);
+      return hasPathReviewPrerequisiteReceipt(events, command, expected);
+    } });
+    await adapter.invoke();
+    expect(verified).toBe(1);
+    expect(adapter.rows[0].row.passed).toBe(true);
+    expect(adapter.rows[0].row.transcript[0]).toMatchObject({
+      prerequisite_source: 'synthetic-fixture-input', prerequisite_native_coverage: false,
+    });
+    const refused = pathCallback(run, { hasPathReviewPrerequisiteReceipt: () => false });
+    await expect(refused.invoke()).rejects.toThrow('consume current synthetic prerequisites');
+    expect(refused.rows[0].row.passed).toBe(false);
+  });
+
+  test.each(['missing', 'failed', 'unpaired', 'assistant-only', 'caption', 'false', 'foreign state', 'after finish'])(
+    'the registered path callback rejects %s prerequisite receipts even with a completed record', async invalid => {
+      const run = replay('declared-path-ignored');
+      run.kind = 'ignored';
+      const at = run.events.findIndex((event: any) => event.type === 'assistant'
+        && event.message.content[0].input?.command === run.prepared.resumed.checkCommand);
+      expect(at).toBeGreaterThan(run.checkAt);
+      if (invalid === 'missing') run.events.splice(at, 2);
+      if (invalid === 'failed') result(run, at).is_error = true;
+      if (invalid === 'unpaired') result(run, at).tool_use_id = 'another-call';
+      if (invalid === 'assistant-only') run.events[at + 1].type = 'assistant';
+      if (invalid === 'caption') call(run, at).input = { command: 'true', description: run.prepared.resumed.checkCommand };
+      if (invalid === 'false' || invalid === 'foreign state') {
+        const receipt = JSON.parse(result(run, at).content);
+        if (invalid === 'false') receipt.settled = false;
+        else receipt.context.binding.state = '/another-fixture/state';
+        result(run, at).content = JSON.stringify(receipt);
+      }
+      if (invalid === 'after finish') run.events.push(...run.events.splice(at, 2));
+      const adapter = pathCallback(run);
+      await expect(adapter.invoke()).rejects.toThrow('consume current synthetic prerequisites');
+      expect(adapter.rows[0].row.passed).toBe(false);
+    });
+
+  test.each(['missing file', 'missing QA', 'empty probes', 'failed probe', 'missing native', 'failed native',
+    'blocked native', 'foreign state', 'branch', 'base', 'index flag', 'raw hidden source', 'configuration', 'structured required'])(
+    'synthetic prerequisites cannot settle with %s', async invalid => {
+      const prepared = preparePathEligibilityFixture('assume-unchanged'), f = prepared.fixture;
+      try {
+        const original = checkPathReviewPrerequisites(f, prepared.resumed.input);
+        expect(original.settled).toBe(true);
+        const context = structuredClone(original.context);
+        if (invalid === 'missing QA') delete context.qa;
+        if (invalid === 'empty probes') context.qa.required_probes = [];
+        if (invalid === 'failed probe') context.qa.required_probes[0].status = 'failed';
+        if (invalid === 'missing native') delete context.native_adversarial;
+        if (invalid === 'failed native' || invalid === 'blocked native') context.native_adversarial.status = invalid.split(' ')[0];
+        if (invalid === 'foreign state') context.binding.state = '/another-fixture/state';
+        if (invalid === 'structured required') context.structured_review.required = true;
+        fs.writeFileSync(prepared.resumed.input, JSON.stringify(context));
+        if (invalid === 'missing file') fs.unlinkSync(prepared.resumed.input);
+        if (invalid === 'branch') fixtureGit(f, 'checkout', '-b', 'another-branch');
+        if (invalid === 'base') fixtureGit(f, 'update-ref', 'refs/remotes/origin/main', 'HEAD~1');
+        if (invalid === 'index flag') fixtureGit(f, 'update-index', '--no-assume-unchanged', 'src/retry-route.ts');
+        if (invalid === 'raw hidden source') {
+          fs.appendFileSync(path.join(f.repo, 'src/retry-route.ts'), '\n// Changed after the synthetic QA result\n');
+          expect(fixtureWorkingTree(f)).toBe(original.context.binding.wtree);
+        }
+        if (invalid === 'configuration') fixtureGit(f, 'config', 'core.ignorecase', 'true');
+        const checked = checkPathReviewPrerequisites(f, prepared.resumed.input);
+        expect(checked.settled).toBe(false);
+        expect(JSON.parse(execFileSync('bash', ['-c', prepared.resumed.checkCommand], {
+          cwd: f.repo, env: { ...process.env, ...f.env }, encoding: 'utf8', timeout: 30_000,
+        }))).toEqual(checked);
+        const run = { f, prepared, kind: 'assume-unchanged', events: [] };
+        const adapter = pathCallback(run);
+        await expect(adapter.invoke()).rejects.toThrow('fixture prerequisites must be settled before capture');
+      } finally { fs.rmSync(f.root, { recursive: true, force: true }); }
+    });
+
+  test.each(['raw source', 'supplied context'])('the registered callback rejects late changes to %s', async changed => {
+    const run = replay('declared-path-assume-unchanged');
+    run.kind = 'assume-unchanged';
+    const file = changed === 'raw source' ? path.join(run.f.repo, 'src/retry-route.ts') : run.prepared.resumed.input;
+    const before = fs.readFileSync(file, 'utf8');
+    const adapter = pathCallback(run, { runSharedInteractive: async () => {
+      fs.writeFileSync(file, before + '\n');
+      return { questions: run.questions, result: { exitReason: 'success', output: '', events: run.events,
+        toolCalls: run.events.filter((event: any) => event.type === 'assistant')
+          .map((event: any) => ({ tool: event.message.content[0].name, input: event.message.content[0].input })) } };
+    } });
+    try {
+      await expect(adapter.invoke()).rejects.toThrow('prerequisite state must remain unchanged');
+      expect(adapter.rows[0].row.passed).toBe(false);
+    } finally { fs.writeFileSync(file, before); }
+  });
+
   test.each(['unchanged', 'secondary', 'branch', 'filtered'])('real %s checker receipt supplies the mechanical proof without manual trace words', change => {
     const run = replay(change);
     expect(run.receipt.reusable).toBe(change === 'unchanged');
@@ -262,7 +377,8 @@ describe('native executable shared-code checker evidence', () => {
     const body = scenario.slice(start, scenario.indexOf('\n        });', start));
     const verify = new Function('deps', 'result', new Bun.Transpiler({ loader: 'ts' }).transformSync(`const {
       change, questions, expect, toolCommandTrace, reviewRecords, createHash, path, f, current,
-      fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT
+      fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT,
+      resumed, prerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt
     } = deps; ${body}`));
     const run = replay(change);
     const native = { events: run.events, toolCalls: run.events.filter((event: any) => event.type === 'assistant')
@@ -270,7 +386,8 @@ describe('native executable shared-code checker evidence', () => {
     let checks = 0;
     const deps = { change, questions: change === 'unchanged' ? [] : [{}], expect, toolCommandTrace,
       reviewRecords, createHash, path, f: run.f, current: run.current, fixtureGit, fixtureWorkingTree,
-      hasTrustedReviewStartRead, SHARED_LIBS_ROOT, hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
+      hasTrustedReviewStartRead, SHARED_LIBS_ROOT, resumed: run.resumed, prerequisites: run.prerequisites,
+      checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt, hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
         checks++;
         expect(events).toBe(run.events);
         expect(expected).toEqual(run.expected);
@@ -355,13 +472,15 @@ describe('native executable shared-code checker evidence', () => {
     const body = scenario.slice(start, scenario.indexOf('\n        });', start));
     const verify = new Function('deps', 'result', new Bun.Transpiler({ loader: 'ts' }).transformSync(`const {
       change, questions, expect, toolCommandTrace, reviewRecords, createHash, path, f, current,
-      fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT
+      fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT,
+      resumed, prerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt
     } = deps; ${body}`));
     const native = { events: run.events, toolCalls: run.events.filter((event: any) => event.type === 'assistant')
       .map((event: any) => ({ tool: event.message.content[0].name, input: event.message.content[0].input })) };
     let checks = 0;
     verify({ change, questions: run.questions, expect, toolCommandTrace, reviewRecords, createHash, path,
       f: run.f, current: run.current, fixtureGit, fixtureWorkingTree, hasTrustedReviewStartRead, SHARED_LIBS_ROOT,
+      resumed: run.resumed, prerequisites: run.prerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt,
       hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
         checks++;
         expect(events).toBe(run.events);

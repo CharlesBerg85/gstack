@@ -36,6 +36,18 @@ export function changedFiles(before: ReturnType<typeof repoSnapshot>, after: Ret
     .filter(p => before.contents[p] !== after.contents[p]).sort();
 }
 
+export function docsCandidate(repo: string, auditId: string, mode: 'edit' | 'read-only', base: string) {
+  const snapshot = repoSnapshot(repo);
+  return {
+    audit_id: auditId, mode, base_sha: base, head: snapshot.head, branch: gitAt(repo, 'branch', '--show-current'),
+    selected_paths: Object.keys(snapshot.contents).filter(p => p !== 'personal-note.txt'),
+    docs_roots: ['handbook'], generated_outputs: [], index: snapshot.index,
+    content_hashes: Object.fromEntries(Object.entries(snapshot.contents).map(([p, bytes]) =>
+      [p, createHash('sha256').update(Buffer.from(bytes, 'base64')).digest('hex')])),
+    pre_existing_dirty: gitAt(repo, 'status', '--porcelain', '-z'),
+  };
+}
+
 export function fixtureDocs(scenario: DocsScenario, generatedRoot = process.env.DOCSYNC_GENERATED_ROOT || DOCSYNC_ROOT) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-'));
   const repo = path.join(home, 'repo');
@@ -123,8 +135,10 @@ export function fixtureDocs(scenario: DocsScenario, generatedRoot = process.env.
       [p, createHash('sha256').update(Buffer.from(bytes, 'base64')).digest('hex')])),
     pre_existing_dirty: gitAt(repo, 'status', '--porcelain'),
   }), { mode: 0o600 });
+  const invocation = path.join(home, 'ship-invocation.md');
+
   return {
-    home, repo, skills, before, candidate, auditId,
+    home, repo, skills, before, candidate, auditId, invocation,
     env: { HOME: home, GSTACK_HOME: state, CLAUDE_CONFIG_DIR: config, GIT_OPTIONAL_LOCKS: '0',
       CONDUCTOR_WORKSPACE_PATH: home, GSTACK_HEADLESS: '' },
     clean: () => fs.rmSync(home, { recursive: true, force: true }),

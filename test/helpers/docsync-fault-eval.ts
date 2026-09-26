@@ -1,13 +1,14 @@
 import { expect } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { CAPTURE_MS } from './eval-budgets';
 import { runSkillTest, type SkillTestResult } from './session-runner';
 import { runId, logCost, recordE2E } from './e2e-helpers';
 import type { EvalCollector } from './eval-store';
-import { DOC_PATH, fixtureDocs, preserveDocsEvidence } from './docsync-fixture';
-import { installDocsActor, type DocsActorState, type DocsFault } from './docsync-fault-actor';
-import { observeDocsWrites, docsWriteFailures, docsNativeInterface, docsToolFailures, docsCompletedRead } from './docsync-observer';
+import { DOC_PATH, fixtureDocs, preserveDocsEvidence, repoSnapshot, changedFiles } from './docsync-fixture';
+import { docsActorCanRepair, installDocsActor, type DocsActorState, type DocsFault } from './docsync-fault-actor';
+import { observeDocsWrites, docsWriteFailures, docsNativeInterface, docsToolFailures, docsCompletedRead, docsBoundedStageInterface, docsShipPhase } from './docsync-observer';
 import { extractDocsDispatch } from './docsync-contract';
 
 export function docsActorVerdict(state: DocsActorState, report: string, published: boolean): string[] {
@@ -16,13 +17,43 @@ export function docsActorVerdict(state: DocsActorState, report: string, publishe
   const calls = state.events.filter(e => e.action === 'dispatch');
   const success = ['recovery', 'stale-before', 'stale-after'].includes(state.scenario);
   const count = state.scenario === 'missing-asset' ? 0 : success || state.scenario === 'late-result' ? 2 : 1;
-  if (calls.length !== count) failures.push(`wrong executed dispatch count: ${calls.length}, expected ${count}`);
+  const legacy = state.scenario === 'legacy-completion';
+  if (legacy ? calls.length < 1 || calls.length > 2 : calls.length !== count) {
+    failures.push(`wrong executed dispatch count: ${calls.length}, expected ${legacy ? '1 or 2' : count}`);
+  }
   if (new Set(calls.map(e => e.audit_id)).size !== calls.length) failures.push('audit identity reused');
   if (published !== success || actions.includes('publish') !== success) failures.push('wrong parent publication decision');
   if (state.events.some(e => e.action === 'rejected')) failures.push('parent attempted invalid actor interaction');
   if (!success && !/Documentation[\s\S]*blocked/i.test(report)) failures.push('blocked documentation not reported');
   if (!success && /Documentation(?: is|:) current/i.test(report)) failures.push('false current report');
   if (success && (!state.acceptedId || !report.includes(state.acceptedId))) failures.push('actual repaired audit not consumed');
+  if (legacy) {
+    if (state.repaired || actions.includes('repair')) failures.push('legacy launcher has no repair');
+    if (calls.length === 2) {
+      const attempts = calls.map(call => state.tasks.find(task => task.audit_id === call.audit_id && task.id === call.task_id));
+      if (state.tasks.length !== 2 || attempts.some(task => !task?.settled) || attempts[0]?.id === attempts[1]?.id) {
+        failures.push('legacy re-audit lacks distinct settled child evidence');
+      } else {
+        const [first, second] = attempts as DocsActorState['tasks'];
+        try {
+          for (const task of [first, second]) {
+            const candidate = JSON.parse(task.candidate);
+            if (candidate.audit_id !== task.audit_id || !isDeepStrictEqual(candidate, task.observed_candidate)) {
+              throw Error('candidate does not match dispatched inputs');
+            }
+          }
+          const before = first.observed_candidate;
+          const after = second.observed_candidate;
+          const auditedPaths = new Set([...before.selected_paths, ...after.selected_paths]);
+          if (![...auditedPaths].some(file => before.content_hashes[file] !== after.content_hashes[file])) {
+            failures.push('legacy re-audit had no changed audited input');
+          }
+        } catch {
+          failures.push('legacy re-audit did not use fresh observed snapshots');
+        }
+      }
+    }
+  }
   if (state.scenario === 'timeout-unsettled') {
     const stop = actions.indexOf('stop');
     if (stop < 0 || !state.events.slice(stop + 1).some(e => e.action === 'status' && e.detail === 'running')) failures.push('unsettled stop was not checked');
@@ -48,10 +79,34 @@ export function docsActorVerdict(state: DocsActorState, report: string, publishe
   return failures;
 }
 
-export async function runShipDocsFault(testName: string, scenario: DocsFault, collector: EvalCollector) {
+export function docsFaultPrompt(fixture: ReturnType<typeof fixtureDocs>, phase: string, report: string, scenario: DocsFault): string {
+  const actorFile = path.join(import.meta.dir, 'docsync-fault-actor.ts');
+  const stateFile = path.join(fixture.home, 'actor-state.json');
+  return `Load gstack /ship. Execute the actual next phase from ${phase} and stop before Step 15. Base main; ${scenario === 'legacy-completion' ? 'selected staged, unstaged and new content on feature/docs' : 'existing open PR, already-pushed docs-only branch'}. Skill assets are installed at ${fixture.skills}. Place candidate/prompt/report artifacts directly under ${fixture.home}. No prior audit is reusable. Write the final ship report to ${report}; no user risk exception or risky edit is approved.
+
+${docsBoundedStageInterface(fixture)}
+
+This native-parent fixture supplies a deterministic child transport instead of Agent/Task. It is a host adapter, not a replacement workflow. Do not invoke real Agent/Task or execute the child's audit/lifecycle yourself. Read the actual phase and its installed documentation section and child assets. The adapter returns child evidence; only you apply the loaded workflow's gates.
+
+Declared transport interface (literal key=value arguments; quote file paths as needed):
+bun ${actorFile} prepare ${stateFile} audit_id=ID
+bun ${actorFile} dispatch ${stateFile} audit_id=ID candidate=ABSOLUTE_JSON_PATH prompt=ABSOLUTE_PROMPT_PATH run_in_background=false
+bun ${actorFile} status ${stateFile} task_id=RETURNED_TASK_ID
+bun ${actorFile} stop ${stateFile} task_id=RETURNED_TASK_ID
+${docsActorCanRepair(scenario) ? `bun ${actorFile} repair ${stateFile}\nThis launcher supports one concrete marking/transport repair, only after a dispatched child is confirmed settled. That isolated repair is authorized, not approval for document risks.` : 'This launcher has no repair operation or alternate launcher. Missing assets/marking, launch failures and invalid completions cannot be repaired here. Do not invoke repair or invent an inline fallback.'}
+bun ${actorFile} publish ${stateFile} audit_id=ID report=${report}
+
+prepare is a serialization convenience, not an audit or validation: after inspecting the required inputs and deciding an attempt is allowed, supply a fresh id of 1–80 letters/digits/underscores/hyphens, beginning with a letter or digit. It saves current base/HEAD/index, selected paths, dirty paths, docs roots and content hashes to a new candidate JSON, and copies the exact installed section's child prompt with literal substitutions and the observation interface to a new prompt file. It returns their paths. Read these artifacts; use the returned paths unchanged in dispatch. prepare neither launches a child nor resets/increments the attempt count, repairs content, compares snapshots or accepts an audit. Saved files are never overwritten. Inspect committed/staged/unstaged/selected new content using real reads; retain and compare each snapshot with current files after the child and again before publication. A changed input requires the workflow's fresh attempt, never silently replaced hashes.
+
+dispatch returns terminal final text, a launch error, or a running task_id. Terminal final text means that child is settled. A launch error saying no child started is authoritative and returns no task handle: do not probe invented ids. Use status/stop only with an actual returned task_id. The virtual clock advances to the next policy deadline on each status query; do not sleep. A stop request alone is not settlement or permission to publish. An independent fixture actor may change selected source between phases. Do not read/edit ${stateFile}; it is private transport state. Only when the actual workflow permits publication, call publish, a local receipt rather than GitHub.
+
+${docsNativeInterface(fixture, [actorFile], true)}`;
+}
+
+export async function runShipDocsFault(testName: string, scenario: DocsFault, collector: EvalCollector, captureMs = CAPTURE_MS) {
   if (!process.env.EVALS_RUN_ID) throw Error('Native docs fault acceptance requires EVALS_RUN_ID');
-  const deadline = Date.now() + CAPTURE_MS;
-  const fixture = fixtureDocs('current');
+  const deadline = Date.now() + captureMs;
+  const fixture = fixtureDocs(scenario === 'legacy-completion' ? 'legacy' : 'current');
   const actorFile = path.join(import.meta.dir, 'docsync-fault-actor.ts');
   const stateFile = installDocsActor(fixture, scenario);
   const report = path.join(fixture.home, 'ship-report.md');
@@ -60,24 +115,16 @@ export async function runShipDocsFault(testName: string, scenario: DocsFault, co
   const start = skeleton.indexOf('## Step 14.5: Documentation audit (every ship)');
   const end = skeleton.indexOf('## Step 15: Commit');
   if (start < 0 || end <= start) throw Error('native parent documentation phase markers moved');
-  fs.writeFileSync(phase, skeleton.slice(start, end));
+  fs.writeFileSync(phase, scenario === 'legacy-completion'
+    ? docsShipPhase(skeleton, fs.readFileSync(path.join(fixture.skills, 'ship/sections/pr-body.md'), 'utf8'), 'legacy', '')
+    : skeleton.slice(start, end));
   const observer = await observeDocsWrites(fixture);
   let result: SkillTestResult | undefined;
   let passed = false;
   try {
     result = await runSkillTest({
-      prompt: `Load gstack /ship. Steps 0–14 are complete; execute the actual next phase from ${phase} and stop before Step 15. Base main; existing open PR, already-pushed docs-only branch. Skill assets are installed at ${fixture.skills}. Place candidate/prompt/report artifacts directly under ${fixture.home}. No prior audit is reusable. Write the final ship report to ${report}; no user risk exception or risky edit is approved.
-
-This native-parent fault fixture supplies a deterministic child transport instead of Agent/Task. This is a host tool adapter, not a replacement workflow: pass the actual section's child prompt unchanged except literal placeholders and the fixture interface. Do not invoke real Agent/Task for these fault cases. Available commands (arguments are literal key=value strings; quote file paths as needed):
-bun ${actorFile} dispatch ${stateFile} audit_id=ID candidate=ABSOLUTE_JSON_PATH prompt=ABSOLUTE_PROMPT_PATH run_in_background=false
-bun ${actorFile} status ${stateFile} task_id=ID
-bun ${actorFile} stop ${stateFile} task_id=ID
-bun ${actorFile} repair ${stateFile}
-bun ${actorFile} publish ${stateFile} audit_id=ID report=${report}
-dispatch may return the actual final text, a launch error or a task id. status/stop expose this adapter's authoritative child state. Its clock is virtual: each status query advances to the next policy deadline, so use status instead of real sleeps. The model work budget is unchanged. repair is available only for a fixture marking/transport fault, once and only after settlement; this isolated launcher repair is authorized when needed, not approval for document risks. Perform the available bounded repair or fresh-snapshot audit when the loaded workflow requires it. An independent fixture actor may change selected source between audit phases. Do not read or edit ${stateFile}; it is private transport state. Only when the actual loaded workflow permits publication, call publish; it is a local receipt, not GitHub. A stop request is not a new audit or a publication permission.
-
-${docsNativeInterface(fixture, [actorFile])}`,
-      workingDirectory: fixture.repo, maxTurns: 24,
+      prompt: docsFaultPrompt(fixture, phase, report, scenario),
+      workingDirectory: fixture.repo, maxTurns: scenario === 'legacy-completion' ? 30 : 24,
       tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
       allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
       timeout: Math.max(1, deadline - Date.now() - 15_000), env: fixture.env, testName, runId,
@@ -91,7 +138,18 @@ ${docsNativeInterface(fixture, [actorFile])}`,
     const summary = fs.readFileSync(report, 'utf8');
     expect(docsActorVerdict(state, summary, fs.existsSync(path.join(fixture.home, 'publication.json')))).toEqual([]);
     expect(docsToolFailures(result, fixture, [actorFile])).toEqual([]);
+    const after = repoSnapshot(fixture.repo);
+    expect(after.head).toBe(fixture.before.head);
+    expect(after.index).toBe(fixture.before.index);
+    expect(after.contents['personal-note.txt']).toBe(fixture.before.contents['personal-note.txt']);
+    expect(fs.readFileSync(path.join(fixture.repo, DOC_PATH), 'utf8')).toContain('User-maintained note: KEEP THIS EXACTLY.');
+    if (scenario === 'legacy-completion') {
+      expect(changedFiles(fixture.before, after)).toEqual([DOC_PATH]);
+      expect(fs.readFileSync(path.join(fixture.repo, DOC_PATH), 'utf8')).toContain('Default format: JSON.');
+      expect(state.events.some(e => e.action === 'partial-doc-edit')).toBe(true);
+    }
     for (const task of state.tasks) {
+      expect(JSON.parse(task.candidate)).toEqual(task.observed_candidate);
       const source = extractDocsDispatch(fs.readFileSync(documentation, 'utf8'));
       const literalPieces = source.split(/<branch>|<base>|<candidate-path>|<audit-id>|<mode>/);
       let cursor = 0;
@@ -104,7 +162,7 @@ ${docsNativeInterface(fixture, [actorFile])}`,
       }
     }
     const events = result.toolCalls.filter(call => call.tool === 'Bash' && String(call.input?.command).includes(actorFile));
-    for (const action of ['dispatch', 'status', 'stop', 'repair', 'publish']) {
+    for (const action of ['prepare', 'dispatch', 'status', 'stop', 'repair', 'publish']) {
       expect(events.filter(call => String(call.input?.command).replaceAll("'", '').replaceAll('"', '').includes(` ${action} `)).length)
         .toBe(state.events.filter(e => e.action === action).length);
     }
@@ -112,7 +170,7 @@ ${docsNativeInterface(fixture, [actorFile])}`,
     passed = true;
   } finally {
     const observation = observer.stop();
-    const failures = docsWriteFailures(observation, scenario.startsWith('stale-') ? ['app.ts', DOC_PATH] : [],
+    const failures = docsWriteFailures(observation, scenario.startsWith('stale-') ? ['app.ts', DOC_PATH] : scenario === 'legacy-completion' ? [DOC_PATH] : [],
       result ? { result, fixture, scripts: [actorFile] } : undefined);
     if (failures.length) passed = false;
     preserveDocsEvidence(fixture, result ?? { output: 'capture did not return', toolCalls: [] }, runId, testName, {

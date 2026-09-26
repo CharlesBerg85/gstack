@@ -1610,6 +1610,14 @@ async function main(): Promise<number> {
     for (const files of shards) resolvePaidShardTimeoutMs(files, timeoutOverride);
     console.log(`[test:paid] slice ${options.sliceIndex}/${manifest.sliceCount}: ${shards.length} shard(s), tier=${manifest.tier}, evalsAll=${manifest.evalsAll}`);
 
+    if (options.listOnly) {
+      for (const [index, files] of shards.entries()) {
+        const budget = resolvePaidShardBudget(files, timeoutOverride);
+        console.log(`  shard ${index + 1}/${shards.length}: ${files.join(' ')} wall=${budget.timeoutMs}ms source=${budget.source} policy=${budget.policyId ?? 'none'}`);
+      }
+      return 0;
+    }
+
     const evalDirBase = process.env.GSTACK_EVAL_DIR || getProjectEvalDir();
     let summary: RunSummary;
     if (shards.length === 0) {
