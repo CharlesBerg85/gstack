@@ -66,7 +66,7 @@ if { ${own}; }; then
 fi`;
 }
 
-export function outsideVoicePreflight(ctx: TemplateContext, opts: { disabledBehavior: 'skip-all' | 'codex-only' | 'opt-in' }): string {
+export function outsideVoicePreflight(ctx: TemplateContext, opts: { disabledBehavior: 'skip-all' | 'codex-only' | 'opt-in'; acceptedOnly?: boolean }): string {
   const v = outsideVoiceFor(ctx);
   if (v.id === 'codex' && opts.disabledBehavior !== 'opt-in') {
     let preflight = outsideVoiceLabels(ctx, codexPreflight(opts))
@@ -83,17 +83,21 @@ export function outsideVoicePreflight(ctx: TemplateContext, opts: { disabledBeha
   const probe = v.id === 'codex'
     ? 'command -v codex >/dev/null 2>&1'
     : `bun -e 'const {resolveClaudeCommand} = await import(process.argv[1]); process.exit(resolveClaudeCommand() ? 0 : 1)' "${bin}/../lib/claude-bin.ts"`;
-  return `\`\`\`bash
-${outsideVoiceRuntime(ctx)}
-${opts.disabledBehavior === 'opt-in' ? (ctx.skillName === 'ship' ? '_OUTSIDE_CFG=enabled' : '_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.') : `_OUTSIDE_CFG=$("${bin}/gstack-config" get codex_reviews 2>/dev/null || echo enabled)`}
-if [ "$_OUTSIDE_CFG" = disabled ]; then
-  echo 'CODEX_MODE: disabled'
-elif ( ${outsideVoiceGuard(ctx)}
+  const config = opts.disabledBehavior === 'opt-in'
+    ? (ctx.skillName === 'ship' ? '_OUTSIDE_CFG=enabled' : '_OUTSIDE_CFG=enabled # This caller has its own opt-in/skip control.')
+    : `_OUTSIDE_CFG=$("${bin}/gstack-config" get codex_reviews 2>/dev/null || echo enabled)`;
+  const readiness = `${opts.acceptedOnly ? 'if' : 'elif'} ( ${outsideVoiceGuard(ctx)}
 ); then
   if ${probe}; then echo 'CODEX_MODE: ready'; else echo 'CODEX_MODE: not_installed'; fi
 else
   echo 'CODEX_MODE: under_current_harness'
-fi
+fi`;
+  return `\`\`\`bash
+${outsideVoiceRuntime(ctx)}
+${opts.acceptedOnly ? '' : `${config}
+if [ "$_OUTSIDE_CFG" = disabled ]; then
+  echo 'CODEX_MODE: disabled'
+`}${readiness}
 \`\`\`
 
 ${ctx.skillName === 'ship' && opts.disabledBehavior === 'opt-in' ? `Ship attempts this optional design check automatically when frontend review applies.

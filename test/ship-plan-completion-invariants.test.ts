@@ -49,7 +49,7 @@ describe('authored ship-only plan verification handoff', () => {
     expect(text).toContain('An API URL is not automatically a page');
     expect(text).toContain('Only browser evidence needs screenshots');
     expect(text).toContain('If no verification section or no plan file exists, record no plan-specific items');
-    expect(text).toContain('Automatic diff-scoped QA still runs. Continue to Prior Learnings below');
+    expect(text).toContain('Automatic diff-scoped QA still runs. Continue to Step 8.2 Scope Drift below');
     expect(text).toContain('Handoff to Step 9.2.1');
     expect(text).toContain('parent-owned report-only explorer must execute this complete list before Fix-First');
     expect(text).toContain('prerequisite, permission, evidence and changed-input revalidation rules');

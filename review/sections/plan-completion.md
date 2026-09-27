@@ -4,18 +4,16 @@ This is Step 1.5's plan-completion audit: discover the plan, extract actionable 
 
 ### Plan File Discovery
 
-1. **Conversation context (primary):** Check if there is an active plan file in this conversation. The host agent's system messages include plan file paths when in plan mode. If found, use it directly — this is the most reliable signal.
+1. **Conversation context (primary):** Use the active plan file from this conversation or its plan-mode system context.
 
-2. **Content-based search (fallback):** If no plan file is referenced in conversation context, search by content:
+2. **Content-based search (fallback):** Without a conversation-supplied path, search by content:
 
 ```bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
 BRANCH=$(git branch --show-current 2>/dev/null | tr '/' '-' | tr -cd 'a-zA-Z0-9._-')
 REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
-# Compute project slug for ~/.gstack/projects/ lookup
 _PLAN_SLUG=$(git remote get-url origin 2>/dev/null | sed 's|.*[:/]\([^/]*/[^/]*\)\.git$|\1|;s|.*[:/]\([^/]*/[^/]*\)$|\1|' | tr '/' '-' | tr -cd 'a-zA-Z0-9._-') || true
 _PLAN_SLUG="${_PLAN_SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"
-# Search common plan file locations (project designs first, then personal/local)
 for PLAN_DIR in "$HOME/.gstack/projects/$_PLAN_SLUG" "$HOME/.claude/plans" "$HOME/.codex/plans" ".gstack/plans"; do
   [ -d "$PLAN_DIR" ] || continue
   PLAN=$(ls -t "$PLAN_DIR"/*.md 2>/dev/null | xargs grep -l "$BRANCH" 2>/dev/null | head -1)
@@ -26,7 +24,7 @@ done
 [ -n "$PLAN" ] && echo "PLAN_FILE: $PLAN" || echo "NO_PLAN_FILE"
 ```
 
-3. **Validation:** If a plan file was found via content-based search (not conversation context), read the first 20 lines and verify it is relevant to the current branch's work. If it appears to be from a different project or feature, treat as "no plan file found."
+3. **Validation:** For search results, read the first 20 lines and verify the project, feature and current branch. A mismatch means "no plan file found." Conversation-supplied paths bypass this search-result check.
 
 **Error handling:**
 - No plan file found → skip with "No plan file detected — skipping."
@@ -60,7 +58,7 @@ For each item, note:
 
 ### Verification Mode
 
-Before judging completion, classify HOW each item can be verified. The diff alone cannot prove every kind of work. Items outside the current repo or system are structurally invisible to `git diff`.
+Classify how each item can be verified. The diff cannot prove work in another repo or external system.
 
 - **DIFF-VERIFIABLE** — A code change in this repo would manifest in `git diff <base>...HEAD`. Examples: "add UserService" (file appears), "validate input X" (validation logic appears), "create users table" (migration file appears).
 - **CROSS-REPO** — Item names a file or change in a sibling repo (e.g., `domain-hq/docs/dashboard.md`, `~/Development/<other-repo>/...`). The current diff CANNOT prove this.
@@ -100,7 +98,7 @@ For each extracted plan item, run the verification dispatch from the previous se
 
 ```
 PLAN COMPLETION AUDIT
-═══════════════════════════════
+════════════════════
 Plan: {plan file path}
 
 ## Implementation Items
@@ -121,9 +119,9 @@ Plan: {plan file path}
   [UNVERIFIABLE] Cloudflare DNS-only on api.example.com — external system, manual check required
   [UNVERIFIABLE] Supabase auth allowlist contains user email — external system, confirm in Supabase dashboard
 
-─────────────────────────────────
+────────────────────
 COMPLETION: 4/10 DONE, 1 PARTIAL, 2 NOT DONE, 1 CHANGED, 2 UNVERIFIABLE
-─────────────────────────────────
+────────────────────
 ```
 
 ### Fallback Intent Sources (when no plan file found)

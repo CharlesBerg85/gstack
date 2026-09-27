@@ -137,7 +137,7 @@ describe('engineering review routing contracts', () => {
     expect(compact(outside)).toContain('Only completed reviews enter Cross-model tension');
     expect(compact(outside)).toContain('Record the actual coverage, including disabled or unavailable outcomes');
     expect(section).toContain('Outside voice: recorded provider, completed / unavailable / disabled / skipped (reason)');
-    expect(compact(outside)).toContain('Resolve the TODO choices, then check Approval readiness before Required outputs');
+    expect(compact(outside)).toContain('resolve the TODO choices, then check Approval readiness before Required outputs');
   });
 
   test('paused transport and failed persistence have distinct non-success outcomes', () => {
@@ -158,7 +158,7 @@ describe('engineering review routing contracts', () => {
   test('late changes rerun affected approvals and outputs before another navigation answer', () => {
     const late = compact(between(recovery, '**Late change or missing work:**', '**Blocked outcome:**'));
     ordered(late, ['Return to the affected review stage', 'new or reopened choices use Decision procedure',
-      'Repeat Approval readiness', 'Required outputs, report Read-back, Review Log and dashboard', 'before choosing navigation again']);
+      'Repeat Approval readiness', 'Required outputs steps 1–4', 'before choosing navigation again']);
     expect(late).toContain('Refresh affected tests, tasks, dependencies and parallelization');
     expect(late).toContain('Unchanged saved outputs may reuse their successful Review Log');
     expect(late).toContain('If a final gate discovers stale evidence, follow **Blocked outcome** first');
@@ -166,9 +166,11 @@ describe('engineering review routing contracts', () => {
     expect(compact(finish)).toContain('A substantive change follows **Recovery routing → Late change or missing work** before navigation resumes');
     expect(compact(finish)).toContain('A next-step answer approves no implementation change');
     ordered(finish, ['{{TASKS_SECTION_EMIT:eng-review}}', '### Completion summary', '{{PLAN_FILE_REVIEW_REPORT}}',
-      '## Review Log', '{{REVIEW_DASHBOARD}}', '## Next Steps — Review Chaining', '## Learning hooks',
-      "Return to the entrypoint's Section self-check"]);
-    expect(finish).not.toContain('finish step');
+      '## Review Log', '{{REVIEW_DASHBOARD}}', '## Next Steps — Review Chaining', '## Learning hooks', '{{BRAIN_WRITE_BACK}}']);
+    const sequence = compact(finish.slice(0, finish.indexOf('### Output reference')));
+    ordered(sequence, ['1. **Prepare the review body.**', '2. **Save and Read back.**', '3. **Log the saved review.**',
+      '4. **Publish.**', '5. **Choose navigation.**', '6. **Finish.**',
+      "Run Learning hooks, including gated Brain Calibration Write-Back; then return to the entrypoint's Section self-check"]);
   });
 
   test('plan test diagrams cover proposed paths without inventing existing implementation', () => {

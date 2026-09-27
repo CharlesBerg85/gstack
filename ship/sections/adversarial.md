@@ -136,7 +136,7 @@ Show the full response in a `tool-output` fence. Require successful execution an
 
 Set the outer tool timeout to 600000ms so the provider timeout can report its failure.
 
-Present this outside challenge's output verbatim as informational findings.
+Present the full output verbatim. An unavailable outside challenge does not block shipping by itself; supported findings still enter Step 11, and the structured P1 and non-convergence gates still apply.
 
 **Error handling:** Only this optional outside adversarial pass is non-blocking; native completion and structured-review decisions still apply.
 - **Auth failure:** If stderr contains "auth", "login", "unauthorized", or "API key": "Codex authentication failed. Run \`codex login\` to authenticate."
@@ -280,6 +280,7 @@ in order before leaving Step 11:
    Insert Steps 9, 10 and 11 before the pending Step 11.5 in the work list.
    Step 9 completes full review before fixes; any further repair inserts its checks
    ahead of the remaining items. These fresh reviews after code edits are not recovery retries.
+   Returning here never resets Step 9's three-cycle fix limit.
 3. **Native complete with no queued fixes:** Finish the memory updates below,
    then continue to Step 11.5. Never jump directly to release preparation.
 

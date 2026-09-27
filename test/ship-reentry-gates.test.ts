@@ -34,9 +34,9 @@ test('a new ship bootstrap choice overrides only the saved decline, not framewor
 test('an unverified item answered not done enters the existing decision before continuing', () => {
   const gate = generatePlanCompletionGateShip(ctx);
   const exits = compact(gate.slice(gate.indexOf('**Exit conditions:**'), gate.indexOf('**Cap.**')));
-  expect(exits).toContain('Any N: pause confirmations and reclassify that item as NOT DONE');
-  expect(exits).toContain('Apply priority 1: A stops; B defers; C drops');
-  expect(exits).toContain('After B/C, resume the remaining confirmations');
+  expect(exits).toContain('Any N: STOP and report that item as NOT DONE');
+  expect(exits).toContain('Resume only after its required work is verified');
+  expect(exits).toContain('no second deferral choice');
   expect(exits).not.toContain('re-running /ship');
   expect(gate).toContain('Per-item confirmation is mandatory');
   expect(gate).toContain('with the user\'s free-text evidence');

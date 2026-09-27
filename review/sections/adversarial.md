@@ -136,7 +136,7 @@ Show the full response in a `tool-output` fence. Require successful execution an
 
 Set the outer tool timeout to 600000ms so the provider timeout can report its failure.
 
-Present this outside challenge's output verbatim as informational findings.
+Present the full output verbatim. This outside challenge is informational; supported findings still enter Step 5 Fix-First, whose approval and convergence gates apply.
 
 **Error handling:** Only this optional outside adversarial pass is non-blocking; native completion and structured-review decisions still apply.
 - **Auth failure:** If stderr contains "auth", "login", "unauthorized", or "API key": "Codex authentication failed. Run \`codex login\` to authenticate."

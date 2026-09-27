@@ -3,8 +3,8 @@
 Complete this section in order:
 1. Dispatch the audit, validate its result and resolve its Gate Logic.
 2. Collect the plan's executable checks in Step 8.1; do not run them yet.
-3. Run Prior Learnings, including its setting question when offered.
-4. Run Step 8.2 Scope Drift, then proceed to Step 9 for review and QA.
+3. Run Step 8.2 Scope Drift.
+4. Run Prior Learnings, including its setting question when offered, then proceed to Step 9 for review and QA.
 
 **Dispatch this step as a subagent** using Agent, `subagent_type: "general-purpose"`
 and `run_in_background: false`. Use Step 7's shared foreground-dispatch rule.
@@ -52,8 +52,8 @@ is the failure shape that VAS-449 surfaced.
 
 {{PLAN_VERIFICATION_EXEC}}
 
-{{LEARNINGS_SEARCH:query=release ship version changelog merge pr}}
-
 {{SCOPE_DRIFT}}
+
+{{LEARNINGS_SEARCH:query=release ship version changelog merge pr}}
 
 ---

@@ -106,7 +106,7 @@ describe('workflow judge excerpts', () => {
     expect(text).toContain('does not mean the failed or unrun probes passed');
     expect(text).toContain('Fallback recovers the audit; it does not pass or bypass the coverage gate');
     expect(text).toContain('Skip only the plan completion audit');
-    expect(text).toContain('Continue with Step 8.1, Prior Learnings and Scope Drift');
+    expect(text).toContain('Continue with Step 8.1, Scope Drift and Prior Learnings');
     expect(text).toContain('Step 9 QA still runs');
     expect(text).toContain('Use this example only after confirming that every allowed edit is release metadata');
     expect(text).not.toContain('Every listed change below is metadata:');

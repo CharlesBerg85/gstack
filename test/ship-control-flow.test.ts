@@ -71,8 +71,9 @@ describe('ship source controller', () => {
   test('distribution discovery is a shortlist, not a manifest-only artifact decision', () => {
     const distribution = compact(entry.slice(entry.indexOf('## Step 2:'), entry.indexOf('## Step 3:')));
     expect(distribution).toContain('List candidate distribution paths');
-    expect(distribution).toContain('Inspect their diffs and matching untracked files');
-    expect(distribution).toContain('editing an existing package manifest alone is not a new artifact');
+    expect(distribution).toContain("Also inspect matching untracked files from Step 1's status");
+    expect(distribution).toContain('a new `package.json` or `Cargo.toml` alone does not establish a publishable artifact');
+    expect(distribution).toContain('inspect existing manifests for newly declared binaries or package exports');
     expect(distribution).toContain('New artifact without a pipeline');
     expect(distribution).toContain('AskUserQuestion');
     expect(distribution).toContain('Do not publish a release during `/ship`');
@@ -197,7 +198,7 @@ describe('ship source controller', () => {
     const text = generatePlanCompletionGateShip({ host: 'claude', skillName: 'ship', tmplPath: '', paths: HOST_PATHS.claude });
     const noPlan = compact(text.slice(text.indexOf('**No plan file found:**')));
     expect(noPlan).toContain('Skip only the plan completion audit');
-    expect(noPlan).toContain('Continue with Step 8.1, Prior Learnings and Scope Drift');
+    expect(noPlan).toContain('Continue with Step 8.1, Scope Drift and Prior Learnings');
     expect(noPlan).toContain('Step 9 QA still runs');
     expect(noPlan).not.toContain('Skip entirely');
   });

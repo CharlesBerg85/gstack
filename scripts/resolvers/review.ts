@@ -629,7 +629,8 @@ Recording the **0H spec-review metrics** is
 required when writing is permitted, even if the reviewer failed. Append the
 actual outcome below; failed mkdir or append stops the review. When writing is
 forbidden, show the actual fields as not persisted and continue without writing.
-Reviewer failure therefore continues here; required storage failure stops here.` : `After the loop completes (PASS, max iterations, or convergence guard):
+If the reviewer fails, report that limit and continue after recording the outcome;
+if a required save fails, stop before claiming completion.` : `After the loop completes (PASS, max iterations, or convergence guard):
 
 1. Tell the user the result — summary by default:
    "Your doc survived N rounds of adversarial review. M issues caught and fixed.
@@ -895,7 +896,7 @@ ${outsideVoiceInvocation(ctx, { timeoutMs: 540000, nativeAlreadyRequired: true, 
 
 Set the outer tool timeout to 600000ms so the provider timeout can report its failure.
 
-Present this outside challenge's output verbatim as informational findings.
+Present the full output verbatim. ${isShip ? 'An unavailable outside challenge does not block shipping by itself; supported findings still enter Step 11, and the structured P1 and non-convergence gates still apply.' : 'This outside challenge is informational; supported findings still enter Step 5 Fix-First, whose approval and convergence gates apply.'}
 
 **Error handling:** Only this optional outside adversarial pass is non-blocking; native completion and structured-review decisions still apply.
 - **Auth failure:** If stderr contains "auth", "login", "unauthorized", or "API key": "${outsideVoiceFor(ctx).label} authentication failed. Run \\\`${outsideVoiceFor(ctx).id === 'codex' ? 'codex login' : 'claude auth login'}\\\` to authenticate."
@@ -1003,6 +1004,7 @@ in order before leaving Step 11:
    Insert Steps 9, 10 and 11 before the pending Step 11.5 in the work list.
    Step 9 completes full review before fixes; any further repair inserts its checks
    ahead of the remaining items. These fresh reviews after code edits are not recovery retries.
+   Returning here never resets Step 9's three-cycle fix limit.
 3. **Native complete with no queued fixes:** Finish the memory updates below,
    then continue to Step 11.5. Never jump directly to release preparation.` : 'The native pass is required for Step 5.8 completion. Optional outside failures remain separately recorded, not completed by native coverage. Return all findings and structured-review decisions to Step 5; the parent owns fixes and the full rerun.'}
 
@@ -1451,18 +1453,16 @@ Continue to Step 9 to commit and publish the approved documentation edits.
 function generatePlanFileDiscovery(ship = false): string {
   return `### Plan File Discovery
 
-1. **Conversation context (primary):** Check if there is an active plan file in this conversation. The host agent's system messages include plan file paths when in plan mode. If found, use it directly — this is the most reliable signal.
+1. **Conversation context (primary):** Use the active plan file from this conversation or its plan-mode system context.
 
-2. **Content-based search (fallback):** If no plan file is referenced in conversation context, search by content:
+2. **Content-based search (fallback):** Without a conversation-supplied path, search by content:
 
 \`\`\`bash
 setopt +o nomatch 2>/dev/null || true  # zsh compat
 BRANCH=$(git branch --show-current 2>/dev/null | tr '/' '-' | tr -cd 'a-zA-Z0-9._-')
 REPO=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)")
-# Compute project slug for ~/.gstack/projects/ lookup
 _PLAN_SLUG=$(git remote get-url origin 2>/dev/null | sed 's|.*[:/]\\([^/]*/[^/]*\\)\\.git$|\\1|;s|.*[:/]\\([^/]*/[^/]*\\)$|\\1|' | tr '/' '-' | tr -cd 'a-zA-Z0-9._-') || true
 _PLAN_SLUG="\${_PLAN_SLUG:-$(basename "$PWD" | tr -cd 'a-zA-Z0-9._-')}"
-# Search common plan file locations (project designs first, then personal/local)
 for PLAN_DIR in "$HOME/.gstack/projects/$_PLAN_SLUG" "$HOME/.claude/plans" "$HOME/.codex/plans" ".gstack/plans"; do
   [ -d "$PLAN_DIR" ] || continue
   PLAN=$(ls -t "$PLAN_DIR"/*.md 2>/dev/null | xargs grep -l "$BRANCH" 2>/dev/null | head -1)
@@ -1473,7 +1473,7 @@ done
 [ -n "$PLAN" ] && echo "PLAN_FILE: $PLAN" || echo "NO_PLAN_FILE"
 \`\`\`
 
-3. **Validation:** If a plan file was found via content-based search (not conversation context), read the first 20 lines and verify it is relevant to the current branch's work. If it appears to be from a different project or feature, treat as "no plan file found."
+3. **Validation:** For search results, read the first 20 lines and verify the project, feature and current branch. A mismatch means "no plan file found." Conversation-supplied paths bypass this search-result check.
 
 **Error handling:**
 - No plan file found → skip with "No plan file detected — skipping."
@@ -1531,7 +1531,7 @@ For each item, note:
   sections.push(`
 ### Verification Mode
 
-Before judging completion, classify HOW each item can be verified. The diff alone cannot prove every kind of work. Items outside the current repo or system are structurally invisible to \`git diff\`.
+Classify how each item can be verified. The diff cannot prove work in another repo or external system.
 
 - **DIFF-VERIFIABLE** — A code change in this repo would manifest in \`git diff ${mode === 'ship' ? 'origin/<base>' : '<base>...HEAD'}\`. Examples: "add UserService" (file appears), "validate input X" (validation logic appears), "create users table" (migration file appears).
 - **CROSS-REPO** — Item names a file or change in a sibling repo (e.g., \`domain-hq/docs/dashboard.md\`, \`~/Development/<other-repo>/...\`). The current diff CANNOT prove this.
@@ -1575,7 +1575,7 @@ For each extracted plan item, run the verification dispatch from the previous se
 
 \`\`\`
 PLAN COMPLETION AUDIT
-═══════════════════════════════
+════════════════════
 Plan: {plan file path}
 
 ## Implementation Items
@@ -1596,9 +1596,9 @@ Plan: {plan file path}
   [UNVERIFIABLE] Cloudflare DNS-only on api.example.com — external system, manual check required
   [UNVERIFIABLE] Supabase auth allowlist contains user email — external system, confirm in Supabase dashboard
 
-─────────────────────────────────
+────────────────────
 COMPLETION: 4/10 DONE, 1 PARTIAL, 2 NOT DONE, 1 CHANGED, 2 UNVERIFIABLE
-─────────────────────────────────
+────────────────────
 \`\`\``);
 
   // ── Gate logic (mode-specific) ──
@@ -1628,12 +1628,12 @@ The parent evaluates the completion checklist in priority order, including after
    - For each item, use AskUserQuestion with the item's *specific* manual check (e.g., "Confirm: does \`~/Development/domain-hq/docs/dashboard.md\` exist?", not "Have you checked all items?").
    - Options per item:
      Y) Confirmed done — cite what you verified (free-text, embedded in PR body)
-     N) Not done — block ship; treat as NOT DONE and re-enter the priority-1 gate
+     N) Not done — block ship and report the item as NOT DONE; do not offer a second deferral choice
      D) Intentionally dropped — note in PR body: "Plan item intentionally dropped: {item}"
    - RECOMMENDATION per item: Y if the item is concrete and easily verified; N if it's critical-path (auth, DNS, deliverables to other repos) and the user shows hesitation.
 
    **Exit conditions:**
-   - Any N: pause confirmations and reclassify that item as NOT DONE. Apply priority 1: A stops; B defers; C drops. After B/C, resume the remaining confirmations.
+   - Any N: STOP and report that item as NOT DONE. Resume only after its required work is verified; no second deferral choice.
    - All Y or D: Continue. Embed \`## Plan Completion — Manual Verifications\` section in PR body listing each Y'd item with the user's free-text evidence and each D'd item with "intentionally dropped".
 
    **Cap.** If there are more than 5 UNVERIFIABLE items, present them as a numbered list first and ask whether the user wants to (1) confirm each individually, (2) stop and reduce scope, or (3) explicitly accept blanket-confirmation with the warning that this is the VAS-449 failure shape. Default and recommended option is (1).
@@ -1642,7 +1642,7 @@ The parent evaluates the completion checklist in priority order, including after
 
 4. **All DONE or CHANGED:** Pass. "Plan completion: PASS — all items addressed." Continue.
 
-**No plan file found:** Skip only the plan completion audit. Continue with Step 8.1, Prior Learnings and Scope Drift; Step 9 QA still runs.
+**No plan file found:** Skip only the plan completion audit. Continue with Step 8.1, Scope Drift and Prior Learnings; Step 9 QA still runs.
 
 **Include in PR body (Step 19):** Add a \`## Plan Completion\` section with the checklist summary.`;
   } else {
@@ -1760,7 +1760,7 @@ export function generatePlanVerificationExec(_ctx: TemplateContext): string {
    functional items use native tools without discovering a web server. An API URL is
    not automatically a page. Only browser evidence needs screenshots.
 3. If no verification section or no plan file exists, record no plan-specific items.
-   Automatic diff-scoped QA still runs. Continue to Prior Learnings below.
+   Automatic diff-scoped QA still runs. Continue to Step 8.2 Scope Drift below.
 
 **Handoff to Step 9.2.1:** Its parent-owned report-only explorer must execute this
 complete list before Fix-First. Before the first plan command, complete Step 9.2.1's

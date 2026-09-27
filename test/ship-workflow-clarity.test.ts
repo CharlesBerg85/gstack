@@ -155,17 +155,17 @@ test('ship r6 template: plan obligations precede learnings and scope drift even 
   const route = compact(plan.slice(0, plan.indexOf('**Dispatch this step')));
   const steps = ['1. Dispatch the audit, validate its result and resolve its Gate Logic',
     "2. Collect the plan's executable checks in Step 8.1; do not run them yet",
-    '3. Run Prior Learnings, including its setting question when offered',
-    '4. Run Step 8.2 Scope Drift, then proceed to Step 9 for review and QA'];
+    '3. Run Step 8.2 Scope Drift',
+    '4. Run Prior Learnings, including its setting question when offered, then proceed to Step 9 for review and QA'];
   const positions = steps.map(step => route.indexOf(step));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
   const noPlan = generatePlanCompletionGateShip({ host: 'claude', skillName: 'ship', tmplPath: '', paths: HOST_PATHS.claude });
   expect(noPlan).toContain('Skip only the plan completion audit');
-  expect(noPlan).toContain('Continue with Step 8.1, Prior Learnings and Scope Drift; Step 9 QA still runs');
+  expect(noPlan).toContain('Continue with Step 8.1, Scope Drift and Prior Learnings; Step 9 QA still runs');
   expect(noPlan).not.toContain('Skip entirely');
   const sections = ['{{PLAN_COMPLETION_GATE_SHIP}}', '{{PLAN_VERIFICATION_EXEC}}',
-    '{{LEARNINGS_SEARCH:query=release ship version changelog merge pr}}', '{{SCOPE_DRIFT}}'];
+    '{{SCOPE_DRIFT}}', '{{LEARNINGS_SEARCH:query=release ship version changelog merge pr}}'];
   const actual = sections.map(section => plan.indexOf(section));
   expect(actual.every(position => position >= 0)).toBe(true);
   expect(actual).toEqual([...actual].sort((a, b) => a - b));
@@ -628,6 +628,8 @@ test('existing release levels have an explicit recovery rule, not implicit rebum
 test('distribution setup asks for unknown targets and cannot release before review', () => {
   const root = entryTemplate;
   const distribution = root.slice(root.indexOf('## Step 2:'), root.indexOf('## Step 3:'));
+  expect(distribution).toContain('git diff origin/<base> --diff-filter=A --name-only');
+  expect(distribution).toContain('a new `package.json` or `Cargo.toml` alone does not establish a publishable');
   expect(distribution).toContain('Ask for unknown targets, registries or access first');
   expect(distribution).toContain('never invent credentials');
   expect(distribution).toContain('include the workflow in tests and review');
@@ -751,4 +753,28 @@ test('ship r22 re-audits return through commit and regeneration rather than bypa
   expect(docs).toContain("retain `Documentation: blocked`, its reason and incomplete scope");
   expect(docs).toContain("covers the same approved scope and exact content");
   expect(docs).toContain('Never run a third audit');
+});
+
+test('ship plan audit resolves scope drift before learnings and stops on an unverified N', () => {
+  const section = readTemplate('ship/sections/plan-completion.md');
+  expect(section.indexOf('## Step 8.1:')).toBeLessThan(section.indexOf('## Step 8.2:'));
+  expect(section.indexOf('## Step 8.2:')).toBeLessThan(section.indexOf('## Prior Learnings'));
+  expect(section).toContain('N) Not done — block ship and report the item as NOT DONE; do not offer a second deferral choice');
+  expect(section).toContain('Any N: STOP');
+  expect(section).not.toContain('re-enter the priority-1 gate');
+});
+
+test('outside challenge and documentation reruns preserve their actual blocking owners', () => {
+  const adversarial = readTemplate('ship/sections/adversarial.md');
+  expect(adversarial).toContain('An unavailable outside challenge does not block shipping by itself');
+  expect(adversarial).toContain('structured P1 and non-convergence gates still apply');
+  expect(adversarial).toContain("Returning here never resets Step 9's three-cycle fix limit");
+  const standaloneReview = readTemplate('review/sections/adversarial.md');
+  expect(standaloneReview).toContain('supported findings still enter Step 5 Fix-First');
+  expect(standaloneReview).not.toContain('supported findings still enter Step 11');
+  const docs = readTemplate('ship/sections/pr-body.md');
+  expect(docs).toContain('**Existing open PR/MR:** update');
+  expect(docs).toContain('do not run the create commands below');
+  expect(docs).not.toContain('no PR exists yet');
+  expect(entryTemplate.indexOf('## Step 14.5:')).toBeLessThan(entryTemplate.indexOf('## Step 17:'));
 });

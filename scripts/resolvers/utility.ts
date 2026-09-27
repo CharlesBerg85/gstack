@@ -177,8 +177,8 @@ Run Full; append fixed/new issues and score delta. Preserve the supplied prior b
 
 ### Phase 1: Initialize
 
-Reuse the caller's BROWSER SETUP (Aside READY or \`$B\` fallback for \`NEEDS_ASIDE\`/
-\`ASIDE_NOT_RUNNING\`) and owned artifact paths. Complete only missing setup within caller
+Reuse the caller's BROWSER SETUP (Aside READY or \`$B\` fallback for any non-READY
+result, including \`NEEDS_ASIDE\`/\`ASIDE_NOT_RUNNING\`) and owned artifact paths. Complete only missing setup within caller
 authority. Start a timer before baseline unless the caller's timer is already running.
 
 ### Phase 2: Authenticate (if needed)
