@@ -848,7 +848,8 @@ export function installNormalizingFilter(f: SharedLibsFixture): void {
 }
 
 export function fixtureWorkingTree(f: SharedLibsFixture): string {
-  return execFileSync(path.join(SHARED_LIBS_ROOT, 'bin/gstack-wtree'), [], {
+  const script = path.join(SHARED_LIBS_ROOT, 'bin/gstack-wtree');
+  return execFileSync(process.platform === 'win32' ? 'bash' : script, process.platform === 'win32' ? [script] : [], {
     cwd: f.repo, encoding: 'utf8', timeout: 30_000,
     env: { ...process.env, ...f.env, PATH: process.env.PATH },
   }).trim();

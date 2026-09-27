@@ -326,6 +326,10 @@ export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }>
 // coverage, so auto-excluding them defeats the regression tests they carry.
 const KNOWN_WINDOWS_SAFE: Array<{ file: string; reason: string }> = [
   {
+    file: 'test/shared-libs-source-reads.test.ts',
+    reason: 'bin/ literal is a mocked launch assertion; actual worktree fingerprinting explicitly invokes Bash on Windows',
+  },
+  {
     file: 'test/claude-code-windows-job.test.ts',
     reason: 'invokes Bun directly; verifies Windows job containment at the standalone CLI boundary',
   },

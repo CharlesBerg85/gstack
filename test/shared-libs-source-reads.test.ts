@@ -77,6 +77,30 @@ test('fixture Git and child commands share a platform-safe empty global config',
   }
 });
 
+test.each(['win32', 'linux', 'darwin'])('worktree fingerprint launches its Bash script on %s', platform => {
+  const helper = fs.readFileSync(path.join(import.meta.dir, 'helpers/shared-libs-eval-fixture.ts'), 'utf8');
+  const start = helper.indexOf('export function fixtureWorkingTree(');
+  const end = helper.indexOf('\nexport async function runSharedCapture(', start);
+  expect(start).toBeGreaterThan(0);
+  expect(end).toBeGreaterThan(start);
+  const calls: any[] = [];
+  const paths = platform === 'win32' ? path.win32 : path.posix;
+  const root = platform === 'win32' ? 'C:\\fixture root\\gstack' : '/fixture root/gstack';
+  const script = paths.join(root, 'bin/gstack-wtree');
+  const launch = new Function('execFileSync', 'path', 'SHARED_LIBS_ROOT', 'process',
+    `${transpiler.transformSync(helper.slice(start, end).replace('export function', 'function'))}; return fixtureWorkingTree;`)(
+    (command: string, args: string[], options: any) => { calls.push({ command, args, options }); return 'tree-hash\n'; },
+    paths, root, { platform, env: { PATH: 'host-path', HOME: 'host-home' } });
+  const f = { repo: paths.join(root, 'repo'), env: { GSTACK_HOME: 'isolated-state', PATH: 'fixture-path' } };
+  expect(launch(f)).toBe('tree-hash');
+  expect(calls).toEqual([{
+    command: platform === 'win32' ? 'bash' : script,
+    args: platform === 'win32' ? [script] : [],
+    options: { cwd: f.repo, encoding: 'utf8', timeout: 30_000,
+      env: { PATH: 'host-path', HOME: 'host-home', GSTACK_HOME: 'isolated-state' } },
+  }]);
+});
+
 test('the retained native resolved-path read proves both current authored callers', () => {
   const f = fixture();
   const result = capture();
