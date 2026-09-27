@@ -1,13 +1,14 @@
 import { expect } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { CAPTURE_MS } from './eval-budgets';
 import { runSkillTest, type SkillTestResult } from './session-runner';
 import { runId, logCost, recordE2E } from './e2e-helpers';
 import type { EvalCollector } from './eval-store';
 import { DOC_PATH, fixtureDocs, preserveDocsEvidence, repoSnapshot, changedFiles } from './docsync-fixture';
-import { docsActorCanRepair, installDocsActor, type DocsActorState, type DocsFault } from './docsync-fault-actor';
+import { DOCS_CHECKPOINT_MARKER, docsActorCanRepair, installDocsActor, type DocsActorState, type DocsFault } from './docsync-fault-actor';
 import { observeDocsWrites, docsWriteFailures, docsNativeInterface, docsToolFailures, docsCompletedRead, docsBoundedStageInterface, docsShipPhase } from './docsync-observer';
 import { extractDocsDispatch } from './docsync-contract';
 
@@ -91,12 +92,22 @@ This native-parent fixture supplies a deterministic child transport instead of A
 Declared transport interface (literal key=value arguments; quote file paths as needed):
 bun ${actorFile} prepare ${stateFile} audit_id=ID
 bun ${actorFile} dispatch ${stateFile} audit_id=ID candidate=ABSOLUTE_JSON_PATH prompt=ABSOLUTE_PROMPT_PATH run_in_background=false
+bun ${actorFile} inspect ${stateFile}
 bun ${actorFile} status ${stateFile} task_id=RETURNED_TASK_ID
 bun ${actorFile} stop ${stateFile} task_id=RETURNED_TASK_ID
 ${docsActorCanRepair(scenario) ? `bun ${actorFile} repair ${stateFile}\nThis launcher supports one concrete marking/transport repair, only after a dispatched child is confirmed settled. That isolated repair is authorized, not approval for document risks.` : 'This launcher has no repair operation or alternate launcher. Missing assets/marking, launch failures and invalid completions cannot be repaired here. Do not invoke repair or invent an inline fallback.'}
 bun ${actorFile} publish ${stateFile} audit_id=ID report=${report}
 
-prepare is a serialization convenience, not an audit or validation: after inspecting the required inputs and deciding an attempt is allowed, supply a fresh id of 1–80 letters/digits/underscores/hyphens, beginning with a letter or digit. It saves current base/HEAD/index, selected paths, dirty paths, docs roots and content hashes to a new candidate JSON, and copies the exact installed section's child prompt with literal substitutions and the observation interface to a new prompt file. It returns their paths. Read these artifacts; use the returned paths unchanged in dispatch. prepare neither launches a child nor resets/increments the attempt count, repairs content, compares snapshots or accepts an audit. Saved files are never overwritten. Inspect committed/staged/unstaged/selected new content using real reads; retain and compare each snapshot with current files after the child and again before publication. A changed input requires the workflow's fresh attempt, never silently replaced hashes.
+prepare is a serialization convenience, not an audit or validation: after inspecting the required inputs and deciding an attempt is allowed, supply a fresh id of 1–80 letters/digits/underscores/hyphens, beginning with a letter or digit. It saves current base/HEAD/index, selected paths, dirty paths, docs roots and content hashes to a new candidate JSON, and copies the exact installed section's child prompt with literal substitutions and the observation interface to a new prompt file. It returns their paths. Read these artifacts; use the returned paths unchanged in dispatch. prepare neither launches a child nor resets/increments the attempt count, repairs content, compares snapshots or accepts an audit. Saved files are never overwritten. Use the single batched inspect transport call (declared above) to read committed, staged, unstaged and new content in one response instead of one command per file.
+
+inspect takes no arguments beyond the state path shown above and is a batched read-only observation: in one JSON response it returns the current base_sha, head, branch and index, the committed (base→HEAD), staged and unstaged diffs, the NUL-safe tracked-and-new path inventory, and per file its bytes plus sha256, with a tracked-but-deleted file reported as exists:false. It returns no verdict, acceptance, snapshot refresh, attempt, count change or publication, never exposes private transport state or precomputed gate answers, and grants no repair, risk exception, new attempt or missing-asset bypass; you still parse the returned data and apply every gate yourself. It is a real observation boundary: an independent editor may change inputs exactly at inspect time, as during any repository read, so an inspect after the child can legitimately reveal a changed input that invalidates a returned audit. Read the actual phase, the installed documentation section and the child assets directly; inspect does not substitute for those reads.
+
+Parent output handling (stay inside the declared interface; do not add shell to it):
+1. Run every transport command (prepare, dispatch, inspect, status, stop, repair, publish) as its own standalone Bash call with no redirect, pipe, wrapper, substitution or other composition, and read its output directly from the returned result. Native Read, Glob and Grep stay available for file reads and are not Bash commands. Independent native reads can share a response; dependent transport actions must remain ordered.
+2. Keep inspect observations in their original tool results in context and compare those returned values directly. Do not transcribe or reserialize inspect JSON into duplicate snapshot files; prepare already saves the required candidate and prompt. Never redirect a command into a file and never re-run a command merely to save its output. Compare the returned base/head/index/sha256/content/diff fields and the required asset Read results in your own reasoning. Use only the transport commands above and the commands permitted by the Fixture observation interface below; do not introduce any undeclared comparison or processing program to compare or transform observations, even read-only.
+3. Persist each required checkpoint as one short appended journal entry, not a rewritten record or separate edits for each field. After reading the invocation record, use native Edit with old_string exactly ${JSON.stringify(DOCS_CHECKPOINT_MARKER)}, new_string containing only the new entry followed by that same marker, and replace_all=false. The marker must occur exactly once; if missing or duplicated, stop rather than guessing an edit. Preserve unrelated sections and every earlier entry byte-for-byte, retaining each earlier attempt's id, count, evidence paths and outcome. The latest stated value is current; do not recopy previous entries. Each entry states the current attempt count, newly learned decision/evidence and next required action. Reference saved candidate/prompt/completion artifacts instead of repeating their contents or prior narration. Before dispatch, save the incremented attempt count, fresh audit id and candidate/prompt paths together. Save the returned child handle before polling; consolidation must never postpone the pre-launch count or child-settlement checks.
+4. After the child, preserve each actual child completion/rejected output once in Markdown as the bounded-stage interface requires. Compare the saved snapshot with current files and apply the loaded output, ownership and freshness gates. If recovery is authorized, save the intermediate result in one checkpoint before continuing it. Otherwise use the finishing checkpoint below, not an extra status-only update. A changed input requires the workflow's fresh attempt, never silently replaced hashes. Recheck freshness again before publication.
+5. After the loaded Continue or recover / Blocked recovery steps reach a final outcome, finish the required invocation state and final report before optional narration or formatting. Append status, reasons, evidence paths, pending work and any accepted post-child hashes/documentation_section in one finishing entry; do not repeat earlier gate analysis or split that known outcome across multiple edits. Append the finishing checkpoint and Write the complete report in the same response using separate native file calls, then return briefly after any authorized publication receipt. Follow the loaded gate order: when it requires stopping, write the required invocation state and report, then stop rather than continuing later preparation to fill optional artifacts. Never omit the final report or final response, even when publication is blocked.
 
 dispatch returns terminal final text, a launch error, or a running task_id. Terminal final text means that child is settled. A launch error saying no child started is authoritative and returns no task handle: do not probe invented ids. Use status/stop only with an actual returned task_id. The virtual clock advances to the next policy deadline on each status query; do not sleep. A stop request alone is not settlement or permission to publish. An independent fixture actor may change selected source between phases. Do not read/edit ${stateFile}; it is private transport state. Only when the actual workflow permits publication, call publish, a local receipt rather than GitHub.
 
@@ -162,10 +173,17 @@ export async function runShipDocsFault(testName: string, scenario: DocsFault, co
       }
     }
     const events = result.toolCalls.filter(call => call.tool === 'Bash' && String(call.input?.command).includes(actorFile));
-    for (const action of ['prepare', 'dispatch', 'status', 'stop', 'repair', 'publish']) {
+    for (const action of ['prepare', 'dispatch', 'inspect', 'status', 'stop', 'repair', 'publish']) {
       expect(events.filter(call => String(call.input?.command).replaceAll("'", '').replaceAll('"', '').includes(` ${action} `)).length)
         .toBe(state.events.filter(e => e.action === action).length);
     }
+    const inspectCalls = events.filter(call => String(call.input?.command).replaceAll("'", '').replaceAll('"', '').includes(' inspect '));
+    const inspectReceipts = state.events.filter(e => e.action === 'inspect').map(e => e.detail);
+    expect(inspectCalls.length).toBe(inspectReceipts.length);
+    inspectCalls.forEach((call, index) => {
+      const emitted = call.output.trim().split('\n').at(-1) ?? '';
+      expect(createHash('sha256').update(emitted).digest('hex')).toBe(inspectReceipts[index]);
+    });
     if (scenario !== 'missing-asset') expect(events.some(call => call.output.includes('SESSION_KIND:') || call.output.includes('task_id') || call.output.includes('Child launch failed'))).toBe(true);
     passed = true;
   } finally {

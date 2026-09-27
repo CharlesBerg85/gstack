@@ -1,9 +1,11 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
-import { DOC_PATH, docsCandidate, gitAt, fixtureDocs } from './docsync-fixture';
+import { DOC_PATH, docsCandidate, gitAt, fixtureDocs, repoSnapshot } from './docsync-fixture';
 import { extractDocsDispatch } from './docsync-contract';
 import { docsNativeInterface } from './docsync-observer';
+
+export const DOCS_CHECKPOINT_MARKER = '<!-- DOCSYNC_CHECKPOINT -->';
 
 export type DocsFault = 'missing-marker' | 'missing-asset' | 'launch-failure' | 'timeout-unsettled' |
   'late-result' | 'stale-before' | 'stale-after' | 'recovery' | 'legacy-completion';
@@ -145,6 +147,30 @@ export function docsActorCommand(file: string, action: string, args: Record<stri
           text = complete(args.audit_id, updated.length ? 'updated' : 'current', [], updated);
           s.events.push({ action: 'completion', audit_id: args.audit_id });
         }
+      } else if (action === 'inspect') {
+        if (Object.keys(args).length) throw Error('inspect takes no arguments');
+        if (s.armed) changeCandidate(s);
+        const repo = path.join(s.root, 'repo');
+        const inventory = [...new Set(gitAt(repo, 'ls-files', '-z', '--cached', '--others', '--exclude-standard')
+          .split('\0').filter(Boolean))].sort();
+        if (inventory.length > 64) throw Error('inspect inventory exceeds the bound');
+        const snapshot = repoSnapshot(repo);
+        const base = gitAt(repo, 'rev-parse', 'main');
+        const files = Object.fromEntries(inventory.map(rel => {
+          const bytes = snapshot.contents[rel];
+          if (bytes === undefined) return [rel, { exists: false }];
+          const buffer = Buffer.from(bytes, 'base64');
+          return [rel, { exists: true, sha256: createHash('sha256').update(buffer).digest('hex'), content: buffer.toString('utf8') }];
+        }));
+        text = JSON.stringify({
+          operation: 'inspect', base_sha: base, head: snapshot.head,
+          branch: gitAt(repo, 'branch', '--show-current'), index: snapshot.index,
+          pre_existing_dirty: gitAt(repo, 'status', '--porcelain', '-z'),
+          diff_committed: gitAt(repo, 'diff', base, 'HEAD'),
+          diff_cached: gitAt(repo, 'diff', '--cached'), diff_worktree: gitAt(repo, 'diff'),
+          inventory, files,
+        });
+        s.events.push({ action, detail: createHash('sha256').update(text).digest('hex') });
       } else if (action === 'status') {
         const task = last();
         task.elapsed_ms += task.stopRequested ? 300_001 : 600_001;
@@ -205,12 +231,16 @@ No risk exceptions or risky edits approved. Preserve unrelated and partial conte
 Earlier review stages are synthetic and outside this fixture. No live review handles or tokens are asserted.
 ## Checks
 Earlier check stages are synthetic and outside this fixture. No test receipts are asserted.
-## Documentation
+## Initial documentation state
 Attempts used: 0. No accepted audit, hashes, exception or child handle. The supplied candidate.json is initial fixture input, not an accepted audit.
-## Next steps
+## Initial next steps
 1. CURRENT: documentation phase (Step 14.5, or store documentation preflight).
 2. Save the result and optionally execute the authorized local publication stand-in if the actual documentation gate permits it.
 3. STOP before Step 15 or any store action.
+
+## Documentation checkpoint journal
+Append changes in order. The latest stated value is current; earlier entries and the initial state remain evidence, not instructions to repeat completed work.
+${DOCS_CHECKPOINT_MARKER}
 `, { mode: 0o600 });
   const file = path.join(fixture.home, 'actor-state.json');
   save(file, { root: fixture.home, scenario, events: [], tasks: [], repaired: false, armed: false, lateChanged: false, acceptedId: null });
