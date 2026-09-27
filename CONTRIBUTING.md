@@ -211,10 +211,10 @@ gate and periodic censuses run fresh weekly and on manual
 dispatch of `evals-periodic.yml`; `bun run eval:bg:release` runs both locally.
 Some broad behavioral failures will therefore be found after the PR gate.
 
-CI enables verified first-attempt reuse for the 16 workflow quality judges for
-24 hours within the same PR. The other 11 quality cases and all dynamic agent
-cases stay fresh. Local runs stay fresh unless the complete scoped cache and
-runtime configuration is supplied. The key includes complete prompt bytes, generated inputs,
+CI enables verified first-attempt reuse for 16 workflow quality judges for
+24 hours within the same PR. The cookie workflow's custom input, the other 11
+quality cases and all dynamic agent cases stay fresh. Local runs stay fresh unless
+the complete scoped cache and runtime configuration is supplied. The key includes complete prompt bytes, generated inputs,
 fixtures, runner/rubric code, installed dependencies, model settings and runtime.
 The current assertions validate a reused score again. Records retain the original
 run, revision and time; reuse never renews that time. Failed, retried, partial or
