@@ -37,7 +37,17 @@ describe('QA probe entry and checkpoint gates', () => {
         const text = (skillName === 'review' ? generateQAReviewPreflight(ctx) : '') + generateQAReview(ctx);
         expect(text).toContain('> **STOP.** Read `sections/exploratory.md` in that QA installation');
         expect(text).toContain('A plan command is a probe, not an exception to this gate');
-        expect(text.indexOf('> **STOP.**')).toBeLessThan(text.indexOf('**2. List the checks'));
+        const required = text.indexOf(skillName === 'review'
+          ? '**2. Check readiness and list required checks.**' : '**2. List the checks');
+        expect(required).toBeGreaterThan(-1);
+        expect(text.indexOf('> **STOP.**')).toBeLessThan(required);
+        if (skillName === 'review') {
+          const isolation = text.indexOf('**1. Set the charter and isolation.**');
+          const setup = text.indexOf('Read `sections/browser-setup.md` now');
+          expect(isolation).toBeGreaterThan(text.indexOf('> **STOP.**'));
+          expect(setup).toBeGreaterThan(required);
+          expect(text.slice(isolation, required).replace(/\s+/g, ' ')).toContain('complete isolation/permission preflight');
+        }
       }
     }
   });
@@ -45,7 +55,7 @@ describe('QA probe entry and checkpoint gates', () => {
   test('core review collects runtime checks without executing them ahead of QA setup', () => {
     for (const [file, step] of [['review/SKILL.md.tmpl', 'Step 4.7'], ['ship/sections/review-army.md.tmpl', 'Step 9.2.1']]) {
       const text = fs.readFileSync(path.join(import.meta.dir, '..', file), 'utf8');
-      const staticRule = step === 'Step 4.7' ? 'Load the QA resources below now. Step 4 is read-only; Step 4.7 owns setup, charters and probes' : `This pass is static; defer product probes to ${step}`;
+      const staticRule = step === 'Step 4.7' ? 'Step 4 is read-only; Step 4.7 owns setup, charters and probes' : `This pass is static; defer product probes to ${step}`;
       expect(text).toContain(staticRule);
       expect(text.indexOf(staticRule)).toBeLessThan(text.indexOf('{{QA_REVIEW}}'));
       if (step === 'Step 4.7') {

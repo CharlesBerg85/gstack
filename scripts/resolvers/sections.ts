@@ -115,7 +115,7 @@ export const SECTION_INDEX: ResolverFn = (ctx: TemplateContext, args?: string[])
   for (const s of manifest.sections) {
     const reference = skill === 'qa' || skill === 'qa-only' ? sectionPath(ctx, skill, s.id) : `\`sections/${s.file}\``;
     if (skill === 'review' && s.id === 'review-army') {
-      lines.push(`| QA resources before static review | Use Step 4's installed-relative Reads; run QA in Step 4.7 |`);
+      lines.push(`| Select surfaces and read QA methods | Step 4 below; setup and probes run in Step 4.7 |`);
     }
     lines.push(`| ${s.trigger} | ${reference} |`);
     if (skill === 'ship' && s.id === 'review-army') {

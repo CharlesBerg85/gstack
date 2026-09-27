@@ -125,7 +125,7 @@ async function runRecipe(marker: string, options: { flow?: boolean; hostname?: s
     async (url: string, value: unknown) => { events.push({ name: 'fetch', value: { url, ...value as object } }); return { status: 200, text: async () => options.response ?? 'body' }; },
     async () => ({ base64Image: Buffer.from('image').toString('base64') }),
     { writeFile: async (file: string, bytes: Buffer) => events.push({ name: 'writeFile', value: { file, bytes: bytes.toString() } }) },
-    path, Buffer,
+    path.posix, Buffer,
   );
   expect(events[0].name).toBe('open');
   expect(events.at(-1)?.name).toBe('close');

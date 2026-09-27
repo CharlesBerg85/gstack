@@ -10,6 +10,7 @@ import {
 } from './helpers/shared-libs-eval-fixture';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { hasTrustedSharedLibsCheck } from './helpers/shared-libs-review-start-evidence';
+import stageScope from './fixtures/shared-libs-lifecycle-r59-stage-scope-public.json';
 import { seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt,
   type PathEligibilityFixture } from './helpers/shared-libs-path-fixture';
 import * as fixtureHelpers from './helpers/shared-libs-eval-fixture';
@@ -67,6 +68,31 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
 }
 
 describe('bounded shared-code revalidation prompt', () => {
+  test('the actor scope replaces the captured R59 exploratory stage instead of adding another prerequisite', () => {
+    const prompt = reviewPrompt(f, instructions, input, { actorCommand: 'cat /fixture/stage-output.json' });
+    expect(prompt).toContain('replaces the entire Step 4.7 QA and Step 4.8 native adversarial stages');
+    expect(prompt).toContain("Step 4's early QA selection/method-loading prerequisites");
+    expect(prompt).toContain("Step 5.8's QA report requirement");
+    const excluded = prompt.slice(prompt.indexOf('Do not perform QA scope/method asset loads'), prompt.indexOf('Existing tests'));
+    for (const packet of stageScope.outside_component) {
+      expect(packet.result.tool_use_id).toBe(packet.call.id);
+      expect(packet.result.is_error).not.toBe(true);
+      expect(packet.result.content.length).toBeGreaterThan(0);
+      expect(excluded).toContain(packet.boundary);
+    }
+    expect(stageScope.post_fix_verification.call.input.command).toContain('bun test test/retry-after.test.ts');
+    expect(stageScope.post_fix_verification.result.content).toContain('worker===lib true route===lib true');
+    expect(prompt).toContain('Existing tests and caller/import checks needed to verify your source fixes still run');
+    expect(prompt).toContain('do not restart exploratory QA or require QA artifacts');
+    for (const retained of ['core/checklist', 'source/identity/snapshot checks', 'Fix-First decisions', 'approved source edits',
+      're-review with a new REVIEW_START', 'zero-edit convergence', 'final persistence', 'Missing, failed, stale or wrong-state results require noncompletion',
+      'no actual native coverage credit', 'Separate genuine QA/native evaluations remain required']) expect(prompt).toContain(retained);
+    for (const other of [reviewPrompt(f, instructions, input), reviewRevalidationPrompt(f, instructions, input),
+      reviewRevalidationPrompt(f, instructions, input, { input: '/fixture/resumed.json', checkCommand: 'check-prerequisites' })]) {
+      expect(other).not.toContain('Do not perform QA scope/method asset loads');
+    }
+  });
+
   test('edit-capable replay declares fresh actor invocations instead of refreshing settled input', () => {
     const prompt = reviewPrompt(f, instructions, input, { actorCommand: 'cat /fixture/stage-output.json' });
     expect(prompt).toContain('explicitly declared SYNTHETIC prerequisite actor');

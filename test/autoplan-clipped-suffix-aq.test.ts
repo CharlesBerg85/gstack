@@ -5,7 +5,7 @@ import {createAutoplanArtifactRecorder,recordAutoplanArtifact,readPendingAutopla
 import {pendingAutoplanArtifactPermissionInput,autoplanArtifactMenuKey} from './helpers/autoplan-artifact-permission';
 import {E2E_TOUCHFILES} from './helpers/touchfiles-data';
 const cleanup:Array<()=>void>=[];afterEach(()=>{for(const f of cleanup.splice(0))f()});
-function replay(before=fixture.before,removed=fixture.request.old_string,added=fixture.request.new_string){
+function replay(before=fixture.before,removed=fixture.request.old_string,added=fixture.request.new_string,clock=Date.now){
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ap-suffix-')),cwd=path.join(root,path.basename(fixture.cwd)),config=path.join(root,'config'),stateRoot=path.join(root,'home/.gstack');
  const file=path.normalize(fixture.hook.pending.file.replace(fixture.stateRoot,stateRoot)),native=path.join(config,'projects/owned',fixture.hook.sessionId+'.jsonl');
  fs.mkdirSync(cwd,{recursive:true});fs.mkdirSync(path.dirname(file),{recursive:true});fs.mkdirSync(path.dirname(native),{recursive:true});fs.writeFileSync(native,'');fs.writeFileSync(file,before);fs.utimesSync(file,new Date(0),new Date(0));
@@ -15,12 +15,26 @@ function replay(before=fixture.before,removed=fixture.request.old_string,added=f
  const publicTools=structuredClone(fixture.publicTools) as any[];for(const e of publicTools)if(e.input)e.input.file_path=file;
  const commandStartedAt=Date.parse(publicTools[0].timestamp)-1;
  const pending=readPendingAutoplanArtifact(recorder.file,cwd,config,stateRoot,commandStartedAt,publicTools);
- const context={cwd,ownedStateRoot:stateRoot,commandStartedAt,transcriptStatus:'ready',publicTools,pending,now:Date.now()+1000,viewportCapturedAt:Date.now()};
+ const observedAt=clock();
+ const context={cwd,ownedStateRoot:stateRoot,commandStartedAt,transcriptStatus:'ready',publicTools,pending,now:observedAt+1000,viewportCapturedAt:observedAt};
  const invoke=(viewport=fixture.viewport,seen=new Set<string>())=>pendingAutoplanArtifactPermissionInput(viewport,context,seen);
  return {root,cwd,config,stateRoot,file,recorder,event,context,invoke};
 }
 const menu=fixture.viewport.slice(fixture.viewport.indexOf('╌'));
 const panel=(rows:string[])=>rows.join('\n')+'\n'+menu;
+test('one clock sample preserves the suffix replay margin even across a longer scheduling gap',()=>{
+ let first:number|undefined,reads=0;
+ const clock=()=>(first??=Date.now())+1001*reads++;
+ const r=replay(undefined,undefined,undefined,clock);
+ expect(reads).toBe(1);
+ expect(r.context.now-r.context.viewportCapturedAt).toBe(1000);
+ expect(r.invoke()?.input).toBe('1\r');
+ const later=clock();
+ expect(later).toBe(r.context.now+1);
+ expect(pendingAutoplanArtifactPermissionInput(fixture.viewport,{...r.context,viewportCapturedAt:later},new Set())).toBeNull();
+ expect(pendingAutoplanArtifactPermissionInput(fixture.viewport,{...r.context,now:later,viewportCapturedAt:later},new Set())?.input).toBe('1\r');
+});
+
 test('exact current clipped pane requires new recorded suffix commitments and preserves original request bytes',()=>{
  const r=replay(),digest=r.context.pending!.editDigest!;
  expect(digest.beforeSHA256).toBe(fixture.provenance.beforeSHA256);expect(digest.requestSHA256).toBe(fixture.provenance.requestSHA256);

@@ -60,7 +60,7 @@ Based on the scope signals above, select which specialists to dispatch.
 1. **Testing** — read \`${ctx.paths.skillRoot}/review/specialists/testing.md\`
 2. **Maintainability** — read \`${ctx.paths.skillRoot}/review/specialists/maintainability.md\`
 
-**If DIFF_LINES < 50:** Skip all specialists. Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Continue to Step ${stepMerge} with the core/design-lite findings and an empty specialist list, then the parent's Exploratory QA step and ${nextStep}. Small diffs skip fan-out, never the parent-owned smoke probes. Core shared-code checks also remain required.
+**If DIFF_LINES < 50:** Skip all specialists. Print: "Small diff ($DIFF_LINES lines) — specialists skipped." Continue to Step ${stepMerge} with the ${isShip ? 'core/design-lite' : 'core'} findings and an empty specialist list, then the parent's Exploratory QA step and ${nextStep}. Small diffs skip fan-out, never the parent-owned smoke probes. Core shared-code checks also remain required.
 
 **Conditional (dispatch if the matching scope signal is true):**
 3. **Security** — if SCOPE_AUTH=true, OR if SCOPE_BACKEND=true AND DIFF_LINES > 100. Read \`${ctx.paths.skillRoot}/review/specialists/security.md\`
@@ -232,7 +232,7 @@ Do not add core shared-code savings to this specialist footer. Explain any overl
 #### 6. Save specialist activity
 
 Compile a \`specialists\` object for ${persistRef}.
-For each specialist (testing, maintainability, security, performance, data-migration, api-contract, design, simplification, red-team):
+${isShip ? 'For each specialist' : 'For DIFF_LINES < 50, keep `specialists: {}`; do not manufacture per-specialist scope records. Otherwise record each considered specialist'} (testing, maintainability, security, performance, data-migration, api-contract, design, simplification, red-team):
 - If dispatched: \`{"dispatched": true, "findings": N, "critical": N, "informational": N}\`
 - If skipped by scope: \`{"dispatched": false, "reason": "scope"}\`
 - If skipped by gating: \`{"dispatched": false, "reason": "gated"}\`

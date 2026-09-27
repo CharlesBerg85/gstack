@@ -28,6 +28,41 @@ function scratch(): string {
 }
 
 describe('shared-code legacy interactive actor', () => {
+  test('R58 acknowledges the exact removed-filter Skip packet without authorizing its recommended fix', async () => {
+    const input = {
+      questions: [{
+        question: "[ADVISORY] src/retry-worker.ts:2 — the diff replaces the re-export of lib/retry-after.ts#retrySeconds with a byte-identical inlined copy, making three copies (lib, route, worker). Recommended fix: restore `export { retrySeconds } from '../lib/retry-after'` in src/retry-worker.ts and apply the same one-line import in src/retry-route.ts (~30 lines removed, 2 added, ~28 saved; existing test/retry-after.test.ts covers the contract). Note: this is a bounded no-edit replay — choosing Fix cannot be applied here and will be reported as a blocking pending finding. How do you want to dispose of this advisory?",
+        header: 'Shared-libs',
+        multiSelect: false,
+        options: [
+          {
+            label: 'Fix as recommended (Recommended)',
+            description: 'Re-use lib/retry-after.ts#retrySeconds from both worker and route. In this no-edit fixture the fix is NOT applied; the review is persisted incomplete with the advisory pending.',
+          },
+          {
+            label: 'Skip',
+            description: 'Keep the inlined copies for now. Records an explicit Skip for this finding (fingerprint shared-libs:af037ba2…) with fresh snapshot coverage so a future unchanged pass can reuse it.',
+          },
+        ],
+      }],
+    };
+    expect(new Bun.CryptoHasher('sha256').update(`${JSON.stringify(input, null, 2)}\n`).digest('hex'))
+      .toBe('191ea50509734579ecfd08ce98208b36aecf510d68a1498fbd06cd0192ccab22');
+    const before = structuredClone(input), questions: unknown[] = [], answers: unknown[] = [], refusals: Error[] = [];
+    const callback = createSharedInteractiveToolHandler('skip', {
+      nonQuestion: () => { throw new Error('unexpected tool'); },
+      onQuestion: question => { questions.push(question); },
+      onAnswer: (question, answer) => { answers.push({ question, answer }); },
+      onRefusal: error => { refusals.push(error); },
+    });
+    const expected = { [input.questions[0].question]: 'Skip' };
+    expect(await callback('AskUserQuestion', input)).toEqual({ behavior: 'allow', updatedInput: { ...input, answers: expected } });
+    expect(questions).toEqual([input]);
+    expect(answers).toEqual([{ question: input, answer: expected }]);
+    expect(refusals).toEqual([]);
+    expect(input).toEqual(before);
+  });
+
   test('R44 retains the complete native bit-preservation packet without partial acknowledgments', async () => {
     const input = structuredClone(r44.packets[0].input), before = structuredClone(input);
     const answers: unknown[] = [], refusals: Error[] = [];
@@ -438,6 +473,10 @@ describe('shared-code legacy interactive actor', () => {
     { label: 'Skip', description: 'Update the review log with the skipped advisory; reuse the recorded decision next review.' },
     { label: 'Skip', description: 'This option does not refactor the route. You should not fix the worker.' },
     { label: 'Skip', description: 'This option updates the review log. We will reuse the recorded decision.' },
+    { label: 'Skip', description: 'Keep the inlined copies for now. Records an explicit Skip for this finding (fingerprint shared-libs:af037ba2…) with fresh snapshot coverage so a future unchanged pass can reuse it.' },
+    { label: 'Skip', description: 'Records the decision so the next review may reuse that.' },
+    { label: 'Decline', description: 'Saves the advisory so a later pass can reuse this again.' },
+    { label: 'Skip', description: 'Stores the review records so a subsequent review will reuse them.' },
   ])('skip supports complete no-change commitments: $label', async option => {
     const callback = createSharedInteractiveToolHandler('skip', {
       nonQuestion: () => {}, onQuestion: () => {}, onAnswer: () => {},
@@ -466,6 +505,12 @@ describe('shared-code legacy interactive actor', () => {
     [{ label: 'Skip', description: 'This option refactors the route' }],
     [{ label: 'Skip', description: 'You should fix the worker' }],
     [{ label: 'Skip', description: 'The worker imports the helper' }],
+    [{ label: 'Skip', description: 'The next review can reuse it.' }],
+    [{ label: 'Skip', description: 'Records the decision about the helper so a future pass can reuse it.' }],
+    [{ label: 'Skip', description: 'Records the decision so a future worker can reuse it.' }],
+    [{ label: 'Skip', description: 'Records the decision so the next review can reuse it and fix the route.' }],
+    [{ label: 'Skip', description: 'Records the decision so the next review can reuse it by rewriting the helper.' }],
+    [{ label: 'Skip', description: 'Records the decision so the next review can reuse it.', preview: 'Clear the index flag.' }],
     [{ label: 'Skip', description: 'We will clear the index flag' }],
     [{ label: 'Skip', description: 'Preserve the implementation by rewriting the helper.' }],
     [{ label: 'Skip', description: 'Keep the source through applying the fix.' }],

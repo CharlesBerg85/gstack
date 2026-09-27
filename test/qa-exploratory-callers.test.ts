@@ -416,13 +416,24 @@ describe('generated actual parent paths', () => {
     for (const skillName of ['review', 'ship']) {
       const ctx = { skillName, tmplPath: `${skillName}/SKILL.md.tmpl`, host: 'claude' as const, paths: HOST_PATHS.claude };
       const parent = generateQAReview(ctx);
-      const phases = [skillName === 'review' ? "1. Complete Step 4's method Reads before probing" : '1. Load methods before any QA or explicit-verification probe', '2. List the checks that must pass', '3. Run the checks without repairing the product', '4. Check for changes before reporting'];
+      const phases = [
+        skillName === 'review' ? '1. Set the charter and isolation' : '1. Load methods before any QA or explicit-verification probe',
+        skillName === 'review' ? '2. Check readiness and list required checks' : '2. List the checks that must pass',
+        '3. Run the checks without repairing the product', '4. Check for changes before reporting',
+      ];
       const positions = phases.map(phase => parent.indexOf(phase));
       expect(positions.every(position => position >= 0)).toBe(true);
       expect(positions).toEqual([...positions].sort((a, b) => a - b));
       const load = skillName === 'review' ? generateQAReviewPreflight(ctx) : parent.slice(positions[0], positions[1]);
       if (skillName === 'review') {
-        expect(parent.slice(positions[0], positions[1])).toContain("Complete Step 4's method Reads before probing");
+        const charter = parent.slice(positions[0], positions[1]).replace(/\s+/g, ' ');
+        expect(charter).toContain("Use Step 4's recorded surface selection and loaded methods");
+        expect(charter).toContain('complete any missing required Read before probing');
+        expect(charter).toContain('complete isolation/permission preflight');
+        const readiness = parent.slice(positions[1], positions[2]).replace(/\s+/g, ' ');
+        expect(readiness).toContain('Read `sections/browser-setup.md` now and follow its report-only access rules');
+        expect(readiness).toContain('Never install, import cookies or bootstrap tests during discovery');
+        expect(load).not.toContain('sections/browser-setup.md');
       }
       expect(load).toContain('{{QA_RESOURCE:scope}}');
       expect(load).toContain('sections/exploratory.md');

@@ -228,7 +228,10 @@ describe('QA caller authority in pure host renders', () => {
         const body = (caller === 'review' ? RESOLVERS.QA_REVIEW_PREFLIGHT(ctx) : '') + RESOLVERS.QA_REVIEW(ctx);
         const exploration = body.indexOf('Read `sections/exploratory.md` in that QA installation');
         expect(exploration).toBeGreaterThan(-1);
-        expect(exploration).toBeLessThan(body.indexOf('2. List the checks that must pass'));
+        const required = body.indexOf(caller === 'review'
+          ? '2. Check readiness and list required checks' : '2. List the checks that must pass');
+        expect(required).toBeGreaterThan(-1);
+        expect(exploration).toBeLessThan(required);
         expect(body).toContain('check one successful operation and the riskiest changed failure or edge case');
         expect(body).toContain('Within 5 minutes/12 probes');
         expect(body).toContain('Small diffs and missing plans/servers do not waive this smoke');
@@ -249,15 +252,29 @@ describe('QA caller authority in pure host renders', () => {
         const scope = body.indexOf('{{QA_RESOURCE:scope}}');
         const exploration = body.indexOf('Read `sections/exploratory.md` in that QA installation');
         const methods = body.indexOf('**Functional surfaces:**');
-        const probes = body.indexOf('2. List the checks that must pass');
+        const probes = body.indexOf(caller === 'review'
+          ? '2. Check readiness and list required checks' : '2. List the checks that must pass');
         expect(scope).toBeGreaterThan(-1);
         expect(exploration).toBeGreaterThan(-1);
         expect(scope).toBeLessThan(exploration);
         expect(exploration).toBeLessThan(methods);
         expect(methods).toBeLessThan(probes);
-        expect(body.replace(/\s+/g, ' ')).toContain('Replace its top-level title with `## Exploratory QA');
-        expect(body).toContain('Keep its fields as subsections');
-        expect(body).toContain('Link every checkpoint; write no second report');
+        if (caller === 'review') {
+          const flat = body.replace(/\s+/g, ' ');
+          expect(flat).toContain('Use the title `## Exploratory QA and Verification Results`');
+          expect(flat).toContain('keep its metadata and outcome tables intact');
+          expect(flat).toContain('demote its other headings one level (`##` to `###`, etc.)');
+          expect(flat).toContain('replace its title with `### Browser results` in this same section');
+          expect(flat).toContain('demote its other headings two levels');
+          expect(flat).toContain('Link every checkpoint');
+          expect(flat).toContain('Do not write a second report');
+          expect(flat).toContain('Keep browser and functional scores/outcomes separate');
+          expect(flat).toContain('save the browser baseline and evidence files normally');
+        } else {
+          expect(body.replace(/\s+/g, ' ')).toContain('Replace its top-level title with `## Exploratory QA');
+          expect(body).toContain('Keep its fields as subsections');
+          expect(body).toContain('Link every checkpoint; write no second report');
+        }
         expect(body).toContain('templates/functional-report-template.md');
         expect(body).not.toContain('not a second report');
       }

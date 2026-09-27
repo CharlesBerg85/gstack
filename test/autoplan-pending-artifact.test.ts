@@ -10,7 +10,7 @@ import type { NativePublicToolEvent } from './helpers/plan-count-transcript';
 
 const roots:string[]=[];
 afterEach(()=>{for(const root of roots.splice(0))fs.rmSync(root,{recursive:true,force:true});});
-function replay(relative='ceo-plans/2026-09-09-user-dashboard.md') {
+function replay(relative='ceo-plans/2026-09-09-user-dashboard.md',clock=Date.now) {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'gstack-pending-artifact-test-'));roots.push(root);
   const cwd=path.join(root,path.basename(fixture.cwd)),ownedStateRoot=path.join(root,'home','.gstack'),config=path.join(root,'config');
   fs.mkdirSync(cwd);const file=path.join(ownedStateRoot,'projects',path.basename(cwd),relative);
@@ -25,7 +25,8 @@ function replay(relative='ceo-plans/2026-09-09-user-dashboard.md') {
     cwd,transcript_path:native,tool_input:{file_path:file,old_string:'Synthetic old content',new_string:'Synthetic new content',replace_all:false}};
   const record=(change:Record<string,unknown>={})=>recordAutoplanArtifact(JSON.stringify({...event,...change}),recorder.file,cwd,config,ownedStateRoot);
   record();
-  const context={cwd,ownedStateRoot,commandStartedAt:fixture.commandStartedAt,now:Date.now(),viewportCapturedAt:Date.now(),
+  const observedAt=clock();
+  const context={cwd,ownedStateRoot,commandStartedAt:fixture.commandStartedAt,now:observedAt,viewportCapturedAt:observedAt,
     transcriptStatus:'ready',publicTools,pending:readPendingAutoplanArtifact(recorder.file,cwd,config,ownedStateRoot,fixture.commandStartedAt,publicTools)};
   const screen=fixture.viewport.replaceAll(path.basename(fixture.file),path.basename(file));
   roots.push(path.dirname(recorder.file));
@@ -51,6 +52,24 @@ test('all130 actual published tool events preserve the same metadata-only fallba
   expect(pick(r)?.input).toBe('1\r');
 });
 
+test('one clock sample keeps all130-event replay coherent across a millisecond boundary without allowing future viewports',()=>{
+  let first:number|undefined,reads=0;
+  const clock=()=>(first??=Date.now())+reads++;
+  const r=replay(undefined,clock);
+  r.context.publicTools=structuredClone(fixture.allPublicTools) as NativePublicToolEvent[];
+  for(const event of r.context.publicTools)if(event.input?.file_path===fixture.file)event.input.file_path=r.file;
+  expect(reads).toBe(1);
+  expect(r.context.viewportCapturedAt).toBe(r.context.now);
+  expect(r.context.publicTools).toHaveLength(130);
+  expect(Math.floor(fs.statSync(r.file).mtimeMs)).toBeLessThanOrEqual(Date.parse(r.context.pending!.timestamp));
+  expect(pick(r)?.input).toBe('1\r');
+  const future={...r.context,viewportCapturedAt:clock()};
+  expect(future.viewportCapturedAt).toBe(r.context.now+1);
+  expect(pick({...r,context:future})).toBeNull();
+  expect(pick({...r,context:{...future,now:future.viewportCapturedAt}})?.input).toBe('1\r');
+  expect(pick({...r,context:{...r.context,viewportCapturedAt:Date.parse(r.context.pending!.timestamp)-1}})).toBeNull();
+});
+
 test('completed or published requests and newer identities on an old granted viewport remain closed',()=>{
   const r=replay(),first=pick(r)!;
   const seen=new Set([first.signature,autoplanArtifactMenuKey(r.screen)]);
@@ -68,6 +87,7 @@ test('hook after viewport, invalid clocks, future/stale/foreign IDs and missing 
   const changes:Array<(r:ReturnType<typeof replay>)=>void>=[
     r=>{r.context.viewportCapturedAt=Date.parse(r.context.pending!.timestamp)-1;},
     r=>{r.context.now=NaN;},r=>{r.context.now=Infinity;},r=>{r.context.viewportCapturedAt=NaN;},
+    r=>{r.context.viewportCapturedAt=r.context.now+1;},
     r=>{r.context.pending!.timestamp=new Date(r.context.now+10000).toISOString();},
     r=>{r.context.pending!.timestamp=new Date(r.context.commandStartedAt-1).toISOString();},
     r=>{r.context.pending!.sessionId='foreign';},r=>{r.context.pending!.toolUseId='';},

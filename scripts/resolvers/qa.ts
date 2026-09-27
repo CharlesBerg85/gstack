@@ -10,7 +10,8 @@ export const generateQAResource: ResolverFn = (ctx, args) => {
     if (ctx.skillName === 'review') {
       return `From the installed /review SKILL.md's directory, choose one path:
 ${ctx.host === 'claude' ? `- If the caller directory is \`review\`, Read \`../qa/sections/${id}.md\` in full.
-- If the caller directory is prefixed \`gstack-review\`, use \`../gstack-qa/sections/${id}.md\` instead and read it in full.` : `- Read \`../gstack-qa/sections/${id}.md\` in full.`}
+- If the caller directory is prefixed \`gstack-review\`, use \`../gstack-qa/sections/${id}.md\` instead and read it in full.
+- If neither layout applies, report an unresolved QA installation as a setup blocker; do not guess another path.` : `- Read \`../gstack-qa/sections/${id}.md\` in full.`}
 Use this host's installation, never the product tree. ${QA_ASSET_BLOCKER}`;
     }
     return `From the installed /${ctx.skillName} SKILL.md's directory, Read \`../${sibling}/sections/${id}.md\` in full.${ctx.host === 'claude' ? ` If the caller directory is prefixed \`gstack-${ctx.skillName}\`, use \`../gstack-qa/sections/${id}.md\` instead.` : ''} Use this host's installation, never the product tree. ${QA_ASSET_BLOCKER}`;
@@ -197,7 +198,7 @@ failure may pass; a missing service preventing execution blocks coverage.
 }
 
 export function generateQAMethodReads(ctx: TemplateContext): string {
-  const setup = ['review', 'ship'].includes(ctx.skillName);
+  const setup = ctx.skillName === 'ship';
   for (const id of ['system-functional', 'qa-patterns', ...(setup ? ['browser-setup'] : [])]) sectionPath(ctx, 'qa', id);
   return `${ctx.skillName === 'qa-only' ? `Use this host's installed ${ctx.host === 'claude' ? '\`qa\`/\`gstack-qa\`' : '\`gstack-qa\`'} SKILL.md directory for these reads:\n\n` : ''}**Functional surfaces:**
 Read \`sections/system-functional.md\` in full.
@@ -210,7 +211,11 @@ export function generateQAReviewPreflight(ctx: TemplateContext): string {
   sectionPath(ctx, 'qa', 'exploratory');
   return `{{QA_RESOURCE:scope}}
 
-Resolve later QA paths in that installed QA directory.
+${ctx.skillName === 'review' ? `Use scope's target-selection rules now to choose functional, browser or mixed
+surfaces from the request and diff. Record that selection before loading methods.
+Do not execute setup or probes in this read-only step; Step 4.7 owns those actions.
+
+` : ''}Resolve later QA paths in that installed QA directory.
 > **STOP.** Read \`sections/exploratory.md\` in that QA installation and the selected methods below before continuing.
 > A plan command is a probe, not an exception to this gate.
 ${generateQAMethodReads(ctx)}
@@ -220,6 +225,7 @@ Caller/report templates cannot replace these method Reads.`;
 
 export function generateQAReview(ctx: TemplateContext): string {
   const ship = ctx.skillName === 'ship';
+  if (!ship) sectionPath(ctx, 'qa', 'browser-setup');
   return `### ${ship ? 'Step 9.2.1' : 'Step 4.7'}: Exploratory QA (before Fix-First)
 
 You, the parent agent, run this phase, not specialists.
@@ -228,10 +234,16 @@ Discovery is report-only. Use the caller's report directory or a new owned
 
 ${ship ? `**1. Load methods before any QA or explicit-verification probe.**
 
-${generateQAReviewPreflight(ctx)}` : "**1. Complete Step 4's method Reads before probing.**"}
+${generateQAReviewPreflight(ctx)}` : `**1. Set the charter and isolation.**
+Use Step 4's recorded surface selection and loaded methods; complete any missing
+required Read before probing. Write the Charter and complete isolation/permission
+preflight from \`sections/exploratory.md\` for those surfaces before setup.`}
 
-**2. List the checks that must pass.**
-Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup.
+**2. ${ship ? 'List the checks that must pass.' : 'Check readiness and list required checks.'}**
+${ship ? 'Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup.' : `For browser surfaces, Read \`sections/browser-setup.md\` now and follow its report-only
+access rules. Reuse setup only when its tools, session, target and ownership are
+still verified; otherwise repeat the readiness checks. Never install, import cookies
+or bootstrap tests during discovery. Functional-only runs do not load browser setup.`}
 - Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
 - Explicit plan commands/assertions remain required beyond that bound.
 - Other ideas are optional, untested coverage.
@@ -256,8 +268,21 @@ severity; an unmatched functional failure is \`functional-contract\`, \`CRITICAL
 Setup/permission blockers are not defects. Test creation needs user approval.
 ${ship ? 'After fixes settle, the Step 9.4 parent asks for setup/permission, repair or explicit named-risk acceptance for failed/unavailable checks; otherwise blocked.' : 'Ask for setup/permission, never secrets. Unresolved coverage makes Step 5.8 incomplete; a ship waiver cannot complete it.'}
 
-Read QA's \`templates/functional-report-template.md\`. Replace its top-level title with
-\`${ship ? '## Exploratory QA' : '## Exploratory QA and Verification Results'}\` ${ship ? 'in the PR body' : 'after final findings'}.
+${ship ? `Read QA's \`templates/functional-report-template.md\`. Replace its top-level title with
+\`## Exploratory QA\` in the PR body.
 Keep its fields as subsections. Link every checkpoint; write no second report.
-Separate browser results.${ship ? ' Put plan outcomes in `## Verification Results`.' : '\nThis QA summary is provisional. Continue to Step 4.8 even if QA is blocked; Step 5.8 decides final review completion.'}`;
+Separate browser results. Put plan outcomes in \`## Verification Results\`.` : `**5. Prepare one draft QA section, not a separate report.**
+Read QA's \`templates/functional-report-template.md\`. Use the title
+\`## Exploratory QA and Verification Results\`; keep its metadata and outcome
+tables intact and demote its other headings one level (\`##\` to \`###\`, etc.).
+Link every checkpoint. Mark functional contracts not applicable for browser-only runs.
+
+For browser evidence, Read \`templates/qa-report-template.md\` as Phase 6 directs,
+but replace its title with \`### Browser results\` in this same section and demote
+its other headings two levels. Do not write a second report. Keep browser and functional scores/outcomes separate;
+save the browser baseline and evidence files normally.
+
+Keep this section provisional through repairs and revalidation; update affected
+outcomes and checkpoint links in place. Continue to Step 4.8 even if QA is blocked.
+Step 5.8 appends this section once after final findings and decides completion.`}`;
 }

@@ -54,7 +54,9 @@ function sourceReadTrace(result: any, fixture: SharedLibsFixture, sources: strin
     if (resolved === path.resolve(repo, source)) continue;
     const contents = fs.readFileSync(resolved, 'utf8');
     if (!contents) continue;
-    const spellings = [relative, resolved].map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const paths = [relative, resolved];
+    if (path.sep === '\\') paths.push(...paths.map(value => value.replaceAll('\\', '/')));
+    const spellings = paths.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
     const namedPath = new RegExp(`(?:^|[\\s"'=;])(?:\\./)?(?:${spellings.join('|')})(?=$|[\\s"';|)])`);
     if (returned.some(({ tool, read, text }) => (tool === 'Read' ? path.resolve(repo, read) === resolved : namedPath.test(read))
       && text.includes(contents))) reads.push(source);
@@ -94,7 +96,6 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
         expect(capture.questions.length, `${kind}: old decision must be revalidated and presented again`).toBeGreaterThan(0);
         const trace = toolCommandTrace(result).join('\n');
         expect(trace).toContain('gstack-review-read');
-        expect(trace).toContain('sharedLibsFingerprint');
         expect(trace).toContain('gstack-review-log');
         expect(trace).toContain('--start');
         expect(trace).toContain('--finish');
@@ -127,6 +128,7 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
             coveredPaths: skipped.find((finding: any) => finding.fingerprint === prepared.current.fingerprint)?.snapshot_covered_paths,
           })).toBe(true);
         } else {
+          expect(trace).toContain('sharedLibsFingerprint');
           if (kind === 'symlinks') expect(trace).toMatch(/readlink|lstat|stat\b|test\s+-L|\[\s+-L|ls-files[^\n]*(?:--stage|-s\b)/);
           if (kind === 'submodule') expect(trace + '\n' + result.output).toMatch(/submodule|160000/i);
           if (kind === 'ignored') expect(trace + '\n' + result.output).toMatch(/check-ignore|ignored|exclude-standard/i);

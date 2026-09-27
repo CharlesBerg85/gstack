@@ -118,6 +118,8 @@ jobs:
   eval-slices:
     runs-on: ubicloud-standard-8
     needs: [build-image, plan-slices]
+    env:
+      EVALS_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-eval-slices-${{ matrix.slice }}
     # Nine slices retain every registered case and retry. The complete
     # census needs at most 292m20 per slice, plus 20 minutes setup/upload.
     timeout-minutes: 360
@@ -191,6 +193,20 @@ jobs:
           path: /tmp/paid-slice-results
           retention-days: 90
 
+      - name: Upload native capture evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-captures-${{ env.EVALS_RUN_ID }}
+          include-hidden-files: true
+          path: |
+            ~/.gstack/projects/*/e2e-runs
+            ~/.gstack/projects/*/evals/qa-callers
+            ~/.gstack-dev/e2e-runs
+            ~/.gstack-dev/evals/qa-callers
+          if-no-files-found: ignore
+          retention-days: 90
+
       - name: Upload shard logs on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -213,6 +229,8 @@ jobs:
   gate-census:
     runs-on: ubicloud-standard-8
     needs: [build-image, plan-slices]
+    env:
+      EVALS_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-gate-census-${{ matrix.slice }}
     # Eight slices need at most 302m each, plus 20 minutes setup/upload.
     timeout-minutes: 352
     permissions:
@@ -271,6 +289,20 @@ jobs:
         with:
           name: gate-census-${{ matrix.slice }}
           path: /tmp/gate-census-results
+          retention-days: 90
+
+      - name: Upload native capture evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-captures-${{ env.EVALS_RUN_ID }}
+          include-hidden-files: true
+          path: |
+            ~/.gstack/projects/*/e2e-runs
+            ~/.gstack/projects/*/evals/qa-callers
+            ~/.gstack-dev/e2e-runs
+            ~/.gstack-dev/evals/qa-callers
+          if-no-files-found: ignore
           retention-days: 90
 
   report:

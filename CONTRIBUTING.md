@@ -292,7 +292,7 @@ Spawns `claude -p` as a subprocess with `--output-format stream-json --verbose`,
 
 ```bash
 # Must run from a plain terminal — can't nest inside Claude Code or Conductor
-EVALS=1 bun test test/skill-e2e-*.test.ts
+EVALS_RUN_ID="local-$(bun -e 'console.log(crypto.randomUUID())')" EVALS=1 bun test test/skill-e2e-*.test.ts
 ```
 
 - Gated by `EVALS=1` env var (prevents accidental expensive runs)
@@ -301,6 +301,11 @@ EVALS=1 bun test test/skill-e2e-*.test.ts
 - Real-time progress to stderr: `[Ns] turn T tool #C: Name(...)`
 - Saves full NDJSON transcripts and failure JSON for debugging
 - Tests live in `test/skill-e2e-*.test.ts` (split by category), runner logic in `test/helpers/session-runner.ts`
+
+Supply a fresh `EVALS_RUN_ID` for each invocation, including detached runs below.
+Functional QA and documentation cases refuse acceptance without it. CI supplies
+its own run/attempt/job/slice identity; see [Testing internals](docs/TESTING_INTERNALS.md)
+for the retained native-capture artifacts.
 
 **Hermetic by default.** Every E2E runner (claude -p, the real-PTY plan-mode
 runner, the Agent SDK runner, plus the codex and gemini runners) spawns its child

@@ -946,6 +946,16 @@ test('captured shared index-flag packets retain the existing actor selection', (
   expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
 });
 
+test('captured R59 checker packets select their existing native consumers', () => {
+  const file = 'test/fixtures/shared-libs-index-flags-r59-checker-public.json';
+  const selected = selectTests([file], E2E_TOUCHFILES);
+  expect(selected.reason).toBe('diff');
+  expect(selected.selected.sort()).toEqual(['shared-libs-review-path-eligibility',
+    'shared-libs-review-index-flags', 'shared-libs-review-prior-coverage',
+    'shared-libs-review-lifecycle', 'shared-libs-review-revalidation'].sort());
+  expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
+});
+
 test('checkpoint regressions select all consumers of the shared native evidence helper', () => {
   const file = 'test/qa-checkpoint-evidence.test.ts';
   const selected = selectTests([file], E2E_TOUCHFILES);

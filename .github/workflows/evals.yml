@@ -178,6 +178,8 @@ jobs:
   eval-slices:
     runs-on: ubicloud-standard-8
     needs: [build-image, plan-slices]
+    env:
+      EVALS_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-eval-slices-${{ matrix.slice }}
     if: always() && needs.build-image.result == 'success' && needs.plan-slices.result == 'success'
     # Aggregate spawn-concurrency budget: 6 slices x EVALS_JOBS=2 x
     # EVALS_CONCURRENCY=2 = 24 concurrent tests lane-wide (the old matrix's
@@ -293,6 +295,20 @@ jobs:
         with:
           name: paid-slice-${{ matrix.slice }}
           path: /tmp/paid-slice-results
+          retention-days: 90
+
+      - name: Upload native capture evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-captures-${{ env.EVALS_RUN_ID }}
+          include-hidden-files: true
+          path: |
+            ~/.gstack/projects/*/e2e-runs
+            ~/.gstack/projects/*/evals/qa-callers
+            ~/.gstack-dev/e2e-runs
+            ~/.gstack-dev/evals/qa-callers
+          if-no-files-found: ignore
           retention-days: 90
 
       # The spooled per-shard full logs — a red weekly/PR lane three weeks

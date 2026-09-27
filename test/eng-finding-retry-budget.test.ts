@@ -181,8 +181,8 @@ test('current detach supervision covers the live-census floor', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '../package.json'), 'utf8'));
   const periodicTimeout = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
   const gateTimeout = Number(pkg.scripts['eval:bg:gate'].match(/--timeout\s+(\d+)/)[1]);
-  expect(floorFor('gate')).toBe(47_303);
-  expect(gateTimeout).toBe(47_340);
+  expect(floorFor('gate')).toBe(49_319);
+  expect(gateTimeout).toBe(49_320);
   expect(gateTimeout).toBeGreaterThanOrEqual(floorFor('gate'));
   expect(floorFor('periodic')).toBe(67_358);
   expect(periodicTimeout).toBe(67_380);

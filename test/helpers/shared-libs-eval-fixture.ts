@@ -147,10 +147,14 @@ export interface SharedLibsFixture {
   env: Record<string, string>;
 }
 
+function fixtureGitConfig(f: SharedLibsFixture): string {
+  return process.platform === 'win32' ? path.join(f.root, 'gitconfig') : os.devNull;
+}
+
 export function fixtureGit(f: SharedLibsFixture, ...args: string[]): string {
   return execFileSync(gitBin, ['-c', 'core.fsmonitor=false', ...args], {
     cwd: f.repo, encoding: 'utf8', timeout: 10_000,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull },
+    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f) },
     stdio: ['ignore', 'pipe', 'pipe'],
   }).trim();
 }
@@ -169,6 +173,7 @@ export function createSharedLibsFixture(label: string): SharedLibsFixture {
     hookTrace: path.join(root, 'hooks.log'), tip: '', env: {},
   };
   for (const dir of [f.repo, f.state, f.bin]) fs.mkdirSync(dir);
+  if (process.platform === 'win32') fs.writeFileSync(fixtureGitConfig(f), '', { mode: 0o600 });
   fixtureGit(f, 'init', '-b', 'main');
   fixtureGit(f, 'config', 'user.name', 'Shared Libs Fixture');
   fixtureGit(f, 'config', 'user.email', 'shared-libs@example.invalid');
@@ -181,7 +186,7 @@ export function createSharedLibsFixture(label: string): SharedLibsFixture {
   f.env = {
     PATH: `${f.bin}${path.delimiter}${process.env.PATH || ''}`,
     GSTACK_HOME: f.state,
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull,
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f),
     GH_PROMPT_DISABLED: '1', NO_COLOR: '1',
   };
   return f;
@@ -465,7 +470,7 @@ export function installSourceShims(f: SharedLibsFixture, opts: {
     fixtureGit(f, 'add', 'src/retry-worker.ts', 'docs');
     execFileSync(gitBin, ['-c', 'core.fsmonitor=false', 'commit', '-m', 'reuse the existing parser in retry worker'], {
       cwd: f.repo, encoding: 'utf8', timeout: 30_000, stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull,
+      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f),
         GIT_AUTHOR_DATE: '2020-01-01T00:00:00Z', GIT_COMMITTER_DATE: '2020-01-01T00:00:00Z' },
     });
     prHead = fixtureGit(f, 'rev-parse', 'HEAD');
@@ -494,7 +499,7 @@ const r=cp.spawnSync(${JSON.stringify(gitBin)},a,{stdio:'inherit',env:process.en
       // final-newline state. Its sha field identifies that blob, not its commit.
       const bytes = execFileSync(gitBin, ['-c', 'core.fsmonitor=false', '-c', 'log.showSignature=false', 'cat-file', 'blob', blob], {
         cwd: f.repo, timeout: 10_000, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull },
+        env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f) },
       });
       files[file] = bytes.toString('base64');
       blobs[file] = blob;
@@ -576,7 +581,7 @@ export function installHostileGitConfig(f: SharedLibsFixture): void {
   const signedCommit = commit.replace('\n\n', '\ngpgsig -----BEGIN PGP SIGNATURE-----\n dummy\n -----END PGP SIGNATURE-----\n\n') + '\n';
   const signedTip = execFileSync(gitBin, ['hash-object', '-t', 'commit', '-w', '--stdin'], {
     cwd: f.repo, input: signedCommit, encoding: 'utf8', timeout: 10_000,
-    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: os.devNull },
+    env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f) },
   }).trim();
   fixtureGit(f, 'update-ref', 'HEAD', signedTip);
   refreshFixtureTip(f);
@@ -727,12 +732,16 @@ export interface SharedReviewStageActor {
 }
 
 export function reviewPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string, resumed?: SharedReviewResume | Pick<SharedReviewStageActor, 'actorCommand'>): string {
-  const scope = resumed && 'actorCommand' in resumed ? `This is an edit-capable component replay with an explicitly declared SYNTHETIC prerequisite actor, not an end-to-end QA/adversarial evaluation. Completed maintainability findings are supplied in ${specialistInput}; verify them against real source. Execute the core/checklist, merge, Fix-First decisions, approved source edits, re-review, convergence and final persistence yourself.
-At the Step 4.7/4.8 prerequisite boundary of each review pass, invoke the following as the sole command in its Bash call. The registered fixture actor simulates the otherwise stubbed QA and native adversarial stages at that invocation, checks fixture isolation and authored evidence/identity, and returns a NEW synthetic result bound to that exact current state and tool-use ID. It never executes target code. Read and consume the complete returned JSON, not a previously saved receipt.
+  const scope = resumed && 'actorCommand' in resumed ? `This is an edit-capable component replay with an explicitly declared SYNTHETIC prerequisite actor, not an end-to-end QA/adversarial evaluation. Completed maintainability findings are supplied in ${specialistInput}; verify them against real source.
+Component scope override for every pass:
+1. Execute the real core/checklist, source/identity/snapshot checks, merge, Fix-First decisions, approved source edits, re-review with a new REVIEW_START, zero-edit convergence and final persistence yourself. Preserve the workflow's permissions and decision questions.
+2. The actor invocation below replaces the entire Step 4.7 QA and Step 4.8 native adversarial stages, not just an extra prerequisite after executing them. This replacement also covers Step 4's early QA selection/method-loading prerequisites and Step 5.8's QA report requirement. Do not perform QA scope/method asset loads, browser setup, charters, exploratory probes, checkpoints or QA reports in this component replay. Do not dispatch native reviewers, other specialists or outside providers. Existing tests and caller/import checks needed to verify your source fixes still run; they are not simulated, but do not restart exploratory QA or require QA artifacts.
+3. After core review and merge, before Fix-First on each review pass, invoke the following as the sole command in its Bash call. The registered fixture actor checks fixture isolation and authored evidence/identity and returns a NEW synthetic result bound to that exact current state and tool-use ID. It never executes target code. Read and consume the complete returned JSON, not a previously saved receipt.
 \`\`\`sh
 ${resumed.actorCommand}
 \`\`\`
-All prior receipts are preserved. Source-changing cycles invalidate earlier results: after edits, repeat the core review and invoke the actor again on the new zero-edit pass before final persistence. Never refresh an old receipt's hashes or relabel it as a new invocation. Missing, failed, stale or wrong-state results require noncompletion. The actor cannot complete core/checklist review, approve edits, answer decision questions or establish convergence for you. Apply the production COMPLETED/CONVERGED rules to your own work plus the current supplied results; never ask the question actor to override completion. Other specialists and outside providers are not dispatched in this component fixture. In the summary identify these as simulated fixture-stage interactions, not actual QA or native adversarial execution; they receive no actual native coverage credit.`
+4. All prior receipts are preserved. Source-changing cycles invalidate earlier results: after edits, repeat the core review and invoke the actor again on the new zero-edit pass before final persistence. Never refresh an old receipt's hashes or relabel it as a new invocation. Missing, failed, stale or wrong-state results require noncompletion. The actor cannot complete core/checklist review, approve edits, answer decision questions or establish convergence for you. Apply the production COMPLETED/CONVERGED rules to your own work plus the current supplied results; never ask the question actor to override completion.
+5. In the final QA/verification summary, identify the actor results as simulated fixture-stage interactions, not actual QA or native adversarial execution; they receive no actual native coverage credit. Report any real post-fix verification separately. Separate genuine QA/native evaluations remain required; this component replay cannot satisfy them.`
     : resumed ? `This is a bounded, no-edit resumed-stage fixture. The completed maintainability result is supplied in ${specialistInput}; verify its findings against real source. Read ${resumed.input}: it supplies clearly labeled SYNTHETIC settled Step 4.7 QA and Step 4.8 native adversarial prerequisite results for this isolated fixture state, not evidence that this model executed those stages and never actual native coverage credit. Other specialists and outside providers are not dispatched in this fixture. Do not dispatch or rerun them.
 Execute the core/checklist, merge, Fix-First decisions, source/identity/snapshot checks and final persistence yourself. Do not edit target source or Git index flags. A finding that requires edits blocks this bounded replay: report it honestly, without suppressing it or claiming completion. Before final persistence, after your final source checks, run this fixture prerequisite check as the sole command in its Bash call and inspect the entire JSON result:
 \`\`\`sh
@@ -926,7 +935,13 @@ function skippedReviewOption(question: any): any {
       const futureSubject = clause.slice(0, futureMatch?.index ?? 0).trim();
       const passiveDecision = /\b(?:review\s+(?:log|record)|decision|advisory|snapshot|ledger)$/.test(futureSubject)
         || /\b(?:review\s+(?:log|record)|decision|advisory|snapshot|ledger)\b(?:(?!\b(?:source|code|route|worker|helper|parser|file|flag)\b).)*\bit$/.test(futureSubject);
-      const futureDecision = /\b(?:can|will|would|should|must|may)\s+(?:(?:still|also|now|just|[a-z]+ly)\s+)*reuse\s+(?:(?:this|the|prior|recorded|existing)\s+)*(?:review\s+(?:log|record)|decision|advisory|snapshot|ledger)\b/.test(clause);
+      const metadataReference = [...futureSubject.matchAll(/\b(?:review\s+(?:logs?|records?)|decisions?|advisor(?:y|ies)|findings?|snapshots?|ledgers?)\b/g)].at(-1)?.index ?? -1;
+      const productReference = [...futureSubject.matchAll(/\b(?:sources?|code|routes?|workers?|helpers?|parsers?|files?|flags?|index|bits?|implementations?|copies|copy)\b/g)].at(-1)?.index ?? -1;
+      const futureObject = clause.slice((futureMatch?.index ?? 0) + (futureMatch?.[0].length ?? 0)).trim();
+      const referentialDecision = /\b(?:review|pass)$/.test(futureSubject)
+        && metadataReference > productReference
+        && /^(?:it|this|that|them|these|those)(?:\s+(?:later|again))?[.!?)]*$/.test(futureObject);
+      const futureDecision = referentialDecision || /\b(?:can|will|would|should|must|may)\s+(?:(?:still|also|now|just|[a-z]+ly)\s+)*reuse\s+(?:(?:this|the|prior|recorded|existing)\s+)*(?:review\s+(?:log|record)|decision|advisory|snapshot|ledger)\b/.test(clause);
       const purpose = [...clause.matchAll(/\b(?:to|by|through|via)\s+(?:[a-z]+ly\s+)*([a-z]+(?:-[a-z]+)*)/g)]
         .some(match => isAction(match[1]));
       return (isAction(future) && !(future === 'reused' && passiveDecision) && !(future === 'reuse' && futureDecision)) || method || purpose

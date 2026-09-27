@@ -4188,7 +4188,7 @@ describe('CONFIDENCE_CALIBRATION resolver', () => {
     test(`${skill} generated SKILL.md contains confidence calibration`, () => {
       const content = readSkillUnion(skill); // ship: moved to sections/review-army.md
       expect(content).toContain('Confidence Calibration');
-      expect(content).toContain('confidence score');
+      expect(content).toContain(skill === 'review' ? 'score every finding (1-10)' : 'confidence score');
     });
   }
 
@@ -4209,14 +4209,16 @@ describe('CONFIDENCE_CALIBRATION resolver', () => {
 
   test('confidence calibration includes finding format example', () => {
     const content = fs.readFileSync(path.join(ROOT, 'review', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('[P1] (confidence:');
+    expect(content).toContain('[CRITICAL] (confidence:');
     expect(content).toContain('SQL injection');
   });
 
   test('confidence calibration includes calibration learning feedback loop', () => {
     const content = fs.readFileSync(path.join(ROOT, 'review', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('calibration event');
-    expect(content).toContain('Log the corrected pattern');
+    const flat = content.replace(/\s+/g, ' ');
+    expect(flat).toContain('Calibration learning');
+    expect(flat).toContain('If the user confirms a reported finding scored < 7 is real');
+    expect(flat).toContain('log the corrected pattern as a learning');
   });
 
   test('skills without confidence calibration do NOT contain it', () => {

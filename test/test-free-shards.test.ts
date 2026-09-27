@@ -269,6 +269,27 @@ describe('test-free-shards: Windows curation', () => {
     }
   });
 
+  test('retains native POSIX coverage in the full suite without admitting it to the Windows profile', () => {
+    const posixOnly = [
+      'test/qa-functional-fixture.test.ts',
+      'test/qa-functional-observer-atomic.test.ts',
+      'test/docsync-report-interface.test.ts',
+    ];
+    const portable = [
+      'test/docsync-lifecycle-interface.test.ts',
+      'test/docsync-authority.test.ts',
+      'test/qa-browser-preservation.test.ts',
+      'test/review-enum-lifecycle.test.ts',
+      'test/shared-libs-source-reads.test.ts',
+    ];
+    const fullSuite = collectFreeTestFiles(ROOT);
+    for (const file of [...posixOnly, ...portable]) expect(fullSuite).toContain(file);
+    const result = curateWindowsSafe([...posixOnly, ...portable], ROOT);
+    expect(result.safe).toEqual(portable);
+    expect(result.excluded.map(({ file }) => file)).toEqual(posixOnly);
+    for (const { reason } of result.excluded) expect(reason).toMatch(/Linux inotify|POSIX signal/);
+  });
+
   test('excludes POSIX CSO helper suites while retaining portable image metadata coverage', () => {
     const posixOnly = [
       'test/cso-preparation-adversarial.test.ts',

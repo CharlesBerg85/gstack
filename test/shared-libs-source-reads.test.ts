@@ -1,10 +1,11 @@
 import { afterEach, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import native from './fixtures/shared-libs-resolved-reads-public.json';
 import { E2E_TOUCHFILES, GLOBAL_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import { execFileSync } from 'node:child_process';
-import { createSharedLibsFixture } from './helpers/shared-libs-eval-fixture';
+import { createSharedLibsFixture, fixtureGit } from './helpers/shared-libs-eval-fixture';
 import { seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt } from './helpers/shared-libs-path-fixture';
 
 const source = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-shared-libs-paths.test.ts'), 'utf8');
@@ -46,6 +47,35 @@ function capture() {
   return { exitReason: 'success', output: '', events,
     toolCalls: tools.map(tool => ({ tool: tool.name, input: tool.input, output: '' })) };
 }
+
+test('fixture Git and child commands share a platform-safe empty global config', () => {
+  const f = createSharedLibsFixture('git-config');
+  roots.push(f.root);
+  const config = f.env.GIT_CONFIG_GLOBAL;
+  if (process.platform === 'win32') {
+    expect(fs.statSync(config).isFile()).toBe(true);
+    expect(path.dirname(fs.realpathSync(config))).toBe(fs.realpathSync(f.root));
+  } else {
+    expect(config).toBe(os.devNull);
+    expect(fs.existsSync(path.join(f.root, 'gitconfig'))).toBe(false);
+  }
+  expect(fs.readFileSync(config, 'utf8')).toBe('');
+  expect(f.env.GIT_CONFIG_NOSYSTEM).toBe('1');
+  expect(fixtureGit(f, 'config', '--global', '--list')).toBe('');
+  expect(fixtureGit(f, 'config', '--local', '--get', 'user.name')).toBe('Shared Libs Fixture');
+  expect(fixtureGit(f, 'rev-parse', 'HEAD')).toBe(f.tip);
+  const args = ['config', '--global', '--show-origin', '--list'];
+  expect(execFileSync(Bun.which('git') || 'git', args, {
+    cwd: f.repo, env: { ...process.env, ...f.env }, encoding: 'utf8', timeout: 10_000,
+  }).trim()).toBe('');
+  if (process.platform === 'win32') {
+    fs.writeFileSync(config, '[fixture]\n\tconfig = owned\n');
+    expect(fixtureGit(f, 'config', '--global', '--get', 'fixture.config')).toBe('owned');
+    expect(execFileSync(Bun.which('git') || 'git', args, {
+      cwd: f.repo, env: { ...process.env, ...f.env }, encoding: 'utf8', timeout: 10_000,
+    }).trim()).toContain('fixture.config=owned');
+  }
+});
 
 test('the retained native resolved-path read proves both current authored callers', () => {
   const f = fixture();
@@ -123,6 +153,46 @@ test.each(['Read', 'Bash'])('direct alias reads retain the existing %s contract'
   const f = fixture();
   const result = { toolCalls: [{ tool, input: tool === 'Read' ? { file_path: aliases[0] } : { command: `cat ${aliases[0]}` } }] };
   expect(detect(result, f, aliases)).toContain(aliases[0]);
+});
+
+test.each(['valid', 'missing-result', 'failed-result', 'wrong-result-id', 'metadata-only', 'stale-content',
+  'assistant-only', 'suffix', 'foreign-root', 'outside-target'])('Windows native-path replay preserves read evidence: %s', kind => {
+  const f = fixture();
+  const windowsRoot = 'C:\\shared-libs-fixture';
+  const nativePath = (file: string) => path.resolve(f.root, ...path.win32.relative(windowsRoot, file).split('\\'));
+  const windowsFs = {
+    realpathSync: (file: string) => path.win32.resolve(windowsRoot, path.relative(f.root, fs.realpathSync(nativePath(file)))),
+    readFileSync: (file: string, encoding: BufferEncoding) => fs.readFileSync(nativePath(file), encoding),
+  };
+  const windowsDetect = new Function('fs', 'path', `${transpiler.transformSync(source.slice(detectorStart, callbackStart))}; return sourceReadTrace;`)(windowsFs, path.win32);
+  const result: any = capture();
+  const event = result.events.find((row: any) => row.message.content[0].tool_use_id === readId);
+  const block = event.message.content[0];
+  if (kind === 'missing-result') result.events = result.events.filter((row: any) => row !== event);
+  if (kind === 'failed-result') block.is_error = true;
+  if (kind === 'wrong-result-id') block.tool_use_id = 'unrelated';
+  if (kind === 'metadata-only') block.content = 'Both target files exist and are 738 bytes.';
+  if (kind === 'stale-content') block.content = block.content.replaceAll('// Authored caller changed after the prior decision (symlinks).', '');
+  if (kind === 'assistant-only') event.type = 'assistant';
+  if (kind === 'suffix' || kind === 'foreign-root') {
+    const tool = result.events.flatMap((row: any) => row.message.content).find((row: any) => row.id === readId);
+    for (const target of targets) tool.input.command = tool.input.command.replaceAll(target,
+      kind === 'suffix' ? `${target}.backup` : `/foreign-root/${target}`);
+  }
+  if (kind === 'outside-target') {
+    const outside = path.join(f.root, 'outside.ts');
+    fs.writeFileSync(outside, fs.readFileSync(path.join(f.repo, targets[0])));
+    fs.unlinkSync(path.join(f.repo, aliases[0]));
+    fs.symlinkSync(outside, path.join(f.repo, aliases[0]));
+    const tool = result.events.flatMap((row: any) => row.message.content).find((row: any) => row.id === readId);
+    tool.input.command = tool.input.command.replaceAll(targets[0], 'C:/shared-libs-fixture/outside.ts');
+  }
+  const reads = windowsDetect(result, { repo: path.win32.join(windowsRoot, 'repo') }, aliases);
+  if (kind === 'valid') for (const alias of aliases) expect(reads).toContain(alias);
+  else if (kind === 'outside-target') {
+    expect(reads).not.toContain(aliases[0]);
+    expect(reads).toContain(aliases[1]);
+  } else for (const alias of aliases) expect(reads).not.toContain(alias);
 });
 
 test.each(['test/shared-libs-source-reads.test.ts', 'test/fixtures/shared-libs-resolved-reads-public.json'])('%s selects every owning path callback without a global fallback', file => {

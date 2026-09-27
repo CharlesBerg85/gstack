@@ -106,6 +106,7 @@ export const FILE_RETRY_BUDGETS = [
   ...STRICT_RETRY_CASE_BUDGETS,
   ...[
     { file: 'test/skill-e2e-qa-callers.test.ts', attemptMs: 5 * (CAPTURE_MS + 15_000), retries: 1 },
+    { file: 'test/skill-e2e-shared-libs-paths.test.ts', attemptMs: 3 * CAPTURE_LONG_MS, retries: 1 },
     { file: 'test/skill-e2e-ship-docsync.test.ts', attemptMs: 5 * CAPTURE_LONG_MS + 8 * CAPTURE_MS, retries: 1 },
     // Seventeen workflow judges include their 10s recording grace; the other
     // eleven judges retain 120s. Supervise all 28 and the existing one retry.

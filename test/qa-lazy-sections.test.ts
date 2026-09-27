@@ -54,6 +54,23 @@ beforeAll(async () => {
 afterAll(() => fs.rmSync(owned, { recursive: true, force: true }));
 
 describe('QA-only cross-host lazy rendering', () => {
+  test('Codex review defines omitted-Army records without waiving native or QA completion', () => {
+    const codex = ALL_HOST_CONFIGS.find(host => host.name === 'codex')!;
+    const text = fs.readFileSync(path.join(rendered, codex.hostSubdir, 'skills/gstack-review/SKILL.md'), 'utf8');
+    const record = text.slice(text.indexOf('## Step 5.8: Persist Eng Review result')).replace(/\s+/g, ' ');
+    expect(text).not.toContain('### Dispatch specialists');
+    expect(text).not.toContain('### Step 4.6: Collect and merge findings');
+    expect(text).not.toContain('SPECIALIST REVIEW: N findings');
+    expect(record).toContain('If this host omits Review Army, use `specialists: {}` without claiming specialist coverage');
+    expect(record).toContain('`10.0` when small-diff specialists were skipped or this host omits Review Army');
+    expect(record).toContain('This default is not completion evidence');
+    expect(record).toContain('native Step 4.8 adversarial pass finish, and every required Step 4.7 probe passes');
+    expect(record).toContain('Any failed, blocked, inconclusive or not-run required probe means false, as does a failed native review');
+    expect(record).toContain('`/ship` named-risk acceptance cannot complete `/review`');
+    expect(record).toContain('unresolved non-advisory core defects still count in `issues_found`');
+    expect(record).toContain('State INCOMPLETE if `COMPLETED` is false, even when N=0');
+  });
+
   for (const host of ALL_HOST_CONFIGS) {
     test(`${host.name} review loads QA methods before static review and reuses them before probes`, () => {
       const directory = host.name === 'claude' ? 'review' : `${host.hostSubdir}/skills/gstack-review`;
@@ -66,21 +83,36 @@ describe('QA-only cross-host lazy rendering', () => {
       expect(exploration).toBeGreaterThan(core);
       const preparation = text.slice(start, core);
       const scope = preparation.indexOf('sections/scope.md');
+      const selection = preparation.indexOf("Use scope's target-selection rules now");
       const loop = preparation.indexOf('sections/exploratory.md');
       const methods = preparation.indexOf('sections/system-functional.md');
       expect(scope).toBeGreaterThan(-1);
-      expect(loop).toBeGreaterThan(scope);
+      expect(selection).toBeGreaterThan(scope);
+      expect(loop).toBeGreaterThan(selection);
       expect(methods).toBeGreaterThan(loop);
       expect(preparation).toContain('**Browser surfaces only:**');
-      expect(preparation).toContain('sections/browser-setup.md');
+      expect(preparation).not.toContain('sections/browser-setup.md');
       expect(preparation).toContain('sections/qa-patterns.md');
-      expect(preparation).toContain('Load the QA resources below now. Step 4 is read-only; Step 4.7 owns setup, charters and probes');
-      expect(text.slice(exploration)).toContain("Complete Step 4's method Reads before probing");
-      expect(text.slice(exploration)).toContain('Run the shared exploratory Charter and preflight now');
+      expect(preparation.replace(/\s+/g, ' ')).toContain('Step 4 is read-only; Step 4.7 owns setup, charters and probes');
+      expect(preparation).toContain('Record that selection before loading methods');
+      const qa = text.slice(exploration, text.indexOf('## Step 5: Fix-First Review', exploration));
+      const charter = qa.indexOf('**1. Set the charter and isolation.**');
+      const readiness = qa.indexOf('**2. Check readiness and list required checks.**');
+      const setup = qa.indexOf('Read `sections/browser-setup.md` now');
+      const probes = qa.indexOf('**3. Run the checks without repairing the product.**');
+      expect(charter).toBeGreaterThan(-1);
+      expect(readiness).toBeGreaterThan(charter);
+      expect(setup).toBeGreaterThan(readiness);
+      expect(probes).toBeGreaterThan(setup);
+      expect(qa.slice(charter, readiness).replace(/\s+/g, ' ')).toContain('complete isolation/permission preflight');
+      const flat = qa.replace(/\s+/g, ' ');
+      expect(flat).toContain('Reuse setup only when its tools, session, target and ownership are still verified; otherwise repeat the readiness checks');
+      expect(flat).toContain('Never install, import cookies or bootstrap tests during discovery');
+      expect(flat).toContain('Functional-only runs do not load browser setup');
       if (usesLazySections(host.name, 'review')) {
         const index = text.slice(text.indexOf('## Section index'), text.indexOf('## Step 1:'));
-        expect(index).toContain("Use Step 4's installed-relative Reads; run QA in Step 4.7");
-        expect(index.indexOf('QA resources before static review')).toBeLessThan(index.indexOf('sections/review-army.md'));
+        expect(index).toContain('Step 4 below; setup and probes run in Step 4.7');
+        expect(index.indexOf('Select surfaces and read QA methods')).toBeLessThan(index.indexOf('sections/review-army.md'));
       } else {
         expect(text).not.toContain('## Section index');
       }
@@ -243,6 +275,12 @@ describe('QA-only cross-host lazy rendering', () => {
         if (host.name === 'claude') {
           expect(body).toContain(`If the caller directory is prefixed \`gstack-${caller}\``);
           expect(body).toContain('use `../gstack-qa/sections/scope.md` instead');
+          if (caller === 'review') {
+            expect(body).toContain('If neither layout applies, report an unresolved QA installation as a setup blocker; do not guess another path');
+            expect(body).toContain("Use this host's installation, never the product tree");
+            expect(body).toContain('its affected probes as blocked; continue other safe probes');
+            expect(body).toContain('Missing/unreadable assets block required QA');
+          }
           const registry = path.join(owned, 'prefixed-callers', caller);
           fs.mkdirSync(path.join(registry, `gstack-${caller}`), { recursive: true });
           fs.cpSync(path.join(base, 'qa'), path.join(registry, 'gstack-qa'), { recursive: true });

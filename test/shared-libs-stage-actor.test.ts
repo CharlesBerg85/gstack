@@ -8,6 +8,7 @@ import { createLifecyclePrerequisiteActor } from './helpers/shared-libs-path-fix
 import { sharedLibsFingerprint } from '../lib/review-evidence';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { E2E_TOUCHFILES, GLOBAL_TOUCHFILES, selectTests } from './helpers/touchfiles';
+import stageScope from './fixtures/shared-libs-lifecycle-r59-stage-scope-public.json';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
@@ -57,15 +58,24 @@ function runner(f: fixtures.SharedLibsFixture, mode: string, observations: any[]
     const actor = session.stageActor;
     await invoke(`cat ${fixtures.shellQuote(path.join(fixtures.SHARED_LIBS_ROOT, 'review/checklist.md'))} src/retry-worker.ts src/retry-route.ts lib/retry-after.ts`);
     const initial = mode === 'missing' ? undefined : await invoke(actor.actorCommand, true);
-    const question = { questions: [{ question: 'Apply the supported shared-code advisory?', options: [
+    const question = mode === 'post-fix verification' ? structuredClone(stageScope.decision.call.input) : { questions: [{ question: 'Apply the supported shared-code advisory?', options: [
       { label: 'Fix as recommended', description: 'Replace both inline parsers with the existing helper.' },
       { label: 'Skip', description: 'Keep both inline parsers unchanged.' },
     ] }] };
     const answer = await session.canUseTool('AskUserQuestion', question);
-    const approved = answer.updatedInput.answers[question.questions[0].question] === 'Fix as recommended';
+    const selected = answer.updatedInput.answers[question.questions[0].question];
+    const approved = /Fix as recommended/.test(selected);
     const worker = fs.readFileSync(path.join(f.repo, 'src/retry-worker.ts'), 'utf8').replace('const unusedRetryDiagnostic = "unused";\n', '');
     await edit('src/retry-worker.ts', approved ? "export { retrySeconds } from '../lib/retry-after';\n" : worker);
     if (approved) await edit('src/retry-route.ts', "export { retrySeconds } from '../lib/retry-after';\n");
+    let verification: string | undefined;
+    if (mode === 'post-fix verification') {
+      if (approved) expect(stageScope.decision.result.content).toContain(`"${question.questions[0].question}"="${selected}"`);
+      verification = await invoke(stageScope.post_fix_verification.call.input.command);
+      expect(verification).toContain('1 pass');
+      expect(verification).toContain('0 fail');
+      expect(verification).toContain(`worker===lib ${approved} route===lib ${approved} sample 42 5`);
+    }
     const token = await invoke(`${fixtures.shellQuote(path.join(fixtures.SHARED_LIBS_ROOT, 'bin/gstack-review-log'))} --start review`);
     await invoke('git diff origin/main && cat src/retry-worker.ts src/retry-route.ts lib/retry-after.ts');
     const finding = { severity: 'INFORMATIONAL', confidence: 9, advisory: true, category: 'shared-libs',
@@ -117,7 +127,7 @@ function runner(f: fixtures.SharedLibsFixture, mode: string, observations: any[]
       expect(fs.readFileSync(path.join(f.root, 'synthetic-stage-receipts', `${first.id}.json`), 'utf8')).toBe(initial);
       expect(last).toMatchObject({ synthetic: true, native_coverage: false, settled: true });
     }
-    observations.push({ f, initial, current, events, receipts });
+    observations.push({ f, initial, current, events, receipts, verification });
     for (const event of events) yield event;
     yield { type: 'result', subtype: 'success', total_cost_usd: 0 };
   } });
@@ -158,11 +168,39 @@ function lifecycle(mode: string) {
     createSharedLibsFixture: (name: string) => { const f = fixtures.createSharedLibsFixture(name); roots.push(f.root); return f; },
     runSharedInteractive: async (f: fixtures.SharedLibsFixture, name: string, prompt: string, choose: string, options: any) => {
       expect(prompt).toBe(fixtures.reviewPrompt(f, path.join(f.root, 'review-lifecycle.md'), path.join(f.root, 'specialist-input.jsonl'), options.stageActor));
+      if (mode === 'post-fix verification') {
+        expect(prompt).toContain('replaces the entire Step 4.7 QA and Step 4.8 native adversarial stages');
+        expect(prompt).toContain('Existing tests and caller/import checks needed to verify your source fixes still run');
+      }
       return runner(f, mode, observations)(f, name, prompt, choose, options);
     },
   });
   return { invoke: () => registered!(), rows, observations };
 }
+
+test('the registered lifecycle callbacks retain captured post-fix verification without exploratory QA', async () => {
+  const adapter = lifecycle('post-fix verification');
+  await adapter.invoke();
+  expect(adapter.rows).toHaveLength(2);
+  for (const { row } of adapter.rows) {
+    expect(row.passed).toBe(true);
+    expect(row.transcript.at(-1)).toMatchObject({ prerequisite_source: 'synthetic-fixture-stage-actor', prerequisite_native_coverage: false });
+    expect(row.transcript.at(-1).prerequisite_receipts).toHaveLength(2);
+  }
+  for (const observation of adapter.observations) {
+    const calls = observation.events.filter((event: any) => event.type === 'assistant')
+      .flatMap((event: any) => event.message.content);
+    const commands = calls.filter((call: any) => call.name === 'Bash').map((call: any) => call.input.command);
+    expect(commands).toContain(stageScope.post_fix_verification.call.input.command);
+    expect(commands.join('\n')).toContain('review/checklist.md');
+    expect(commands.join('\n')).toContain('git diff origin/main');
+    expect(commands.join('\n')).toContain('sharedLibsFingerprint');
+    expect(commands.join('\n')).toContain('--finish');
+    expect(commands.filter((command: string) => command.includes('synthetic-stage-receipts/current.json'))).toHaveLength(2);
+    expect(JSON.stringify(calls)).not.toMatch(/qa\/sections\/|qa-reports|exploration-\d+\.json|charter\.md|functional-report\.md|command -v aside/);
+    expect(observation.verification).toContain('0 fail');
+  }
+}, 30_000);
 
 test.each(['valid', 'optional hook id'])('both registered lifecycle cases invoke fresh synthetic stages after actual approved edits (%s)', async mode => {
   const adapter = lifecycle(mode);
@@ -195,6 +233,12 @@ test('the actor helper and regression file select both existing neighboring nati
     expect(selected).toContain('shared-libs-review-lifecycle');
     expect(selected).toContain('shared-libs-review-revalidation');
   }
+});
+
+test('the captured lifecycle scope packet selects only its native lifecycle consumer', () => {
+  const selected = selectTests(['test/fixtures/shared-libs-lifecycle-r59-stage-scope-public.json'], E2E_TOUCHFILES, GLOBAL_TOUCHFILES);
+  expect(selected.reason).toBe('diff');
+  expect(selected.selected).toEqual(['shared-libs-review-lifecycle']);
 });
 
 test('the registered hook refuses foreign state and inconsistent tool identities without issuing a result', async () => {

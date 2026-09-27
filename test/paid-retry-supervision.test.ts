@@ -14,6 +14,7 @@ const read = (file: string) => readFileSync(join(import.meta.dir, '..', file), '
 const newBudgets = FILE_RETRY_BUDGETS.filter(row => !FINDING_RETRY_BUDGETS.some(old => old.file === row.file));
 const expectedWalls = {
   'test/skill-e2e-qa-callers.test.ts': 3_270_000,
+  'test/skill-e2e-shared-libs-paths.test.ts': 3_720_000,
   'test/skill-e2e-ship-docsync.test.ts': 10_920_000,
   'test/skill-llm-eval.test.ts': 7_180_000,
   'test/skill-e2e-auq-consistency.test.ts': 2_040_000,
@@ -32,9 +33,9 @@ const expectedWalls = {
   'test/skill-e2e-plan.test.ts': 7_320_000,
 };
 
-test('registration covers exactly the seventeen demonstrated full-file retry gaps', () => {
+test('registration covers exactly the eighteen demonstrated full-file retry gaps', () => {
   expect(Object.fromEntries(newBudgets.map(row => [row.file, row.shardMs]))).toEqual(expectedWalls);
-  expect(new Set(FILE_RETRY_BUDGETS.map(row => row.file)).size).toBe(23);
+  expect(new Set(FILE_RETRY_BUDGETS.map(row => row.file)).size).toBe(24);
   expect(STRICT_RETRY_CASE_BUDGETS.map(row => row.file)).toEqual([
     ...FINDING_RETRY_BUDGETS.map(row => row.file), AUQ_CONSISTENCY_RETRY_BUDGET.file,
   ]);
@@ -47,6 +48,14 @@ const timeoutExpressions = (file: string) => [...read(file).matchAll(
 )].map(match => match[1]!.replace(/\s+/g, ' '));
 
 test('source allowances retain all captures, cases, and finalization grace', () => {
+  const paths = read('test/skill-e2e-shared-libs-paths.test.ts');
+  expect(paths.match(/\btest\.serial\s*\(/g)).toHaveLength(3);
+  expect([...paths.matchAll(/test\.serial\('([^']+)',\s*\(\)\s*=>\s*exerciseEligibility\(\s*'([^']+)'[\s\S]*?\),\s*(CAPTURE_LONG_MS)\s*\);/g)]
+    .map(match => match.slice(1))).toEqual([
+      ['shared-libs-review-path-eligibility', 'shared-libs-review-path-eligibility', 'CAPTURE_LONG_MS'],
+      ['shared-libs-review-index-flags', 'shared-libs-review-index-flags', 'CAPTURE_LONG_MS'],
+      ['shared-libs-review-prior-coverage', 'shared-libs-review-prior-coverage', 'CAPTURE_LONG_MS'],
+    ]);
   const auq = read(AUQ_CONSISTENCY_RETRY_BUDGET.file);
   expect(auq).toContain("const N_RUNS = Number(process.env.AUQ_CONSISTENCY_RUNS ?? '3')");
   expect(auq).toContain('Promise.allSettled(Array.from({ length: N_RUNS },');
@@ -178,8 +187,8 @@ test('detached PR fallback and release commands cover their actual default worke
   const prFloor = Math.ceil((Math.ceil(fullGateFiles.length / prWorkers) * 1_800_000 + fullGateFiles.reduce(
     (total, file) => total + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - 1_800_000), 0,
   )) / 1000 * 1.05);
-  expect(prFloor).toBe(90_773);
-  expect(prWall).toBe(90_780_000);
+  expect(prFloor).toBe(92_789);
+  expect(prWall).toBe(92_820_000);
   expect(prWall).toBeGreaterThanOrEqual(paidShardWallUpperBoundMs(files, prWorkers) + 120_000);
 
   expect(scripts['eval:bg:release']).toContain('-- bun run test:release');
@@ -197,9 +206,9 @@ test('detached PR fallback and release commands cover their actual default worke
     )) / 1000 * 1.05));
   }
   const detachedReleaseWall = Number(scripts['eval:bg:release'].match(/--timeout (\d+)/)?.[1]) * 1000;
-  expect(releaseFloors).toEqual([47_303, 67_358]);
-  expect(releaseFloors.reduce((total, floor) => total + floor, 0)).toBe(114_661);
-  expect(detachedReleaseWall).toBe(114_720_000);
+  expect(releaseFloors).toEqual([49_319, 67_358]);
+  expect(releaseFloors.reduce((total, floor) => total + floor, 0)).toBe(116_677);
+  expect(detachedReleaseWall).toBe(116_700_000);
   expect(detachedReleaseWall).toBeGreaterThanOrEqual(releaseWall + 120_000);
 });
 

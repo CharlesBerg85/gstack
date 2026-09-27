@@ -15,7 +15,7 @@ async function exercise(scenarios: Array<'success'|'timeout'|'wrong-report'|'bro
     beforeAll:(fn:any)=>setups.push(fn),afterAll:(fn:any)=>done.push(fn),
     describeIfSelected:(_title:string,names:string[],fn:any)=>{if(names.includes('review-enum-completeness'))fn();},
     testConcurrentIfSelected:(name:string,fn:any,timeout:number)=>{expect(name).toBe('review-enum-completeness');callbacks.push(fn);outer=timeout;},
-    createEvalCollector:()=>({}),finalizeEvalCollector:()=>{},logCost:()=>{},spawnSync:()=>({status:0}),path,os:{tmpdir:()=>'/tmp'},
+    createEvalCollector:()=>({}),finalizeEvalCollector:()=>{},logCost:()=>{},spawnSync:()=>({status:0}),path:path.posix,os:{tmpdir:()=>'/tmp'},
     fs:{mkdtempSync:(p:string)=>p+'owned',writeFileSync:(p:string,s:string)=>files.set(p,s),copyFileSync:()=>{},rmSync:(p:string)=>{files.delete(p);},
       readdirSync:(p:string)=>[...files.keys()].filter(k=>k.startsWith(p+'/')).map(k=>k.slice(p.length+1)),
       existsSync:(p:string)=>files.has(p),readFileSync:(p:string)=>p.startsWith('/source/')?'synthetic fixture bytes':files.get(p)},

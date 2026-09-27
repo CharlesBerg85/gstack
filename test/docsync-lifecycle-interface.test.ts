@@ -15,16 +15,18 @@ function lifecycleCommands() {
 
 test('fixture lifecycle guidance exposes owned skill paths and literal commands', () => {
   const guidance = docsNativeInterface(fixture);
-  expect(guidance).toContain(`${fixture.skills}/document-release/SKILL.md`);
+  const skills = fixture.skills.split(path.sep).join('/');
+  expect(guidance).toContain(`${skills}/document-release/SKILL.md`);
   expect(guidance).toContain('instead of copying the generated shell wrappers');
   expect(guidance).toContain("satisfy the skill's start/end lifecycle requirements here");
   expect(guidance).toContain('applies to parent and every child; include this interface in child prompts');
   const [start, end] = lifecycleCommands();
   expect(lifecycleCommands()).toHaveLength(2);
-  expect(start).toBe(`GSTACK_SESSION_KIND=spawned ${fixture.skills}/bin/gstack-skill-start --skill document-release --model claude`);
-  expect(end).toBe(`${fixture.skills}/bin/gstack-skill-end --skill document-release --outcome OUTCOME --session-id SESSION_ID_VALUE --tel-start TEL_START_VALUE --used-browse no`);
+  expect(start).toBe(`GSTACK_SESSION_KIND=spawned ${skills}/bin/gstack-skill-start --skill document-release --model claude`);
+  expect(end).toBe(`${skills}/bin/gstack-skill-end --skill document-release --outcome OUTCOME --session-id SESSION_ID_VALUE --tel-start TEL_START_VALUE --used-browse no`);
   expect(docsCommandAllowed(start, fixture)).toBe(true);
   for (const command of [start, end]) expect(command).not.toMatch(/[\n\r~$\\|<>;]/);
+  expect(docsCommandAllowed(start.replaceAll('/', '\\'), fixture)).toBe(false);
   const source = fs.readFileSync(path.join(import.meta.dir, '../bin/gstack-skill-start'), 'utf8');
   expect(source).toContain('PARENT_PID="$PPID"');
   expect(start).not.toContain('--parent-pid');

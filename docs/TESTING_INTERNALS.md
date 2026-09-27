@@ -224,6 +224,21 @@ key must name a living paid test (`test/touchfiles.test.ts`'s reverse
 invariant), and `git show <sha>:path` fixtures are banned — vendor the bytes
 instead (`test/git-ref-fixture-tripwire.test.ts`).
 
+Functional QA and documentation acceptance require an explicit `EVALS_RUN_ID`;
+`GSTACK_EVAL_DIR` alone does not satisfy their evidence-ownership guard. For each
+local invocation, supply a fresh ID to the documented detached runner:
+
+```bash
+EVALS_RUN_ID="local-$(bun -e 'console.log(crypto.randomUUID())')" bun run eval:bg:pr
+```
+
+Neither package scripts nor `gstack-detach` invent this identity. CI's PR/manual
+slices, periodic slices and weekly gate census supply an ID bound to the workflow
+run, attempt, job and slice. Existing slice artifacts retain per-shard snapshots;
+separate always-run `native-captures-<EVALS_RUN_ID>` artifacts retain project/legacy
+`e2e-runs` and `evals/qa-callers` evidence for 90 days. These diagnostic artifacts
+are not collector results and do not establish that an unfinished test passed.
+
 **Fast PR profile and evidence reuse.** `test:pr` selects the changed cases in
 `scripts/test-pr-profile.ts` plus every changed quality judge. `--profile full`
 retains the broad census; no case IDs or tier assignments are removed. The plan
@@ -326,6 +341,12 @@ documentation child retains its 600-second case. The five review/ship explorer
 cases reserve 3,270 seconds including their existing retry and finalization grace.
 These are whole-file supervision limits, not additional model work per case.
 
+The shared-library path file reserves 3,720 seconds for its three serial
+600-second cases, each with one retry, plus 120 seconds for cleanup. Its
+registered budget keeps the file in its own shard and binds the expected wall
+to both the saved plan and the execution receipt; missing or stale budget
+records fail reconciliation. Case deadlines, model budgets and retries do not grow.
+
 `resolvePaidShardBudget(files, overrideMs?)` is the canonical per-job resolver.
 Autoplan, each registered finding file, and each overlay wrapper require their
 own shard, even with `--files-per-shard` above one. Mixed or multi-file overlay
@@ -337,9 +358,9 @@ its source and policy identifier. Custom drivers must resolve each job instead
 of passing their ordinary 1800-second default as an explicit Autoplan cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
 The current paid census has 122 files: 61 gate-tier and 103 periodic-tier.
-`eval:bg:pr` and `eval:bg:periodic` have 90780/67380-second outer caps; the PR
+`eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps; the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
-wrapper reserves 47340 seconds, and release reserves 114720 seconds for both
+wrapper reserves 49320 seconds, and release reserves 116700 seconds for both
 tiers. Legacy monolithic
 `eval:bg`/`eval:bg:all` retain their shorter 5400/7200-second caps and do not
 promise two complete Autoplan attempts; use the sharded periodic path for this policy.

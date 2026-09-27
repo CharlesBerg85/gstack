@@ -96,10 +96,12 @@ test('completed docs review accepts literal cat but not an unrelated command or 
   const fixture = fixtureDocs('current');
   try {
     const doc = path.join(fixture.repo, DOC_PATH);
+    const shellDoc = doc.split(path.sep).join('/');
     const original = fs.readFileSync(doc, 'utf8');
-    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `cat '${doc}'` }, output: original }), doc, fixture)).toBe(true);
-    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `echo '${doc}'` }, output: original }), doc, fixture)).toBe(false);
-    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `cat '${doc}.other'` }, output: original }), doc, fixture)).toBe(false);
+    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `cat '${shellDoc}'` }, output: original }), doc, fixture)).toBe(true);
+    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `echo '${shellDoc}'` }, output: original }), doc, fixture)).toBe(false);
+    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `cat '${shellDoc}.other'` }, output: original }), doc, fixture)).toBe(false);
+    expect(docsCompletedRead(calls({ tool: 'Bash', input: { command: `cat '${shellDoc.replaceAll('/', '\\')}'` }, output: original }), doc, fixture)).toBe(false);
     expect(docsCompletedRead(calls({ tool: 'Read', input: { file_path: doc, limit: 1 }, output: original.slice(0, 20) }), doc, fixture)).toBe(false);
   } finally { fixture.clean(); }
 });

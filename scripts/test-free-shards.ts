@@ -168,6 +168,18 @@ const WINDOWS_FRAGILE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 // the failure mode is structural rather than detectable via source-file scan.
 export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
   {
+    file: 'test/qa-functional-fixture.test.ts',
+    reason: 'executes graceful POSIX signal cancellation; Bun on Windows uses TerminateProcess and cannot run the fixture SIGTERM cleanup handler',
+  },
+  {
+    file: 'test/qa-functional-observer-atomic.test.ts',
+    reason: 'exercises real Linux inotify inode and directory watches through libc.so.6; Windows has no equivalent kernel interface',
+  },
+  {
+    file: 'test/docsync-report-interface.test.ts',
+    reason: 'executes registered native documentation callbacks with their real Linux inotify write observer before the model boundary',
+  },
+  {
     file: 'test/setup-gbrain-fixture.test.ts',
     reason: 'the fixture invokes real POSIX detector/verifier helpers through executable shebang wrappers',
   },

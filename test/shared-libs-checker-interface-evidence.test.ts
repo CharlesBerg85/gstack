@@ -15,6 +15,7 @@ import {
   preparePathEligibilityFixture, seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt, type PathEligibilityFixture,
 } from './helpers/shared-libs-path-fixture';
 import { CAPTURE_LONG_MS } from './helpers/eval-budgets';
+import capturedChecker from './fixtures/shared-libs-index-flags-r59-checker-public.json';
 
 const helper = path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log');
 const fixtures: SharedLibsFixture[] = [];
@@ -61,7 +62,6 @@ async function capture(change: string, prepared?: PathEligibilityFixture, declar
   const token = invoke(declared ? protocol[0] : startCommand!).split('\n')[0];
   if (declared) invoke('git diff origin/main');
   for (const file of current.evidence_paths) invoke(`cat ${shellQuote(file)}`);
-  invoke(`bun -e 'const { sharedLibsFingerprint } = await import(process.argv[1]); console.log(sharedLibsFingerprint(JSON.parse(await Bun.stdin.text())));' ${shellQuote(path.join(SHARED_LIBS_ROOT, 'lib/review-evidence.ts'))} <<'FINDING'\n${JSON.stringify(current)}\nFINDING`);
   const checkAt = events.length;
   const receipt = JSON.parse(invoke(declared ? protocol[1].replace('REVIEW_START', token).replace('CURRENT_FINDING_JSON', JSON.stringify(current))
     : `${shellQuote(helper)} --check-shared-libs ${token} <<'FINDING'\n${JSON.stringify(current)}\nFINDING`));
@@ -125,7 +125,8 @@ function pathCallback(run: any, overrides: Record<string, any> = {}) {
   const rows: any[] = [];
   const native = { events: run.events, exitReason: 'success', output: '', toolCalls: run.events
     .filter((event: any) => event.type === 'assistant')
-    .map((event: any) => ({ tool: event.message.content[0].name, input: event.message.content[0].input })) };
+    .flatMap((event: any) => event.message.content.filter((block: any) => block.type === 'tool_use')
+      .map((block: any) => ({ tool: block.name, input: block.input }))) };
   const exercise = new Function('deps', new Bun.Transpiler({ loader: 'ts' }).transformSync(`const {
     captures, preparePathEligibilityFixture, fs, path, reviewLifecycleInstructions, reviewRevalidationPrompt,
     runSharedInteractive, readRequests, toolCommandTrace, fixtureGit, fixtureWorkingTree, reviewRecords, expect,
@@ -151,7 +152,118 @@ function pathCallback(run: any, overrides: Record<string, any> = {}) {
   return { rows, invoke: () => exercise('shared-libs-review-path-eligibility', [run.kind]) };
 }
 
+function capturedPathRun(index: number) {
+  const captured = structuredClone(capturedChecker.attempts[index]);
+  const events: any[] = captured.events;
+  const blocks = events.flatMap(event => event.message.content);
+  const calls = blocks.filter(block => block.type === 'tool_use');
+  const returned = (id: string) => {
+    const result = blocks.find(block => block.type === 'tool_result' && block.tool_use_id === id);
+    expect(result).toBeDefined();
+    expect(result.is_error).not.toBe(true);
+    expect(typeof result.content).toBe('string');
+    return result.content as string;
+  };
+  const files = new Map<string, string>(calls.filter(call => call.name === 'Read')
+    .map(call => [call.input.file_path, returned(call.id).replace(/^\d+\t/gm, '')]));
+  const repo = captured.repo, root = path.posix.dirname(repo), state = path.posix.join(root, 'state');
+  const input = path.posix.join(root, 'resumed-review-prerequisites.json');
+  const supplied = path.posix.join(root, 'current-advisory.jsonl');
+  const current = JSON.parse(files.get(supplied)!);
+  const prerequisiteCall = calls.find(call => call.input.command?.includes('--check-review-prerequisites'));
+  const prerequisites = JSON.parse(returned(prerequisiteCall.id));
+  expect(prerequisites).toMatchObject({ settled: true, current: true, context: { binding: { root, repo, state } } });
+  expect(prerequisites.context).toEqual(JSON.parse(files.get(input)!));
+  const finish = calls.find(call => call.input.command?.includes('--finish'));
+  const records = returned(finish.id).split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+  const f = { root, repo, state } as SharedLibsFixture;
+  const run = { f, kind: 'assume-unchanged', events, questions: calls.filter(call => call.name === 'AskUserQuestion').map(call => call.input),
+    prepared: { fixture: f, current, sourcePaths: ['src/retry-route.ts'], beforeTree: prerequisites.context.binding.wtree,
+      resumed: { input, checkCommand: prerequisiteCall.input.command } } };
+  expect(captured.exit_reason).toBe('success');
+  expect(run.questions).toHaveLength(1);
+  for (const call of calls.filter(call => call.name === 'AskUserQuestion')) {
+    for (const question of call.input.questions) {
+      expect(returned(call.id)).toContain(`"${question.question}"="Skip"`);
+      expect(question.options.some((option: any) => option.label === 'Skip')).toBe(true);
+    }
+  }
+  const overrides = {
+    path: path.posix, SHARED_LIBS_ROOT: '/workspace/gstack',
+    fs: {
+      readFileSync: (file: string) => { expect(files.has(file)).toBe(true); return files.get(file); },
+      realpathSync: (file: string) => file,
+      writeFileSync: (file: string, contents: string) => {
+        expect(file).toBe(supplied);
+        expect(JSON.parse(contents)).toEqual(current);
+      },
+      rmSync: (directory: string) => { expect(directory).toBe(root); },
+    },
+    reviewLifecycleInstructions: () => path.posix.join(root, 'review-lifecycle.md'),
+    checkPathReviewPrerequisites: (fixture: SharedLibsFixture, file: string) => {
+      expect(fixture).toBe(f); expect(file).toBe(input); return prerequisites;
+    },
+    fixtureGit: (fixture: SharedLibsFixture, ...args: string[]) => {
+      expect(fixture).toBe(f); expect(args).toEqual(['symbolic-ref', '--quiet', '--short', 'HEAD']);
+      return prerequisites.context.binding.branch;
+    },
+    fixtureWorkingTree: (fixture: SharedLibsFixture) => {
+      expect(fixture).toBe(f); return prerequisites.context.binding.wtree;
+    },
+    reviewRecords: (fixture: SharedLibsFixture) => { expect(fixture).toBe(f); return structuredClone(records); },
+  };
+  return { run, overrides };
+}
+
 describe('native executable shared-code checker evidence', () => {
+  test.each([0, 1])('the complete R59 public attempt %i satisfies the actual callback without a manual fingerprint call', async index => {
+    const { run, overrides } = capturedPathRun(index);
+    const commands = run.events.flatMap(event => event.message.content)
+      .filter(block => block.type === 'tool_use' && block.name === 'Bash').map(block => block.input.command).join('\n');
+    expect(commands).not.toContain('sharedLibsFingerprint');
+    let checks = 0;
+    const adapter = pathCallback(run, { ...overrides, hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
+      checks++;
+      expect(events).toBe(run.events);
+      expect(expected.finding).toEqual(run.prepared.current);
+      expect(expected.reusable).toBe(false);
+      expect(expected.coveredPaths).toEqual(['src/retry-worker.ts', 'lib/retry-after.ts']);
+      return hasTrustedSharedLibsCheck(events, expected);
+    } });
+    await adapter.invoke();
+    expect(checks).toBe(1);
+    expect(adapter.rows).toMatchObject([{ scenario: 'assume-unchanged', row: { passed: true } }]);
+    const refused = pathCallback(run, { ...overrides, hasTrustedSharedLibsCheck: () => false });
+    await expect(refused.invoke()).rejects.toThrow();
+    expect(refused.rows[0].row.passed).toBe(false);
+  });
+
+  test.each([0, 1].flatMap(index => ['missing', 'failed', 'unpaired', 'fingerprint', 'binding', 'extra coverage'].map(invalid => [index, invalid] as const)))(
+    'the R59 public attempt %i callback rejects a %s checker receipt', async (index, invalid) => {
+      const { run, overrides } = capturedPathRun(index);
+      const blocks = run.events.flatMap(event => event.message.content);
+      const check = blocks.find(block => block.type === 'tool_use' && block.input.command?.includes('--check-shared-libs'));
+      const receipt = blocks.find(block => block.type === 'tool_result' && block.tool_use_id === check.id);
+      if (invalid === 'missing') receipt.content = '';
+      else if (invalid === 'failed') receipt.is_error = true;
+      else if (invalid === 'unpaired') receipt.tool_use_id = 'unpaired-checker';
+      else {
+        const value = JSON.parse(receipt.content);
+        if (invalid === 'fingerprint') value.fingerprint = `shared-libs:${'a'.repeat(64)}`;
+        if (invalid === 'binding') value.review_start.started_at = 'foreign';
+        if (invalid === 'extra coverage') value.snapshot.covered_paths.push('src/retry-route.ts');
+        receipt.content = JSON.stringify(value);
+      }
+      let checks = 0;
+      const adapter = pathCallback(run, { ...overrides, hasTrustedSharedLibsCheck: (events: unknown[], expected: any) => {
+        checks++;
+        return hasTrustedSharedLibsCheck(events, expected);
+      } });
+      await expect(adapter.invoke()).rejects.toThrow();
+      expect(checks).toBe(1);
+      expect(adapter.rows[0].row.passed).toBe(false);
+    });
+
   test('the actual path callback consumes the current synthetic prerequisite result without claiming native coverage', async () => {
     const run = replay('declared-path-assume-unchanged');
     run.kind = 'assume-unchanged';
@@ -257,7 +369,7 @@ describe('native executable shared-code checker evidence', () => {
     const run = replay(change);
     expect(run.receipt.reusable).toBe(change === 'unchanged');
     expect(hasTrustedSharedLibsCheck(run.events, run.expected)).toBe(true);
-    expect(JSON.stringify(run.events)).not.toMatch(/check-attr|ls-files|canReuseSharedLibsAdvisory/);
+    expect(JSON.stringify(run.events)).not.toMatch(/check-attr|ls-files|canReuseSharedLibsAdvisory|sharedLibsFingerprint/);
     expect(hasTrustedReviewStartRead(run.events, run.expected)).toBe(false);
   });
 

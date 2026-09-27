@@ -16,7 +16,7 @@ describe('functional QA native fixtures', () => {
     const fixture = createQAFunctionalFixture('cli');
     try {
       expect(fixtureGit(fixture.root, ['status', '--porcelain'])).toBe('');
-      expect(fixtureGit(fixture.root, ['rev-parse', '--show-toplevel'])).toBe(fixture.root);
+      expect(path.resolve(fixtureGit(fixture.root, ['rev-parse', '--show-toplevel']))).toBe(fixture.root);
       expect(fixture.revision).toMatch(/^[a-f0-9]{40}$/);
       expect(fixtureGit(fixture.root, ['config', '--local', 'user.name'])).toBe('QA Fixture');
       expect(fixtureGit(fixture.root, ['config', '--local', 'user.email'])).toBe('qa-fixture@gstack.test');
@@ -61,7 +61,7 @@ describe('functional QA native fixtures', () => {
     const fixture = createQAFunctionalFixture('cli');
     try {
       const cancelled = fixtureCommand(fixture.root, ['cancel.ts']);
-      expect(cancelled.exit).toBe(0);
+      expect(cancelled.exit, JSON.stringify(cancelled)).toBe(0);
       expect(JSON.parse(cancelled.stdout)).toMatchObject({ exit: 130, stdout: 'READY: awaiting cancellation\n', stderr: 'cancelled: no effect\n', state: { jobs: {}, effects: [] } });
       expect(JSON.parse(cancelled.stdout).stateRoot.startsWith(path.join(fixture.root, '.qa-state/cancel-'))).toBe(true);
       expect(fs.existsSync(path.join(fixture.root, '.qa-state/ledger.json'))).toBe(false);

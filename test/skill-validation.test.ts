@@ -1626,7 +1626,7 @@ describe('Codex skill', () => {
   });
 
   test('scope drift detection in /review and /ship', () => {
-    const reviewContent = fs.readFileSync(path.join(ROOT, 'review', 'SKILL.md'), 'utf-8');
+    const reviewContent = readSkillUnion('review');
     const shipContent = readShipUnion();
     // Both should contain scope drift from the shared resolver
     for (const content of [reviewContent, shipContent]) {
