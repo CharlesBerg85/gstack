@@ -61,7 +61,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // primary browser (test/skill-e2e-aside.test.ts self-skips without a running Aside)
   'aside-browse-basic':  ['test/session-runner-stream-lifecycle.test.ts', 'browse/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts'],
   'aside-browse-flow':   ['test/session-runner-stream-lifecycle.test.ts', 'browse/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/forms.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts'],
-  'aside-qa-quick': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts', 'scripts/resolvers/testing.ts'],
+  'aside-qa-quick': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts'],
   'aside-scrape-json':   ['test/session-runner-stream-lifecycle.test.ts', 'scrape/**', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts'],
   'aside-canary-quick':  ['test/session-runner-stream-lifecycle.test.ts', 'canary/**', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts'],
 
@@ -86,22 +86,13 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 
   // QA (+ test-server dependency). /qa drives Aside first (the resolver) and
   // the browse binary as fallback (browse/src), so both are deps.
-  'qa-quick':       ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts',
-    'scripts/resolvers/testing.ts'
-  ],
-  'qa-b6-static':   ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval.html', 'test/fixtures/qa-eval-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',
-    'scripts/resolvers/testing.ts'
-  ],
-  'qa-b7-spa':      ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-spa.html', 'test/fixtures/qa-eval-spa-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',
-    'scripts/resolvers/testing.ts'
-  ],
-  'qa-b8-checkout': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-checkout.html', 'test/fixtures/qa-eval-checkout-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',
-    'scripts/resolvers/testing.ts'
-  ],
+  'qa-quick': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts'],
+  'qa-b6-static': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval.html', 'test/fixtures/qa-eval-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts'],
+  'qa-b7-spa': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-spa.html', 'test/fixtures/qa-eval-spa-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts'],
+  'qa-b8-checkout': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-checkout.html', 'test/fixtures/qa-eval-checkout-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts'],
   'qa-only-no-fix': ['test/qa-only-capability.test.ts', 'test/session-runner-stream-lifecycle.test.ts', 'qa-only/**', 'qa/templates/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts'],
-  'qa-fix-loop':    ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts',
-    'test/qa-fix-loop-fixture.test.ts', 'scripts/resolvers/testing.ts'
-  ],
+  'qa-fix-loop': ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts',
+    'test/qa-fix-loop-fixture.test.ts'],
   'qa-bootstrap':   ['test/session-runner-stream-lifecycle.test.ts', 'qa/**', 'ship/**', 'test/skill-e2e-qa-workflow.test.ts',
     'scripts/resolvers/testing.ts'
   ],
@@ -122,7 +113,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   'review-army-migration-safety': ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts'],
   'review-army-perf-n-plus-one':  ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts', 'test/review-army-budget.test.ts', 'test/review-n-plus-one-contract.test.ts', 'test/fixtures/review-n-plus-one-dispatch.json'],
   'review-army-delivery-audit':   ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts'],
-  'review-army-quality-score':    ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts'],
+  'review-army-quality-score':    ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/review-quality-provenance.test.ts'],
   'review-army-json-findings':    ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts'],
   'review-army-red-team':         ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts',
     'test/helpers/office-hours-attempt.ts', 'test/office-hours-attempt.test.ts', 'test/review-army-budget.test.ts'

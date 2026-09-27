@@ -2,6 +2,8 @@
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import {
   createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureWrite, reviewPrompt, reviewRevalidationPrompt,
   SHARED_INTERACTIVE_MAX_TURNS, SHARED_LIBS_ROOT, type SharedLibsFixture,
@@ -134,6 +136,58 @@ describe('bounded shared-code revalidation prompt', () => {
     }
   });
 
+  test('step 5 branches on the checker result: true suppresses without a new decision, false requires a fresh one', () => {
+    const prompt = reviewRevalidationPrompt(f, instructions, input);
+    const step5 = prompt.slice(prompt.indexOf('5. Act on the checker result'), prompt.indexOf('6. Complete final evidence'));
+    expect(step5).toContain('reusable:true');
+    expect(step5).toContain('the prior Skip carries forward');
+    expect(step5).toContain('Ask no new decision question');
+    expect(step5).toContain("exclude this advisory from the current pass's findings");
+    expect(step5).toContain('Do not re-persist it as a current finding');
+    expect(step5).toContain('reusable:false');
+    expect(step5).toContain('Perform a fresh authored-source review and make an actual new decision');
+    expect(step5).toContain('materially revised proposal is a separate finding');
+    expect(step5).toContain('without its actual explicit decision');
+    expect(step5).toContain('unsupported or unfinished supplied finding stays blocked');
+    expect(step5).toContain('reusable:true whose independent authored/current-source verification does not hold');
+    expect(step5).toContain('regardless of the checker result');
+    expect(step5).toContain('never force a new Skip on invalid evidence');
+    expect(step5.indexOf('reusable:true')).toBeLessThan(step5.indexOf('reusable:false'));
+    expect(prompt).not.toContain("Record the supplied finding's disposition under its own");
+  });
+
+  test('the shared review prompt maps exact trusted asset roots and documented interfaces to avoid discovery', () => {
+    const prompt = reviewPrompt(f, instructions, input);
+    expect(prompt).toContain(`${SHARED_LIBS_ROOT}/review/checklist.md`);
+    expect(prompt).toContain(`${SHARED_LIBS_ROOT}/review/sections/`);
+    expect(prompt).toContain(`../qa/sections/<name>.md is ${SHARED_LIBS_ROOT}/qa/sections/<name>.md`);
+    expect(prompt).toContain(`${SHARED_LIBS_ROOT}/bin`);
+    expect(prompt).toContain(`${SHARED_LIBS_ROOT}/lib`);
+    expect(prompt).toContain(f.bin);
+    for (const iface of ['gstack-review-log --start review', '--check-shared-libs REVIEW_START',
+      '--finish REVIEW_START', 'gstack-review-read']) expect(prompt).toContain(iface);
+    for (const forbidden of ['do not rediscover it', 'enumerate the bin/lib/review/qa roots',
+      'probe --help', 'read the fixture request logs']) expect(prompt).toContain(forbidden);
+    expect(prompt).toContain('batch independent reads');
+    expect(prompt).toContain('keep receipt-ordered commands separate');
+    expect(prompt).toContain('capture the start token before reading the diff');
+    expect(prompt).toContain('run --start, the checker and any declared stage-actor invocation each as its own sole command');
+    expect(prompt).toContain('The only combined receipt call is the final persistence');
+    expect(prompt).toContain('Still inspect the target repository source');
+  });
+
+  test('common guidance states the finish+read-back receipt contract directly, not by a dangling step 6 reference', () => {
+    const lifecycle = reviewPrompt(f, instructions, input, { actorCommand: 'bun /fx/stage-actor.ts run' });
+    const revalidation = reviewRevalidationPrompt(f, instructions, input);
+    for (const prompt of [lifecycle, revalidation]) {
+      expect(prompt).toContain('The only combined receipt call is the final persistence');
+      expect(prompt).not.toContain('exactly as step 6 shows');
+    }
+    const commands = [...revalidation.matchAll(/```bash\n([\s\S]*?)\n```/g)].map(match => match[1]);
+    expect(commands[2]).toBe(`'${SHARED_LIBS_ROOT}/bin/gstack-review-log' 'FINAL_REVIEW_JSON' --finish REVIEW_START && '${SHARED_LIBS_ROOT}/bin/gstack-review-read'`);
+    expect(lifecycle).not.toContain('step 6');
+  });
+
   test('the actual revalidation capture uses the wrapper and preserves the skip actor', async () => {
     const scenario = source.slice(source.indexOf("test('shared-libs-review-revalidation'"));
     const marker = "'shared-libs-review-revalidation', async () => {";
@@ -201,6 +255,64 @@ describe('bounded shared-code revalidation prompt', () => {
     expect(rows.every(({ row }) => row.passed === false)).toBe(true);
     for (const root of contexts.keys()) expect(fs.existsSync(root)).toBe(false);
   }, 30_000);
+
+  test('the registered verify enforces true reuse (no question, no current advisory) versus false fresh decision', async () => {
+    const record = source.slice(source.indexOf('async function recordCapture('), source.indexOf('\nfunction assertReadOnly('));
+    const registration = source.slice(source.indexOf("  test('shared-libs-review-revalidation'"), source.lastIndexOf('\n});'));
+    const labels = new Map<string, string>();
+    const stubTrue = () => true;
+    let mutateUnchangedQuestion = false;
+    let rows: any[] = [];
+    const persistFinal = (fx: SharedLibsFixture, findings: any[]) => {
+      const log = path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log');
+      const env = { ...process.env, ...fx.env, PATH: process.env.PATH, GSTACK_HOME: fx.state };
+      const token = execFileSync(log, ['--start', 'review'], { cwd: fx.repo, env, encoding: 'utf8', timeout: 30_000 }).trim();
+      execFileSync(log, [JSON.stringify({ skill: 'review', timestamp: new Date().toISOString(),
+        status: 'clean', issues_found: 0, critical: 0, informational: 0, quality_score: 10,
+        findings, completed: true, converged: true, cycles: 0 }), '--finish', token],
+      { cwd: fx.repo, env, encoding: 'utf8', timeout: 30_000 });
+      return token;
+    };
+    const build = () => new Function('deps', `const { test, captures, fs, path, expect, CAPTURE_LONG_MS, createHash, SHARED_LIBS_ROOT,
+      createSharedLibsFixture, seedReviewSources, fixtureWrite, installNormalizingFilter, seedSkippedAdvisory,
+      fixtureWorkingTree, fixtureGit, reviewLifecycleInstructions, seedPathReviewPrerequisites, checkPathReviewPrerequisites,
+      reviewRevalidationPrompt, runSharedInteractive, toolCommandTrace, reviewRecords,
+      hasTrustedSharedLibsCheck, hasTrustedReviewStartRead, hasPathReviewPrerequisiteReceipt } = deps; ${transpile(record + registration)}`)({
+      ...fixtureHelpers, fs, path, expect, CAPTURE_LONG_MS, createHash, SHARED_LIBS_ROOT,
+      hasTrustedSharedLibsCheck: stubTrue, hasTrustedReviewStartRead: stubTrue, hasPathReviewPrerequisiteReceipt: stubTrue,
+      checkPathReviewPrerequisites, seedPathReviewPrerequisites,
+      test: (_name: string, body: () => Promise<void>) => { registered = body; },
+      captures: { runAttempt: async (_name: string, _cases: string[], _timeout: number, work: any) =>
+        work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) }) },
+      createSharedLibsFixture: (label: string) => { const fx = fixtureHelpers.createSharedLibsFixture(label); labels.set(fx.root, label); return fx; },
+      runSharedInteractive: async (fx: SharedLibsFixture) => {
+        const label = labels.get(fx.root)!;
+        const advisory = fixtureHelpers.reviewRecords(fx).find((r: any) => r.skill === 'review').findings[0];
+        const token = persistFinal(fx, label === 'revalidate-unchanged' ? [] : [{ ...advisory, action: 'skipped' }]);
+        const result = { exitReason: 'success', events: [], toolCalls: [
+          { tool: 'Bash', input: { command: `'${path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log')}' --check-shared-libs ${token}` } },
+          { tool: 'Bash', input: { command: `'${path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-read')}'` } },
+          { tool: 'Read', input: { file_path: path.join(fx.repo, 'src/retry-route.ts') } },
+          { tool: 'Read', input: { file_path: path.join(fx.repo, 'lib/retry-after.ts') } },
+        ] };
+        const questions = label === 'revalidate-unchanged'
+          ? (mutateUnchangedQuestion ? [{ q: 'reconfirm prior skip?' }] : [])
+          : [{ q: 'reuse the helper here?' }];
+        return { result, questions };
+      },
+    });
+    let registered: () => Promise<void>;
+    build();
+    await registered!();
+    expect(rows).toHaveLength(4);
+    expect(rows.every(({ row }) => row.passed === true)).toBe(true);
+
+    rows = [];
+    mutateUnchangedQuestion = true;
+    build();
+    await expect(registered!()).rejects.toThrow();
+    expect(rows.find(({ scenario }) => scenario === 'unchanged').row.passed).toBe(false);
+  }, 60_000);
 
   test('the actual interactive runner uses the declared existing limit without changing clocks or actor', async () => {
     const start = helper.indexOf('export async function runSharedInteractive(');

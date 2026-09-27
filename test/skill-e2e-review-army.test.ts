@@ -381,12 +381,13 @@ end
   afterAll(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
 
   testConcurrentIfSelected('review-army-quality-score', async () => {
+    for (const artifact of ['review-output.md', 'merged-review.json']) fs.rmSync(path.join(dir, artifact), { force: true });
     const before = ['user_controller.rb', 'number_parser.rb'].map(file => fs.readFileSync(path.join(dir, file), 'utf8'));
     const result = await runSkillTest({
       prompt: `Replay the completed specialist results in specialist-findings.jsonl through the actual Collect and merge instructions in review-merge.md. Read user_controller.rb and number_parser.rb to verify these findings against the source.
 This capture covers only the merge, classification, and scoring stage: do not dispatch additional reviewers, discover unrelated findings, or enter Fix-First. Do not edit application source.
 Write the standard merged findings report to ${dir}/review-output.md.
-Also write ${dir}/merged-review.json as one JSON object with findings (all final merged finding records, including optional advice), critical_count, informational_count, issues_found (defect count), and quality_score. Preserve each finding's final severity, category, and advisory classification in that artifact.`,
+Also write ${dir}/merged-review.json as one JSON object with findings (all final merged finding records, including optional advice), critical_count, informational_count, issues_found (defect count), and quality_score. Preserve each finding's final severity, category, and advisory classification in that artifact, and give each finding record a specialists array naming every specialist source that reported it (an array even when a single specialist did).`,
       workingDirectory: dir,
       maxTurns: 15,
       timeout: JUDGE_MS,
@@ -406,10 +407,12 @@ Also write ${dir}/merged-review.json as one JSON object with findings (all final
       expect(merged).toMatchObject({ critical_count: 1, informational_count: 0, issues_found: 1, quality_score: 8 });
       expect(merged.findings).toHaveLength(2);
       const defect = merged.findings.find((finding: any) => finding.category === 'injection');
-      expect(defect).toMatchObject({ severity: 'CRITICAL', specialist: 'security' });
+      expect(defect).toMatchObject({ severity: 'CRITICAL' });
+      expect(defect.specialists).toEqual(['security']);
       expect(defect.advisory).not.toBe(true);
       const advice = merged.findings.find((finding: any) => finding.category === 'stdlib-wrapper');
-      expect(advice).toMatchObject({ severity: 'INFORMATIONAL', advisory: true, specialist: 'simplification' });
+      expect(advice).toMatchObject({ severity: 'INFORMATIONAL', advisory: true });
+      expect(advice.specialists).toEqual(['simplification']);
       expect(content).toMatch(/SPECIALIST REVIEW:\s*1 findings?\s*\(1 critical, 0 informational\)/i);
       expect(content).toMatch(/PR Quality Score:\s*8(?:\.0)?\/10/i);
       expect(content).toContain('[ADVISORY]');

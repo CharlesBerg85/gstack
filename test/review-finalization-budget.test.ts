@@ -54,8 +54,13 @@ mock.module(path.join(root, 'test/helpers/session-runner.ts'), () => ({
     // constants are scaled. The actual registered Bun outer deadline stays.
     await new Promise(resolve => setTimeout(resolve, timeout ? opts.timeout + 50 : 80));
     event({ kind: 'ready', id, fixtureExists: fs.existsSync(opts.workingDirectory) });
-    if (!timeout) fs.writeFileSync(path.join(opts.workingDirectory, 'review-output.md'),
-      'SQL injection. Returned enum status critical. Papyrus font family;14px font-size;outline focus;!important;purple gradient;generic hero copy;3-column feature grid;impeccable detector [ai-color-palette].');
+    if (!timeout) {
+      const target = selected === 'review-enum-completeness'
+        ? opts.prompt.match(/Write your review findings once to (\\S+)/)[1]
+        : path.join(opts.workingDirectory, 'review-output.md');
+      fs.writeFileSync(target,
+        'SQL injection. Returned enum status critical. Papyrus font family;14px font-size;outline focus;!important;purple gradient;generic hero copy;3-column feature grid;impeccable detector [ai-color-palette].');
+    }
     return { attemptId: id, exitReason: timeout ? 'timeout' : 'success', duration: opts.timeout,
       model: 'free-fixture-model', toolCalls: [], browseErrors: [], output: '', transcript: [],
       costEstimate: { estimatedCost: 0, estimatedTokens: 0, turnsUsed: 0 } };

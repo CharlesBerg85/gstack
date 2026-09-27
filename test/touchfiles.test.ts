@@ -335,7 +335,7 @@ describe('selectTests', () => {
     const pathCases = ['shared-libs-review-path-eligibility', 'shared-libs-review-index-flags',
       'shared-libs-review-prior-coverage'];
     expect(selectTests(['test/shared-libs-revalidation-prompt.test.ts'], E2E_TOUCHFILES).selected.sort())
-      .toEqual([...pathCases, 'shared-libs-review-revalidation'].sort());
+      .toEqual([...pathCases, 'shared-libs-review-revalidation', 'shared-libs-review-lifecycle'].sort());
     expect(selectTests(['test/fixtures/shared-libs-index-flags-skip-question.json'], E2E_TOUCHFILES).selected.sort())
       .toEqual([...pathCases, 'shared-libs-review-revalidation', 'shared-libs-review-lifecycle'].sort());
     expect(selectTests(['test/fixtures/shared-libs-paths-max-turns-public.json'], E2E_TOUCHFILES).selected)
@@ -609,7 +609,7 @@ describe('TOUCHFILES completeness', () => {
     );
 
     const unique = registeredJudgeTestNames(llmContent);
-    expect(unique).toHaveLength(27);
+    expect(unique).toHaveLength(28);
 
     const missing = unique.filter(name => !(name in LLM_JUDGE_TOUCHFILES));
     if (missing.length > 0) {
@@ -628,7 +628,7 @@ describe('TOUCHFILES completeness', () => {
       testIfSelected('unmapped judge case', async () => {}, 120_000);
     `;
     const names = registeredJudgeTestNames(withUnmappedCase);
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(29);
     expect(names.filter(name => !(name in LLM_JUDGE_TOUCHFILES))).toEqual(['unmapped judge case']);
   });
 
