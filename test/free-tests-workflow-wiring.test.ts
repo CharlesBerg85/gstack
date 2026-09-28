@@ -76,6 +76,8 @@ describe('free-tests workflow wiring', () => {
     const upload = steps.find((step: any) => step.with?.name === 'free-test-shard-logs-${{ matrix.shard }}');
     expect(probe.if).toBe('always()');
     expect(upload.if).toBe("failure() || steps.flake_spool.outputs.present == 'true'");
+    expect(upload.with.path).toBe('.context/free-test-logs/gstack-free-test-*.log');
+    expect(upload.with['include-hidden-files']).toBe(true);
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'free spool '));
     const output = path.join(directory, 'step-output');
     const ledger = path.join(directory, 'flake-ledger.jsonl');

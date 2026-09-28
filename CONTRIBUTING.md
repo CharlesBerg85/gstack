@@ -229,6 +229,11 @@ the shorter edit loop. The historical six-worker result below and the
 [four-CPU portfolio comparison](docs/TEST_PORTFOLIO.md#measurement-contract)
 are machine-specific measurements. CI setup, build and queue time are reported
 separately. Refresh measurements with `bun run test:free --record-durations`;
+before publication, classify new regressions for quick feedback using that seed
+and the existing `QUICK_CORE` list. Do not classify unknown files as fast or use
+quick results as release acceptance. The runner retains full logs in
+`.context/free-test-logs/` and explains the next repair step on failure; see
+[free-runner recovery](docs/TESTING_INTERNALS.md) for details. For full acceptance,
 the required free CI lane packs the complete inventory across isolated runners,
 then checks every shard's receipt before reporting success. Local worker counts
 remain bounded to avoid browser/process contention.

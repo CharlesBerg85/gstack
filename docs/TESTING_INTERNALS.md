@@ -197,6 +197,25 @@ starting. No selected files, retries, budgets, or receipt requirements are
 removed. Former generator mutators still render into private output directories;
 this serial phase protects process visibility, not in-place doc generation.
 
+Full child output is retained in private files under `.context/free-test-logs/`,
+outside each shard's temporary cleanup directory. The runner prints the path at
+launch and completion. Losing the log fails the run even when the child exits
+successfully. A redirected log directory is rejected before launching a child.
+On failure, read that log first: the recovery message distinguishes incomplete
+capture, unconfirmed cleanup, deadline expiry and a test/module failure. Fix the
+demonstrated cause before rerunning. A focused `bun test` command is offered only
+when every failure is attributable to existing selected files; it proves that
+repair, not completion of the original selection. Preserve failed attempts when
+sharing results, and inspect logs for private data before sharing them.
+
+Before publication, classify new deterministic regressions for quick feedback.
+Refresh the timing seed with the existing recorder on fixed inputs; do not edit
+source while tests run. Critical boundary controls belong in `QUICK_CORE` when
+their feedback cost is justified. Other measured files qualify at two seconds
+or less; slow and unmeasured files remain outside quick, not outside full tests.
+Report cold setup separately from warm execution, while retaining failed-attempt,
+retry and cleanup time in the total cost.
+
 **PTY fixture timing.** Plan-count sessions wake on terminal output or exit,
 with at least 250ms between expensive observations and a 2s fallback for
 transcript or hook changes that produce no terminal output. New output batches

@@ -51,7 +51,7 @@
  * on the windows-latest CI job.
  *
  * Output contract (v1.66): the full child stream ALWAYS lands in a per-run
- * log file under os.tmpdir() (path printed once at start and again in the
+ * private log under .context/free-test-logs (path printed at start and in the
  * epilogue). The console is quiet by default — only the runner's own
  * [test:free] lines, `(fail)` result lines, bun error/crash markers
  * (`error:`, `panic:`, `crashed`, `Unhandled error`), and the terminal
@@ -802,6 +802,8 @@ export const QUICK_CORE = [
   'test/strict-output.test.ts', 'test/gen-skill-docs.test.ts',
   'test/skill-check-driver.test.ts', 'test/ceo-native-ledger-replay.test.ts',
   'test/skill-ceo-section-ordering.test.ts',
+  'test/qa-functional-observer.test.ts', 'test/qa-checkpoint-evidence.test.ts',
+  'test/test-free-shards-capture.test.ts',
 ];
 
 export function selectQuickFreeFiles(files: string[], durations: Record<string, number>): string[] {
@@ -1354,7 +1356,7 @@ export interface RunFreeShardOptions {
    * Runner-owned [test:free] lines go through `log`, not this sink.
    */
   consoleWrite?: (text: string) => void;
-  /** Per-run full-stream log path (tests inject). Default: a timestamped file under os.tmpdir(). */
+  /** Per-run full-stream log path (tests inject). Default: a private retained file under .context/free-test-logs. */
   logFilePath?: string;
   log?: (line: string) => void;
 }
@@ -1784,8 +1786,8 @@ export async function runFreeShard(
   // Full-stream capture: EVERY child byte lands here, whatever the console
   // shows. Printed once at start so a wedged or noisy run is inspectable
   // without a re-run.
-  const logPath = options.logFilePath ?? nextDefaultLogPath();
-  const logStream = fs.createWriteStream(logPath);
+  const logPath = options.logFilePath ?? nextDefaultLogPath(rootDir);
+  const logStream = fs.createWriteStream(logPath, { mode: 0o600 });
   let logWriteFailed = false;
   logStream.on('error', (err) => {
     if (logWriteFailed) return;
@@ -1933,7 +1935,7 @@ export async function runFreeShard(
   const summary = classifier.end();
   const status: FreeShardStatus = timedOut
     ? 'timed-out'
-    : !cleanupError && captureFailures.size === 0 && strictTestExitCode(exitCode ?? 1, summary, files.length) === 0 ? 'passed' : 'failed';
+    : !cleanupError && !logWriteFailed && captureFailures.size === 0 && strictTestExitCode(exitCode ?? 1, summary, files.length) === 0 ? 'passed' : 'failed';
 
   if (cleanupError) console.error(`${label} browser cleanup failed: ${cleanupError}; retained ${stateDir}`);
 
@@ -1942,7 +1944,7 @@ export async function runFreeShard(
       `${label} exceeded the ${Math.round(wallTimeoutMs / 1000)}s wall-clock deadline — `
       + 'killed the process group. Reporting as TIMED-OUT (distinct from failed).',
     );
-  } else if (status === 'failed' && !cleanupError && captureFailures.size === 0 && (exitCode ?? 1) === 0) {
+  } else if (status === 'failed' && !cleanupError && !logWriteFailed && captureFailures.size === 0 && (exitCode ?? 1) === 0) {
     const reason = summary.failedTests > 0 || summary.unhandledBetweenTests > 0
       ? `reported ${summary.failedTests} failing test(s) and ${summary.unhandledBetweenTests} unhandled error(s) between tests`
       : summary.terminalFileCounts.length === 0
@@ -1963,6 +1965,7 @@ export async function runFreeShard(
       + report.unreportedFailures
       + report.unhandledErrors.length
       + captureFailures.size
+      + (logWriteFailed ? 1 : 0)
       + (cleanupError ? 1 : 0)
       + (report.sawTerminalSummary ? 0 : 1);
   const outcome: FreeShardOutcome = {
@@ -1971,16 +1974,38 @@ export async function runFreeShard(
   };
   log(shardEpilogue(outcome, totalShards));
   for (const line of buildRunEpilogue(status, report, outcome.elapsedMs, logPath)) log(line);
+  if (status !== 'passed') {
+    const problem = cleanupError ? 'Owned-process cleanup is unconfirmed; inspect the retained state before another run.'
+      : logWriteFailed ? 'The evidence log could not be retained; repair the log destination before another run.'
+        : captureFailures.size || !report.sawTerminalSummary ? 'Evidence capture is incomplete; repair the stream or early exit before another run.'
+          : status === 'timed-out' ? 'Execution exceeded its deadline; inspect the last completed step before changing code or rerunning.'
+            : 'A test or module failed; the root cause is not established. Inspect the full log and repair the cause first.';
+    log(`[test:free] Recovery: ${problem} See docs/TESTING_INTERNALS.md.`);
+    const focused = failingFiles.filter(file => files.includes(file) && fs.existsSync(path.resolve(rootDir, file)));
+    if (!unattributedFailures && focused.length) {
+      log(`[test:free] After repair, focused check: bun test ${focused.map(file => `'${file.replaceAll("'", "'\\''")}'`).join(' ')}`);
+    } else {
+      log('[test:free] No complete narrower failure scope is available; do not treat a subset rerun as complete coverage.');
+    }
+  }
   return outcome;
 }
 
 let logPathSequence = 0;
 
-/** Timestamped per-run log file under os.tmpdir(); pid+sequence defeat same-ms collisions. */
-function nextDefaultLogPath(): string {
+/** Timestamped retained log file; pid+sequence defeat same-ms collisions. */
+function nextDefaultLogPath(rootDir: string): string {
+  let directory = fs.realpathSync(rootDir);
+  for (const part of ['.context', 'free-test-logs']) {
+    directory = path.join(directory, part);
+    const existing = fs.lstatSync(directory, { throwIfNoEntry: false });
+    if (existing && (!existing.isDirectory() || existing.isSymbolicLink())) throw new Error('Free-test log directory must not traverse links');
+    if (!existing) fs.mkdirSync(directory, { mode: 0o700 });
+  }
+  fs.chmodSync(directory, 0o700);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   logPathSequence += 1;
-  return path.join(os.tmpdir(), `gstack-free-test-${stamp}-${process.pid}-${logPathSequence}.log`);
+  return path.join(directory, `gstack-free-test-${stamp}-${process.pid}-${logPathSequence}.log`);
 }
 
 function exitCodeFor(status: FreeShardStatus): number {

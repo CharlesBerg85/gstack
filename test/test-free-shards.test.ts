@@ -403,6 +403,13 @@ describe('test-free-shards: isolated CI and explicit quick feedback', () => {
     const measured = { ...durations, [QUICK_CORE[0]]: 99_000, 'test/codex-e2e.test.ts': 1 };
     expect(selectQuickFreeFiles(candidates, measured)).toEqual([...QUICK_CORE, ...files.slice(0, 2)]);
     expect(QUICK_CORE.every(file => collectFreeTestFiles(ROOT).includes(file))).toBe(true);
+    expect(selectQuickFreeFiles([
+      'test/qa-functional-observer.test.ts', 'test/qa-checkpoint-evidence.test.ts',
+      'test/test-free-shards-capture.test.ts', 'test/qa-exploratory-callers.test.ts',
+    ], {})).toEqual([
+      'test/qa-functional-observer.test.ts', 'test/qa-checkpoint-evidence.test.ts',
+      'test/test-free-shards-capture.test.ts',
+    ]);
   });
 
   test('CLI emits a shared plan, accounts for an empty shard, and rejects missing receipts', () => {
