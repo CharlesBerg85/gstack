@@ -37,9 +37,12 @@ export function nativeCalls(transcript: unknown[], failures: string[]): Call[] {
     if (!['assistant', 'user'].includes(raw.type)) continue;
     const parent = raw.parent_tool_use_id ?? null;
     if (parent !== null && typeof parent !== 'string') { failures.push('Malformed native parent scope'); continue; }
-    if (!Array.isArray(raw.message?.content)) continue;
+    if (!Array.isArray(raw.message?.content)) {
+      if (raw.message?.content != null && typeof raw.message.content !== 'string') failures.push('Malformed native message content');
+      continue;
+    }
     for (const block of raw.message.content) {
-      if (!object(block)) continue;
+      if (!object(block)) { failures.push('Malformed native content block'); continue; }
       if (raw.type === 'assistant' && block.type === 'tool_use') {
         const key = JSON.stringify([parent, block.id]);
         if (typeof block.id !== 'string' || !block.id || calls.has(key) || typeof block.name !== 'string' || !object(block.input)) {

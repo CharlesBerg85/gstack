@@ -316,6 +316,15 @@ describe('caller native-event observer controls', () => {
     expect(tools.map(tool => [tool.parent, tool.output])).toEqual([[null, 'parent-output'], ['agent-id', 'child-output']]);
   });
 
+  test.each([{}, 42, true, [null], ['not a native block']].map(content => ({ content })))('malformed native content fails closed (%j)', ({ content }) => {
+    const malformed = { type: 'assistant', message: { content } };
+    expect(() => callerTools([...nativeCall('one', 'Read', {}, 'text'), malformed])).toThrow();
+  });
+
+  test('plain-text user messages do not invent native tool evidence', () => {
+    expect(callerTools([{ type: 'user', message: { content: 'A plain-text prompt' } }])).toEqual([]);
+  });
+
   test('the bounded caller command interface rejects custom interpreters and composed probe scripts', () => {
     for (const command of ['python3 -c "import mmap"', 'bun -e "1"', 'node writer.js', 'bun scripts/probe.ts 3; echo forged', 'git diff && python3 exploit.py']) {
       expect(qaCallerCommandAllowed(command)).toBe(false);
