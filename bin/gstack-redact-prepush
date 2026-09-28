@@ -22,6 +22,18 @@
  *   - MEDIUM → warn (non-blocking). LOW/WARN → silent.
  *   - GSTACK_REDACT_PREPUSH=skip → log + exit 0 (escape valve).
  *
+ * Repo allowlist: `.gstack/redact-allowlist`, read from the LOCAL sha being
+ * pushed (never the working tree), so the allowlist is itself reviewed pushed
+ * content. One exact matched span per line; blank lines and lines starting
+ * with `#` are ignored. It exists for third-party text that cannot be edited
+ * (a byte-exact vendored README); in your own docs and tests use the approved
+ * placeholder password GSTACK_EXAMPLE_NONCE instead. Only a finding whose
+ * whole matched span equals an entry is suppressed. Entries shorter than 12
+ * characters, and marker-only spans (a PEM header, the GCP service-account
+ * prefix) that would hide every such credential, are ignored. A file over
+ * 16 KiB or 100 entries is ignored entirely. Suppression is never silent: the
+ * hook prints how many findings were suppressed, never the spans.
+ *
  * Installed/uninstalled via `gstack-redact install-prepush-hook` (see the
  * gstack-redact CLI), which chains any pre-existing hook.
  */
@@ -29,7 +41,7 @@ import { spawnSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { normalizeWithMap, scan, type Finding } from "../lib/redact-engine";
+import { MARKER_ONLY_PATTERN_IDS, normalizeWithMap, scan, type Finding } from "../lib/redact-engine";
 import { mkdirpSync } from "../lib/fs-utils";
 
 const ZERO = /^0+$/;
@@ -414,6 +426,50 @@ function scanAddedLines(added: string, opts: Parameters<typeof scan>[1]): Findin
   return findings;
 }
 
+const ALLOWLIST_PATH = ".gstack/redact-allowlist";
+const ALLOWLIST_MAX_BYTES = 16 * 1024;
+const ALLOWLIST_MAX_ENTRIES = 100;
+const ALLOWLIST_MIN_ENTRY_CHARS = 12;
+
+/**
+ * Exact-span allowlist committed at ALLOWLIST_PATH in the pushed commit.
+ * Every failure mode (missing file, not a blob, oversized, too many entries)
+ * yields an empty list, which can only make the scan stricter.
+ */
+function readAllowlist(localSha: string): string[] {
+  const spec = `${localSha}:${ALLOWLIST_PATH}`;
+  if (git(["cat-file", "-t", spec]).trim() !== "blob") return [];
+  const size = Number(git(["cat-file", "-s", spec]).trim());
+  if (!Number.isInteger(size) || size > ALLOWLIST_MAX_BYTES) {
+    process.stderr.write(
+      `gstack-redact-prepush: ignored ${ALLOWLIST_PATH} (larger than ${ALLOWLIST_MAX_BYTES} bytes).\n`,
+    );
+    return [];
+  }
+  const lines = git(["cat-file", "blob", spec])
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("#"));
+  if (lines.length > ALLOWLIST_MAX_ENTRIES) {
+    process.stderr.write(
+      `gstack-redact-prepush: ignored ${ALLOWLIST_PATH} (more than ${ALLOWLIST_MAX_ENTRIES} entries).\n`,
+    );
+    return [];
+  }
+  const entries = lines.filter(
+    (l) =>
+      l.length >= ALLOWLIST_MIN_ENTRY_CHARS &&
+      !scan(l).findings.some((f) => MARKER_ONLY_PATTERN_IDS.has(f.id)),
+  );
+  if (entries.length < lines.length) {
+    process.stderr.write(
+      `gstack-redact-prepush: ignored ${lines.length - entries.length} ${ALLOWLIST_PATH} entr(ies) ` +
+        `(shorter than ${ALLOWLIST_MIN_ENTRY_CHARS} characters or a marker-only span).\n`,
+    );
+  }
+  return entries;
+}
+
 function logSkip(reason: string): void {
   try {
     const home = process.env.GSTACK_HOME || path.join(os.homedir(), ".gstack");
@@ -447,6 +503,7 @@ function main() {
 
   const allHigh: Finding[] = [];
   let mediumCount = 0;
+  let allowlisted = 0;
 
   for (const fields of refs) {
     // Fail CLOSED on a ref line we cannot parse (#2498): git hands pre-push
@@ -485,10 +542,22 @@ function main() {
     // as public-strict (HIGH blocks regardless either way).
     // Sliced (see scanAddedLines) so a large-but-legitimate diff is actually
     // scanned rather than blocked unscanned on the engine's size cap.
-    for (const f of scanAddedLines(added, { repoVisibility: "private" })) {
+    const allowlist = readAllowlist(localSha);
+    const findings = scanAddedLines(added, { repoVisibility: "private", allowlist });
+    if (allowlist.length > 0) {
+      allowlisted += scanAddedLines(added, { repoVisibility: "private" }).length - findings.length;
+    }
+    for (const f of findings) {
       if (f.severity === "HIGH") allHigh.push(f);
       else if (f.severity === "MEDIUM") mediumCount++;
     }
+  }
+
+  if (allowlisted > 0) {
+    process.stderr.write(
+      `gstack-redact-prepush: ${allowlisted} finding(s) suppressed by exact spans in ${ALLOWLIST_PATH} ` +
+        "(read from the pushed commit).\n",
+    );
   }
 
   if (mediumCount > 0) {

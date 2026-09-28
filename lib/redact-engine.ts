@@ -530,7 +530,7 @@ export function applyRedactions(
  * would redact the header and forward the key body — so redactFindingSpans
  * drops the whole payload instead.
  */
-const MARKER_ONLY_PATTERN_IDS = new Set(["pem.private_key", "gcp.service_account"]);
+export const MARKER_ONLY_PATTERN_IDS = new Set(["pem.private_key", "gcp.service_account"]);
 
 /**
  * Replace EVERY finding's span with `<REDACTED-{id}>`, regardless of tier or

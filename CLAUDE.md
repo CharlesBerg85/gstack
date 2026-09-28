@@ -392,6 +392,15 @@ determined leaker (a CHANGELOG line that does would fail a hostile screenshotter
   case-sensitive) is never flagged as a URL password, so docs and tests can
   write `postgres://user:GSTACK_EXAMPLE_NONCE@host/db` or
   `https://user:GSTACK_EXAMPLE_NONCE@host/`. Lowercase `password` still blocks.
+- **Repo allowlist (third-party text only):** the pre-push hook reads
+  `.gstack/redact-allowlist` from the pushed commit, never the working tree.
+  One exact matched span per line (`#` comments and blank lines ignored). A
+  URL span runs from the scheme to the first `/` or whitespace after the host:
+  `postgres://<user>:<pass>@<host>:<port>/<db>` is listed as
+  `postgres://<user>:<pass>@<host>:<port>`. Entries under 12
+  characters and marker-only spans (PEM header) are ignored; a file over
+  16 KiB or 100 entries is ignored entirely. The hook prints the suppressed
+  count, never the spans.
 - **Skill docs are generated** from `scripts/resolvers/redact-doc.ts`
   (`{{REDACT_INVOCATION_BLOCK:<sink>}}`) so /spec,
   /cso, /ship, /document-release, /document-generate never drift from the engine.
