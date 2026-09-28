@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { Database } from 'bun:sqlite';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { createCipheriv, createHash, randomBytes } from 'node:crypto';
+import { copyFileSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -103,6 +104,59 @@ describe('actual Node importer runtime', () => {
     expect(parsed.opera).toEqual({ count: 1, failed: 0, name: 'opera-cookie', value: 'opera-plaintext' });
     expect(parsed.gx).toEqual({ count: 1, failed: 0, name: 'gx-cookie', value: 'gx-plaintext' });
     expect(parsed.skipped).toBe(0);
+  });
+
+  // Real Windows DPAPI through the production Node polyfill; no credential subprocess mock.
+  test.skipIf(process.platform !== 'win32')('decrypts a host-bound Opera v10 cookie with real DPAPI under the Node server runtime', () => {
+    const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+    const powershellDir = path.win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0');
+    const key = randomBytes(32);
+    const protect = spawnSync(path.win32.join(powershellDir, 'powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command',
+      'Add-Type -AssemblyName System.Security; $b = [Convert]::FromBase64String([Console]::In.ReadToEnd().Trim()); [Convert]::ToBase64String([System.Security.Cryptography.ProtectedData]::Protect($b, $null, [System.Security.Cryptography.DataProtectionScope]::CurrentUser))',
+    ], { input: key.toString('base64'), encoding: 'utf8', timeout: 30_000, windowsHide: true });
+    expect(protect.status).toBe(0);
+    const blob = Buffer.from(protect.stdout.trim(), 'base64');
+    expect(blob.length).toBeGreaterThan(32);
+
+    const appData = path.join(root, 'DpapiRoaming');
+    const browserRoot = path.join(appData, 'Opera Software', 'Opera Stable');
+    const network = path.join(browserRoot, 'Default', 'Network');
+    mkdirSync(network, { recursive: true });
+    expect(realpathSync(network).startsWith(root + path.sep)).toBe(true);
+    writeFileSync(path.join(browserRoot, 'Local State'), JSON.stringify({ os_crypt: { encrypted_key: Buffer.concat([Buffer.from('DPAPI'), blob]).toString('base64') } }));
+    const seal = (sealKey: Buffer, plaintext: Buffer) => {
+      const nonce = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', sealKey, nonce);
+      const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+      return Buffer.concat([Buffer.from('v10'), nonce, ciphertext, cipher.getAuthTag()]);
+    };
+    const expected = 'dpapi-synthetic-session';
+    const hostHash = createHash('sha256').update('.dpapi.fixture').digest();
+    const database = new Database(path.join(network, 'Cookies'));
+    database.run('CREATE TABLE cookies (host_key TEXT, name TEXT, value TEXT, encrypted_value BLOB, path TEXT, expires_utc INTEGER, is_secure INTEGER, is_httponly INTEGER, has_expires INTEGER, samesite INTEGER)');
+    database.run('INSERT INTO cookies VALUES (?, ?, ?, ?, ?, 0, 1, 1, 0, 1)', ['.dpapi.fixture', 'session', '', seal(key, Buffer.concat([hostHash, Buffer.from(expected)])), '/']);
+    database.run('INSERT INTO cookies VALUES (?, ?, ?, ?, ?, 0, 1, 1, 0, 1)', ['.dpapi.fixture', 'wrong-key', '', seal(randomBytes(32), Buffer.concat([hostHash, Buffer.from('other')])), '/']);
+    database.close();
+
+    const child = spawnSync(node!, ['--input-type=module', '-e', `
+      import { createRequire } from 'node:module';
+      createRequire(import.meta.url)(process.argv[1]);
+      const { importCookies } = await import(process.argv[2]);
+      const result = await importCookies('opera', ['dpapi.fixture']);
+      console.log(JSON.stringify({ count: result.count, failed: result.failed, reasons: result.failureReasons, matches: result.cookies[0]?.value === process.argv[3] }));
+    `, path.resolve(import.meta.dir, '../src/bun-polyfill.cjs'), pathToFileURL(bundle).href, expected], {
+      encoding: 'utf8', timeout: 30_000, windowsHide: true,
+      env: {
+        HOME: root, USERPROFILE: root, APPDATA: appData, LOCALAPPDATA: path.join(root, 'AppData/Local'), TEMP: root, TMP: root,
+        NODE_NO_WARNINGS: '1', SystemRoot: systemRoot, PATHEXT: process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD', PATH: [path.dirname(node!), powershellDir, path.win32.join(systemRoot, 'System32')].join(';'),
+      },
+    });
+    expect(child.error).toBeUndefined();
+    expect(child.stderr).toBe('');
+    expect(child.status).toBe(0);
+    expect(JSON.parse(child.stdout)).toEqual({ count: 1, failed: 1, reasons: { decryption_failed: 1 }, matches: true });
+    expect(child.stdout).not.toContain(expected);
+    expect(child.stdout).not.toContain(key.toString('base64'));
   });
 
   test('Node server build does not stub away the database', () => {

@@ -4,7 +4,8 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { findInstalledBrowsers, importCookies, listDomains, listProfiles, listSupportedBrowserNames, cookieDomainMatches, CookieImportError, normalizeCookieDomain, withCookieReadRetry } from '../src/cookie-import-browser';
+import { findInstalledBrowsers, importCookies, listDomains, listProfiles, listSupportedBrowserNames, cookieDomainMatches, CookieImportError, normalizeCookieDomain, resolveBrowserInfo, withCookieReadRetry } from '../src/cookie-import-browser';
+import { nativeBrowserPaths } from '../src/cookie-import-native';
 
 let home: string;
 let oldHome: string | undefined;
@@ -50,7 +51,7 @@ function writeDpapiState(root: string, browserDir: string, material: Buffer): vo
   fs.writeFileSync(path.join(target, 'Local State'), JSON.stringify({ os_crypt: { encrypted_key: encryptedKey } }));
 }
 
-function windowsV10Cookie(key: Buffer, plaintext: string): Buffer {
+function windowsV10Cookie(key: Buffer, plaintext: string | Buffer): Buffer {
   const nonce = Buffer.alloc(12, 0x24);
   const cipher = crypto.createCipheriv('aes-256-gcm', key, nonce);
   const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
@@ -530,5 +531,97 @@ describe('cookie import reliability', () => {
     expect(opera.cookies.map(cookie => cookie.value)).toEqual([operaPlaintext]);
     expect(gx.cookies.map(cookie => cookie.value)).toEqual([gxPlaintext]);
     expect((await importCookies('opera', ['other.test'])).cookies.map(cookie => cookie.value)).toEqual(['opera-other-value']);
+  });
+
+  test('strips the SHA-256(host_key) prefix from Windows v10 values only when it matches', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    const cases = [
+      { alias: 'opera', key: Buffer.alloc(32, 0x31), dir: path.join('AppData', 'Roaming', 'Opera Software', 'Opera Stable'), material: 'opera-dpapi-material' },
+      { alias: 'chrome', key: Buffer.alloc(32, 0x33), dir: path.join('AppData', 'Local', 'Google', 'Chrome', 'User Data'), material: 'chrome-dpapi-material' },
+    ];
+    for (const { alias, key, dir, material } of cases) {
+      const hash = crypto.createHash('sha256').update('.chosen.test').digest();
+      writeCookies(home, path.join(dir, 'Default', 'Network'), [
+        { domain: '.chosen.test', name: 'bare', encrypted: windowsV10Cookie(key, 'bare-value') },
+        { domain: '.chosen.test', name: 'prefixed', encrypted: windowsV10Cookie(key, Buffer.concat([hash, Buffer.from('prefixed-value')])) },
+      ]);
+      writeDpapiState(home, dir, Buffer.from(material));
+      Bun.spawn = ((command: string[]) => {
+        expect(command[0]).toBe('powershell');
+        return { stdin: { write() {}, end() {} }, stdout: closedStream(key.toString('base64')), stderr: closedStream(), exited: Promise.resolve(0), kill() {} };
+      }) as typeof Bun.spawn;
+      const result = await importCookies(alias, ['chosen.test']);
+      expect(result.failed).toBe(0);
+      expect(Object.fromEntries(result.cookies.map(cookie => [cookie.name, cookie.value]))).toEqual({ bare: 'bare-value', prefixed: 'prefixed-value' });
+    }
+  });
+
+  test('keeps a 32-byte lead that is not the host digest', async () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    const key = Buffer.alloc(32, 0x31);
+    const dir = path.join('AppData', 'Roaming', 'Opera Software', 'Opera Stable');
+    const value = 'x'.repeat(32) + '-tail';
+    writeCookies(home, path.join(dir, 'Default', 'Network'), [{ domain: '.chosen.test', name: 'long', encrypted: windowsV10Cookie(key, value) }]);
+    writeDpapiState(home, dir, Buffer.from('opera-dpapi-material'));
+    Bun.spawn = (() => ({ stdin: { write() {}, end() {} }, stdout: closedStream(key.toString('base64')), stderr: closedStream(), exited: Promise.resolve(0), kill() {} })) as unknown as typeof Bun.spawn;
+    expect((await importCookies('opera', ['chosen.test'])).cookies.map(cookie => cookie.value)).toEqual([value]);
+  });
+
+  test('resolves Opera GX aliases and lists typeable tokens for the host OS', () => {
+    for (const alias of ['operagx', 'opera-gx', 'Opera GX', 'opera gx']) expect(resolveBrowserInfo(alias).name).toBe('Opera GX');
+    const unknown = (platform: string) => {
+      Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+      try { resolveBrowserInfo('firefox'); } catch (error: any) { return error; }
+      throw new Error('expected unknown_browser');
+    };
+    const win = unknown('win32');
+    expect(win.code).toBe('unknown_browser');
+    const winSupported = win.message.split('Supported on this OS: ')[1].split('. All names:')[0];
+    expect(winSupported).toContain('Opera GX (opera-gx)');
+    expect(winSupported).toContain('Opera (opera)');
+    for (const platform of ['darwin', 'linux']) {
+      const supported = unknown(platform).message.split('Supported on this OS: ')[1].split('. All names:')[0];
+      expect(supported).not.toContain('Opera');
+      expect(unknown(platform).message).toContain('All names: comet');
+    }
+  });
+
+  test('names the supported OS for host-unsupported browsers', () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'linux' });
+    let error: any;
+    try { listDomains('arc'); } catch (caught) { error = caught; }
+    expect(error.code).toBe('not_installed');
+    expect(error.message.startsWith('Arc cookie import is available on macOS only.')).toBe(true);
+    expect(error.message).toContain('~/Library/Application Support/Arc/User Data');
+    expect(error.message).toContain('Browsers available on this OS: Chrome (chrome), Chromium (chromium), Brave (brave), Edge (edge).');
+  });
+
+  test('distinguishes a missing profile from a missing browser', () => {
+    Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+    writeCookies(home, path.join('AppData', 'Roaming', 'Opera Software', 'Opera Stable', 'Default', 'Network'), [
+      { domain: '.chosen.test', name: 'keep', value: 'present' },
+    ]);
+    let error: any;
+    try { listDomains('opera', 'Profile 8'); } catch (caught) { error = caught; }
+    expect(error.code).toBe('not_installed');
+    expect(error.message.startsWith("Opera profile 'Profile 8' not found. Available: Default.")).toBe(true);
+    expect(error.message).not.toContain('Supported layout');
+  });
+
+  test('ignores a relative APPDATA and falls back to the home Roaming root', async () => {
+    process.env.APPDATA = 'relative\\Roaming';
+    writeCookies(home, path.join('AppData', 'Roaming', 'Opera Software', 'Opera Stable', 'Default', 'Network'), [
+      { domain: '.chosen.test', name: 'keep', value: 'home-roaming' },
+    ]);
+    expect((await importCookies('opera', ['chosen.test'])).cookies.map(cookie => cookie.value)).toEqual(['home-roaming']);
+  });
+
+  test('windowsNative matches exactly the browsers the native extractor maps', () => {
+    const env = { LOCALAPPDATA: 'C:\\Users\\fixture\\AppData\\Local' };
+    for (const browser of ['Comet', 'Chrome', 'Chromium', 'Arc', 'Dia', 'Brave', 'Edge', 'Opera', 'Opera GX']) {
+      let mapped = true;
+      try { nativeBrowserPaths(browser, env); } catch { mapped = false; }
+      expect(resolveBrowserInfo(browser).windowsNative === true).toBe(mapped);
+    }
   });
 });
