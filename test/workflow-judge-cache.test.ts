@@ -236,16 +236,16 @@ test.each(['ship', 'review'])('the registered %s callback sends the frontier rub
   Object.assign(f.env, { EVALS_FRESH: '1' });
   const options = { ...registered, skillPath: f.opts.skillPath, startMarker: f.opts.startMarker,
     endMarker: f.opts.endMarker, references: [] };
-  const passing = actualCallback(f);
+  const passing = actualCallback(f, { judge: async () => ({ ...scores, clarity: 3 }) });
   await passing.run(options);
   expect(passing.prompts).toHaveLength(1);
   expect(passing.prompts[0]).toContain('GPT-5.6 Sol-level capability or stronger');
-  expect(passing.records[0]).toMatchObject({ passed: true, execution: 'executed' });
-  const failing = actualCallback(f, { judge: async () => ({ ...scores, clarity: 3 }) });
+  expect(passing.records[0]).toMatchObject({ passed: true, execution: 'executed', judge_scores: { clarity: 3 } });
+  const failing = actualCallback(f, { judge: async () => ({ ...scores, clarity: 2 }) });
   await expect(failing.run(options)).rejects.toThrow();
   expect(failing.prompts).toEqual(passing.prompts);
   expect(failing.records[0]).toMatchObject({ passed: false, execution: 'executed',
-    exit_reason: 'validation_failed', judge_scores: { clarity: 3 } });
+    exit_reason: 'validation_failed', judge_scores: { clarity: 2 } });
   expect(f.entries()).toHaveLength(0);
 });
 
