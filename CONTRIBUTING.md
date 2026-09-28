@@ -182,6 +182,7 @@ Bun auto-loads `.env` — no extra config. Conductor workspaces inherit `.env` f
 bun run test:quick           # Measured fast free subset for ordinary edits; not full acceptance
 bun run eval:bg:pr           # Changed fast live probes + selected quality judges, detached
 bun run test                 # Final full free acceptance after focused repairs and source freeze
+bun run test:ubicloud        # Same suite on an ephemeral 16-vCPU Ubicloud VM; needs UBICLOUD_API_KEY
 bun run test:e2e             # Tier 2: E2E only (needs EVALS=1, can't run inside Claude Code)
 bun run test:evals           # Tier 2 + 3 combined (~$4.35/run)
 ```
@@ -208,11 +209,15 @@ unknown-input results cannot be reused.
 Timing goals are under one minute for edit feedback, 3–5 minutes for typical PR
 checks, and 60–90 seconds for complete free test execution across isolated CI
 machines. They are targets, not timeout reductions or guarantees. The complete
-local suite uses available CPU affinity, up to six workers; use `test:quick` for
-the shorter edit loop. The historical six-worker result below and the
+local suite uses available CPU affinity, up to 16 workers on Linux and six on
+macOS and Windows; use `test:quick` for the shorter edit loop. On a small dev
+box, container, or cloud sandbox, `bun run test:ubicloud` runs the complete suite
+on a fresh 16-vCPU Ubicloud VM with the CI lane's environment instead (about
+four and a half minutes end to end, including VM boot and setup). The
+historical six-worker result below and the
 [four-CPU portfolio comparison](docs/TEST_PORTFOLIO.md#measurement-contract)
 are machine-specific measurements. CI setup, build and queue time are reported
-separately. Refresh measurements with `bun run test:free --record-durations`;
+separately. Refresh measurements with `bun run test:ubicloud --record-durations`;
 the required free CI lane packs the complete inventory across isolated runners,
 then checks every shard's receipt before reporting success. Local worker counts
 remain bounded to avoid browser/process contention.
@@ -254,7 +259,8 @@ flakes; the required CI free lane turns it on and uploads every flaky pass
 in a JSONL ledger artifact that `bun run eval:flake-rank` folds in).
 Working in a cloud sandbox? Run `scripts/sandbox-doctor.sh` once per boot to
 make the suite run green (details in
-[docs/TESTING_INTERNALS.md](docs/TESTING_INTERNALS.md)).
+[docs/TESTING_INTERNALS.md](docs/TESTING_INTERNALS.md)), or skip the sandbox's
+limits entirely with `bun run test:ubicloud`.
 Don't type bare `bun test` for the suite: it walks the whole repo, loads paid
 eval files, and misses the strict classifier. No API keys needed.
 

@@ -161,14 +161,20 @@ load-sensitive on a busy dev box, runs only in CI or on explicit opt-in
 
 **Free suite (`bun run test:free`).** `scripts/test-free-shards.ts` runs N
 concurrent shard processes (serial within each) with strict-output
-classification per shard. Local defaults use the available CPU affinity,
-floored at one and capped at six; `GSTACK_FREE_JOBS` remains an explicit override.
+classification per shard. Local defaults use the available CPU affinity
+(which Bun also bounds by a container's cgroup CPU quota), floored at one and
+capped at 16 on Linux and six on macOS and Windows; `GSTACK_FREE_JOBS` remains
+an explicit override.
 This does not change the separate CI machine count. Full-suite shards are packed by RECORDED PER-FILE
 DURATIONS (LPT, `packShardsByDuration`) when the committed seed
-`scripts/free-test-durations.json` exists — refresh it occasionally with
-`bun run test:free --record-durations` (each file timed in its own child;
-CI never records). Missing seed → silent hash-shard fallback; corrupt seed →
-one warning + fallback; unknown files get 75th-percentile pessimism. Packed
+`scripts/free-test-durations.json` exists — refresh it with
+`bun run test:ubicloud --record-durations`, which times each file in its own
+child on a VM with the CI lane's environment and copies the seed back (CI never
+records; a seed recorded where browser or display tests skip underestimates
+them). Missing seed → silent hash-shard fallback; corrupt seed → one warning +
+fallback; unknown files get 75th-percentile pessimism, and both full-suite and
+`--ci-plan` runs name them on stderr so a new slow file cannot silently become
+the long pole. Packed
 shards get duration-aware walls (`max(base, predicted × 3, files × 5s)`). The
 legacy `--shards N --shard i` path keeps stable hash indices. Required CI uses
 one duration-packed `--ci-plan`, 20 isolated `--ci-run` machines, and a
@@ -256,7 +262,7 @@ serially. Plans and receipts bind the source revision, complete inventory and
 strict outcomes; missing, duplicate or mismatched receipts fail the required
 aggregate. The existing maximum five-file flaky retry allowance applies across
 the entire lane, not separately to every machine. Refresh the full timing list
-with `bun run test:free --record-durations`. Profiling records failures faithfully
+with `bun run test:ubicloud --record-durations`. Profiling records failures faithfully
 and is separate from final release acceptance.
 
 **CI planner/executor/report.** `--emit-plan <path> --slices K` computes
@@ -387,6 +393,39 @@ against a temp `GSTACK_INSTALL_DIR` / `GSTACK_SKILLS_DIR`, and
 `test/hook-scripts.test.ts` runs the real `careful/bin/check-careful.sh` and
 `freeze/bin/check-freeze.sh` with JSON payloads on stdin (including the
 `GSTACK_HOME` state-root parity against `bin/gstack-paths`).
+
+## Ubicloud VMs (`bun run test:ubicloud`)
+
+`bun run test:ubicloud [test:free args]` runs the free suite on an ephemeral
+Ubicloud VM instead of the local machine. It is the fast path from small dev
+boxes, containers, and cloud sandboxes, and the way to record the duration seed
+in the CI lane's environment. It needs `UBICLOUD_API_KEY` (a project token from
+the Ubicloud console) plus `bash`, `curl`, `python3`, `ssh`, `ssh-keygen`, and
+`tar` locally.
+
+`scripts/ubicloud/ubi-runner.sh` creates the VM (`UBI_SIZE`, default
+`standard-16`; `UBI_LOCATION`, default `eu-central-h1`) and streams the
+checkout to it: tracked files, untracked files that are not ignored, and
+`.git`, so uncommitted edits are tested. It then runs
+`scripts/ubicloud/setup-free-suite.sh`, which mirrors the `free-suite` CI job
+(same Bun pin, Playwright Chromium with its setuid sandbox helper, Xvfb,
+poppler, emoji fonts, generated host outputs, gate binaries, and the CSO
+helper), and runs `xvfb-run -a bun run test:free` with `GSTACK_EXPECT_BINARIES=1`
+and `GSTACK_FREE_RETRY_FLAKY=1`. Shard logs are copied to
+`.context/ubicloud/<timestamp>/`, and the VM is destroyed on every exit path.
+The exit status is the suite's.
+
+A stock Ubuntu 24.04 VM differs from a GitHub-hosted runner in three ways that
+the scripts correct: the login umask is `002` (group-writable directories fail
+the CSO private-state checks), AppArmor blocks the unprivileged user
+namespaces Chromium's sandbox needs, and `clang` and `python3-venv` are absent
+(required by the Dia readiness and Python runner tests).
+
+VMs are named `ubirun-<epoch>-<hex>`. Every new VM first destroys `ubirun-*`
+VMs older than `UBI_GC_HOURS` (default 12), so an interrupted client cannot
+leak one for long. For other commands, use the runner directly:
+`scripts/ubicloud/ubi-runner.sh run --setup <script> -- '<command>'`, or its
+`up` / `ssh` / `sync` / `pull` / `down` steps (`--help` lists them).
 
 ## Cloud sandboxes (Vercel / Conductor cloud workspaces)
 

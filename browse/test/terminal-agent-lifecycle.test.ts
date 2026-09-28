@@ -311,15 +311,18 @@ describe('terminal-agent owned lifecycle regression', () => {
     try {
       writeAgentRecord(stateDir, { pid: old.pid, gen: 'synthetic-old-generation', startedAt: Date.now(),
         startTime: readAgentStartTime(old.pid), ownerPid: process.pid, ownerStartTime });
-      expect(await waitFor(() => fs.existsSync(`${barrier}.ready`))).toBe(true);
+      // Startup waits cover a cold `bun run` of the agent; under a fully
+      // loaded 16-shard run that alone can exceed 3s. They return as soon as
+      // the file appears, so the ordering contract below is unchanged.
+      expect(await waitFor(() => fs.existsSync(`${barrier}.ready`), 8000)).toBe(true);
       winner = rawAgent('synthetic-new-generation', false);
       writeAgentRecord(stateDir, { pid: winner.pid, gen: 'synthetic-new-generation', startedAt: Date.now(),
         startTime: readAgentStartTime(winner.pid), ownerPid: process.pid, ownerStartTime });
-      expect(await waitFor(() => fs.existsSync(path.join(stateDir, 'terminal-port')))).toBe(true);
+      expect(await waitFor(() => fs.existsSync(path.join(stateDir, 'terminal-port')), 8000)).toBe(true);
       const port = fs.readFileSync(path.join(stateDir, 'terminal-port'), 'utf8');
       const token = fs.readFileSync(path.join(stateDir, 'terminal-internal-token'), 'utf8');
       fs.writeFileSync(barrier, 'continue');
-      expect(await Promise.race([old.exited.then(() => true), Bun.sleep(3000).then(() => false)])).toBe(true);
+      expect(await Promise.race([old.exited.then(() => true), Bun.sleep(8000).then(() => false)])).toBe(true);
       expect(readAgentRecord(stateDir)?.gen).toBe('synthetic-new-generation');
       expect(fs.readFileSync(path.join(stateDir, 'terminal-port'), 'utf8')).toBe(port);
       expect(fs.readFileSync(path.join(stateDir, 'terminal-internal-token'), 'utf8')).toBe(token);
@@ -330,7 +333,7 @@ describe('terminal-agent owned lifecycle regression', () => {
       await old.exited;
       if (winner) await winner.exited;
     }
-  }, 10000);
+  }, 30000);
 
   test('daemon respawns after agent crash, then exits without deleting a successor state', async () => {
     const stateDir = dir();

@@ -32,6 +32,7 @@ import {
   verifyFreeCiResults,
   eligibleFreeRetryFiles,
   selectQuickFreeFiles,
+  unseededFreeFiles,
   QUICK_CORE,
   type FreeCiResult,
   DEFAULT_WALL_TIMEOUT_MS as WALL_BASE_MS,
@@ -844,6 +845,22 @@ describe('test-free-shards: duration-aware packing (full-suite LPT)', () => {
 
   test('invalid shard count throws', () => {
     expect(() => packShardsByDuration(files, 0, {})).toThrow();
+  });
+
+  test('files missing from the seed are named, and --ci-plan warns on stderr without touching the matrix', () => {
+    expect(unseededFreeFiles(files, { 'test/a.test.ts': 1, 'test/c.test.ts': 1 })).toEqual(['test/b.test.ts', 'test/d.test.ts']);
+    expect(unseededFreeFiles(files, Object.fromEntries(files.map(f => [f, 1])))).toEqual([]);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'free-seed-drift-'));
+    try {
+      const seedPath = path.join(dir, 'seed.json');
+      fs.writeFileSync(seedPath, JSON.stringify({ version: 1, durations: { 'test/strict-output.test.ts': 1_000 } }));
+      const planned = Bun.spawnSync([process.execPath, path.join(ROOT, 'scripts/test-free-shards.ts'), '--ci-plan', path.join(dir, 'plan.json'), '--shards', '2'], {
+        env: { ...process.env, GSTACK_FREE_TEST_DURATIONS: seedPath }, timeout: 10_000,
+      });
+      expect(planned.exitCode, planned.stderr.toString()).toBe(0);
+      expect(JSON.parse(planned.stdout.toString())).toEqual({ shard: [1, 2] });
+      expect(planned.stderr.toString()).toMatch(/\d+ file\(s\) have no recorded duration .*bun run test:ubicloud --record-durations/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });
 
   test('corrupt seed falls back to null (hash sharding), never throws', () => {

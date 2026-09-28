@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.91.5.0] - 2026-09-28
+
+The free suite now finishes in about half the time on a 16-core Linux machine, and `bun run test:ubicloud` runs it on a fresh 16-vCPU Ubicloud VM from any dev box, container, or cloud sandbox.
+
+### Added
+- `bun run test:ubicloud [test:free args]` runs the complete free suite on an ephemeral Ubicloud VM (`UBICLOUD_API_KEY` required; `UBI_SIZE` and `UBI_LOCATION` choose the machine). The VM gets the required CI lane's environment and strictness settings, uncommitted edits are included, shard logs are copied to `.context/ubicloud/`, and the VM is always destroyed afterwards. A full run takes about four and a half minutes end to end, compared with seven and a half minutes of suite time alone on a 4-vCPU machine.
+- `bun run test:ubicloud --record-durations` refreshes `scripts/free-test-durations.json` in that same environment and copies it back.
+- `scripts/ubicloud/ubi-runner.sh` runs any command on a Ubicloud VM (`run`, or `up` / `ssh` / `sync` / `pull` / `down`). It needs only bash, curl, python3, ssh, and tar locally, and it removes its own stale VMs after 12 hours.
+
+### Changed
+- On Linux, `bun run test` now starts one shard per available CPU, up to 16; macOS and Windows keep the limit of six. On a 16-vCPU VM, 16 shards finished the suite in 137 seconds and six shards took 327 seconds.
+- The duration seed is re-recorded with browser, display, and CSO tests actually running, and the slowest test file is split into four files. On a 16-vCPU run, all 16 shards now finish within about 15 seconds of each other, where one shard used to take twice as long as the rest. The 20 CI shards are packed with the same seed.
+- Full-suite and CI planning runs name any test file missing from the duration seed, so a slow new file cannot quietly become the long pole.
+- Two timing-sensitive tests allow for a heavily loaded machine: the terminal-agent startup race waits up to 8 seconds for a cold agent start, and the invalid Retry-After cases accept timer delays below the next 4-second backoff step.
+
 ## [1.91.4.0] - 2026-09-28
 
 Windows users can copy signed-in cookies from Opera and Opera GX into gstack's browser. On Windows, where Chrome, Edge and Brave increasingly store App-Bound Encryption cookies that gstack cannot decrypt, Opera and Opera GX still use DPAPI-protected cookies, so they may be the browsers where import keeps working.

@@ -426,13 +426,16 @@ export function wallTimeoutForPackedShard(predictedMs: number, baseMs = DEFAULT_
 }
 /**
  * Full-suite parallelism: use all available CPUs, with a floor of one and a
- * cap of MAX_FULL_SUITE_JOBS. Shards stay serial internally; separate shard
- * processes can overlap subprocess and I/O waits without a fixed CPU reserve.
- * Prefer availableParallelism() to honor CPU affinity, falling back to cpus()
- * on runtimes without it. Keep the existing cap: beyond ~6 concurrent bun
- * processes, playwright-heavy shards contended on browser launches in the
- * original M-series measurement. More shards are not a guaranteed speedup;
- * compare complete-suite runs before raising the default further.
+ * per-platform cap (maxFullSuiteJobs). Shards stay serial internally; separate
+ * shard processes can overlap subprocess and I/O waits without a fixed CPU
+ * reserve. Prefer availableParallelism() to honor CPU affinity (Bun also
+ * honors a container's cgroup CPU quota there), falling back to cpus() on
+ * runtimes without it. macOS and Windows keep the cap of 6: beyond that,
+ * playwright-heavy shards contended on browser launches in the original
+ * M-series measurement. Linux caps at 16: on a 16-vCPU Ubicloud VM with the
+ * CI lane's environment (2026-09-28), 16 shards ran the complete suite in
+ * 137s versus 327s for 6. More shards are not a guaranteed speedup; compare
+ * complete-suite runs before raising either cap.
  *
  * GSTACK_FREE_JOBS overrides the computed count (the free runner's analogue
  * of the paid runner's EVALS_JOBS). Exists for syscall-supervised sandboxes:
@@ -442,12 +445,17 @@ export function wallTimeoutForPackedShard(predictedMs: number, baseMs = DEFAULT_
  * `git init` probes in fresh mktemp dirs fail with
  * "Cannot access work tree: Permission denied" while the suite runs, 0/200
  * when idle — access(dir, X_OK) = EACCES under strace). Fewer shards keep
- * the supervisor inside its budget. Not clamped by MAX_FULL_SUITE_JOBS so a
+ * the supervisor inside its budget. Not clamped by maxFullSuiteJobs so a
  * beefy box can also raise it deliberately.
  */
 export const MAX_FULL_SUITE_JOBS = 6;
+export const MAX_LINUX_FULL_SUITE_JOBS = 16;
 
-export function fullSuiteJobs(): number {
+export function maxFullSuiteJobs(platform: NodeJS.Platform = process.platform): number {
+  return platform === 'linux' ? MAX_LINUX_FULL_SUITE_JOBS : MAX_FULL_SUITE_JOBS;
+}
+
+export function fullSuiteJobs(platform: NodeJS.Platform = process.platform): number {
   const raw = process.env.GSTACK_FREE_JOBS;
   if (raw !== undefined && raw !== '') {
     // Strict digits-only: parseInt would silently truncate "2abc" -> 2 and
@@ -458,7 +466,7 @@ export function fullSuiteJobs(): number {
     return Number.parseInt(raw, 10);
   }
   const availableCpus = os.availableParallelism?.() ?? os.cpus().length;
-  return Math.max(1, Math.min(MAX_FULL_SUITE_JOBS, availableCpus));
+  return Math.max(1, Math.min(maxFullSuiteJobs(platform), availableCpus));
 }
 
 /**
@@ -693,6 +701,23 @@ export function packShardsByDuration(
     loads[lightest] += predicted(file);
   }
   return { shards: shards.map((s) => s.sort()), predictedMs: loads };
+}
+
+/**
+ * Files missing from the duration seed are packed at the 75th percentile, so
+ * one slow new file can become the whole run's long pole without anyone
+ * noticing. Name them (on stderr: --ci-plan's stdout is the CI matrix).
+ */
+export function unseededFreeFiles(files: string[], durations: Record<string, number>): string[] {
+  return files.filter((f) => durations[normalizeRelativePath(f)] === undefined);
+}
+
+function warnUnseededFreeFiles(files: string[], durations: Record<string, number>): void {
+  const unseeded = unseededFreeFiles(files, durations);
+  if (unseeded.length === 0) return;
+  const shown = unseeded.slice(0, 5).join(', ') + (unseeded.length > 5 ? `, +${unseeded.length - 5} more` : '');
+  console.error(`[test:free] ${unseeded.length} file(s) have no recorded duration and are packed at the 75th-percentile estimate: ${shown}.`
+    + ' Refresh scripts/free-test-durations.json with `bun run test:ubicloud --record-durations`.');
 }
 
 export interface FreeCiPlan {
@@ -1749,7 +1774,9 @@ async function main(): Promise<number> {
       fs.renameSync(temporary, file);
     };
     if (options.ciPlan) {
-      const plan = createFreeCiPlan(allFiles, options.shardCount, loadFreeTestDurations() ?? {}, revision);
+      const durations = loadFreeTestDurations() ?? {};
+      warnUnseededFreeFiles(allFiles, durations);
+      const plan = createFreeCiPlan(allFiles, options.shardCount, durations, revision);
       validateFreeCiPlan(plan, allFiles, revision);
       writeJson(options.ciPlan, plan);
       console.log(JSON.stringify({ shard: plan.shards.map(shard => shard.shard) }));
@@ -1852,6 +1879,7 @@ async function main(): Promise<number> {
   const mutators = files.filter((f) => f in TREE_MUTATING);
   const readers = files.filter((f) => !(f in TREE_MUTATING));
   const durations = loadFreeTestDurations();
+  if (durations) warnUnseededFreeFiles(files, durations);
   const packed = durations ? packShardsByDuration(readers, jobs, durations) : null;
   const shards = packed ? packed.shards : assignFilesToShards(readers, jobs);
   const totalShards = jobs + (mutators.length > 0 ? 1 : 0);
