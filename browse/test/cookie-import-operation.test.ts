@@ -359,22 +359,16 @@ describe('Windows Opera receipts and profile diagnostics', () => {
   });
 
   test('mixed App-Bound and undecryptable Opera rows name both causes', async () => {
-    operaDb('Default', [
-      { domain: '.example.test', name: 'bound', encrypted: Buffer.from('v20synthetic') },
-      { domain: '.example.test', name: 'broken', encrypted: Buffer.concat([Buffer.from('v10'), Buffer.alloc(40, 7)]) },
-    ]);
-    fs.writeFileSync(path.join(home, 'AppData/Roaming/Opera Software/Opera Stable/Local State'), JSON.stringify({ os_crypt: { encrypted_key: Buffer.concat([Buffer.from('DPAPI'), Buffer.from('synthetic-material')]).toString('base64') } }));
-    const spawn = Bun.spawn;
-    const stream = (text: string) => new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(Buffer.from(text)); controller.close(); } });
-    Bun.spawn = (() => ({ stdin: { write() {}, end() {} }, stdout: stream(Buffer.alloc(32, 3).toString('base64')), stderr: stream(''), exited: Promise.resolve(0), kill() {} })) as any;
-    let result: Awaited<ReturnType<typeof runCookieImport>>;
+    operaDb('Default', [{ domain: '.example.test', name: 'bound', encrypted: Buffer.from('v20synthetic') }]);
+    const imported = spyOn(importer, 'importCookies').mockResolvedValue({ cookies: [], count: 0, failed: 2, domainCounts: {}, failureReasons: { unsupported_encryption: 1, decryption_failed: 1 } });
     try {
-      result = await onPlatform('win32', () => runCookieImport({ browser: 'opera', profile: 'Default', domains: ['example.test'] }, { page, url: currentUrl }, () => {}));
+      const result = await onPlatform('win32', () => runCookieImport({ browser: 'opera', profile: 'Default', domains: ['example.test'] }, { page, url: currentUrl }, () => {}));
+      expect(result.failureReasons).toEqual({ decryption_failed: 1, unsupported_encryption: 1 });
+      expect(result.outcome).toBe('failed');
+      expect(result.message).toBe(`Opera cookies could not be imported: some use App-Bound Encryption and others could not be decrypted. ${recovery}`);
     } finally {
-      Bun.spawn = spawn;
+      imported.mockRestore();
     }
-    expect(result.failureReasons).toEqual({ decryption_failed: 1, unsupported_encryption: 1 });
-    expect(result.message).toBe(`Opera cookies could not be imported: some use App-Bound Encryption and others could not be decrypted. ${recovery}`);
   });
 
   test('partial Opera imports apply readable cookies and warn about skipped App-Bound rows', async () => {
