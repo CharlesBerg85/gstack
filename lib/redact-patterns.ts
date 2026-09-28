@@ -388,7 +388,14 @@ const INTERPOLATED_PASSWORD_RE = /^(\$\{.+\}|\$[A-Z_][A-Z0-9_]*)$/;
 // case-sensitively against the raw span: the convention is ALL CAPS, and a
 // lowercase `password`/`pass` at this position is a real (terrible) credential
 // that must still block.
+//
+// URL_PASSWORD_EXAMPLE_NONCE is the approved password for docs and tests:
+// `postgres://user:GSTACK_EXAMPLE_NONCE@host/db` and
+// `https://user:GSTACK_EXAMPLE_NONCE@host/` are never flagged. Like every
+// entry here it matches only the exact whole password segment.
+export const URL_PASSWORD_EXAMPLE_NONCE = "GSTACK_EXAMPLE_NONCE";
 export const URL_PASSWORD_PLACEHOLDER_WORDS = new Set([
+  URL_PASSWORD_EXAMPLE_NONCE,
   "PASSWORD",
   "PASS",
   "PASSWD",

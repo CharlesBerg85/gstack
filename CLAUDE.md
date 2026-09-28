@@ -388,6 +388,10 @@ determined leaker (a CHANGELOG line that does would fail a hostile screenshotter
 - **CLI:** `bin/gstack-redact` (exit 0 clean / 2 MEDIUM / 3 HIGH; `--json`,
   `--auto-redact`, `--repo-visibility`, `--from-file`). `bin/gstack-redact-prepush`
   is the opt-in git hook.
+- **Approved placeholder password:** `GSTACK_EXAMPLE_NONCE` (exact,
+  case-sensitive) is never flagged as a URL password, so docs and tests can
+  write `postgres://user:GSTACK_EXAMPLE_NONCE@host/db` or
+  `https://user:GSTACK_EXAMPLE_NONCE@host/`. Lowercase `password` still blocks.
 - **Skill docs are generated** from `scripts/resolvers/redact-doc.ts`
   (`{{REDACT_INVOCATION_BLOCK:<sink>}}`) so /spec,
   /cso, /ship, /document-release, /document-generate never drift from the engine.

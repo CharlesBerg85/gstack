@@ -22,6 +22,7 @@ import {
   isPublicIPv4,
   isPlaceholderSpan,
   URL_PASSWORD_PLACEHOLDER_WORDS,
+  URL_PASSWORD_EXAMPLE_NONCE,
 } from "../lib/redact-patterns";
 
 function ids(text: string, vis: RepoVisibility = "private"): string[] {
@@ -162,6 +163,22 @@ describe("HIGH credential patterns", () => {
     expect(URL_PASSWORD_PLACEHOLDER_WORDS.size).toBeGreaterThanOrEqual(8);
     // And a real secret that merely CONTAINS a placeholder word still blocks.
     expect(ids("postgres://user:" + "MY" + "SECRETPASS@host/db")).toContain("db.url_with_password");
+  });
+
+  // The approved nonce is the one documented password authors can put in docs
+  // and tests without tripping either URL-password pattern. It is an exact,
+  // case-sensitive token: variants and lowercase `password` still block.
+  test("GSTACK_EXAMPLE_NONCE is never flagged as a URL password", () => {
+    expect(URL_PASSWORD_EXAMPLE_NONCE).toBe("GSTACK_EXAMPLE_NONCE");
+    expect(ids("postgres://user:GSTACK_EXAMPLE_NONCE@host/db")).not.toContain("db.url_with_password");
+    expect(ids("mongodb+srv://app:GSTACK_EXAMPLE_NONCE@cluster0/app")).not.toContain("db.url_with_password");
+    expect(ids("https://user:GSTACK_EXAMPLE_NONCE@api:8443/v1")).not.toContain("creds.basic_auth_url");
+    expect(scan("postgres://user:GSTACK_EXAMPLE_NONCE@host:5432/db https://user:GSTACK_EXAMPLE_NONCE@host/").counts.HIGH).toBe(0);
+    expect(ids("postgres://user:" + "gstack_example_nonce@host/db")).toContain("db.url_with_password");
+    expect(ids("postgres://user:" + "GSTACK_EXAMPLE_NONCE2@host/db")).toContain("db.url_with_password");
+    expect(ids("https://user:" + "xGSTACK_EXAMPLE_NONCE@host/")).toContain("creds.basic_auth_url");
+    expect(ids("postgres://username:" + "password@host:port/database")).toContain("db.url_with_password");
+    expect(ids("https://username:" + "password@host/")).toContain("creds.basic_auth_url");
   });
 
   test("all HIGH patterns block (exit 3)", () => {
