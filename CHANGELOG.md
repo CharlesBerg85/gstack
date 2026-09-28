@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.91.6.0] - 2026-09-28
+
+PR eval slices are balanced by how long each eval actually takes, so the slowest slice no longer carries most of the run.
+
+### Changed
+- The paid eval planner re-packs slices using recorded per-file wall times from real CI runs (`scripts/paid-test-durations.json`). It starts from the existing supervised allocation and only moves or swaps a file out of the heaviest slice when no slice's worst-case wall, for 1–4 workers, rises above that allocation's maximum, so CI timeout coverage never gets weaker. Estimated from the recorded times with two workers per slice, the heaviest slice for a typical PR run drops from about 15 minutes to 12 (the length of the single longest eval), and for the full gate census from about 17 minutes to 13.
+- `bun run scripts/test-paid-shards.ts --report <dir> --write-durations` merges a report's executed single-file shard times into the seed. Skipped-only and sub-second shards are ignored.
+
 ## [1.91.5.0] - 2026-09-28
 
 The free suite now finishes in about half the time on a 16-core Linux machine, `bun run test:ubicloud` runs it on a fresh 16-vCPU Ubicloud VM from any dev box, container, or cloud sandbox, and re-pushing a PR no longer waits behind the previous commit's eval run.

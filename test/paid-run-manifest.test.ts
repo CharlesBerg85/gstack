@@ -19,7 +19,12 @@ import {
   applyHollowShardGuard,
   buildPaidShardArgs,
   buildRunManifest,
+  loadPaidTestDurations,
+  mergePaidTestDurations,
+  paidShardWallUpperBoundMs,
+  parseCliOptions,
   parseRunManifest,
+  SUPERVISED_WORKER_COUNTS,
   retriesForFiles,
   RETRY_OVERRIDES,
   summarize,
@@ -96,6 +101,72 @@ describe('run manifest (planner)', () => {
       entries: [{ file: 'test/skill-e2e-x.test.ts', slice: 9, status: 'planned' }],
     };
     expect(() => parseRunManifest(JSON.stringify(outOfRange))).toThrow(/out-of-range/);
+  });
+});
+
+describe('recorded-duration slice packing', () => {
+  const recorded = loadPaidTestDurations();
+  const lanes = (manifest: PaidRunManifest) => {
+    const planned = manifest.entries.filter(e => e.status === 'planned');
+    return Array.from({ length: manifest.sliceCount }, (_, i) => planned.filter(e => e.slice === i + 1).map(e => e.file));
+  };
+  const plans = [
+    { tier: 'gate' as const, sliceCount: 6 },
+    { tier: 'gate' as const, sliceCount: 7 },
+    { tier: 'periodic' as const, sliceCount: 8, dedicatedAutoplanSlice: true },
+  ];
+
+  test('the committed seed records real wall times for the fast PR profile', () => {
+    expect(Object.keys(recorded).length).toBeGreaterThanOrEqual(30);
+    expect(Object.values(recorded).every(ms => Number.isInteger(ms) && ms >= 1_000)).toBe(true);
+  });
+
+  for (const plan of plans) {
+    test(`${plan.tier} x${plan.sliceCount}: no slice's worst-case wall exceeds the supervised baseline's for any worker count`, () => {
+      const env = { EVALS_ALL: '1' };
+      const packed = lanes(buildRunManifest({ ...plan, evalsAll: true, env }));
+      const baseline = lanes(buildRunManifest({ ...plan, evalsAll: true, env, durations: {} }));
+      expect(packed.flat().sort()).toEqual(baseline.flat().sort());
+      for (const jobs of SUPERVISED_WORKER_COUNTS) {
+        const bound = (files: string[]) => paidShardWallUpperBoundMs([...files].sort(), jobs);
+        expect(Math.max(...packed.map(bound))).toBeLessThanOrEqual(Math.max(...baseline.map(bound)));
+      }
+      // Same estimate the planner packs by: recorded time, else the 75th percentile of recorded files.
+      const known = baseline.flat().map(file => recorded[file]).filter(ms => ms !== undefined).sort((x, y) => x - y);
+      const fallback = known[Math.min(known.length - 1, Math.floor(known.length * 0.75))];
+      const load = (files: string[]) => files.reduce((sum, file) => sum + (recorded[file] ?? fallback), 0);
+      expect(Math.max(...packed.map(load))).toBeLessThanOrEqual(Math.max(...baseline.map(load)));
+    });
+  }
+
+  test('the PR-profile file set spreads recorded time instead of stacking it', () => {
+    const env = { EVALS_ALL: '1' };
+    const discovered = Object.keys(recorded);
+    const load = (files: string[]) => files.reduce((sum, file) => sum + recorded[file], 0);
+    const packed = lanes(buildRunManifest({ tier: 'gate', sliceCount: 6, evalsAll: true, env, discovered })).map(load);
+    const baseline = lanes(buildRunManifest({ tier: 'gate', sliceCount: 6, evalsAll: true, env, discovered, durations: {} })).map(load);
+    expect(Math.max(...packed)).toBeLessThan(Math.max(...baseline));
+    expect(buildRunManifest({ tier: 'gate', sliceCount: 6, evalsAll: true, env, discovered: [...discovered].reverse() }).entries)
+      .toEqual(buildRunManifest({ tier: 'gate', sliceCount: 6, evalsAll: true, env, discovered }).entries);
+  });
+
+  test('report durations merge only executed single-file outcomes', () => {
+    const outcome = (files: string[], elapsedMs: number, over: Partial<ShardOutcome> = {}) =>
+      ({ files, status: 'passed', exitCode: 0, elapsedMs, executedTests: 2, skippedTests: 0, ...over }) as SliceResult['outcomes'][number];
+    const merged = mergePaidTestDurations({ 'test/b.test.ts': 5_000, 'test/a.test.ts': 9_000 }, [{
+      sliceIndex: 1,
+      outcomes: [
+        outcome(['test/a.test.ts'], 42_000),
+        outcome(['test/c.test.ts'], 500),
+        outcome(['test/d.test.ts', 'test/e.test.ts'], 60_000),
+        outcome(['test/f.test.ts'], 30_000, { executedTests: 2, skippedTests: 2 }),
+        outcome(['test/g.test.ts'], 70_000, { status: 'failed', exitCode: 1 }),
+      ],
+    } as SliceResult]);
+    expect(merged).toEqual({ 'test/a.test.ts': 42_000, 'test/b.test.ts': 5_000, 'test/g.test.ts': 70_000 });
+    expect(Object.keys(merged)).toEqual(['test/a.test.ts', 'test/b.test.ts', 'test/g.test.ts']);
+    expect(() => parseCliOptions(['--write-durations'])).toThrow('--write-durations requires --report');
+    expect(parseCliOptions(['--report', '/tmp/r', '--write-durations']).writeDurations).toBe(true);
   });
 });
 

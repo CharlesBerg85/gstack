@@ -1017,7 +1017,47 @@ export function retriesForFiles(files: string[]): number {
   return Math.max(1, ...files.map((f) => RETRY_OVERRIDES[normalizeRelativePath(f)] ?? 1));
 }
 
-/** Round-robin the RUNNABLE (sorted) shard plan across K slices — deterministic. */
+export const PAID_TEST_DURATIONS_FILE = 'scripts/paid-test-durations.json';
+
+/**
+ * Recorded per-file paid-shard wall times (ms) from real CI slice reports,
+ * refreshed with `--report <dir> --write-durations`. A packing hint only: a
+ * missing or corrupt seed keeps the supervision-budget allocation.
+ */
+export function loadPaidTestDurations(rootDir = ROOT): Record<string, number> {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(rootDir, PAID_TEST_DURATIONS_FILE), 'utf8')) as { durations?: Record<string, unknown> };
+    return Object.fromEntries(Object.entries(parsed.durations ?? {})
+      .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0));
+  } catch {
+    return {};
+  }
+}
+
+/** Merge a report's executed single-file outcomes into the seed; all-skipped shards carry no cost signal. */
+export function mergePaidTestDurations(seed: Record<string, number>, results: SliceResult[]): Record<string, number> {
+  const merged = { ...seed };
+  for (const result of results) {
+    for (const outcome of result.outcomes) {
+      if (outcome.files.length !== 1 || outcome.elapsedMs < 1_000 || isAllSkippedPass(outcome)) continue;
+      merged[normalizeRelativePath(outcome.files[0])] = outcome.elapsedMs;
+    }
+  }
+  return Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
+/** Worker counts whose worst-case slice wall duration packing may never worsen. */
+export const SUPERVISED_WORKER_COUNTS = [1, 2, 3, 4] as const;
+
+/**
+ * Allocate the RUNNABLE shard plan across K slices — deterministic. Registered
+ * long files are spread by supervision budget and the rest round-robin; that
+ * baseline fixes each slice's worst-case wall. With a duration seed, files are
+ * then re-packed longest-recorded-first onto the lightest slice, accepting a
+ * placement only if no slice's worst-case wall exceeds the baseline's maximum
+ * for any supervised worker count. If any file cannot be placed, the baseline
+ * stands.
+ */
 export function buildRunManifest(opts: {
   tier: PaidTier;
   profile?: PaidProfile;
@@ -1029,6 +1069,8 @@ export function buildRunManifest(opts: {
   env?: NodeJS.ProcessEnv;
   rootDir?: string;
   changedFiles?: string[];
+  /** Recorded per-file durations; defaults to the committed seed under rootDir. */
+  durations?: Record<string, number>;
 }): PaidRunManifest {
   if (!Number.isInteger(opts.sliceCount) || opts.sliceCount <= 0) {
     throw new Error(`--slices needs a positive integer. Received: ${opts.sliceCount}`);
@@ -1081,11 +1123,60 @@ export function buildRunManifest(opts: {
     }
   }
   let ordinaryIndex = 0;
+  for (const files of ordinary) {
+    if (!allocations.has(files[0])) allocations.set(files[0], (ordinaryIndex++ % ordinarySlices) + 1);
+  }
+  const packed = packByRecordedDuration();
+  function packByRecordedDuration(): Map<string, number> | null {
+    const recorded = opts.durations ?? loadPaidTestDurations(rootDir);
+    if (ordinarySlices < 2 || ordinary.length === 0 || Object.keys(recorded).length === 0) return null;
+    const bound = (files: string[], jobs: number) => paidShardWallUpperBoundMs([...files].sort(), jobs, opts.timeoutMs);
+    const lanes = Array.from({ length: ordinarySlices }, (_, lane) =>
+      ordinary.filter(files => allocations.get(files[0]) === lane + 1).map(files => files[0]));
+    const caps = SUPERVISED_WORKER_COUNTS.map(jobs => Math.max(...lanes.map(files => bound(files, jobs))));
+    const fits = (files: string[]) => SUPERVISED_WORKER_COUNTS.every((jobs, k) => bound(files, jobs) <= caps[k]);
+    const known = ordinary.map(files => recorded[normalizeRelativePath(files[0])])
+      .filter((ms): ms is number => ms !== undefined).sort((a, b) => a - b);
+    const fallback = known.length ? known[Math.min(known.length - 1, Math.floor(known.length * 0.75))] : 1;
+    const weight = (file: string) => recorded[normalizeRelativePath(file)] ?? fallback;
+    const load = (files: string[]) => files.reduce((sum, file) => sum + weight(file), 0);
+    const registeredFiles = new Set(registered.map(files => files[0]));
+    // Local search from the supervised baseline: move or swap a file out of
+    // the heaviest slice whenever that lowers its recorded load without
+    // making the other slice the new maximum or breaching any worst-case cap.
+    // Registered files only trade places with registered files, so the long
+    // lanes keep their ownership.
+    for (let step = 0; step < 10 * ordinary.length; step++) {
+      const loads = lanes.map(load);
+      const heavy = loads.indexOf(Math.max(...loads));
+      let best: { gain: number; apply: () => void } | null = null;
+      for (let other = 0; other < lanes.length; other++) {
+        if (other === heavy) continue;
+        for (const a of lanes[heavy]) {
+          const moves: Array<string | null> = registeredFiles.has(a) ? lanes[other].filter(b => registeredFiles.has(b)) : [null, ...lanes[other].filter(b => !registeredFiles.has(b))];
+          for (const b of moves) {
+            const delta = weight(a) - (b === null ? 0 : weight(b));
+            if (delta <= 0 || loads[other] + delta >= loads[heavy]) continue;
+            const gain = Math.min(delta, loads[heavy] - loads[other] - delta);
+            if (best && gain <= best.gain) continue;
+            const heavyAfter = lanes[heavy].filter(file => file !== a).concat(b === null ? [] : [b]);
+            const otherAfter = lanes[other].filter(file => file !== b).concat([a]);
+            if (!fits(heavyAfter) || !fits(otherAfter)) continue;
+            const [h, o] = [heavy, other];
+            best = { gain, apply: () => { lanes[h] = heavyAfter; lanes[o] = otherAfter; } };
+          }
+        }
+      }
+      if (!best) break;
+      best.apply();
+    }
+    return new Map(lanes.flatMap((files, lane) => files.map(file => [file, lane + 1] as const)));
+  }
   runnable.forEach((files) => {
     const autoplan = files[0] === AUTOPLAN_CHAIN_BUDGET.file;
     const slice = opts.dedicatedAutoplanSlice && autoplan ? opts.sliceCount
       : files.some(isOverlayTestFile) ? overlaySlice
-        : allocations.get(files[0]) ?? (ordinaryIndex++ % ordinarySlices) + 1;
+        : (packed ?? allocations).get(files[0])!;
     entries.push({ file: files[0], slice, status: 'planned',
       ...(autoplan || FILE_RETRY_BUDGETS.some(budget => budget.file === files[0])
         ? { budget: resolvePaidShardBudget(files, opts.timeoutMs) } : {}) });
@@ -1355,6 +1446,8 @@ type CliOptions = {
   sliceIndex: number | null;
   /** Report mode: reconcile manifest.json + slice-*.json under this dir. */
   reportDir: string | null;
+  /** Report mode: merge executed shard wall times into the duration seed. */
+  writeDurations: boolean;
 };
 
 function parsePositiveInt(value: string | undefined, flag: string): number {
@@ -1406,6 +1499,7 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
     planPath: null,
     sliceIndex: null,
     reportDir: null,
+    writeDurations: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1443,8 +1537,10 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
       if (!value) throw new Error('--report needs a directory');
       options.reportDir = value; continue;
     }
+    if (arg === '--write-durations') { options.writeDurations = true; continue; }
     throw new Error(`Unknown argument: ${arg}`);
   }
+  if (options.writeDurations && !options.reportDir) throw new Error('--write-durations requires --report');
   if (options.dedicatedAutoplanSlice && !options.emitPlanPath) throw new Error('--autoplan-slice requires --emit-plan');
   if (options.profile === 'pr' && options.tier !== 'gate') throw new Error('PR profile requires gate tier');
   if (options.profile === 'pr' && options.maxFilesPerShard !== 1) throw new Error('PR profile requires one file per shard to preserve case accounting');
@@ -1495,6 +1591,14 @@ async function main(): Promise<number> {
       for (const outcome of result.outcomes) {
         console.log(`  slice ${result.sliceIndex}  ${outcome.status.padEnd(15)} ${String(Math.round(outcome.elapsedMs / 1000)).padStart(5)}s  ${outcome.files.join(' ')}`);
       }
+    }
+    if (options.writeDurations) {
+      const durations = mergePaidTestDurations(loadPaidTestDurations(), results);
+      const target = path.join(ROOT, PAID_TEST_DURATIONS_FILE);
+      const temporary = `${target}.tmp-${process.pid}`;
+      fs.writeFileSync(temporary, `${JSON.stringify({ version: 1, recordedAt: new Date().toISOString(), durations }, null, 2)}\n`);
+      fs.renameSync(temporary, target);
+      console.log(`[test:paid] wrote ${Object.keys(durations).length} durations to ${PAID_TEST_DURATIONS_FILE}`);
     }
     // Historical flaky_retries includes every case with multiple attempts,
     // whether its final result passed or failed. Report attempts separately

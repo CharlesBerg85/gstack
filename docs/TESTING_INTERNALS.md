@@ -270,7 +270,13 @@ selection + the slice plan ONCE (killing per-slice selector divergence);
 `--plan <path> --slice i` executors consume the manifest and write
 slice-result artifacts; `--report <dir>` reconciles them FAIL-CLOSED (a slice
 whose artifact never landed, or a planned shard nobody reported, is a
-failure). Under `EVALS_ALL` the hollow-shard guard marks exit-0 shards with
+failure). Slices start from the supervision baseline (registered long files
+spread by budget, the rest round-robin), then are re-packed by the recorded
+wall times in `scripts/paid-test-durations.json`: a file moves or swaps out of
+the heaviest slice only if no slice's worst-case wall (`paidShardWallUpperBoundMs`
+for 1–4 workers) rises above the baseline's maximum, so CI timeout coverage is
+never weakened. Refresh the seed from a downloaded report directory with
+`--report <dir> --write-durations`. Under `EVALS_ALL` the hollow-shard guard marks exit-0 shards with
 ZERO executed tests `passed-empty` (a failure) — census-health, not just
 test runs. evals.yml runs the sliced gate lane per PR — the ONLY paid lane
 since the legacy 17-row matrix (22.6 min/$21 per PR serialized ahead of the
