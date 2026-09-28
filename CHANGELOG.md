@@ -13,6 +13,7 @@ The free suite now finishes in about half the time on a 16-core Linux machine, a
 - On Linux, `bun run test` now starts one shard per available CPU, up to 16; macOS and Windows keep the limit of six. On a 16-vCPU VM, 16 shards finished the suite in 137 seconds and six shards took 327 seconds.
 - The duration seed is re-recorded with browser, display, and CSO tests actually running, and the slowest test file is split into four files. On a 16-vCPU run, all 16 shards now finish within about 15 seconds of each other, where one shard used to take twice as long as the rest. The 20 CI shards are packed with the same seed.
 - Full-suite and CI planning runs name any test file missing from the duration seed, so a slow new file cannot quietly become the long pole.
+- The Windows CI lane gets the same single serial retry for attributed failures as the required Linux lane, and uploads its flaky passes as a `flake-ledger-windows` artifact. Its process-supervision timing tests pass when run alone but can stall under the lane's two-shard load.
 - Two timing-sensitive tests allow for a heavily loaded machine: the terminal-agent startup race waits up to 8 seconds for a cold agent start, and the invalid Retry-After cases accept timer delays below the next 4-second backoff step.
 
 ## [1.91.4.0] - 2026-09-28

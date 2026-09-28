@@ -113,6 +113,20 @@ describe('test-free-shards: fullSuiteJobs (GSTACK_FREE_JOBS override)', () => {
     expect(withJobsEnv(step?.env?.GSTACK_FREE_JOBS, fullSuiteJobs)).toBe(2);
   });
 
+  test('Windows CI retries attributed flakes serially and uploads every flaky pass', () => {
+    const source = readFileSync(new URL('../.github/workflows/windows-free-tests.yml', import.meta.url), 'utf8');
+    const workflow = Bun.YAML.parse(source) as {
+      jobs: Record<string, { steps: Array<{ name?: string; if?: string; run?: string; env?: Record<string, string>; with?: Record<string, unknown> }> }>;
+    };
+    const steps = workflow.jobs['windows-free-tests'].steps;
+    const suite = steps.find(step => step.run === 'bun run test:windows');
+    expect(suite?.env?.GSTACK_FREE_RETRY_FLAKY).toBe('1');
+    expect(suite?.env?.GSTACK_FLAKE_LEDGER).toBe('${{ runner.temp }}/flake-ledger.jsonl');
+    const upload = steps.find(step => step.name === 'Upload flake ledger');
+    expect(upload?.if).toBe('always()');
+    expect(upload?.with?.path).toBe('${{ runner.temp }}/flake-ledger.jsonl');
+  });
+
   test('an explicit override does not probe the available CPUs', () => {
     const available = spyOn(os, 'availableParallelism').mockImplementation(() => {
       throw new Error('CPU detection must not run for an explicit override');

@@ -447,7 +447,7 @@ Two runner knobs exist for these environments (both no-ops unless set):
 serial mega-shard and 6-way sharding both saturate the per-process syscall
 supervisor), and `GSTACK_FREE_RETRY_FLAKY=1` re-runs attributed failures once
 serially, downgrading a clean retry to a loud FLAKY-PASS (capped at 5 files so
-a broken tree can't masquerade as flaky). The required CI free lane sets the
-retry knob too, appending every flaky pass to the JSONL ledger it uploads
+a broken tree can't masquerade as flaky). The required CI free lane and the
+Windows lane set the retry knob too, appending every flaky pass to the JSONL ledger it uploads
 (`GSTACK_FLAKE_LEDGER`) — a flaky pass never reds the lane, but it never
 disappears either.

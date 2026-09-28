@@ -146,6 +146,13 @@ jobs:
         # exclusions — don't resurrect a hand list in this file.
         env:
           GSTACK_FREE_JOBS: '2'
+          # Same policy as the required Linux lane: process-supervision timing
+          # tests pass alone on this 4-vCPU runner but can stall under the
+          # two-shard load, so attributed failures get one serial retry
+          # (cap 5 files, truncation veto). Every flaky pass is appended to
+          # the ledger uploaded below, so repeats stay visible and ranked.
+          GSTACK_FREE_RETRY_FLAKY: '1'
+          GSTACK_FLAKE_LEDGER: ${{ runner.temp }}/flake-ledger.jsonl
           # Point os.tmpdir() at the runner temp so the shard logs land
           # somewhere the artifact step below can glob.
           TEMP: ${{ runner.temp }}
@@ -175,6 +182,15 @@ jobs:
           name: windows-free-test-shard-logs
           path: ${{ runner.temp }}/gstack-free-test-*.log
           if-no-files-found: ignore
+
+      - name: Upload flake ledger
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flake-ledger-windows
+          path: ${{ runner.temp }}/flake-ledger.jsonl
+          if-no-files-found: ignore
+          retention-days: 90
 
   cookie-native-qualification:
     if: github.event_name == 'workflow_dispatch' && !inputs.dia_native_only && !inputs.native_diagnostics_only && !inputs.dia_launch_comparison && !inputs.dia_gui_readiness
