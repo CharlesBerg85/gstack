@@ -250,6 +250,8 @@ describe('dependency-free CI planner and report execution', () => {
     const skillPath = path.join(fixture, 'setup-browser-cookies/SKILL.md');
     const currentSkill = fs.readFileSync(skillPath, 'utf8');
     fs.writeFileSync(skillPath, approvedCookieWorkflowSource(currentSkill));
+    const approvedBrowserPath = path.join(fixture, 'BROWSER.md');
+    fs.writeFileSync(approvedBrowserPath, approvedCookieWorkflowSource(fs.readFileSync(approvedBrowserPath, 'utf8')));
     const reportDir = path.join(fixture, 'manual-report');
     const manifestPath = path.join(reportDir, 'manifest.json');
     const planned = run(['--emit-plan', manifestPath, '--slices', '1'], 'gate');
