@@ -624,4 +624,36 @@ describe('cookie import reliability', () => {
       expect(resolveBrowserInfo(browser).windowsNative === true).toBe(mapped);
     }
   });
+
+  test('browser lists in docs and the command description name every registry browser', () => {
+    const names = new Set<string>();
+    for (const value of ['darwin', 'linux', 'win32']) {
+      Object.defineProperty(process, 'platform', { configurable: true, value });
+      for (const name of listSupportedBrowserNames()) names.add(name);
+    }
+    const repo = path.resolve(import.meta.dir, '../..');
+    const read = (file: string) => fs.readFileSync(path.join(repo, file), 'utf8');
+    const line = (file: string, anchor: string) => {
+      const found = read(file).split('\n').find(entry => entry.includes(anchor));
+      expect(found).toBeDefined();
+      return found!;
+    };
+    const lists = {
+      'commands.ts': line('browse/src/commands.ts', "'cookie-import-browser':"),
+      'README row': line('README.md', '| `/setup-browser-cookies` |'),
+      'BROWSER.md sessions row': line('BROWSER.md', '| Your sessions are already there |'),
+      'BROWSER.md picker': line('BROWSER.md', 'The picker recognizes'),
+      'docs/skills.md row': line('docs/skills.md', '| [`/setup-browser-cookies`]'),
+      'docs/skills.md picker': line('docs/skills.md', 'The picker detects'),
+      'ARCHITECTURE.md registry': line('ARCHITECTURE.md', 'The browser registry ('),
+    };
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    for (const name of names) {
+      const token = resolveBrowserInfo(name).aliases[0];
+      const pattern = new RegExp(`\\b(?:${escape(name)}|${escape(token)})\\b(?![- ]gx)`, 'i');
+      for (const [label, text] of Object.entries(lists)) {
+        expect({ label, name, listed: pattern.test(text) }).toEqual({ label, name, listed: true });
+      }
+    }
+  });
 });
