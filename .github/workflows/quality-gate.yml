@@ -93,3 +93,6 @@ jobs:
           scripts/build-app.sh
           scripts/write-version-files.sh
           browse/scripts/build-node-server.sh
+          scripts/ubicloud/ubi-runner.sh
+          scripts/ubicloud/setup-free-suite.sh
+          scripts/ubicloud/test-free.sh

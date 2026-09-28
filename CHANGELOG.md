@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.91.5.0] - 2026-09-28
+## [1.91.6.0] - 2026-09-28
 
 QA can test APIs, CLIs, jobs, workers and webhooks with the project's own tools,
 without starting a browser. Review and ship now run bounded exploratory checks,
@@ -27,6 +27,23 @@ and every ship audits relevant documentation before final verification and publi
 - Paid-test `--list` also stays read-only with a saved plan and selected slice: it validates and lists the selected work without API preflight, test launches or result files.
 - Functional-QA test fixtures enforce their declared foreground command boundary before execution, and shared native-event decoding rejects malformed or incomplete evidence while preserving caller-specific handoff rules.
 - Free tests retain private full logs, fail when evidence cannot be saved, and give an actionable recovery step. Linux and Windows CI collect the retained logs. Refreshed timings make new fast regressions reachable through the existing quick lane without removing complete-suite coverage.
+## [1.91.5.0] - 2026-09-28
+
+The free suite now finishes in about half the time on a 16-core Linux machine, `bun run test:ubicloud` runs it on a fresh 16-vCPU Ubicloud VM from any dev box, container, or cloud sandbox, and re-pushing a PR no longer waits behind the previous commit's eval run.
+
+### Added
+- `bun run test:ubicloud [test:free args]` runs the complete free suite on an ephemeral Ubicloud VM (`UBICLOUD_API_KEY` required; `UBI_SIZE` and `UBI_LOCATION` choose the machine). The VM gets the required CI lane's environment and strictness settings, uncommitted edits are included, shard logs are copied to `.context/ubicloud/`, and the VM is always destroyed afterwards. A full run takes about four and a half minutes end to end, compared with seven and a half minutes of suite time alone on a 4-vCPU machine.
+- `bun run test:ubicloud --record-durations` refreshes `scripts/free-test-durations.json` in that same environment and copies it back.
+- `scripts/ubicloud/ubi-runner.sh` runs any command on a Ubicloud VM (`run`, or `up` / `ssh` / `sync` / `pull` / `down`). It needs only bash, curl, python3, ssh, and tar locally, and it removes its own stale VMs after 12 hours.
+
+### Changed
+- On Linux, `bun run test` now starts one shard per available CPU, up to 16; macOS and Windows keep the limit of six. On a 16-vCPU VM, 16 shards finished the suite in 137 seconds and six shards took 327 seconds.
+- The duration seed is re-recorded with browser, display, and CSO tests actually running, and the slowest test file is split into four files. On a 16-vCPU run, all 16 shards now finish within about 15 seconds of each other, where one shard used to take twice as long as the rest. The 20 CI shards are packed with the same seed.
+- Full-suite and CI planning runs name any test file missing from the duration seed, so a slow new file cannot quietly become the long pole.
+- The Windows CI lane gets the same single serial retry for attributed failures as the required Linux lane, and uploads its flaky passes as a `flake-ledger-windows` artifact. Its process-supervision timing tests pass when run alone but can stall under the lane's two-shard load.
+- A new push to a pull request now cancels the previous commit's paid eval run. The eval slice, report, and comment jobs run unless the workflow is cancelled (`!cancelled()`) instead of unconditionally (`always()`), so they still run when the image build is skipped or a slice fails, but a superseded run no longer finishes (and bills) its slices while the new commit's run waits behind it. A workflow test fails if any eval job goes back to a job-level `always()`.
+- LLM-judge skill quality evals require a clarity score of 3 instead of 4; completeness and actionability bars are unchanged. The cookie setup judge keeps its manually approved thresholds.
+- Two timing-sensitive tests allow for a heavily loaded machine: the terminal-agent startup race waits up to 8 seconds for a cold agent start, and the invalid Retry-After cases accept timer delays below the next 4-second backoff step.
 
 ## [1.91.4.0] - 2026-09-28
 
