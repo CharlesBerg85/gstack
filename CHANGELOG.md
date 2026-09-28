@@ -2,7 +2,7 @@
 
 ## [1.91.5.0] - 2026-09-28
 
-The free suite now finishes in about half the time on a 16-core Linux machine, and `bun run test:ubicloud` runs it on a fresh 16-vCPU Ubicloud VM from any dev box, container, or cloud sandbox.
+The free suite now finishes in about half the time on a 16-core Linux machine, `bun run test:ubicloud` runs it on a fresh 16-vCPU Ubicloud VM from any dev box, container, or cloud sandbox, and re-pushing a PR no longer waits behind the previous commit's eval run.
 
 ### Added
 - `bun run test:ubicloud [test:free args]` runs the complete free suite on an ephemeral Ubicloud VM (`UBICLOUD_API_KEY` required; `UBI_SIZE` and `UBI_LOCATION` choose the machine). The VM gets the required CI lane's environment and strictness settings, uncommitted edits are included, shard logs are copied to `.context/ubicloud/`, and the VM is always destroyed afterwards. A full run takes about four and a half minutes end to end, compared with seven and a half minutes of suite time alone on a 4-vCPU machine.
@@ -14,6 +14,8 @@ The free suite now finishes in about half the time on a 16-core Linux machine, a
 - The duration seed is re-recorded with browser, display, and CSO tests actually running, and the slowest test file is split into four files. On a 16-vCPU run, all 16 shards now finish within about 15 seconds of each other, where one shard used to take twice as long as the rest. The 20 CI shards are packed with the same seed.
 - Full-suite and CI planning runs name any test file missing from the duration seed, so a slow new file cannot quietly become the long pole.
 - The Windows CI lane gets the same single serial retry for attributed failures as the required Linux lane, and uploads its flaky passes as a `flake-ledger-windows` artifact. Its process-supervision timing tests pass when run alone but can stall under the lane's two-shard load.
+- A new push to a pull request now cancels the previous commit's paid eval run. The eval slice, report, and comment jobs run unless the workflow is cancelled (`!cancelled()`) instead of unconditionally (`always()`), so they still run when the image build is skipped or a slice fails, but a superseded run no longer finishes (and bills) its slices while the new commit's run waits behind it. A workflow test fails if any eval job goes back to a job-level `always()`.
+- LLM-judge skill quality evals require a clarity score of 3 instead of 4; completeness and actionability bars are unchanged. The cookie setup judge keeps its manually approved thresholds.
 - Two timing-sensitive tests allow for a heavily loaded machine: the terminal-agent startup race waits up to 8 seconds for a cold agent start, and the invalid Retry-After cases accept timer delays below the next 4-second backoff step.
 
 ## [1.91.4.0] - 2026-09-28
