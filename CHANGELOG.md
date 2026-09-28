@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.91.4.0] - 2026-09-28
+
+Docs and tests can show a database or basic-auth URL without tripping the credential pre-push guard, and a repository can allowlist the exact example credentials in vendored third-party text it cannot edit.
+
+### Added
+- `GSTACK_EXAMPLE_NONCE` is the approved placeholder password. `postgres://user:GSTACK_EXAMPLE_NONCE@host/db` and `https://user:GSTACK_EXAMPLE_NONCE@host/` are never flagged. The match is exact and case-sensitive, and a lowercase `password` in the same position still blocks.
+- The pre-push hook reads `.gstack/redact-allowlist` from the commit being pushed, one exact matched span per line with `#` comments and blank lines ignored. A span suppresses only a finding whose whole match equals it; any other credential in the same push still blocks. A URL span runs from the scheme to the first `/` after the host, so `postgres://<user>:<pass>@<host>:<port>/<db>` is listed as `postgres://<user>:<pass>@<host>:<port>`.
+- Suppression is visible: the hook prints how many findings the allowlist suppressed, never the spans.
+
+### Changed
+- Allowlist entries shorter than 12 characters, and marker-only spans such as a PEM header, are ignored. A file over 16 KiB or 100 entries is ignored entirely. A copy that exists only in the working tree has no effect.
+
 ## [1.91.2.0] - 2026-09-25
 
 `/sync-gbrain` can check whether the current worktree's pages are readable without writing a probe page or deleting guidance when the answer is uncertain.
