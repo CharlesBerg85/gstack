@@ -12,7 +12,9 @@ logs="$root/.context/ubicloud/$(date +%Y%m%d-%H%M%S)"
 
 args=(--src "$root" --setup "$here/setup-free-suite.sh"
   --env GSTACK_EXPECT_BINARIES=1 --env GSTACK_FREE_RETRY_FLAKY=1
-  --pull "/tmp/gstack-free-test-*:$logs")
+  --env GSTACK_FLAKE_LEDGER=/tmp/gstack-free-test-flake-ledger.jsonl
+  --pull "/tmp/gstack-free-test-*:$logs"
+  --pull "work/$(basename "$root")/.context/free-test-logs:$logs")
 [ -z "${GSTACK_FREE_JOBS:-}" ] || args+=(--env "GSTACK_FREE_JOBS=$GSTACK_FREE_JOBS")
 for arg in "$@"; do
   [ "$arg" != --record-durations ] || args+=(--pull "work/$(basename "$root")/scripts/free-test-durations.json:$root/scripts")

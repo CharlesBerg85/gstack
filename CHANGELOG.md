@@ -26,7 +26,9 @@ and every ship audits relevant documentation before final verification and publi
 - Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
 - Paid-test `--list` also stays read-only with a saved plan and selected slice: it validates and lists the selected work without API preflight, test launches or result files.
 - Functional-QA test fixtures enforce their declared foreground command boundary before execution, and shared native-event decoding rejects malformed or incomplete evidence while preserving caller-specific handoff rules.
+- Native plan fixtures accept byte-exact seeds inside Claude's paste envelope without accepting fused or changed content. QA fixture completion avoids duplicating its checkpoint ledger, and caller fixtures distinguish absolute deadlines from start times.
 - Free tests retain private full logs, fail when evidence cannot be saved, and give an actionable recovery step. Linux and Windows CI collect the retained logs. Refreshed timings make new fast regressions reachable through the existing quick lane without removing complete-suite coverage.
+- The Ubicloud wrapper retrieves retained free-test logs and any retry ledger before destroying its VM.
 ## [1.91.5.0] - 2026-09-28
 
 The free suite now finishes in about half the time on a 16-core Linux machine, `bun run test:ubicloud` runs it on a fresh 16-vCPU Ubicloud VM from any dev box, container, or cloud sandbox, and re-pushing a PR no longer waits behind the previous commit's eval run.

@@ -11,6 +11,8 @@ import { launchClaudePty, runPlanSkillObservation, isProseAUQVisible, isNumbered
 const CLI = fs.readFileSync(path.join(import.meta.dir, 'fixtures', 'plan-seed-cli.ts'), 'utf8');
 
 for (const scenario of ['success', 'completed-tool', 'status-updating', 'history-empty-box',
+  'native-paste', 'native-paste-block', 'native-paste-changed', 'native-paste-fused',
+  'native-paste-mismatched', 'native-paste-duplicate', 'native-paste-appended', 'native-paste-multiple-blocks',
   'startup-placeholder', 'startup-placeholder-cursor', 'startup-placeholder-unicode',
   'startup-typed-hint', 'startup-partial-dim', 'startup-prior-conversation', 'startup-missing-styles',
   'startup-waiting', 'startup-prose-question', 'startup-permission', 'startup-fresh-waiting',
@@ -55,7 +57,7 @@ for (const scenario of ['success', 'completed-tool', 'status-updating', 'history
       try { await submitPlanSeed(session, seed, { cwd: dir, launchedAt, deadlineAt,
         isQuestionOrPermission: text => isProseAUQVisible(text) || isNumberedOptionListVisible(text) || isPermissionDialogVisible(text) }); }
       catch (error) { failure = error; }
-      if (['success', 'completed-tool', 'status-updating', 'history-empty-box', 'startup-placeholder', 'startup-placeholder-cursor', 'startup-placeholder-unicode'].includes(scenario)) {
+      if (['success', 'completed-tool', 'status-updating', 'history-empty-box', 'native-paste', 'native-paste-block', 'startup-placeholder', 'startup-placeholder-cursor', 'startup-placeholder-unicode'].includes(scenario)) {
         expect(failure).toBeUndefined();
         session.send('/plan-eng-review\r');
         await Bun.sleep(50);
@@ -69,7 +71,7 @@ for (const scenario of ['success', 'completed-tool', 'status-updating', 'history
           'session-switch': 'native session changed', 'foreign-cwd': 'Foreign cwd',
           question: 'requires an answer', 'prose-question': 'requires an answer', 'wrong-pid': 'does not match this launch',
           'wrong-start': 'native process identity changed', 'wrong-domain': 'native process identity changed' } as Record<string, string>)[scenario]
-          ?? 'existing case budget';
+          ?? (scenario.startsWith('native-paste') ? 'fused, duplicated, or changed' : 'existing case budget');
         expect((failure as Error).message).toContain(expected);
         expect(sent.some(s => s === '/plan-eng-review\r')).toBe(false);
         expect(sent.filter(s => s === '\r').length).toBeLessThanOrEqual(1);

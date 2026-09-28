@@ -1296,6 +1296,7 @@ describe('real caller-specific native fixture and capture boundary', () => {
         expect(options.appendSystemPrompt).toContain('the turn limit does not authorize skipping work or reporting incomplete work as passed');
         expect(options.appendSystemPrompt).not.toMatch(/bun scripts\/probe\.ts \d|invalid input|highest.risk/i);
         expect(options.prompt).toContain('Keep normal parent decision gates.');
+        expect(options.prompt).toContain("use the section clock's Hard deadline UTC, never its Runner entry UTC, reserve-start time or a clock-read time");
         expect(options.prompt).toContain('Before your final report, read HANDOFF.md');
         expect(options.prompt).toContain('Write the phase report to reports/review.md.');
         return sentinel;

@@ -42,6 +42,9 @@ describe('ubicloud free-suite runner', () => {
     expect(ciEnv.GSTACK_FREE_RETRY_FLAKY).toBe('1');
     expect(wrapper).toContain('--env GSTACK_EXPECT_BINARIES=1');
     expect(wrapper).toContain('--env GSTACK_FREE_RETRY_FLAKY=1');
+    expect(wrapper).toContain('--env GSTACK_FLAKE_LEDGER=/tmp/gstack-free-test-flake-ledger.jsonl');
+    expect(wrapper).toContain('--pull "/tmp/gstack-free-test-*:$logs"');
+    expect(wrapper).toContain('--pull "work/$(basename "$root")/.context/free-test-logs:$logs"');
     expect(wrapper).toContain('xvfb-run -a bun run test:free');
     expect(JSON.parse(read('package.json')).scripts['test:ubicloud']).toBe('bash scripts/ubicloud/test-free.sh');
   });

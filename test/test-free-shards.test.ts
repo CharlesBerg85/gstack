@@ -1271,7 +1271,9 @@ describe('test-free-shards: duration-aware packing (full-suite LPT)', () => {
         env: { ...process.env, GSTACK_FREE_TEST_DURATIONS: seedPath }, timeout: 10_000,
       });
       expect(planned.exitCode, planned.stderr.toString()).toBe(0);
-      expect(JSON.parse(planned.stdout.toString())).toEqual({ shard: [1, 2] });
+      expect(JSON.parse(planned.stdout.toString())).toEqual({ shard: [1, 2, 3] });
+      const plan = JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'));
+      expect(plan.shards[2].files).toEqual(['test/bootstrap-retention.test.ts']);
       expect(planned.stderr.toString()).toMatch(/\d+ file\(s\) have no recorded duration .*bun run test:ubicloud --record-durations/);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   });

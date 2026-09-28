@@ -243,6 +243,13 @@ not a fresh full-census runtime improvement.
 
 ## Evidence validity
 
+After integrating main's September 28 Ubicloud improvements, the scheduling seed
+uses upstream's CI-environment timings for shared files and preserves the 52
+previously measured branch-only entries. These are scheduling hints from two
+machines, not a matched performance comparison or acceptance result. Refresh
+the whole seed with `bun run test:ubicloud --record-durations` when measuring a
+new common baseline; do not infer a speedup by adding these measurements.
+
 Check the executable actually used by each SDK, print-mode and terminal launcher.
 A CLI version cached during preflight does not prove the version used by later
 sessions if PATH contents change. Use native session-init versions, terminal

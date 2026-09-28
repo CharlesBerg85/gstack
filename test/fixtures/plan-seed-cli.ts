@@ -55,7 +55,13 @@ process.stdin.on('data',chunk=>{
  if(input==='\r'&&!submitted){
   submitted=true;input='';event('enter',seed);frame('');
   if(scenario==='no-ack')return;
-  append('user',text(scenario==='fused'?seed+'\n/plan-eng-review':seed));
+  if(scenario.startsWith('native-paste')){
+   const body=scenario==='native-paste-changed'?seed.replace('Keep','Alter'):scenario==='native-paste-fused'?seed+'\n/plan-eng-review':seed;
+   let native='\n\n<pasted_content id="1aab">\n'+body+'</pasted_content id="'+(scenario==='native-paste-mismatched'?'1aac':'1aab')+'">\n';
+   if(scenario==='native-paste-duplicate')native+=native;
+   if(scenario==='native-paste-appended')native+='/plan-eng-review';
+   append('user',scenario==='native-paste-block'?text(native):scenario==='native-paste-multiple-blocks'?[...text(native),...text('extra request')]:native);
+  }else append('user',text(scenario==='fused'?seed+'\n/plan-eng-review':seed));
   if(scenario==='duplicate')append('user',text(seed));
   if(scenario==='session-switch'){status.sessionId='bbbbbbbb-1111-2222-3333-aaaaaaaaaaaa';fs.writeFileSync(statusFile,JSON.stringify(status));return;}
   if(scenario==='foreign-cwd'){fs.writeFileSync(file,row('user',text(seed)).replace(cwd,cwd+'-other'));return;}

@@ -67,6 +67,9 @@ test('artifact completion preserves exact evidence before concise linked reporti
     expect(prompt).toContain('using the functional report structure');
     expect(prompt).toContain('Link the evidence and checkpoint files rather than repeating full probe payloads in Markdown');
     expect(prompt).toContain('Both artifacts are required before completion');
+    expect(prompt).toContain('include one representative observation-to-next-probe hypothesis, not a duplicate of the complete checkpoint ledger');
+    expect(prompt).toContain('Preserve every checkpoint and link every checkpoint in Markdown');
+    expect(prompt).toContain('keep every executed probe and its complete JSON in evidence');
     expect(prompt).toContain('Evidence rows contain ONLY complete JSON actually emitted by native probes, including failures and repeats');
     expect(prompt).toContain('retain pre-repair results alongside green results');
     expect(prompt).toContain('Never synthesize JSON');
