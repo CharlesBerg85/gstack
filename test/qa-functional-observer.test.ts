@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { createQAFunctionalFixture, fixtureCommand, fixtureGit } from './helpers/qa-functional-fixture';
 import { decodeQAInotify, observeQAWrites, qaWriteVerdict, qaCommandAllowed } from './helpers/qa-functional-observer';
 
@@ -11,6 +12,47 @@ const kernelRecord = (wd: number, mask: number) => {
 };
 
 describe('QA command-observation boundary', () => {
+  test('registered functional callback denies external mutation and permits owned webhook probes', async () => {
+    const fixture = createQAFunctionalFixture('webhook');
+    let mutations = 0;
+    const server = Bun.serve({ hostname: '127.0.0.1', port: 0, fetch: request => {
+      if (request.method === 'POST') mutations++;
+      return new Response('synthetic mutation target');
+    } });
+    try {
+      const settings = path.join(fixture.config, 'settings.json');
+      expect(fixture.config.startsWith(fixture.root + path.sep)).toBe(false);
+      expect(fs.statSync(fixture.config).mode & 0o777).toBe(0o700);
+      expect(fs.existsSync(settings)).toBe(true);
+      const registration = JSON.parse(fs.readFileSync(settings, 'utf8')).hooks.PreToolUse;
+      expect(registration).toHaveLength(1);
+      expect(registration[0].matcher).toBe('^Bash$');
+      const callback = (command: string, extra: Record<string, unknown> = {}) => {
+        const result = spawnSync('bash', ['-c', registration[0].hooks[0].command], {
+          cwd: fixture.root, input: JSON.stringify({ hook_event_name: 'PreToolUse', cwd: fixture.root,
+            tool_name: 'Bash', tool_input: { command, ...extra } }), encoding: 'utf8', timeout: 5000,
+        });
+        expect(result.status, result.stderr).toBe(0);
+        return JSON.parse(result.stdout).hookSpecificOutput.permissionDecision;
+      };
+      const command = `curl -X POST http://127.0.0.1:${server.port}/mutate`;
+      const decision = callback(command);
+      if (decision === 'allow') await fetch(`http://127.0.0.1:${server.port}/mutate`, { method: 'POST' });
+      expect(decision).toBe('deny');
+      expect(mutations).toBe(0);
+      expect(fixtureGit(fixture.root, ['status', '--porcelain'])).toBe('');
+      expect(callback('bun run probe -- happy', { run_in_background: true })).toBe('deny');
+      expect(callback('bun run probe -- happy')).toBe('allow');
+      const allowed = fixtureCommand(fixture.root, ['probe.ts', 'happy']);
+      expect(allowed.exit, allowed.stderr).toBe(0);
+      expect(JSON.parse(allowed.stdout).state.effects).toHaveLength(1);
+    } finally {
+      server.stop(true);
+      fixture.cleanup();
+      expect(fs.existsSync(fixture.config)).toBe(false);
+    }
+  });
+
   test('admits native fixture commands and rejects unobserved shell effects', () => {
     for (const command of ['date -u +%Y-%m-%dT%H:%M:%SZ', 'bun run probe -- apply credit 7junk', 'bun run probe -- apply UPPER 7', 'bun run probe -- apply 9bad 7', 'bun run probe -- apply', 'bun run probe -- apply credit', 'bun run probe -- apply credit 7 extra', 'bun run probe -- partial', 'bun test test/regression.test.ts', 'git status --short']) expect(qaCommandAllowed(command)).toBe(true);
     for (const command of ['date', 'date -u', 'date -u +%s', ' date -u +%Y-%m-%dT%H:%M:%SZ', 'date -u +%Y-%m-%dT%H:%M:%SZ ', 'date -u +%Y-%m-%dT%H:%M:%SZ --set tomorrow', 'python3 mutate-with-mmap.py', 'echo ok; git commit -am fix', 'bun test > result.txt', 'curl https://example.com', 'bun -e "42"', 'git stash', 'git reset --hard', 'bun run probe -- partial && true', 'bun run probe -- apply $(touch bad) 7', 'bun run probe -- apply * 7', 'bun run probe -- apply credit 7; touch bad']) expect(qaCommandAllowed(command)).toBe(false);

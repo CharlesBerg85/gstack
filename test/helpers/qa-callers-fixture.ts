@@ -11,7 +11,7 @@ import { CAPTURE_MS } from './eval-budgets';
 import { refreshHermeticSkillRuntime } from './hermetic-skill-runtime';
 import { seedHermeticGstackHome } from './hermetic-env';
 import { observeQAWrites, type QAWriteObservation } from './qa-functional-observer';
-import { readQACheckpointFiles, validateQACheckpoints } from './qa-checkpoint-evidence';
+import { nativeCalls, readQACheckpointFiles, validateQACheckpoints } from './qa-checkpoint-evidence';
 import { ownedPath } from './qa-functional-fixture';
 
 export type QaCaller = 'review' | 'ship';
@@ -74,52 +74,36 @@ export interface CallerTool {
 const UNCHANGED_READ = 'Wasted call — file unchanged since your last Read. Refer to that earlier tool_result instead.';
 
 export function callerTools(transcript: unknown[]): CallerTool[] {
+  const failures: string[] = [];
+  const calls = nativeCalls(transcript, failures);
+  if (failures.length) throw new Error(failures.join('; '));
   const tools: CallerTool[] = [];
-  const pending = new Map<string, CallerTool>();
-  for (const [index, raw] of transcript.entries()) {
-    if (!raw || typeof raw !== 'object') throw new Error('Malformed native event');
-    const event = raw as any;
-    if (!['assistant', 'user'].includes(event.type)) continue;
-    const parent = event.parent_tool_use_id ?? null;
-    for (const block of event.message?.content ?? []) {
-      const key = JSON.stringify([parent, block.type === 'tool_use' ? block.id : block.tool_use_id]);
-      if (event.type === 'assistant' && block.type === 'tool_use') {
-        if (typeof block.id !== 'string' || pending.has(key)) throw new Error('Ambiguous native tool id');
-        const tool: CallerTool = { id: block.id, parent, name: block.name, input: block.input ?? {}, output: '', failed: false, index, resultIndex: -1, messageId: event.message.id, sessionId: event.session_id };
-        tools.push(tool);
-        pending.set(key, tool);
-      } else if (event.type === 'user' && block.type === 'tool_result') {
-        const tool = pending.get(key);
-        if (!tool) throw new Error('Native tool result has no matching call');
-        if (typeof block.content === 'string') tool.output = block.content;
-        else if (Array.isArray(block.content)) tool.output = block.content
-          .filter((part: any) => part.type === 'text' && typeof part.text === 'string')
-          .map((part: any) => part.text).join('\n');
-        tool.failed = block.is_error === true;
-        tool.resultIndex = index;
-        const native = event.tool_use_result;
-        if (!tool.failed && tool.name === 'Read' && typeof tool.input.file_path === 'string'
-          && tool.input.file_path.endsWith('/HANDOFF.md') && Object.keys(tool.input).length === 1
-          && typeof tool.sessionId === 'string' && event.session_id === tool.sessionId
-          && event.message.content.length === 1 && native?.file?.filePath === tool.input.file_path) {
-          if (native.type === 'text' && typeof native.file.content === 'string') {
-            const lines = native.file.content.split('\n');
-            if (native.file.startLine === 1 && native.file.numLines === lines.length && native.file.totalLines === lines.length
-              && tool.output === lines.map((line: string, i: number) => `${i + 1}\t${line}`).join('\n')) {
-              tool.handoffContent = native.file.content;
-            }
-          } else if (native.type === 'file_unchanged' && tool.output === UNCHANGED_READ) {
-            const prior = tools.findLast(read => read.name === 'Read' && read.parent === tool.parent && read.sessionId === tool.sessionId
-              && read.input.file_path === tool.input.file_path
-              && read.resultIndex >= 0 && read.resultIndex < tool.index && (!tool.messageId || read.messageId !== tool.messageId));
-            tool.handoffContent = prior?.handoffContent;
-          }
+  for (const call of calls) {
+    const start = transcript[call.start] as any;
+    const event = transcript[call.end] as any;
+    const tool: CallerTool = { id: call.id, parent: call.parent, name: call.name, input: call.input,
+      output: call.output, failed: call.failed, index: call.start, resultIndex: call.end,
+      messageId: start.message.id, sessionId: start.session_id };
+    tools.push(tool);
+    const native = event.tool_use_result;
+    if (!tool.failed && tool.name === 'Read' && typeof tool.input.file_path === 'string'
+      && tool.input.file_path.endsWith('/HANDOFF.md') && Object.keys(tool.input).length === 1
+      && typeof tool.sessionId === 'string' && event.session_id === tool.sessionId
+      && event.message.content.length === 1 && native?.file?.filePath === tool.input.file_path) {
+      if (native.type === 'text' && typeof native.file.content === 'string') {
+        const lines = native.file.content.split('\n');
+        if (native.file.startLine === 1 && native.file.numLines === lines.length && native.file.totalLines === lines.length
+          && tool.output === lines.map((line: string, i: number) => `${i + 1}\t${line}`).join('\n')) {
+          tool.handoffContent = native.file.content;
         }
-        pending.delete(key);
+      } else if (native.type === 'file_unchanged' && tool.output === UNCHANGED_READ) {
+        const prior = tools.findLast(read => read.name === 'Read' && read.parent === tool.parent && read.sessionId === tool.sessionId
+          && read.input.file_path === tool.input.file_path
+          && read.resultIndex >= 0 && read.resultIndex < tool.index && (!tool.messageId || read.messageId !== tool.messageId));
+        tool.handoffContent = prior?.handoffContent;
       }
     }
   }
-  if (pending.size) throw new Error('Native tool observations are incomplete');
   return tools;
 }
 

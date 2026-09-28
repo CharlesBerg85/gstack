@@ -212,6 +212,10 @@ export function createQAFunctionalFixture(family: QAFamily, options: { healthy?:
   if (parent === checkout || parent.startsWith(checkout + path.sep)) throw new Error('Fixture repositories must be outside the checkout');
   const root = fs.mkdtempSync(path.join(parent, 'qaf-'));
   fs.chmodSync(root, 0o700);
+  const config = fs.mkdtempSync(path.join(parent, 'qac-'));
+  fs.chmodSync(config, 0o700);
+  const hook = [process.execPath, path.join(import.meta.dir, 'qa-functional-observer.ts'), root]
+    .map(value => `'${value.replaceAll("'", "'\\''")}'`).join(' ');
   const files: Record<string, string> = {
     '.gitignore': '.qa-state/\nqa-reports/\n',
     'package.json': JSON.stringify({ name: 'qa-functional-fixture', private: true, type: 'module', scripts: family === 'cli' ? { cli: 'bun src/cli.ts', probe: 'bun probe.ts', test: 'bun test' } : { probe: 'bun probe.ts', test: 'bun test' } }, null, 2) + '\n',
@@ -262,6 +266,8 @@ test('successful delivery', () => {
 `;
   }
   try {
+    fs.writeFileSync(path.join(config, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '^Bash$',
+      hooks: [{ type: 'command', command: hook, timeout: 5 }] }] } }) + '\n', { mode: 0o600 });
     for (const dir of ['src', 'test', '.qa-state', 'qa-reports']) fs.mkdirSync(ownedPath(root, dir));
     for (const [relative, content] of Object.entries(files)) fs.writeFileSync(ownedPath(root, relative), content);
     fixtureGit(root, ['init', '-b', 'main'], remaining());
@@ -271,12 +277,14 @@ test('successful delivery', () => {
     fixtureGit(root, ['add', '.'], remaining());
     fixtureGit(root, ['commit', '-m', 'Seed owned functional QA fixture'], remaining());
     const revision = fixtureGit(root, ['rev-parse', 'HEAD'], remaining());
-    return { root, family, revision, files, cleanup: () => {
-      if (fs.realpathSync(root) !== root) throw new Error('Fixture root moved before cleanup');
+    return { root, config, family, revision, files, cleanup: () => {
+      if (fs.realpathSync(root) !== root || fs.realpathSync(config) !== config) throw new Error('Fixture root moved before cleanup');
       fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(config, { recursive: true, force: true });
     } };
   } catch (error) {
     fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(config, { recursive: true, force: true });
     throw error;
   }
 }

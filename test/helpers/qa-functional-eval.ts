@@ -108,7 +108,8 @@ export async function runQAFunctionalCase(entry: { id: string; family: QAFamily;
           prompt: qaFunctionalPrompt(entry),
           workingDirectory: fixture.root, maxTurns: 40, allowedTools: QA_TOOLS, tools: QA_TOOLS,
           timeout, completionReserveMs: timeout / 4,
-          testName: entry.id, runId, signal, env: { GIT_OPTIONAL_LOCKS: '0', QA_STATE_ROOT: path.join(fixture.root, '.qa-state') },
+          testName: entry.id, runId, signal, env: { CLAUDE_CONFIG_DIR: fixture.config,
+            GIT_OPTIONAL_LOCKS: '0', QA_STATE_ROOT: path.join(fixture.root, '.qa-state') },
         });
         return result;
       },

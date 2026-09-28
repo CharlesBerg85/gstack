@@ -28,7 +28,7 @@ export function readQACheckpointFiles(reportRoot: string): Record<string, string
 }
 
 type Probe = { command: string; observed: unknown };
-type Call = { parent: string | null; name: string; input: Record<string, any>; start: number; end: number; output: string; failed: boolean };
+type Call = { id: string; parent: string | null; name: string; input: Record<string, any>; start: number; end: number; output: string; failed: boolean };
 
 export function nativeCalls(transcript: unknown[], failures: string[]): Call[] {
   const calls = new Map<string, Call>();
@@ -46,7 +46,7 @@ export function nativeCalls(transcript: unknown[], failures: string[]): Call[] {
           failures.push('Missing or duplicate native tool identity');
           continue;
         }
-        calls.set(key, { parent, name: block.name, input: block.input, start: index, end: -1, output: '', failed: false });
+        calls.set(key, { id: block.id, parent, name: block.name, input: block.input, start: index, end: -1, output: '', failed: false });
       } else if (raw.type === 'user' && block.type === 'tool_result') {
         const call = calls.get(JSON.stringify([parent, block.tool_use_id]));
         if (!call || call.end !== -1) { failures.push('Orphaned or duplicate native result'); continue; }

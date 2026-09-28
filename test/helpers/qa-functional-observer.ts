@@ -257,3 +257,22 @@ export function qaCommandAllowed(command: string): boolean {
     || /^bun run (?:cli|probe) -- (?:balance|export|apply(?: (?:[a-zA-Z0-9_.+-]+|'[a-zA-Z0-9_.+ -]*'|"[a-zA-Z0-9_.+ -]*")){0,3})$/.test(text)
     || /^bun run probe -- (?:happy|reject|duplicate|partial|concurrent-ab|concurrent-ba|cancel|dependency)$/.test(text);
 }
+
+export function qaCommandPermission(root: string, event: any) {
+  let allowed = false;
+  try {
+    allowed = path.isAbsolute(root) && fs.realpathSync(root) === root
+      && event?.hook_event_name === 'PreToolUse' && event.cwd === root && event.tool_name === 'Bash'
+      && typeof event.tool_input?.command === 'string'
+      && [undefined, false].includes(event.tool_input.run_in_background)
+      && qaCommandAllowed(event.tool_input.command);
+  } catch {}
+  return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny',
+    ...(!allowed ? { permissionDecisionReason: 'Only foreground commands from the owned functional fixture interface are authorized.' } : {}) } };
+}
+
+if (import.meta.main) {
+  let event: unknown;
+  try { event = JSON.parse(await Bun.stdin.text()); } catch {}
+  console.log(JSON.stringify(qaCommandPermission(process.argv[2], event)));
+}

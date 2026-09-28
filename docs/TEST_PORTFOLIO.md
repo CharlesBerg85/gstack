@@ -27,6 +27,47 @@ Overlay efficacy experiments retain their full fixture/model/arm/trial matrix.
 Security cases retain their source, path, socket, process and lease identities.
 These are distinct scenario dimensions, not repeated work to delete.
 
+## Functional QA contract map
+
+The deterministic owners below protect the failure boundary; their live partners
+prove that an agent follows it. A shared fixture or captured event does not replace
+an independent live trial. All free owners run in `bun run test`; quick eligibility
+depends on measured duration or an explicit `QUICK_CORE` entry, not this table.
+
+| Contract | Deterministic owner | Necessary live boundary | Host and lane |
+| --- | --- | --- | --- |
+| CLI/API/webhook QA without browser setup | `qa-functional-fixture`, `qa-functional-evidence`, `qa-lazy-sections` | `skill-e2e-qa-functional`: CLI and webhook report sessions | Linux/macOS free; selected PR gate; Windows only where curated |
+| Report-only preserves local and remote authority | `qa-only-capability`, `qa-functional-observer`, `qa-functional-observer-atomic`, `qa-caller-authority` | Independent report-only sessions with synthetic owned endpoints/auth | Linux kernel observation; free callback controls plus selected PR gate |
+| Repair reproduces the defect, adds a failing regression and rechecks adjacent behavior | `qa-fix-loop-fixture`, `qa-functional-evidence` | `skill-e2e-qa-functional-fix`: CLI and webhook repair sessions | Free controls plus selected PR gate |
+| Review and Ship actually explore | `qa-exploratory-callers`, `qa-caller-report-observer`, `qa-checkpoint-evidence` | `skill-e2e-qa-callers`: actual Review/Ship callers | Free captures plus selected PR gate |
+| Smoke expiry preserves required plan checks | `qa-deadline`, `qa-deadline-selection`, `qa-browser-deadline-evidence` | `ship-exploratory-plan-checks` | Free deadline/dispatch controls plus selected PR gate |
+| Late changes invalidate affected results | `qa-caller-freshness-order`, `qa-deadline-publication-observer`, `shared-libs-revalidation-prompt` | `ship-exploratory-late-input` and the existing late-input documentation handoff | Free stale-input controls plus selected PR gate |
+| Documentation completes before publication and respects protected files | `docsync-authority`, `docsync-atomic-writes`, `docsync-report-interface`, `docsync-lifecycle-interface` | `skill-e2e-ship-docsync`, `skill-e2e-docsync-spawned` | Free state/permission controls; registered gate/periodic scenarios retain their tiers |
+| Cancellation drains owned work before another attempt | `shared-libs-cancellation`, `session-runner-stream-lifecycle`, `agent-sdk-runner`, `paid-shard-settlement` | Existing actual shared-library/SDK caller scenarios | Free real-callback/process controls; registered live gate/periodic trials remain independent |
+| Missing tools or incomplete results never become verified coverage | `qa-probe-gates`, `qa-supervision-selection`, `test-free-shards`, `test-free-shards-capture`, `paid-shards` | `ship-exploratory-unavailable` and existing reporting-boundary sessions | Free negative controls plus selected PR gate; unsupported hosts remain unexecuted |
+
+Names without a suffix refer to `test/<name>.test.ts`. Keep missing, stale,
+duplicate, selected-but-unstarted, malformed/truncated and observer-overflow
+controls distinct from legitimate empty selections. File restoration cannot
+replace write observation, and a clean local tree cannot prove that an external
+request made no mutation. Fixture endpoints and credentials must be synthetic
+and owned; specifically authorized functional requests remain permitted.
+
+Functional fixtures register their existing closed command policy as a native
+PreToolUse hook, so an unsupported request is refused before execution. The
+callback regression invokes the registered command with native hook input,
+observes an isolated mutation target and permits the owned webhook positive
+control. This is a command boundary, not a sandbox for arbitrary target code.
+Its private CLI configuration is outside the observed product tree, and the
+fixture's existing cleanup owns both directories.
+
+Review/Ship observations now use the same strict native event decoder as QA
+checkpoints and documentation. Caller-specific handoff/freshness interpretation
+stays separate. Original missing, orphaned and duplicate-call controls were run
+before replacing three incidental error-wording assertions with rejection checks;
+the existing positive attribution case still runs, and a completed-ID reuse
+negative control prevents incomplete evidence from becoming green.
+
 ## Complete inventory, not just the fast subset
 
 At the audited revision, all 1,124 tracked Bun test files partition into 1,010 free

@@ -298,10 +298,11 @@ describe('caller native-event observer controls', () => {
   });
 
   test('missing, orphaned and duplicated native events fail closed', () => {
-    expect(() => callerTools(nativeCall('one', 'Read', {}, 'text').slice(0, 1))).toThrow('incomplete');
-    expect(() => callerTools(nativeCall('one', 'Read', {}, 'text').slice(1))).toThrow('no matching call');
+    expect(() => callerTools(nativeCall('one', 'Read', {}, 'text').slice(0, 1))).toThrow();
+    expect(() => callerTools(nativeCall('one', 'Read', {}, 'text').slice(1))).toThrow();
     const event = nativeCall('one', 'Read', {}, 'text')[0];
-    expect(() => callerTools([event, event])).toThrow('Ambiguous');
+    expect(() => callerTools([event, event])).toThrow();
+    expect(() => callerTools([...nativeCall('one', 'Read', {}, 'text'), ...nativeCall('one', 'Read', {}, 'text')])).toThrow();
     const incomplete = evidence();
     incomplete.observerComplete = false;
     expect(validateCallerEvidence(incomplete)).toContain('observer incomplete');
