@@ -27,31 +27,71 @@ function assertBoundsAndLayout(text: string) {
     'Browser Quick: SECONDS=30', 'Browser Full/Regression: SECONDS=900',
     'Functional Full, Quick and Regression have no default total timer',
     "Set SECONDS to the mode's limit or a shorter caller duration",
-    "With no mode limit, use the caller's duration or seconds remaining to its deadline",
+    "With no mode limit, use the caller\'s duration or seconds remaining to its deadline",
     'Without a total time limit, do not use the guard',
     'Use documented or announced finite command timeouts instead',
-    "EARLIER_UTC is the caller's absolute deadline, if set",
+    "EARLIER_UTC is the caller\'s absolute deadline, if set",
     'Use REPORT_DIR for clocks/checkpoints. For mixed standalone runs, create REPORT_DIR/browser and REPORT_DIR/functional instead; keep one final report at REPORT_DIR. Caller paths win.',
-    'beside that surface\'s deadline file (or in its probe directory without a timer)',
+    'in the probe directory, beside its deadline if bounded',
   ]) expect(text).toContain(contract);
   expect(text.indexOf('Caller paths win.')).toBeLessThan(text.indexOf('Start once before baseline:'));
 }
 
-function assertPlanExecution(text: string) {
-  const step = text.slice(text.indexOf('**3. Run the checks without repairing the product.**'), text.indexOf('**4. Check for changes before reporting.**')).replace(/\s+/g, ' ');
+function assertPlanExecution(text: string, shared = generateQAExploratory({ host: 'claude', skillName: 'qa', tmplPath: '', paths: HOST_PATHS.claude })) {
+  const step = text.slice(text.indexOf('**3. Run smoke and plan checks.**'), text.indexOf('**4. Check freshness before reporting.**')).replace(/\s+/g, ' ');
   for (const contract of [
-    'First run smoke, replays and revalidation through the shared Probe loop and its guard',
-    'Then run every required plan check, even if smoke expired',
-    'Keep the same checkpoint sequence, but do not use the smoke guard or restart its clock',
-    "Give each plan command a finite timeout capped by the caller's remaining deadline",
-    'If that deadline expired, mark the check not-run',
-    "Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates",
+    'Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit',
+    'Then run required plan checks, even after smoke expires',
+    'using the same procedure but no smoke guard; never reset the clock',
+    "Use finite command timeouts, capped at the caller\'s remaining time if it has a deadline",
+    'When the caller\'s deadline expires, mark unfinished checks not-run',
+    'Await clock/guard results before acting',
   ]) expect(step).toContain(contract);
-  expect(step.indexOf('First run smoke')).toBeLessThan(step.indexOf('Then run every required plan check'));
-  expect(step.indexOf('Then run every required plan check')).toBeLessThan(step.indexOf('Keep the same checkpoint sequence'));
+  expect(step.indexOf('Follow the shared Probe loop')).toBeLessThan(step.indexOf('Then run required plan checks'));
+  expect(step.indexOf('Then run required plan checks')).toBeLessThan(step.indexOf('same procedure'));
+  for (const contract of ['First demonstrate success: output AND durable effects',
+    'Wait for the successful Write result before dispatch',
+    'Replay the exact failing command/request from the same initial fixture state']) {
+    expect(shared).toContain(contract);
+  }
 }
 
 describe('QA probe entry and checkpoint gates', () => {
+  test('parent QA instructions resolve nested methods and reports from the same installed QA directory', () => {
+    for (const host of ALL_HOST_CONFIGS) {
+      for (const skillName of ['review', 'ship']) {
+        const ctx = { host: host.name, skillName, tmplPath: '', paths: HOST_PATHS[host.name] };
+        const preflight = generateQAReviewPreflight(ctx).replace(/\s+/g, ' ');
+        const body = generateQAReview(ctx).replace(/\s+/g, ' ');
+        expect(preflight).toContain('Resolve QA\'s `sections/...` and `templates/...` paths from that installed QA SKILL.md directory, not the caller or product directory');
+        expect(body).toContain('Read QA\'s `sections/browser-setup.md`');
+        expect(body).toContain('Read QA\'s `templates/functional-report-template.md`');
+        if (skillName === 'review') {
+          expect(body).toContain('Read QA\'s `templates/qa-report-template.md`');
+          expect(body).toContain('Reuse Step 4\'s surfaces and completed Reads');
+          expect(body).toContain('Finish missing methods before charters; do not repeat completed Reads');
+        }
+      }
+    }
+  });
+
+  test('composes and checks a complete note before immutable publication on every host', () => {
+    for (const host of ALL_HOST_CONFIGS) {
+      for (const skillName of ['qa', 'qa-only']) {
+        const text = generateQAExploratory({ host: host.name, skillName, tmplPath: '', paths: HOST_PATHS[host.name] });
+        const stages = ['Before Write, complete and check all fields against the result and next probe',
+          'Wait for the successful Write result', '3. Run that exact probe'];
+        const positions = stages.map(stage => text.indexOf(stage));
+        expect(positions.every(position => position >= 0)).toBe(true);
+        expect(positions).toEqual([...positions].sort((a, b) => a - b));
+        expect(text).toContain('No drafts/placeholders or invented safe-path redactions');
+        expect(text).toContain('corrections cannot repair published notes');
+        expect(text).toContain('Redact secrets/private payloads; disclose limits');
+        if (skillName === 'qa-only') expect(text).toContain('If capture is incomplete, report that limit instead of reconstructing it');
+      }
+    }
+  });
+
   test('mode bounds and checkpoint nesting are explicit before dispatch', () => {
     for (const skillName of ['qa', 'qa-only']) {
       const text = generateQAExploratory({ host: 'claude', skillName, tmplPath: '', paths: HOST_PATHS.claude });
@@ -62,7 +102,7 @@ describe('QA probe entry and checkpoint gates', () => {
         'Without a total time limit, do not use the guard',
         'Browser Quick: SECONDS=30',
         'Browser Full/Regression: SECONDS=900',
-        'exactly four top-level fields: observationCommand, observed, hypothesis, nextCommand',
+        'exactly four top-level fields:', 'observationCommand:', 'observed:', 'hypothesis:', 'nextCommand:',
         'observed: its exact decoded child JSON (no wrapper/extra keys), or its full non-JSON text',
         'QA_DEADLINE receipts are not observations',
       ]) expect(text).toContain(contract);
@@ -105,13 +145,13 @@ describe('QA probe entry and checkpoint gates', () => {
       expect(text).toContain('Never reset D/bypass G');
       expect(text).toContain('missing/invalid state stops probes');
       expect(steps[0]).toContain('demonstrate success: output AND durable effects');
-      expect(steps[0]).toContain('Use the guard if bounded; wait for its result');
+      expect(steps[0]).toContain('Guard if bounded; await completion');
       expect(steps[1]).toContain('If bounded, run `bun G status D`');
       expect(steps[1].indexOf('If expired')).toBeLessThan(steps[1].indexOf('**Write before probing.**'));
       expect(steps[1]).toContain('STOP exploration; write the report, not a checkpoint');
       expect(steps[2]).toContain('Run that exact probe; G enforces the deadline when bounded');
       expect(steps[2]).toContain('G enforces the deadline');
-      expect(steps[2]).toContain('On refusal, mark the note not-run in the report');
+      expect(steps[2]).toContain('Report refusals as not-run');
       expect(steps[3]).toContain('via steps 2–3');
       expect(steps[3]).toContain('then minimize via those gates');
       expect(steps[3]).toContain('Expiry leaves confirmation/minimization incomplete');
@@ -124,29 +164,29 @@ describe('QA probe entry and checkpoint gates', () => {
       for (const skillName of ['review', 'ship']) {
         const ctx = { host: host.name, skillName, tmplPath: '', paths: HOST_PATHS[host.name] };
         const text = (skillName === 'review' ? generateQAReviewPreflight(ctx) : '') + generateQAReview(ctx);
-        expect(text).toContain('> **STOP.** Load the installed exploratory section below and complete its ordered scope/method Reads');
+        expect(text).toContain('> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below');
         expect(text).toContain('{{QA_RESOURCE:exploratory}}');
         expect(text).not.toContain('{{QA_RESOURCE:scope}}');
         expect(text).not.toContain('Read `sections/system-functional.md`');
         const shared = generateQAExploratory({ ...ctx, skillName: 'qa' });
         assertPreparation(shared);
-        expect(text).toContain('A plan command is a probe, not an exception to this gate');
+        expect(text).toContain('Before any probe, including plan checks');
         assertPlanExecution(text);
         const required = text.indexOf(skillName === 'review'
-          ? '**2. Check readiness and list required checks.**' : '**2. List the checks');
+          ? '**2. Check readiness and list required checks.**' : '**2. List required checks');
         expect(required).toBeGreaterThan(-1);
         expect(text.indexOf('> **STOP.**')).toBeLessThan(required);
         if (skillName === 'review') {
           const isolation = text.indexOf('**1. Set the charter and isolation.**');
-          const setup = text.indexOf('Read `sections/browser-setup.md` now');
+          const setup = text.indexOf("Read QA's `sections/browser-setup.md`");
           expect(isolation).toBeGreaterThan(text.indexOf('> **STOP.**'));
           expect(setup).toBeGreaterThan(required);
-          expect(text.slice(isolation, required).replace(/\s+/g, ' ')).toContain('complete isolation/permission preflight');
+          expect(text.slice(isolation, required).replace(/\s+/g, ' ')).toContain('complete the shared isolation/permission preflight before setup');
           expect(text).toContain('Step 4 is read-only: defer charters, setup and probes to Step 4.7');
         } else {
-          const setup = text.indexOf('For browser surfaces, Read `sections/browser-setup.md`');
+          const setup = text.indexOf("For browsers, Read QA's `sections/browser-setup.md`");
           expect(setup).toBeGreaterThan(required);
-          expect(setup).toBeLessThan(text.indexOf('**3. Run the checks'));
+          expect(setup).toBeLessThan(text.indexOf('**3. Run smoke and plan checks'));
         }
       }
     }
@@ -179,31 +219,40 @@ describe('QA probe entry and checkpoint gates', () => {
 
   test('required plan checks cannot inherit the expired smoke guard or lose caller bounds and checkpoints', () => {
     for (const skillName of ['review', 'ship']) {
-      const text = generateQAReview({ host: 'claude', skillName, tmplPath: '', paths: HOST_PATHS.claude });
+      const text = generateQAReview({ host: 'claude', skillName, tmplPath: '', paths: HOST_PATHS.claude }).replace(/\s+/g, ' ');
       assertPlanExecution(text);
       for (const [before, after] of [
-        ['Then run every required plan check, even if smoke expired', 'Skip plan checks when smoke expired'],
-        ['do not use the smoke guard or restart its clock', 'restart and use the smoke guard'],
-        ['Keep the same checkpoint sequence', 'Start a new checkpoint sequence'],
-        ["capped by the caller's remaining deadline", 'with no caller cap'],
-        ['If that deadline expired, mark the check not-run', 'If that deadline expired, mark the check passed'],
-        ['acknowledged Writes and exact-replay gates', 'optional notes'],
-      ]) expect(() => assertPlanExecution(text.replace(before, after))).toThrow();
-      const smoke = 'First run smoke, replays and revalidation through the shared Probe loop and its guard.';
+        ['Then run required plan checks, even after smoke expires', 'Skip plan checks when smoke expired'],
+        ['no smoke guard; never reset the clock', 'restart and use the smoke guard'],
+        ['same procedure', 'Start a new checkpoint sequence'],
+        ['at the caller\'s remaining time', 'with no caller cap'],
+        ['When the caller\'s deadline expires, mark unfinished checks not-run', 'If that deadline expired, mark the check passed'],
+        ['Await clock/guard results before acting', 'Ignore clock results'],
+      ]) {
+        expect(text).toContain(before);
+        expect(() => assertPlanExecution(text.replace(before, after))).toThrow();
+      }
+      const smoke = 'Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.';
       expect(() => assertPlanExecution(text.replace(smoke, '').replace('**4. Check', smoke + '\n**4. Check'))).toThrow();
+      const shared = generateQAExploratory({ host: 'claude', skillName: 'qa', tmplPath: '', paths: HOST_PATHS.claude });
+      for (const contract of ['First demonstrate success: output AND durable effects',
+        'Wait for the successful Write result before dispatch',
+        'Replay the exact failing command/request from the same initial fixture state']) {
+        expect(() => assertPlanExecution(text, shared.replace(contract, 'Optional evidence'))).toThrow();
+      }
     }
   });
 
   test('core review collects runtime checks without executing them ahead of QA setup', () => {
     for (const [file, step] of [['review/SKILL.md.tmpl', 'Step 4.7'], ['ship/sections/review-army.md.tmpl', 'Step 9.2.1']]) {
-      const text = fs.readFileSync(path.join(import.meta.dir, '..', file), 'utf8');
-      const staticRule = step === 'Step 4.7' ? 'Step 4 is read-only; Step 4.7 owns setup, charters and probes' : `This pass is static; defer product probes to ${step}`;
+      const template = fs.readFileSync(path.join(import.meta.dir, '..', file), 'utf8');
+      const text = template.replace('{{QA_REVIEW_PREFLIGHT}}', generateQAReviewPreflight({ host: 'claude', skillName: 'review', tmplPath: '', paths: HOST_PATHS.claude }));
+      const staticRule = step === 'Step 4.7' ? 'Step 4 is read-only: defer charters, setup and probes to Step 4.7' : `This pass is static; defer product probes to ${step}`;
       expect(text).toContain(staticRule);
       expect(text.indexOf(staticRule)).toBeLessThan(text.indexOf('{{QA_REVIEW}}'));
       if (step === 'Step 4.7') {
-        const preflight = text.indexOf('{{QA_REVIEW_PREFLIGHT}}');
-        expect(preflight).toBeGreaterThan(text.indexOf(staticRule));
-        expect(preflight).toBeLessThan(text.indexOf('Apply both checklist passes in order'));
+        expect(template.indexOf('{{QA_REVIEW_PREFLIGHT}}')).toBeGreaterThan(template.indexOf('## Step 4:'));
+        expect(text.indexOf(staticRule)).toBeLessThan(text.indexOf('Apply both checklist passes in order'));
       }
     }
   });

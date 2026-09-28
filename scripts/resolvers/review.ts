@@ -1510,7 +1510,14 @@ Keep genuine external-state and human-only checks in this audit with their exist
 A mixed item retains its implementation obligation here and its execution check in Step 8.1/9;
 zero implementation counts do not waive those checks.
 
-Extract deliverables and test-creation work, not the local checks routed above. Look for:` : 'Read the plan file. Extract every actionable item — anything that describes work to be done. Look for:'}
+Extract deliverables and test-creation work, not the local checks routed above. Look for:` : `**Separate static audit evidence from behavioral checks.** Read the plan and keep two lists:
+- Deliverables and test-creation work: audit these below.
+- Commands/assertions that exercise behavior: retain the exact command, expected outcome
+  and source for Step 4.7's required plan checks. They remain pending execution, never DONE
+  from a diff. A mixed item contributes to both lists. Zero audited deliverables do not waive these checks.
+Keep external-state and human-only checks under the existing audit rules.
+
+Extract every actionable item into the appropriate list. Look for:`}
 
 - **Checkbox items:** \`- [ ] ...\` or \`- [x] ...\`
 - **Numbered steps** under implementation headings: "1. Create ...", "2. Add ...", "3. Modify ..."
@@ -1528,7 +1535,7 @@ Extract deliverables and test-creation work, not the local checks routed above. 
 
 **Cap:** Extract at most 50 items. If the plan has more, note: "Showing top 50 of N plan items — full list in plan file."
 
-**No items found:** ${mode === 'ship' ? 'If no audited deliverables remain, report zero implementation counts and retain pending execution-only checks verbatim in summary for Step 8.1/9. This skips only the implementation audit, never required verification.' : 'If the plan contains no extractable actionable items, skip with: "Plan file contains no actionable items — skipping completion audit."'}
+**No items found:** ${mode === 'ship' ? 'If no audited deliverables remain, report zero implementation counts and retain pending execution-only checks verbatim in summary for Step 8.1/9. This skips only the implementation audit, never required verification.' : 'If both lists are empty, skip the completion audit. If only behavioral checks remain, report zero audited deliverables and retain their pending Step 4.7 list.'}
 
 For each item, note:
 - The item text (verbatim or concise summary)
@@ -1554,7 +1561,10 @@ Classify how each item can be verified. The diff cannot prove work in another re
 
 **Path concreteness rule.** If a plan item names a *concrete filesystem path* (absolute, \`~/...\`, or \`<sibling-repo>/<file>\`), it MUST be classified DONE or NOT DONE based on \`[ -f <path> ]\`. UNVERIFIABLE is only valid when the path is genuinely abstract ("Cloudflare DNS", "Supabase allowlist") or the sibling root is unreachable on this machine. "I don't want to check" is not unreachable.
 
-**Validator detection.** Before falling back to UNVERIFIABLE on a CONTENT-SHAPE item, scan the target repo's \`package.json\` for any script matching \`validate-*\`, \`lint-wiki\`, \`check-docs\`, or similar. If found, invoke it with the relevant path argument (e.g., \`npm run validate-wiki -- <path>\`). For multi-target validators (e.g., \`validate-wiki --all\`), run once and reconcile per-item from the output. A passing validator promotes the item from UNVERIFIABLE to DONE; a failing one demotes to NOT DONE.
+**Validator detection.** Before falling back to UNVERIFIABLE on a CONTENT-SHAPE item, scan the target repo's \`package.json\` for any script matching \`validate-*\`, \`lint-wiki\`, \`check-docs\`, or similar.${mode === 'review' ? ` File-existence checks and verified read-only content validators are static audit checks, not behavioral probes.
+Inspect the validator and its hooks before running it; verify read-only effects and access to the target.
+If that cannot be established, leave the item UNVERIFIABLE and defer the command to Step 4.7's isolation/permission preflight.
+Do not start applications, exercise APIs or mutate state during this audit.` : ''} If found${mode === 'review' ? ' and verified safe above' : ''}, invoke it with the relevant path argument (e.g., \`npm run validate-wiki -- <path>\`). For multi-target validators (e.g., \`validate-wiki --all\`), run once and reconcile per-item from the output. A passing validator promotes the item from UNVERIFIABLE to DONE; a failing one demotes to NOT DONE.
 
 **Honesty rule.** Do NOT classify an item as DONE just because related code shipped. Code that *handles* a deliverable is not the deliverable. Shipping a markdown-extraction library is not the same as shipping the markdown file. When in doubt between DONE and UNVERIFIABLE, prefer UNVERIFIABLE — better to surface a confirmation prompt than silently miss a deliverable.`);
 
@@ -1564,7 +1574,7 @@ Classify how each item can be verified. The diff cannot prove work in another re
 
 Run \`git diff origin/<base>${mode === 'ship' ? '' : '...HEAD'}\` and \`git log origin/<base>..HEAD --oneline\` to understand what was implemented.
 
-For each extracted plan item, run the verification dispatch from the previous section, then classify:
+For each ${mode === 'review' ? 'audited deliverable' : 'extracted plan item'}, run the verification dispatch from the previous section, then classify:
 
 - **DONE** — Clear evidence the item shipped. Cite the specific file(s) changed in the diff for DIFF-VERIFIABLE items, or the verified path that exists for CROSS-REPO items with a reachable sibling repo.
 - **PARTIAL** — Some work toward this item exists but is incomplete (e.g., model created but controller missing, function exists but edge cases not handled).
@@ -1852,7 +1862,7 @@ If skipped fingerprints exist, get the list of files changed since that review:
 git diff --name-only <prior-review-commit> HEAD
 \`\`\`
 
-For each finding from Step 4 critical pass, Step 4.5-4.6 specialists and exploratory QA, check:
+For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Greptile findings, check:
 - Does its fingerprint match a previously skipped finding?
 - Is the finding's file path NOT in the changed-files set?
 - Is it the same advisory/defect kind? Never use a skipped advisory to suppress a real defect, including a defect with a colliding supplied fingerprint.

@@ -29,8 +29,8 @@ export function gitIn(repoDir: string, args: string): string {
 }
 
 /** Argv-array variant for callers that avoid shell quoting. */
-export function gitArgvIn(repoDir: string, args: string[], timeout = 5000) {
-  return spawnSync('git', [...GIT_HERMETIC_ARGS, ...args], { cwd: repoDir, timeout });
+export function gitArgvIn(repoDir: string, args: string[], timeout = 5000, env?: NodeJS.ProcessEnv) {
+  return spawnSync('git', [...GIT_HERMETIC_ARGS, ...args], { cwd: repoDir, timeout, env });
 }
 
 /** Create a scratch repo (mkdtemp) with an initial commit; caller cleans up. */

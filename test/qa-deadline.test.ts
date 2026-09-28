@@ -280,19 +280,25 @@ test.each(['start', 'expired', 'finished', 'timeout', 'blocked-forever'])('guard
   const preload = path.join(f.dir, 'blocked-output.ts');
   const queued = path.join(f.dir, 'queued');
   fs.writeFileSync(preload, `
-import { writeFileSync } from 'node:fs';
-const stream = process[${JSON.stringify(mode === 'start' ? 'stdout' : 'stderr')}];
-const write = stream.write.bind(stream);
-let filled = false;
-stream.write = (chunk, ...rest) => {
-  if (typeof chunk === 'string' && chunk.startsWith('\\nQA_DEADLINE ')) {
-    if (!filled) { filled = true; write(Buffer.alloc(2 * 1024 * 1024, 32)); write('\\n'); }
-    const result = write(chunk, ...rest);
-    writeFileSync(${JSON.stringify(queued)}, 'queued');
-    return result;
-  }
-  return write(chunk, ...rest);
-};
+import * as fs from 'node:fs';
+import { spyOn } from 'bun:test';
+const createWriteStream = fs.createWriteStream;
+spyOn(fs, 'createWriteStream').mockImplementation((...args) => {
+  const stream = createWriteStream(...args);
+  if (args[1]?.fd !== ${mode === 'start' ? 1 : 2}) return stream;
+  const write = stream.write.bind(stream);
+  let filled = false;
+  stream.write = (chunk, ...rest) => {
+    if (typeof chunk === 'string' && chunk.startsWith('\\nQA_DEADLINE ')) {
+      if (!filled) { filled = true; write(Buffer.alloc(2 * 1024 * 1024, 32)); write('\\n'); }
+      const result = write(chunk, ...rest);
+      fs.writeFileSync(${JSON.stringify(queued)}, 'queued');
+      return result;
+    }
+    return write(chunk, ...rest);
+  };
+  return stream;
+});
 `);
   const args = mode === 'start' ? ['start', f.receipt, '30'] : mode === 'expired'
     ? ['run', f.receipt, '--', process.execPath, '-e', 'require("fs").writeFileSync(process.argv[1], "probed")', f.marker]
@@ -327,6 +333,32 @@ stream.write = (chunk, ...rest) => {
     blocked.resume();
     runner.child.kill('SIGKILL');
     cleanup([f.leaf, f.direct]);
+    await runner.result;
+  }
+}, 15_000);
+
+test('native receipt writes cannot block the output-settlement deadline on a full pipe', async () => {
+  const f = fixture();
+  const preload = path.join(f.dir, 'full-pipe.ts');
+  fs.writeFileSync(preload, `
+import { write } from 'node:fs';
+write(1, Buffer.alloc(2 * 1024 * 1024, 32), () => {});
+await Bun.sleep(100);
+`);
+  const runner = background(['start', f.receipt, '30'], preload);
+  runner.child.stdout!.pause();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const code = await Promise.race([
+      new Promise<number | null>(resolve => runner.child.once('exit', resolve)),
+      new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 7000); }),
+    ]);
+    expect(fs.existsSync(f.receipt)).toBe(true);
+    expect(code).toBe(2);
+  } finally {
+    clearTimeout(timer);
+    runner.child.stdout!.resume();
+    runner.child.kill('SIGKILL');
     await runner.result;
   }
 }, 15_000);

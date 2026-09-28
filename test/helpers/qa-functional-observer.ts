@@ -71,9 +71,17 @@ export interface QAWriteObservation {
   limits: string[];
 }
 
-export async function observeQAWrites(root: string) {
+export async function observeQAWrites(root: string, options: { reportDirectory?: string } = {}) {
   if (process.platform !== 'linux') throw new Error('QA write observer unavailable: Linux inotify required');
   if (fs.realpathSync(root) !== root) throw new Error('Observer root must be canonical');
+  let reportDirectory: string | undefined;
+  if (options.reportDirectory !== undefined) {
+    const directory = ownedPath(root, options.reportDirectory);
+    if (!fs.lstatSync(directory).isDirectory()) throw new Error('Observer report path must be an owned directory');
+    reportDirectory = path.relative(root, directory);
+  }
+  const transientFile = (relative: string) => qaWriteAllowed(relative, 'qa-only')
+    || (reportDirectory !== undefined && relative.startsWith(reportDirectory + path.sep));
   const before = qaTreeSnapshot(root);
   const { dlopen, FFIType, ptr } = await import('bun:ffi');
   const libc = dlopen('libc.so.6', {
@@ -136,7 +144,7 @@ export async function observeQAWrites(root: string) {
     }
   };
   const add = (relative: string, fileHint = false) => {
-    if (fileHint && qaWriteAllowed(relative, 'qa-only')) {
+    if (fileHint && transientFile(relative)) {
       const parent = ownedPath(root, path.dirname(relative));
       const entry = fs.lstatSync(path.join(parent, path.basename(relative)), { throwIfNoEntry: false });
       if (entry?.isSymbolicLink() || (entry?.isFile() && entry.nlink > 2)) throw new Error('Fixture path traverses a link');
@@ -145,7 +153,7 @@ export async function observeQAWrites(root: string) {
     }
     const file = observedPath(relative);
     const entry = fs.lstatSync(file);
-    if (entry.isFile() && qaWriteAllowed(relative, 'qa-only')) return;
+    if (entry.isFile() && transientFile(relative)) return;
     const name = Buffer.from(file + '\0');
     const wd = libc.symbols.inotify_add_watch(fd, ptr(name), 0x00000fce);
     if (wd < 0) throw new Error(`Could not watch ${relative}`);
@@ -170,7 +178,7 @@ export async function observeQAWrites(root: string) {
       if (record.mask & (0x100 | 0x80)) {
         try {
           const directory = !!(record.mask & 0x40000000);
-          if (!directory && qaWriteAllowed(relative, 'qa-only')) add(relative, true);
+          if (!directory && transientFile(relative)) add(relative, true);
           else {
             const target = observedPath(relative);
             if (fs.existsSync(target)) add(path.relative(root, target), !directory);

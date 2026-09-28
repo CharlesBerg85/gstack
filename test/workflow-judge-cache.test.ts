@@ -227,9 +227,9 @@ test('the actual workflow callback preserves the pinned model and frontier rubri
   expect(actual.records[0]).toMatchObject({ passed: true, model: 'claude-sonnet-4-6', prompt: actual.prompts[0] });
 });
 
-test('the registered ship callback sends the frontier rubric and still rejects subthreshold clarity', async () => {
+test.each(['ship', 'review'])('the registered %s callback sends the frontier rubric and still rejects subthreshold clarity', async skill => {
   const source = fs.readFileSync(path.join(import.meta.dir, 'skill-llm-eval.test.ts'), 'utf8');
-  const registration = source.match(/testIfSelected\('ship\/SKILL\.md workflow',[\s\S]*?await runWorkflowJudge\(\{([\s\S]*?)\n    \}\);/);
+  const registration = source.match(new RegExp(`testIfSelected\\('${skill}/SKILL\\.md workflow',[\\s\\S]*?await runWorkflowJudge\\(\\{([\\s\\S]*?)\\n    \\}\\);`));
   expect(registration).not.toBeNull();
   const registered = new Function('QA_DISCOVERY_REFERENCES', `return ({${registration![1]}});`)(QA_DISCOVERY_REFERENCES);
   const f = fixture();

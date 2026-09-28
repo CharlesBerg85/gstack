@@ -57,6 +57,32 @@ function register(root: string, scope: ReturnType<typeof createBootstrapRetentio
   return registerBootstrapRetention(root, 'run-1', { env: scope.env, deadline: Date.now() + 10000 });
 }
 
+async function censusProcess(code: string) {
+  const child = spawn(process.execPath, ['-e', `
+    import * as fs from 'node:fs';
+    import { dlopen } from 'bun:ffi';
+    const libc = dlopen('libc.so.6', { prctl: { args: ['i32', 'u64', 'u64', 'u64', 'u64'], returns: 'i32' } });
+    function dumpable(value) { if (libc.symbols.prctl(4, value, 0, 0, 0) !== 0) throw new Error('prctl failed'); }
+    ${code}
+    console.log('ready');
+    setInterval(() => {}, 1000);
+  `], { cwd: os.tmpdir(), detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  children.push(child);
+  await processReady(child);
+  return child;
+}
+
+function processReady(child: ChildProcess) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => { cleanup(); reject(new Error('census process did not become ready')); }, 3000);
+    const ready = () => { cleanup(); resolve(); };
+    const exited = () => { cleanup(); reject(new Error('census process exited before readiness')); };
+    const cleanup = () => { clearTimeout(timer); child.stdout!.off('data', ready); child.off('exit', exited); };
+    child.stdout!.once('data', ready);
+    child.once('exit', exited);
+  });
+}
+
 test('paid scope creation preserves non-Linux behavior without inherited qualification authority', () => {
   const source = fs.readFileSync(path.join(import.meta.dir, '../scripts/test-paid-shards.ts'), 'utf8');
   const start = source.indexOf('  const bootstrapFile =');
@@ -81,6 +107,234 @@ test('paid scope creation preserves non-Linux behavior without inherited qualifi
 });
 
 describe.skipIf(process.platform !== 'linux')('bootstrap attempt retention boundaries', () => {
+  test('pre-existing same-uid nondumpable host process is not an attempt writer', async () => {
+    const child = await censusProcess('dumpable(0);');
+    expect(fs.statSync(`/proc/${child.pid}`).uid).toBe(process.getuid!());
+    expect(() => fs.readlinkSync(`/proc/${child.pid}/cwd`)).toThrow('EACCES');
+    const { temporary, scope } = fixture();
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    retention.cleanup();
+    expect(fs.existsSync(root)).toBe(false);
+    expect((await scope.cleanup(Date.now() + 1000)).complete).toBe(true);
+    const evidence = JSON.parse(fs.readFileSync(path.join(retention.artifact, 'evidence.json'), 'utf8'));
+    expect(evidence.uninspectable.some((native: any) => native.pid === child.pid)).toBe(true);
+    expect(() => process.kill(child.pid!, 0)).not.toThrow();
+  });
+
+  test.each(['new process', 'new denial', 'different lifetime'])('%s cannot inherit an unrelated process census exclusion', async scenario => {
+    const child = scenario === 'new process' ? undefined : await censusProcess(scenario === 'different lifetime'
+      ? 'dumpable(0);'
+      : "process.stdin.once('data', () => { dumpable(0); console.log('changed'); });");
+    const { temporary, scope } = fixture();
+    if (scenario === 'different lifetime') {
+      const data = JSON.parse(scope.env.GSTACK_BOOTSTRAP_RETENTION);
+      data.uninspectable.find((native: any) => native.pid === child!.pid).start = '0';
+      scope.env.GSTACK_BOOTSTRAP_RETENTION = JSON.stringify(data);
+    }
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    if (scenario === 'different lifetime') await expect(settled(retention, root)).rejects.toThrow('writer census unavailable');
+    else await settled(retention, root);
+    if (scenario === 'new process') await censusProcess('dumpable(0);');
+    if (scenario === 'new denial') {
+      const ready = processReady(child!);
+      child!.stdin!.write('change');
+      await ready;
+    }
+    const receipt = retention.retain();
+    expect(receipt.quiescent).toBe(false);
+    expect(receipt.complete).toBe(false);
+    expect(receipt.errors.join(' ')).toContain('writer census unavailable: EACCES');
+    expect(() => retention.cleanup()).toThrow('writer census unavailable');
+    expect(fs.existsSync(root)).toBe(true);
+  });
+
+  test.each(['cwd', 'writable descriptor', 'unreadable descriptor'])('escaped process with %s still prevents cleanup', async kind => {
+    const { temporary, scope } = fixture();
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    const child = await censusProcess(kind === 'cwd'
+      ? `process.chdir(${JSON.stringify(root)});`
+      : `const fd = fs.openSync(${JSON.stringify(path.join(root, 'bun.lock'))}, 'r+');`);
+    const original = fs.readFileSync;
+    const read = kind === 'unreadable descriptor' ? spyOn(fs, 'readFileSync').mockImplementation(((file: any, ...args: any[]) => {
+      if (String(file).startsWith(`/proc/${child.pid}/fdinfo/`)) throw Object.assign(new Error('denied owned descriptor'), { code: 'EACCES', syscall: 'read', path: file });
+      return (original as any)(file, ...args);
+    }) as any) : undefined;
+    try {
+      const receipt = retention.retain();
+      expect(receipt.quiescent).toBe(false);
+      expect(receipt.complete).toBe(false);
+      expect(receipt.errors.join(' ')).toContain(kind === 'cwd' ? 'fixture process remains live' : kind === 'writable descriptor' ? 'fixture writer remains live' : 'writer census unavailable');
+      expect(() => retention.cleanup()).toThrow();
+      expect(fs.existsSync(root)).toBe(true);
+      expect(() => process.kill(child.pid!, 0)).not.toThrow();
+    } finally { read?.mockRestore(); }
+  });
+
+  test('pre-existing excluded lifetime is still inspected when it becomes readable', async () => {
+    const child = await censusProcess("dumpable(0); process.stdin.once('data', file => { dumpable(1); fs.openSync(file.toString(), 'r+'); console.log('changed'); });");
+    const { temporary, scope } = fixture();
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    const ready = processReady(child);
+    child.stdin!.write(path.join(root, 'bun.lock'));
+    await ready;
+    const receipt = retention.retain();
+    expect(receipt.quiescent).toBe(false);
+    expect(receipt.errors).toContain('fixture writer remains live');
+    expect(fs.existsSync(root)).toBe(true);
+  });
+
+  test('scope creation cannot exclude writers of existing attempt state', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bs-retain-'));
+    roots.push(root);
+    const temporary = path.join(root, 'state');
+    fs.mkdirSync(temporary);
+    fs.mkdirSync(path.join(temporary, 'skill-e2e-bs-existing'));
+    expect(() => createBootstrapRetentionScope(temporary, path.join(root, 'durable'), 'run-1')).toThrow('empty temporary state');
+  });
+
+  test('scope creation makes temporary state private and later permission changes revoke it', async () => {
+    const { temporary, scope } = fixture();
+    expect(fs.statSync(temporary).uid).toBe(process.getuid!());
+    expect(fs.statSync(temporary).mode & 0o777).toBe(0o700);
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    fs.chmodSync(temporary, 0o755);
+    expect(() => register(root, scope)).toThrow('not privately owned');
+    const receipt = retention.retain();
+    expect(receipt.quiescent).toBe(false);
+    expect(receipt.complete).toBe(false);
+    expect(receipt.errors).toContain('temporary state is not privately owned');
+    expect(fs.existsSync(root)).toBe(true);
+    await expect(scope.cleanup(Date.now() + 1000)).rejects.toThrow('not privately owned');
+  });
+
+  test('scope creation rejects a foreign-owned temporary root before building exclusions', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bs-retain-'));
+    roots.push(root);
+    const temporary = path.join(root, 'state');
+    fs.mkdirSync(temporary);
+    const original = fs.lstatSync;
+    const stat = spyOn(fs, 'lstatSync').mockImplementation(((file: any, ...args: any[]) => {
+      const value = (original as any)(file, ...args);
+      if (file === temporary) value.uid = process.getuid!() + 1;
+      return value;
+    }) as any);
+    try {
+      expect(() => createBootstrapRetentionScope(temporary, path.join(root, 'durable'), 'run-1')).toThrow('not privately owned');
+      expect(fs.readdirSync(temporary)).toEqual([]);
+    } finally { stat.mockRestore(); }
+  });
+
+  test('reusing a scope cannot baseline-exempt an unreadable process from its prior attempt', async () => {
+    const { temporary, scope, root: outer } = fixture();
+    const first = project(temporary);
+    const retained = register(first, scope);
+    installed(first);
+    await settled(retained, first);
+    await censusProcess(`process.chdir(${JSON.stringify(first)}); dumpable(0);`);
+    expect(() => createBootstrapRetentionScope(temporary, path.join(outer, 'another-durable'), 'run-2')).toThrow('empty temporary state');
+    const second = project(temporary);
+    const retry = register(second, scope);
+    installed(second);
+    await expect(settled(retry, second)).rejects.toThrow('writer census unavailable');
+    expect(retry.retain().quiescent).toBe(false);
+    expect(() => retry.cleanup()).toThrow('writer census unavailable');
+    expect(fs.existsSync(first)).toBe(true);
+    expect(fs.existsSync(second)).toBe(true);
+  });
+
+  test('unreadable final census cannot retain an earlier quiescence claim', async () => {
+    const { temporary, scope } = fixture();
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    const original = fs.readdirSync;
+    let censuses = 0;
+    const read = spyOn(fs, 'readdirSync').mockImplementation(((file: any, ...args: any[]) => {
+      if (file === '/proc' && ++censuses === 2) throw Object.assign(new Error('final census denied'), { code: 'EACCES' });
+      return (original as any)(file, ...args);
+    }) as any);
+    try {
+      const receipt = retention.retain();
+      expect(censuses).toBe(2);
+      expect(receipt.quiescent).toBe(false);
+      expect(receipt.complete).toBe(false);
+      expect(receipt.errors).toContain('final census denied');
+      expect(fs.existsSync(root)).toBe(true);
+    } finally { read.mockRestore(); }
+  });
+
+  test.each(['settled', 'still exiting'])('permission denial during kernel exit requires observed settlement: %s', async outcome => {
+    const { temporary, scope } = fixture();
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    const child = await censusProcess('');
+    const originalRead = fs.readFileSync;
+    const originalLink = fs.readlinkSync;
+    let denied = false;
+    let observations = 0;
+    const read = spyOn(fs, 'readFileSync').mockImplementation(((file: any, ...args: any[]) => {
+      const content = (originalRead as any)(file, ...args);
+      if (file !== `/proc/${child.pid}/stat` || !denied) return content;
+      const boundary = content.lastIndexOf(') ') + 2;
+      const fields = content.slice(boundary).split(' ');
+      fields[6] = String(Number(fields[6]) | 4);
+      if (++observations > 1 && outcome === 'settled') fields[0] = 'Z';
+      return content.slice(0, boundary) + fields.join(' ');
+    }) as any);
+    const link = spyOn(fs, 'readlinkSync').mockImplementation(((file: any, ...args: any[]) => {
+      if (file === `/proc/${child.pid}/cwd`) {
+        denied = true;
+        throw Object.assign(new Error('exit transition denied'), { code: 'EACCES', syscall: 'readlink', path: file });
+      }
+      return (originalLink as any)(file, ...args);
+    }) as any);
+    try {
+      const receipt = retention.retain();
+      expect(observations).toBeGreaterThan(1);
+      expect(receipt.quiescent).toBe(outcome === 'settled');
+      expect(receipt.complete).toBe(outcome === 'settled');
+      if (outcome !== 'settled') expect(receipt.errors.join(' ')).toContain('writer census unavailable');
+    } finally { read.mockRestore(); link.mockRestore(); }
+  });
+
+  test('unreadable owned installation is never acknowledged as complete', async () => {
+    const { temporary, scope } = fixture();
+    const root = project(temporary);
+    const retention = register(root, scope);
+    installed(root);
+    await settled(retention, root);
+    const original = fs.openSync;
+    const open = spyOn(fs, 'openSync').mockImplementation(((file: any, ...args: any[]) => {
+      if (file === path.join(root, 'bun.lock')) throw Object.assign(new Error('owned lock denied'), { code: 'EACCES' });
+      return (original as any)(file, ...args);
+    }) as any);
+    try {
+      const receipt = retention.retain();
+      expect(receipt.complete).toBe(false);
+      expect(receipt.errors).toContain('owned lock denied');
+      expect(() => retention.cleanup()).toThrow('owned lock denied');
+      expect(fs.existsSync(root)).toBe(true);
+      expect((await scope.cleanup(Date.now() + 1000)).removable).toBe(false);
+    } finally { open.mockRestore(); }
+  });
+
   test.each(['success', 'assertion failure'])('%s retains exact installation before fixture and shard cleanup', async outcome => {
     const { temporary, scope } = fixture();
     const root = project(temporary);

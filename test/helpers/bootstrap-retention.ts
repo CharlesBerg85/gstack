@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 type Identity = { path: string; dev: number; ino: number };
 type Native = { pid: number; start: string; group: number; settled: boolean; executable?: { path: string; sha256: string } };
-type Scope = { runId: string; temporary: Identity; durable: Identity; registry: Identity };
+type Scope = { runId: string; temporary: Identity; durable: Identity; registry: Identity; uninspectable: Native[] };
 type Registration = { attempt: string; runId: string; deadline: number; root: Identity; artifact: Identity; owner: Native; native?: Native; initial: object };
 type Entry = { path: string; kind: string; bytes?: number; sha256?: string; target?: string; resolved?: string };
 export type BootstrapReceipt = { attempt: string; complete: boolean; acknowledged: boolean; quiescent: boolean; errors: string[]; artifact: string };
@@ -23,6 +23,12 @@ function identity(file: string): Identity {
 
 function verify(expected: Identity) {
   if (JSON.stringify(identity(expected.path)) !== JSON.stringify(expected)) throw new Error('directory identity changed');
+}
+
+function verifyPrivateTemporary(temporary: Identity) {
+  verify(temporary);
+  const stat = fs.lstatSync(temporary.path);
+  if (stat.uid !== process.getuid!() || (stat.mode & 0o077) !== 0) throw new Error('temporary state is not privately owned');
 }
 
 function durableWrite(file: string, bytes: Buffer | string) {
@@ -83,7 +89,22 @@ function alive(native: Native): boolean {
   catch (error: any) { if (error.code === 'ENOENT' || error.code === 'ESRCH') return false; throw error; }
 }
 
-function quiet(registration: Registration) {
+function exitedDuringCensus(pid: string, start: string, deadline: number) {
+  const until = Math.min(deadline, Date.now() + 20);
+  const pause = new Int32Array(new SharedArrayBuffer(4));
+  while (true) {
+    let stat: string[];
+    try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ').slice(1).join(') ').split(' '); }
+    catch (error: any) { if (error.code === 'ENOENT' || error.code === 'ESRCH') return true; throw error; }
+    if (stat[19] !== start) return false;
+    if (stat[0] === 'Z' || stat[0] === 'X') return true;
+    if (!(Number(stat[6]) & 4) || Date.now() >= until) return false;
+    Atomics.wait(pause, 0, 0, 1);
+  }
+}
+
+function quiet(scope: Scope, registration: Registration, deadline: number) {
+  verifyPrivateTemporary(scope.temporary);
   if (!registration.native) throw new Error('native lifetime not registered');
   for (const pid of fs.readdirSync('/proc').filter(name => /^\d+$/.test(name))) {
     let stat: string[];
@@ -104,7 +125,11 @@ function quiet(registration: Registration) {
       }
     } catch (error: any) {
       if (error.code === 'ENOENT' || error.code === 'ESRCH') continue;
-      if (error.code === 'EACCES' || error.code === 'EPERM') throw new Error('writer census unavailable');
+      if (error.code === 'EACCES' || error.code === 'EPERM') {
+        if (exitedDuringCensus(pid, stat[19], deadline)) continue;
+        if (scope.uninspectable.some(native => native.pid === Number(pid) && native.start === stat[19] && alive(native))) continue;
+        throw new Error(`writer census unavailable: ${error.code} ${error.syscall} ${error.path}`);
+      }
       throw error;
     }
   }
@@ -113,13 +138,31 @@ function quiet(registration: Registration) {
 function loadScope(env: NodeJS.ProcessEnv): Scope {
   if (!env[scopeVariable]) throw new Error('bootstrap retention requires a runner-owned scope');
   const scope: Scope = JSON.parse(env[scopeVariable]!);
-  verify(scope.temporary); verify(scope.durable); verify(scope.registry);
+  verifyPrivateTemporary(scope.temporary); verify(scope.durable); verify(scope.registry);
   if (!inside(scope.temporary.path, scope.registry.path) || inside(scope.temporary.path, scope.durable.path)) throw new Error('invalid retention scope');
   return scope;
 }
 
 export function createBootstrapRetentionScope(temporaryRoot: string, durableRoot: string, runId: string) {
   const temporary = identity(temporaryRoot);
+  if (fs.lstatSync(temporary.path).uid !== process.getuid!()) throw new Error('temporary state is not privately owned');
+  fs.chmodSync(temporary.path, 0o700);
+  verifyPrivateTemporary(temporary);
+  if (fs.readdirSync(temporary.path).length) throw new Error('retention scope requires empty temporary state');
+  const uninspectable: Native[] = [];
+  for (const pid of fs.readdirSync('/proc').filter(name => /^\d+$/.test(name))) {
+    let native: Native | undefined;
+    try {
+      if (fs.statSync(`/proc/${pid}`).uid !== process.getuid!()) continue;
+      native = nativeIdentity(Number(pid));
+      fs.readlinkSync(`/proc/${pid}/cwd`);
+      fs.readdirSync(`/proc/${pid}/fd`);
+    } catch (error: any) {
+      if (error.code === 'ENOENT' || error.code === 'ESRCH') continue;
+      if (native && (error.code === 'EACCES' || error.code === 'EPERM') && alive(native)) uninspectable.push(native);
+      else throw error;
+    }
+  }
   if (path.resolve(durableRoot) === temporary.path || inside(temporary.path, path.resolve(durableRoot))) throw new Error('artifact root must survive temporary cleanup');
   fs.mkdirSync(durableRoot, { recursive: true, mode: 0o700 });
   const durable = fs.mkdtempSync(path.join(fs.realpathSync(durableRoot), 'bootstrap-'));
@@ -127,7 +170,7 @@ export function createBootstrapRetentionScope(temporaryRoot: string, durableRoot
   const registry = fs.mkdtempSync(path.join(fs.realpathSync(temporaryRoot), '.bootstrap-'));
   fs.chmodSync(registry, 0o700);
   if (inside(temporary.path, fs.realpathSync(durableRoot))) throw new Error('artifact root resolves into temporary state');
-  const scope: Scope = { runId, temporary, durable: identity(durable), registry: identity(registry) };
+  const scope: Scope = { runId, temporary, durable: identity(durable), registry: identity(registry), uninspectable };
   return { env: { [scopeVariable]: JSON.stringify(scope) }, cleanup: (deadline: number) => cleanupBootstrapRetentions(scope, deadline) };
 }
 
@@ -171,7 +214,7 @@ export function registerBootstrapRetention(root: string, runId: string, options:
       async onSettled(input: { deadline: number; exited: boolean }) {
         if (!input.exited) throw new Error('native exit was not observed');
         while (true) {
-          try { quiet(registration); break; }
+          try { quiet(scope, registration, input.deadline); break; }
           catch (error) {
             if (Date.now() >= input.deadline) throw error;
             await new Promise(resolve => setTimeout(resolve, Math.min(20, input.deadline - Date.now())));
@@ -203,7 +246,7 @@ function retain(scope: Scope, registration: Registration, fallback: boolean, own
     verify(registration.root);
     if (fallback && alive(registration.owner)) throw new Error('attempt owner remains live');
     const deadline = Math.min(registration.deadline, ownerDeadline);
-    quiet(registration);
+    quiet(scope, registration, deadline);
     receipt.quiescent = true;
     if (!Number.isFinite(deadline) || Date.now() >= deadline) throw new Error('retention deadline expired');
     if (!fallback && !registration.native?.settled) throw new Error('native settlement not acknowledged');
@@ -259,12 +302,15 @@ function retain(scope: Scope, registration: Registration, fallback: boolean, own
       }
       if (Date.now() > deadline) throw new Error('verification limit exceeded');
     }
-    verify(registration.root); quiet(registration);
+    verify(registration.root);
+    receipt.quiescent = false;
+    quiet(scope, registration, deadline);
+    receipt.quiescent = true;
     receipt.complete = receipt.errors.length === 0;
   } catch (error) { receipt.errors.push(error instanceof Error ? error.message : 'capture failed'); }
   try {
     verify(scope.durable); verify(registration.artifact);
-    const evidence = JSON.stringify({ registration, fallback, receipt, entries });
+    const evidence = JSON.stringify({ registration, fallback, receipt, entries, uninspectable: scope.uninspectable });
     durableWrite(path.join(artifact, fallback ? 'fallback-evidence.json' : 'callback-evidence.json'), evidence);
     durableWrite(path.join(artifact, 'evidence.json'), evidence);
     if (digest(fs.readFileSync(path.join(artifact, 'evidence.json'))) !== digest(evidence)) throw new Error('evidence readback failed');
@@ -276,6 +322,7 @@ function retain(scope: Scope, registration: Registration, fallback: boolean, own
 }
 
 async function cleanupBootstrapRetentions(scope: Scope, deadline: number) {
+  verifyPrivateTemporary(scope.temporary);
   verify(scope.registry);
   const receipts: BootstrapReceipt[] = [];
   for (const name of fs.readdirSync(scope.registry.path).sort()) {
@@ -304,7 +351,7 @@ async function cleanupBootstrapRetentions(scope: Scope, deadline: number) {
           process.kill(-registration.native.pid, 'SIGKILL');
         }
         while (Date.now() < deadline) {
-          try { quiet(registration); break; }
+          try { quiet(scope, registration, deadline); break; }
           catch { await new Promise(resolve => setTimeout(resolve, Math.min(20, deadline - Date.now()))); }
         }
       } catch {}

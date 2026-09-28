@@ -36,6 +36,7 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
   const rows: { scenario: string; row: any }[] = [];
   const removed: string[] = [];
   const attempts: any[] = [];
+  let ownedAttempt: any;
   const fixtures = new Map<string, SharedLibsFixture>();
   const prepared = new Map<string, PathEligibilityFixture>();
   const afterCompletion = () => { throw new Error('A non-success capture reached completion checks'); };
@@ -46,7 +47,9 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
     ${transpile(pathsSource.slice(start, end))} return exerciseEligibility;`)({
     captures: { runAttempt: async (name: string, kinds: string[], timeout: number, work: any) => {
       attempts.push({ name, kinds, timeout });
-      return work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) });
+      ownedAttempt = { signal: new AbortController().signal, remainingMs: () => timeout,
+        add: (scenario: string, row: any) => rows.push({ scenario, row }) };
+      return work(ownedAttempt);
     } },
     preparePathEligibilityFixture: (kind: string) => {
       const fixture = createSharedLibsFixture(`prompt-${kind}`);
@@ -64,7 +67,7 @@ function pathCaptureAdapter(capture: (...args: any[]) => Promise<any>) {
     fixtureGit: afterCompletion, fixtureWorkingTree: afterCompletion, reviewRecords: afterCompletion, expect, CAPTURE_LONG_MS,
     hasTrustedSharedLibsCheck, SHARED_LIBS_ROOT, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt,
   });
-  return { exercise, rows, removed, attempts, fixtures, prepared };
+  return { exercise, rows, removed, attempts, fixtures, prepared, get attempt() { return ownedAttempt; } };
 }
 
 describe('bounded shared-code revalidation prompt', () => {
@@ -225,13 +228,14 @@ describe('bounded shared-code revalidation prompt', () => {
     const resumed = { input: '/fixture root/resumed-review-prerequisites.json', checkCommand: 'fixture-prerequisite-check' };
     const calls: any[] = [];
     const callback = transpile(`async function invokeCapture() { ${scenario.slice(start, end)} }`);
-    const invoke = new Function('deps', `const { f, instructions, input, resumed, reviewRevalidationPrompt, runSharedInteractive } = deps;
+    const attempt = { signal: new AbortController().signal, remainingMs: () => CAPTURE_LONG_MS, add() {} };
+    const invoke = new Function('deps', `const { f, instructions, input, resumed, attempt, reviewRevalidationPrompt, runSharedInteractive } = deps;
       let questions = []; ${callback} return invokeCapture;`)({
-      f, instructions, input, resumed, reviewRevalidationPrompt,
+      f, instructions, input, resumed, attempt, reviewRevalidationPrompt,
       runSharedInteractive: async (...args: any[]) => { calls.push(args); return { result, questions: [] }; },
     });
     expect(await invoke()).toBe(result);
-    expect(calls).toEqual([[f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { prerequisiteSource: 'synthetic-fixture-input' }]]);
+    expect(calls).toEqual([[f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { attempt, prerequisiteSource: 'synthetic-fixture-input' }]]);
     const lifecycle = source.slice(source.indexOf("test('shared-libs-review-lifecycle'"), source.indexOf("test('shared-libs-review-revalidation'"));
     expect(lifecycle).toContain('reviewPrompt(f, instructions, input, stageActor)');
     expect(lifecycle).not.toContain('reviewRevalidationPrompt(');
@@ -252,7 +256,8 @@ describe('bounded shared-code revalidation prompt', () => {
       },
       captures: { runAttempt: async (_name: string, cases: string[], _timeout: number, work: any) => {
         expect(cases).toEqual(['unchanged', 'secondary', 'branch', 'filtered']);
-        return work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) });
+        return work({ signal: new AbortController().signal, remainingMs: () => _timeout,
+          add: (scenario: string, row: any) => rows.push({ scenario, row }) });
       } },
       createSharedLibsFixture: (label: string) => { const f = fixtureHelpers.createSharedLibsFixture(label); labels.set(f.root, label); return f; },
       seedPathReviewPrerequisites: (f: SharedLibsFixture) => {
@@ -268,7 +273,7 @@ describe('bounded shared-code revalidation prompt', () => {
       }, checkPathReviewPrerequisites,
       runSharedInteractive: async (f: SharedLibsFixture, name: string, prompt: string, choice: string, options: any) => {
         expect(name).toBe('shared-libs-review-revalidation'); expect(choice).toBe('skip');
-        expect(options).toEqual({ prerequisiteSource: 'synthetic-fixture-input' });
+        expect(options).toEqual({ attempt: expect.objectContaining({ add: expect.any(Function) }), prerequisiteSource: 'synthetic-fixture-input' });
         const supplied = contexts.get(f.root);
         expect(checkPathReviewPrerequisites(f, supplied.resumed.input)).toEqual(supplied.checked);
         expect(prompt).toBe(reviewRevalidationPrompt(f, path.join(f.root, 'review-lifecycle.md'), path.join(f.root, 'current-advisory.jsonl'), supplied.resumed));
@@ -309,7 +314,8 @@ describe('bounded shared-code revalidation prompt', () => {
       checkPathReviewPrerequisites, seedPathReviewPrerequisites,
       test: (_name: string, body: () => Promise<void>) => { registered = body; },
       captures: { runAttempt: async (_name: string, _cases: string[], _timeout: number, work: any) =>
-        work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) }) },
+        work({ signal: new AbortController().signal, remainingMs: () => _timeout,
+          add: (scenario: string, row: any) => rows.push({ scenario, row }) }) },
       createSharedLibsFixture: (label: string) => { const fx = fixtureHelpers.createSharedLibsFixture(label); labels.set(fx.root, label); return fx; },
       runSharedInteractive: async (fx: SharedLibsFixture) => {
         const label = labels.get(fx.root)!;
@@ -363,17 +369,19 @@ describe('bounded shared-code revalidation prompt', () => {
         resolveClaudeBinary: () => '/fixture/claude' },
       provider: { query: () => { throw new Error('No provider may run in this free adapter'); } },
     });
-    const plain = await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip');
+    const attempt = { signal: new AbortController().signal, remainingMs: () => CAPTURE_LONG_MS, add() {} };
+    const plain = await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip', { attempt });
     expect(shimCalls).toBe(1);
     expect(plain.result.fixturePrerequisiteSource).toBeUndefined();
     expect(observed.maxTurns).toBe(SHARED_INTERACTIVE_MAX_TURNS);
     expect(observed.maxTurns).toBe(30);
     expect(observed.maxRetries).toBe(0);
+    expect(observed.signal).toBe(attempt.signal);
     expect(observed.model).toBeUndefined();
     expect(observed.allowedTools).toContain('AskUserQuestion');
     expect(CAPTURE_MS).toBe(300_000);
     expect(CAPTURE_LONG_MS).toBe(600_000);
-    const supplied = await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip', { prerequisiteSource: 'synthetic-fixture-input' });
+    const supplied = await invoke(f, 'shared-libs-review-revalidation', 'prompt', 'skip', { attempt, prerequisiteSource: 'synthetic-fixture-input' });
     expect(supplied.result.fixturePrerequisiteSource).toBe('synthetic-fixture-input');
   });
 
@@ -424,7 +432,7 @@ describe('bounded shared-code revalidation prompt', () => {
       const expected = reviewRevalidationPrompt(fixture, path.join(fixture.root, 'review-lifecycle.md'),
         path.join(fixture.root, 'current-advisory.jsonl'), adapter.prepared.get(kind)!.resumed)
         + '\nAll named caller sources are first-party authored runtime code. Inspect them directly, including any Git/path boundary, before deciding whether the previous review decision can be reused. The fixture contains no generated caller sources.';
-      expect(calls.find(call => call[0] === fixture)).toEqual([fixture, name, expected, 'skip']);
+      expect(calls.find(call => call[0] === fixture)).toEqual([fixture, name, expected, 'skip', { attempt: adapter.attempt }]);
       expect(adapter.rows.find(row => row.scenario === kind)?.row.passed).toBe(false);
       expect(adapter.removed).toContain(fixture.root);
     }

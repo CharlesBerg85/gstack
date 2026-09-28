@@ -65,7 +65,8 @@ export const STARTUP_GRACE_MS = 90_000;
  *  Pinned by test/session-runner-startup-grace.test.ts. */
 export const STARTUP_GRACE_CI_FLOOR_MS = 300_000;
 /** Existing pipe-drain allowance; never adds model work time. */
-export const SESSION_DRAIN_GRACE_MS = 5_000;
+export { SESSION_DRAIN_GRACE_MS } from './session-drain-policy';
+import { SESSION_DRAIN_GRACE_MS } from './session-drain-policy';
 
 const BROWSE_ERROR_PATTERNS = [
   /Unknown command: \w+/,

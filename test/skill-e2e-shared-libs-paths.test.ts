@@ -86,7 +86,7 @@ async function exerciseEligibility(testId: string, kinds: PathEligibilityCase[])
         fs.writeFileSync(supplied, JSON.stringify({ ...prepared.current, specialist: 'maintainability' }) + '\n');
         const prompt = reviewRevalidationPrompt(f, instructions, supplied, prepared.resumed)
           + '\nAll named caller sources are first-party authored runtime code. Inspect them directly, including any Git/path boundary, before deciding whether the previous review decision can be reused. The fixture contains no generated caller sources.';
-        const capture = await runSharedInteractive(f, testId, prompt, 'skip');
+        const capture = await runSharedInteractive(f, testId, prompt, 'skip', { attempt });
         result = capture.result;
         expect(result.exitReason, `${kind}: ${result.output}`).toBe('success');
         expect(result.toolCalls.length).toBeGreaterThan(0);

@@ -109,7 +109,7 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
       const instructions = standaloneInstructions(f);
       const before = snapshotFixture(f.root);
       await recordCapture(attempt, 'audit', 'shared-libs-read-only', () => runSharedCapture(f, 'shared-libs-read-only',
-        `Run /deslop-shared-libs for this repository using ${instructions}. Include relevant uncommitted source in your audit. Return the skill's report in conversation.`), result => {
+        `Run /deslop-shared-libs for this repository using ${instructions}. Include relevant uncommitted source in your audit. Return the skill's report in conversation.`, attempt), result => {
         assertReadOnly(f, before, result);
         expect(result.output).toMatch(/uncommitted|overlay|raw/i);
         expect(result.output).toContain(f.tip.slice(0, 7));
@@ -132,7 +132,7 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
       const instructions = standaloneInstructions(f);
       const before = snapshotFixture(f.root);
       await recordCapture(attempt, 'audit', 'shared-libs-unsupported-git', () => runSharedCapture(f, 'shared-libs-unsupported-git',
-        `Run /deslop-shared-libs for this repository using ${instructions}. Return the review report.`), result => {
+        `Run /deslop-shared-libs for this repository using ${instructions}. Return the review report.`, attempt), result => {
         assertReadOnly(f, before, result);
         expect(result.output).toMatch(/unavailable|unsupported|cannot|could not|coverage|limited/i);
         const calls = readRequests(f).filter(row => row.tool === 'git' && !isInternalClaudeGitRequest(row, toolCommandTrace(result)));
@@ -158,7 +158,7 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
         const stageActor = createLifecyclePrerequisiteActor(f);
         let questions: any[] = [];
         await recordCapture(attempt, choose, 'shared-libs-review-lifecycle', async () => {
-          const capture = await runSharedInteractive(f, 'shared-libs-review-lifecycle', reviewPrompt(f, instructions, input, stageActor), choose, { stageActor });
+          const capture = await runSharedInteractive(f, 'shared-libs-review-lifecycle', reviewPrompt(f, instructions, input, stageActor), choose, { stageActor, attempt });
           questions = capture.questions;
           return capture.result;
         }, result => {
@@ -231,7 +231,7 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
         expect(prerequisites.settled).toBe(true);
         let questions: any[] = [];
         await recordCapture(attempt, change, 'shared-libs-review-revalidation', async () => {
-          const capture = await runSharedInteractive(f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { prerequisiteSource: 'synthetic-fixture-input' });
+          const capture = await runSharedInteractive(f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { attempt, prerequisiteSource: 'synthetic-fixture-input' });
           questions = capture.questions;
           return capture.result;
         }, result => {

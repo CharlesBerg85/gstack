@@ -10,6 +10,7 @@ import type { EvalTestEntry } from './eval-store';
 import { CAPTURE_MS } from './eval-budgets';
 import { createSharedInteractiveToolHandler, SHARED_INTERACTIVE_MAX_TURNS } from './shared-libs-eval-fixture';
 import { runGeneration } from '../../scripts/gen-skill-docs';
+import { gitArgvIn } from './scratch-repo';
 
 export const SHIP_SKIP_CASE = 'ship-skipped-queued-finding';
 export const SHIP_SKIP_QUESTION = { questions: [{ header: 'Invoice auth', multiSelect: false,
@@ -65,7 +66,12 @@ export function createShipSkipFixture(workflow: string, root = fs.mkdtempSync(pa
   const env = { HOME: home, GSTACK_HOME: state, GSTACK_STATE_ROOT: state, CLAUDE_PLUGIN_DATA: '',
     CLAUDE_CONFIG_DIR: path.join(root, 'claude-config'), GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_SYSTEM: '/dev/null',
     GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_COUNT: '0', PATH: `${path.dirname(process.execPath)}:${process.env.PATH ?? ''}` };
-  const git = (...args: string[]) => command(repo, process.env, 'git', ['-c', 'commit.gpgsign=false', ...args], deadline);
+  const git = (...args: string[]) => {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw new Error('Ship Skip case deadline exhausted during setup');
+    const result = gitArgvIn(repo, args, Math.min(10_000, remaining), env);
+    if (result.status !== 0 || result.error) throw new Error(result.error?.message ?? result.stderr.toString());
+  };
   git('init', '-q', '-b', 'main');
   const product = path.join(repo, 'invoice.ts');
   fs.writeFileSync(product, 'export const canReadInvoice = (owner: string, viewer: string) => owner === viewer;\n', { mode: 0o644 });

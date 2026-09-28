@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { extractSkillSections, sliceBetween } from './skill-fixture';
 import type { EvalCollector, EvalTestEntry } from './eval-store';
 import type { HookCallback } from '@anthropic-ai/claude-agent-sdk';
+import { SESSION_DRAIN_GRACE_MS } from './session-drain-policy';
 
 export const SHARED_LIBS_ROOT = path.resolve(import.meta.dir, '../..');
 export const SHARED_INTERACTIVE_MAX_TURNS = 30;
@@ -15,6 +16,8 @@ const nodeBin = Bun.which('node') || '/usr/bin/node';
 export const shellQuote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 
 export interface SharedCaptureAttempt {
+  readonly signal: AbortSignal;
+  remainingMs(): number;
   add(scenario: string, entry: EvalTestEntry): void;
 }
 
@@ -27,7 +30,9 @@ interface SharedAttemptState {
   error?: string;
   contractErrors: string[];
   deadline: number;
-  stopped?: 'deadline' | 'superseded';
+  controller: AbortController;
+  timer?: ReturnType<typeof setTimeout>;
+  stopped?: 'deadline' | 'superseded' | 'finalized';
 }
 
 /** Keep scenario groups within their test invocation; Bun retries are separate attempts. */
@@ -36,7 +41,13 @@ export class SharedCaptureAccumulator {
   private finalized = false;
 
   private expire(state: SharedAttemptState): void {
-    if (!state.closed && !state.stopped && performance.now() >= state.deadline) state.stopped = 'deadline';
+    if (!state.closed && !state.stopped && performance.now() >= state.deadline) this.stop(state, 'deadline');
+  }
+
+  private stop(state: SharedAttemptState, reason: NonNullable<SharedAttemptState['stopped']>): void {
+    state.stopped ??= reason;
+    clearTimeout(state.timer);
+    state.controller.abort(new Error(`Shared capture attempt ${state.name} stopped: ${state.stopped}`));
   }
 
   async runAttempt<T>(name: string, expected: readonly string[], timeoutMs: number,
@@ -48,12 +59,14 @@ export class SharedCaptureAccumulator {
     for (const previous of this.attempts) {
       if (previous.name === name && !previous.closed) {
         this.expire(previous);
-        previous.stopped ??= 'superseded';
+        this.stop(previous, 'superseded');
       }
     }
     const state: SharedAttemptState = { name, expected: [...expected], rows: [], closed: false,
-      rejected: false, contractErrors: [], deadline: performance.now() + timeoutMs };
+      rejected: false, contractErrors: [], controller: new AbortController(),
+      deadline: performance.now() + timeoutMs - Math.min(SESSION_DRAIN_GRACE_MS, timeoutMs / 10) };
     this.attempts.push(state);
+    state.timer = setTimeout(() => this.stop(state, 'deadline'), Math.max(0, state.deadline - performance.now()));
     const checkActive = () => {
       this.expire(state);
       if (state.closed || this.finalized || state.stopped) {
@@ -63,7 +76,9 @@ export class SharedCaptureAccumulator {
     let result: T;
     let thrown: unknown;
     try {
-      result = await work({ add: (scenario, entry) => {
+      result = await work({ signal: state.controller.signal,
+        remainingMs: () => { checkActive(); return Math.max(0, state.deadline - performance.now()); },
+        add: (scenario, entry) => {
         checkActive();
         const duplicate = state.rows.some(row => row.scenario === scenario);
         state.rows.push({ scenario, entry });
@@ -88,6 +103,8 @@ export class SharedCaptureAccumulator {
     } finally {
       this.expire(state);
       state.closed = true;
+      clearTimeout(state.timer);
+      state.controller.abort(new Error(`Shared capture attempt ${name} closed`));
     }
     // Bun owns the timeout verdict and detaches that invocation's promise.
     // A late rejection becomes an unrelated error even with a catch attached.
@@ -107,6 +124,10 @@ export class SharedCaptureAccumulator {
   async finalize(collector: EvalCollector | null): Promise<void> {
     if (this.finalized) return;
     this.finalized = true;
+    for (const state of this.attempts) {
+      this.expire(state);
+      if (!state.closed) this.stop(state, 'finalized');
+    }
     if (!collector) return;
     for (const state of this.attempts) {
       this.expire(state);
@@ -127,7 +148,7 @@ export class SharedCaptureAccumulator {
         output: rows.map((row, index) => `Scenario ${index + 1} (${row.passed ? 'passed' : 'failed'}):\n${row.output || ''}`).join('\n\n'),
         error: [...new Set(errors)].join('\n') || undefined,
         exit_reason: passed ? 'success' : state.stopped === 'deadline' ? 'timeout'
-          : state.stopped === 'superseded' || !state.closed ? 'attempt_incomplete' : state.contractErrors.length ? 'capture_contract'
+          : state.stopped || !state.closed ? 'attempt_incomplete' : state.contractErrors.length ? 'capture_contract'
           : failed ? (failed.exit_reason === 'success' ? 'assertion_failed' : failed.exit_reason || 'capture_threw')
           : state.rejected ? 'fixture_threw' : 'attempt_incomplete',
       });
@@ -491,19 +512,26 @@ const r=cp.spawnSync(${JSON.stringify(gitBin)},a,{stdio:'inherit',env:process.en
 `, { mode: 0o755 });
   const sourceAt = (revision: string) => {
     const files: Record<string, string> = {}, blobs: Record<string, string> = {};
-    for (const entry of fixtureGit(f, 'ls-tree', '-r', revision).split('\n')) {
-      const match = entry.match(/^\d+ blob ([a-f0-9]+)\t(.+)$/);
-      if (!match) continue;
-      const [, blob, file] = match;
-      // Contents API returns the exact committed blob, including whitespace and
-      // final-newline state. Its sha field identifies that blob, not its commit.
-      const bytes = execFileSync(gitBin, ['-c', 'core.fsmonitor=false', '-c', 'log.showSignature=false', 'cat-file', 'blob', blob], {
-        cwd: f.repo, timeout: 10_000, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f) },
-      });
+    const entries = fixtureGit(f, 'ls-tree', '-r', revision).split('\n')
+      .flatMap(entry => { const match = entry.match(/^\d+ blob ([a-f0-9]+)\t(.+)$/); return match ? [[match[1], match[2]]] : []; });
+    const batch = entries.length ? execFileSync(gitBin, ['-c', 'core.fsmonitor=false', '-c', 'log.showSignature=false', 'cat-file', '--batch'], {
+      cwd: f.repo, timeout: 10_000, input: entries.map(([blob]) => blob).join('\n') + '\n',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: fixtureGitConfig(f) },
+    }) : Buffer.alloc(0);
+    let offset = 0;
+    for (const [blob, file] of entries) {
+      const headerEnd = batch.indexOf(10, offset);
+      const header = batch.subarray(offset, headerEnd).toString().split(' ');
+      const size = Number(header[2]);
+      if (headerEnd < offset || header[0] !== blob || header[1] !== 'blob' || !Number.isSafeInteger(size)
+        || size < 0 || batch[headerEnd + 1 + size] !== 10) throw new Error('Invalid fixture blob batch');
+      const bytes = batch.subarray(headerEnd + 1, headerEnd + 1 + size);
+      offset = headerEnd + 2 + size;
       files[file] = bytes.toString('base64');
       blobs[file] = blob;
     }
+    if (offset !== batch.length) throw new Error('Unexpected fixture blob batch remainder');
     return { files, blobs };
   };
   const sources = Object.fromEntries([...new Set([f.tip, prHead, branchHead])]
@@ -855,7 +883,7 @@ export function fixtureWorkingTree(f: SharedLibsFixture): string {
   }).trim();
 }
 
-export async function runSharedCapture(f: SharedLibsFixture, testName: string, prompt: string) {
+export async function runSharedCapture(f: SharedLibsFixture, testName: string, prompt: string, attempt: SharedCaptureAttempt) {
   const { runSkillTest } = await import('./session-runner');
   const { CAPTURE_MS } = await import('./eval-budgets');
   // Keep harness startup outside the target: its own Git probes are not skill actions.
@@ -863,7 +891,7 @@ export async function runSharedCapture(f: SharedLibsFixture, testName: string, p
     prompt: `The target repository is ${f.repo}. Audit that explicit directory.\n${prompt}`, testName,
     allowedTools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
     tools: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
-    env: f.env, maxTurns: 24, timeout: CAPTURE_MS,
+    env: f.env, maxTurns: 24, signal: attempt.signal, timeout: Math.min(CAPTURE_MS, attempt.remainingMs()),
   });
   return Object.assign(result, { providerRequests: readRequests(f) });
 }
@@ -1000,13 +1028,13 @@ export function createSharedInteractiveToolHandler(choose: 'approve' | 'skip' | 
 
 /** A real SDK capture supplies actual AskUserQuestion answers; no response/decision prose is forged. */
 export async function runSharedInteractive(f: SharedLibsFixture, testName: string, prompt: string, choose: 'approve' | 'skip' | SharedQuestionSelector,
-  fixtureOptions?: { stageActor?: SharedReviewStageActor; prerequisiteSource?: 'synthetic-fixture-input' }) {
+  fixtureOptions: { attempt: SharedCaptureAttempt; stageActor?: SharedReviewStageActor; prerequisiteSource?: 'synthetic-fixture-input' }) {
   // Keep the real review fetch step hermetic while preserving all actual local Git/record operations.
   installSourceShims(f);
   const { runAgentSdkTest, passThroughNonAskUserQuestion, resolveClaudeBinary } = await import('./agent-sdk-runner');
   const { query } = await import('@anthropic-ai/claude-agent-sdk');
   const { CAPTURE_MS } = await import('./eval-budgets');
-  const abortController = new AbortController();
+  let abortController: AbortController | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let actorFailure: Error | undefined;
   let captureStartedAt = 0;
@@ -1022,14 +1050,18 @@ export async function runSharedInteractive(f: SharedLibsFixture, testName: strin
       userPrompt: prompt, workingDirectory: f.repo, testName, env: f.env,
       pathToClaudeCodeExecutable: claudeBinary,
       settingSources: [], maxTurns: SHARED_INTERACTIVE_MAX_TURNS, maxRetries: 0,
+      signal: fixtureOptions.attempt.signal,
       allowedTools: ['Read', 'Bash', 'Write', 'Edit', 'Glob', 'Grep', 'AskUserQuestion'],
       queryProvider: args => {
-        // The SDK runner admits this request through its semaphore before calling
-        // the provider. Queue time must not consume an actual capture's deadline.
-        timer = setTimeout(() => abortController.abort(), CAPTURE_MS);
+        fixtureOptions.attempt.signal.throwIfAborted();
+        const remaining = fixtureOptions.attempt.remainingMs();
+        if (remaining <= 0) throw new Error('Shared capture attempt expired before admission');
+        abortController = args.options?.abortController;
+        if (!abortController) throw new Error('SDK capture lacks its owned abort controller');
+        timer = setTimeout(() => abortController!.abort(), Math.min(CAPTURE_MS, remaining));
         captureStartedAt = Date.now();
         fs.mkdirSync(diagnosticDirectory, { recursive: true });
-        const source = query({ ...args, options: { ...args.options, abortController,
+        const source = query({ ...args, options: { ...args.options,
           ...(fixtureOptions?.stageActor ? { hooks: fixtureOptions.stageActor.hooks } : {}) } });
         return new Proxy(source, {
           get(target, key) {
@@ -1051,7 +1083,7 @@ export async function runSharedInteractive(f: SharedLibsFixture, testName: strin
         onAnswer: (input, answers) => {
           fs.appendFileSync(diagnostic, JSON.stringify({ type: 'fixture_answer', input, answers }) + '\n');
         },
-        onRefusal: error => { actorFailure = error; abortController.abort(); },
+        onRefusal: error => { actorFailure = error; abortController?.abort(); },
       }),
     });
     // The SDK converts callback throws to tool-control errors. Refusal must fail
@@ -1071,7 +1103,7 @@ export async function runSharedInteractive(f: SharedLibsFixture, testName: strin
       events: streamed,
       toolCalls: blocks.filter(block => block.type === 'tool_use').map(block => ({ tool: block.name, input: block.input, output: '' })),
       output: blocks.filter(block => block.type === 'text').map(block => block.text).join('\n'),
-      exitReason: actorFailure ? 'actor_contract' : abortController.signal.aborted ? 'timeout' : 'capture_threw',
+      exitReason: actorFailure ? 'actor_contract' : fixtureOptions.attempt.signal.aborted || abortController?.signal.aborted ? 'timeout' : 'capture_threw',
       turnsUsed: assistantTurns.length, durationMs: captureStartedAt ? Date.now() - captureStartedAt : 0,
       costUsd: terminal?.total_cost_usd ?? 0, costKnown: typeof terminal?.total_cost_usd === 'number',
       model: assistantTurns.find(event => event.message?.model)?.message.model,

@@ -142,7 +142,7 @@ function runner(f: fixtures.SharedLibsFixture, mode: string, observations: any[]
         session.canUseTool = options.canUseTool;
         expect(options.maxTurns).toBe(30); expect(options.maxRetries).toBe(0);
         const events: any[] = [];
-        for await (const event of options.queryProvider({ prompt: options.userPrompt, options: {} })) events.push(event);
+        for await (const event of options.queryProvider({ prompt: options.userPrompt, options: { abortController: new AbortController() } })) events.push(event);
         return { exitReason: 'success', events, output: 'Synthetic fixture-stage inputs, not actual QA/adversarial coverage.',
           toolCalls: events.filter(event => event.type === 'assistant').flatMap(event => event.message.content
             .filter((block: any) => block.type === 'tool_use').map((block: any) => ({ tool: block.name, input: block.input }))) };
@@ -163,7 +163,8 @@ function lifecycle(mode: string) {
       expect(name).toBe('shared-libs-review-lifecycle'); expect(timeout).toBe(CAPTURE_LONG_MS); registered = body;
     },
     captures: { runAttempt: async (_name: string, cases: string[], _timeout: number, work: any) => {
-      expect(cases).toEqual(['skip', 'approve']); return work({ add: (scenario: string, row: any) => rows.push({ scenario, row }) });
+      expect(cases).toEqual(['skip', 'approve']); return work({ signal: new AbortController().signal,
+        remainingMs: () => CAPTURE_LONG_MS, add: (scenario: string, row: any) => rows.push({ scenario, row }) });
     } },
     createSharedLibsFixture: (name: string) => { const f = fixtures.createSharedLibsFixture(name); roots.push(f.root); return f; },
     runSharedInteractive: async (f: fixtures.SharedLibsFixture, name: string, prompt: string, choose: string, options: any) => {

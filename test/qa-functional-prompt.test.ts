@@ -2,11 +2,22 @@ import { expect, test } from 'bun:test';
 import { qaFunctionalPrompt, QA_FUNCTIONAL_CASES } from './helpers/qa-functional-eval';
 import { qaCommandAllowed } from './helpers/qa-functional-observer';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseNDJSON } from './helpers/session-runner';
 import { qaNativeProbes } from './helpers/qa-functional-evidence';
 import { validateQACheckpoints } from './helpers/qa-checkpoint-evidence';
+import { computePaidCaseSelection } from '../scripts/test-paid-shards';
+
+test.each(['full', 'pr'] as const)('%s selection assigns the captured webhook regression to its native owner', profile => {
+  const result = computePaidCaseSelection({ profile, env: {},
+    changedFiles: ['test/fixtures/qa-webhook-r85-checkpoints.json'] });
+  expect(result.selection).toEqual({ e2e: ['qa-functional-webhook-report'], judges: [] });
+  if (profile === 'pr') {
+    expect(result.coverage?.mode).toBe('pr');
+    expect(result.coverage?.unknownFiles).toEqual([]);
+  }
+});
 
 test('the native launcher consumes the family-specific actor boundary', () => {
   const source = readFileSync(join(import.meta.dir, 'helpers/qa-functional-eval.ts'), 'utf8');
@@ -59,6 +70,12 @@ test('artifact completion preserves exact evidence before concise linked reporti
     expect(prompt).toContain('Evidence rows contain ONLY complete JSON actually emitted by native probes, including failures and repeats');
     expect(prompt).toContain('retain pre-repair results alongside green results');
     expect(prompt).toContain('Never synthesize JSON');
+    expect(prompt).toContain('one causal sentence per checkpoint hypothesis and compact JSON formatting, preserving every field and value');
+    expect(prompt).toContain('retain its headings and required fields');
+    expect(prompt).toContain('link to evidence.json and checkpoints for details already recorded there');
+    expect(prompt).toContain('After saving both artifacts, return only their paths and the actual completion status');
+    expect(prompt).toContain('Never shorten native JSON or omit a required probe, check or field');
+    expect(prompt).toContain('aim under 400 words');
   }
   const source = readFileSync(join(import.meta.dir, 'helpers/qa-functional-eval.ts'), 'utf8');
   expect(source).toContain('maxTurns: 40');
@@ -85,7 +102,8 @@ test('fix completion budgets for required repair and avoids duplicating preserve
       expect(prompt).toContain('one causal sentence per checkpoint hypothesis and compact JSON formatting, preserving every field and value');
     } else {
       expect(prompt).not.toContain('This is a fix run');
-      expect(prompt).not.toContain('aim under 400 words');
+      expect(prompt).toContain('Include the diagnosis, proposed test stubs and coverage limits');
+      expect(prompt).not.toContain('Include the diagnosis, red/green test results');
     }
   }
 });
@@ -165,6 +183,49 @@ test('R29 captured webhook bytes bind across a green test; test summaries and al
   } finally { rmSync(reportRoot, { recursive: true, force: true }); }
 });
 
+test.each(JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/qa-webhook-r85-checkpoints.json'), 'utf8')))(
+  'R85 $attempt rejects a published draft even after a corrected successor', capture => {
+    for (const variant of ['captured pair', 'complete note only', 'draft only', 'missing Write receipt', 'missing report link', 'partial observation']) {
+      const reportRoot = realpathSync(mkdtempSync(join(tmpdir(), 'qa-r85-')));
+      try {
+        const packets = structuredClone(capture.transcript);
+        if (variant === 'draft only') packets.splice(4, 2);
+        else if (variant !== 'captured pair') packets.splice(2, 2);
+        if (variant === 'missing Write receipt') packets.splice(3, 1);
+        const files: Record<string, string> = {};
+        for (const packet of packets) {
+          for (const block of packet.message.content) {
+            if (block.type !== 'tool_use' || block.name !== 'Write') continue;
+            const name = basename(block.input.file_path);
+            block.input.file_path = join(reportRoot, name);
+            if (variant === 'partial observation') {
+              const note = JSON.parse(block.input.content);
+              delete note.observed.state;
+              block.input.content = JSON.stringify(note);
+            }
+            files[name] = block.input.content;
+            writeFileSync(block.input.file_path, block.input.content);
+          }
+        }
+        const result = parseNDJSON(packets.map((packet: unknown) => JSON.stringify(packet)));
+        const probes = qaNativeProbes(result);
+        expect(probes).toHaveLength(2);
+        const failures = validateQACheckpoints({ transcript: result.transcript, reportRoot, probes,
+          requiredProbes: probes.slice(1), files,
+          reportMarkdown: variant === 'missing report link' ? '' : Object.keys(files).map(name => `[Checkpoint](${name})`).join('\n') });
+        if (variant === 'complete note only') expect(failures).toEqual([]);
+        else if (variant === 'captured pair' || variant === 'draft only') {
+          expect(failures).toContain(`QA checkpoint: ${capture.bad === 'exploration-003.json' ? 'Invalid checkpoint schema' : 'Unrelated, reused or retrospective checkpoint'}: ${capture.bad}`);
+        } else if (variant === 'missing report link') {
+          expect(failures).toContain(`QA checkpoint: Report does not link checkpoint: ${capture.good}`);
+        } else {
+          expect(failures).toContain(`QA checkpoint: Missing unique completed checkpoint before probe: ${probes[1].command}`);
+        }
+      } finally { rmSync(reportRoot, { recursive: true, force: true }); }
+    }
+  },
+);
+
 test('report-only exploration requires a completed written checkpoint before the next probe', () => {
   const section = readFileSync(join(import.meta.dir, '../qa-only/sections/exploratory.md'), 'utf8');
   const positions = ['1. First demonstrate success', '2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
@@ -175,7 +236,7 @@ test('report-only exploration requires a completed written checkpoint before the
   expect(section).toContain("Reuse resolved REPORT_DIR");
   expect(section).toContain('invocation-owned');
   expect(section).toContain('resolve ownership');
-  expect(section).toContain('observationCommand, observed, hypothesis, nextCommand');
+  for (const field of ['observationCommand', 'observed', 'hypothesis', 'nextCommand']) expect(section).toContain(`${field}:`);
   expect(section).toContain('Wait for the successful Write result');
   expect(section).toContain('Captions, private thinking and retrospective notes do not count');
   expect(section).toContain('Link each checkpoint in the final report');

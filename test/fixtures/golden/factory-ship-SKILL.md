@@ -2237,50 +2237,49 @@ If the Red Team fails or times out, confirm it stopped and record its review as 
 
 ### Step 9.2.1: Exploratory QA (before Fix-First)
 
-You, the parent agent, run this phase, not specialists.
-Discovery is report-only. Use the caller's report directory or a new owned
-`.gstack/qa-reports` subdirectory. Never overwrite another run.
+Only the parent runs report-only discovery.
+Never overwrite another run's reports. Batch only independent Reads.
 
 **1. Load methods before any QA or explicit-verification probe.**
 
-> **STOP.** Load the installed exploratory section below and complete its ordered scope/method Reads.
-> A plan command is a probe, not an exception to this gate.
+> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below. Templates cannot replace them.
 
 From the installed /ship SKILL.md's directory, Read `../gstack-qa/sections/exploratory.md` in full. Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
-Caller/report templates cannot replace these method Reads.
+Resolve QA's `sections/...` and `templates/...` paths from that installed QA SKILL.md directory, not the caller or product directory.
 
-**2. List the checks that must pass.**
-Run the shared preflight. For browser surfaces, Read `sections/browser-setup.md` in that QA installation and follow its report-only access rules before probing.
-- Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
-- List explicit plan commands/assertions separately; they remain required beyond the smoke bound.
-- Other ideas are optional, untested.
+**2. List required checks.**
+Run the shared preflight; start its smoke guard once. Guard every smoke probe. For browsers, Read QA's `sections/browser-setup.md` for report-only rules.
+- Smoke: 5 minutes/12 probes, one success and the riskiest changed failure/edge.
+  Required even for small diffs or missing plans/servers.
+- Required: plan commands/assertions, listed separately. Other ideas are optional, untested.
 
-**3. Run the checks without repairing the product.**
-First run smoke, replays and revalidation through the shared Probe loop and its guard.
-Then run every required plan check, even if smoke expired. Keep the same checkpoint sequence,
-but do not use the smoke guard or restart its clock. Give each plan command a finite timeout
-capped by the caller's remaining deadline. If that deadline expired, mark the check not-run.
-Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates.
+**3. Run smoke and plan checks.**
+Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.
+Then run required plan checks, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
+Use finite command timeouts, capped at the caller's remaining time if it has a deadline.
+Await clock/guard results before acting. When the caller's deadline expires, mark unfinished checks not-run.
 
-**4. Check for changes before reporting.**
-Before reporting, read updates from any dispatched agents and the user. Compare
-current source, commands and fixture inputs with the recorded inputs, even without
-an update. If source, tests, contracts, commands or fixture inputs changed, repeat affected review and probes
-through the same loop without resetting its checkpoint sequence. Unknown impact
-requires revalidation. Pass only when all required checks pass on the current
-inputs; list every failed, blocked, inconclusive or not-run required check otherwise.
+**4. Check freshness before reporting.**
+Before every completion report or log, even with zero fixes or skipped specialists:
+a. Read agent/user updates and await results without batching them with reporting/logging.
+b. Compare each probe's recorded source, tests, contracts, commands and fixtures (or input fingerprint)
+   with current inputs, even without updates. Never rerun valid current passes.
+c. Re-review changed or uncertain coverage and repeat step 3 for affected checks.
+   Reporting reserves cannot stop required revalidation within the caller's deadline.
+d. Compare again after revalidation or edits/updates. Failed or unavailable Reads or
+   insufficient time block affected required checks. List failed, blocked, inconclusive and not-run checks.
+   Report clean/completed only when all required checks pass on current inputs; optional untested ideas do not block it.
 
-Record verified defects for Fix-First with `path`, `line`, `category`,
-`fingerprint: path:line:category`, replay and `test_stub`. Use the checklist category's
-severity; an unmatched functional failure is `functional-contract`, `CRITICAL`.
+Return verified defects to Fix-First: `path`, `line`, `category`,
+`fingerprint: path:line:category`, replay, `test_stub`. Use checklist severity;
+unmatched functional failures are `functional-contract`, `CRITICAL`.
 Setup/permission blockers are not defects. Test creation needs user approval.
-After fixes settle, the Step 9.4 parent asks for setup/permission, repair or explicit named-risk acceptance for failed/unavailable checks; otherwise blocked.
+Step 9.4 asks: permission/repair or explicit named-risk acceptance; otherwise blocked.
 
-Read QA's `templates/functional-report-template.md`. Replace its top-level title with
-`## Exploratory QA` in the PR body.
-Keep its fields as subsections. Link every checkpoint; write no second report.
-Separate browser results. Put plan outcomes in `## Verification Results`.
+Read QA's `templates/functional-report-template.md`: PR section `## Exploratory QA`,
+fields as subsections. Link every checkpoint; no second report. Separate browser results;
+plans in `## Verification Results`.
 
 ### Step 9.3: Cross-review finding dedup
 
@@ -2370,7 +2369,8 @@ but missing dispatched output still blocks continuation, even with a QA exceptio
    Save each explicit Skip immediately in the invocation action list with its
    identity, scope and supporting source evidence; keep it across repeats.
 
-4. **Finish and log this pass before choosing the next step.** Increment CYCLES
+4. **Finish and log this pass before choosing the next step.** Recheck freshness
+   (Step 9.2.1) before items 5–6. Increment CYCLES
    once if fixes were applied. Complete items 5–6 exactly once with the original
    REVIEW_START. Missing dispatched output uses `status:"unavailable"`,
    `completed:false` and `converged:false`; fixes also require `converged:false`.

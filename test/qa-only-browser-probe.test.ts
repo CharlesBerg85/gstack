@@ -25,11 +25,12 @@ test('the report-only fixture serves exactly one bounded, observable defect', as
 
 test.each(['success', 'failure', 'existing-screenshot'])('the browser probe retains structured command evidence: %s', scenario => {
   const directory = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'qa-probe-'));
-  const browse = path.join(directory, 'browse');
+  const browse = path.join(directory, process.platform === 'win32' ? 'browse.exe' : 'browse');
+  const source = path.join(directory, 'browse.ts');
   const calls = path.join(directory, 'calls.jsonl');
   const screenshot = path.join(directory, 'initial.png');
   if (scenario === 'existing-screenshot') fs.writeFileSync(screenshot, 'previous screenshot');
-  fs.writeFileSync(browse, `#!${process.execPath}
+  fs.writeFileSync(source, `
 import {appendFileSync, writeFileSync} from 'node:fs';
 const args=process.argv.slice(2);
 appendFileSync(${JSON.stringify(calls)},JSON.stringify(args)+'\\n');
@@ -41,6 +42,11 @@ process.stdout.write(args[0]+' result\\n\\n');
 process.stderr.write(args[0]+' diagnostic\\n');
 `, { mode: 0o700 });
   try {
+    const compiled = spawnSync(process.execPath, ['build', '--compile', source, '--outfile', browse], {
+      encoding: 'utf8', timeout: 5000,
+    });
+    expect(compiled.error).toBeUndefined();
+    expect(compiled.status, compiled.stderr).toBe(0);
     const result = spawnSync(process.execPath, [PROBE, browse, 'http://fixture.invalid/', screenshot], {
       encoding: 'utf8', timeout: 5000,
     });

@@ -1372,8 +1372,8 @@ describe('PLAN_VERIFICATION_EXEC placeholder', () => {
     const resource = "From the installed /ship SKILL.md's directory, Read `../qa/sections/exploratory.md` in full";
     expect(shipSkill).toContain(resource);
     const load = shipSkill.indexOf(resource);
-    const preflight = shipSkill.indexOf('Run the shared preflight.');
-    const probes = shipSkill.indexOf('**3. Run the checks without repairing the product.**');
+    const preflight = shipSkill.indexOf('Run the shared preflight;');
+    const probes = shipSkill.indexOf('**3. Run smoke and plan checks.**');
     expect(load).toBeGreaterThan(-1);
     expect(preflight).toBeGreaterThan(load);
     expect(probes).toBeGreaterThan(preflight);
@@ -1383,7 +1383,7 @@ describe('PLAN_VERIFICATION_EXEC placeholder', () => {
     expect(selection).toBeGreaterThan(shared.indexOf('Read `sections/scope.md`'));
     expect(methods).toBeGreaterThan(selection);
     expect(shared.indexOf('Write a **charter**')).toBeGreaterThan(methods);
-    expect(shipSkill.slice(preflight, probes)).toContain('For browser surfaces, Read `sections/browser-setup.md`');
+    expect(shipSkill.slice(preflight, probes)).toContain("For browsers, Read QA's `sections/browser-setup.md`");
     expect(shipSkill).toContain('Do not invoke an entire QA skill or start probes here');
   });
 
@@ -1694,9 +1694,9 @@ describe('SPEC_REVIEW_LOOP resolver', () => {
     const source = fs.readFileSync(path.join(ROOT, 'plan-ceo-review', 'SKILL.md.tmpl'), 'utf8');
     expect(source).toContain('## Plan under review\n{working plan path, or');
     const template = source.replace(/\s+/g, ' ');
-    expect(template).toContain('Prepare the full amended working plan and a separate CEO scope summary');
-    expect(template).toContain('Keep behavior, requirements and scope consistent');
+    expect(template).toContain('Prepare the full amended working plan and a separate, consistent CEO scope summary');
     expect(template).toContain('the summary cannot serve as the plan');
+    expect(template).toContain('**Save or present both inputs under the storage policy.**');
   });
 
   test('CEO shares both inputs after spec review and owns unresolved concerns in its scope document', () => {
@@ -4520,7 +4520,12 @@ describe('plan-mode-info resolver (handshake-replacement)', () => {
     expect(startup).toContain('Before 0E, call 0D for unresolved approaches');
     expect(startup).toContain('A) current/requested plan, B) smallest scoped alternative');
     expect(startup).toContain('With no required choice, or after those choices settle, go to 0E');
-    expect(approach).toContain('0D never restarts mode selection');
+    expect(approach).toContain('0D returns to its caller, not to mode selection');
+    expect(approach).toContain("For mode changes, follow 0E's **Mode change** instruction");
+    const modeChange = content.slice(content.indexOf('**Mode change:**'), preludeIdx);
+    expect(modeChange).toContain('Pause and ask with the four-mode menu; keep the mode until answered');
+    expect(modeChange).toContain('complete newly applicable Step 0 work in route order, reusing completed work and scope answers');
+    expect(modeChange).toContain('Then resume the paused step. If unchanged, resume directly');
     expect(gate).toContain('Return to the calling step with the saved answer; do not ask it again');
     expect(gate).not.toContain("When this step's required decisions are settled, go to 0E if you came from 0C");
     expect(gate).toContain('even for a lone option');

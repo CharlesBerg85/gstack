@@ -2,14 +2,63 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { generateReviewArmy } from '../scripts/resolvers/review-army';
-import { generateSharedCodeReuse, generateScopeDrift } from '../scripts/resolvers/review';
-import { generateQAReview } from '../scripts/resolvers/qa';
+import { generateCrossReviewDedup, generatePlanCompletionAuditReview, generatePlanCompletionAuditShip, generateSharedCodeReuse, generateScopeDrift } from '../scripts/resolvers/review';
+import { generateQAExploratory, generateQAReview } from '../scripts/resolvers/qa';
 import { generateConfidenceCalibration } from '../scripts/resolvers/confidence';
 import { HOST_PATHS, type TemplateContext } from '../scripts/resolvers/types';
 
 const root = join(import.meta.dir, '..');
 const skill = readFileSync(join(root, 'review/SKILL.md.tmpl'), 'utf8');
 const adversarial = readFileSync(join(root, 'review/sections/adversarial.md.tmpl'), 'utf8');
+
+test('review audits deliverables before deferring behavioral plan checks to the QA preflight', () => {
+  const ctx: TemplateContext = { skillName: 'review', tmplPath: '', host: 'claude', paths: HOST_PATHS.claude };
+  const audit = generatePlanCompletionAuditReview(ctx).replace(/\s+/g, ' ');
+  for (const contract of [
+    'Separate static audit evidence from behavioral checks',
+    'retain the exact command, expected outcome and source for Step 4.7',
+    'They remain pending execution, never DONE from a diff',
+    'A mixed item contributes to both lists',
+    'Zero audited deliverables do not waive these checks',
+    'Keep external-state and human-only checks under the existing audit rules',
+    'If only behavioral checks remain, report zero audited deliverables and retain their pending Step 4.7 list',
+    'For each audited deliverable, run the verification dispatch',
+    'File-existence checks and verified read-only content validators are static audit checks, not behavioral probes',
+    'Inspect the validator and its hooks before running it; verify read-only effects and access to the target',
+    'leave the item UNVERIFIABLE and defer the command to Step 4.7',
+    'Do not start applications, exercise APIs or mutate state during this audit',
+    'If found and verified safe above, invoke it',
+  ]) expect(audit).toContain(contract);
+  expect(audit.indexOf('Inspect the validator and its hooks')).toBeLessThan(audit.indexOf('If found and verified safe above, invoke it'));
+  expect(audit).not.toContain('For each extracted plan item, run the verification dispatch');
+  const qa = generateQAReview(ctx);
+  expect(qa).toContain('Then run required plan checks, even after smoke expires');
+  expect(qa).toContain('Report clean/completed only when all required checks pass on current inputs');
+});
+
+test('review prior-Skip matching includes adversarial and Greptile findings without relaxing eligibility', () => {
+  const dedup = generateCrossReviewDedup({ skillName: 'review', tmplPath: '', host: 'claude', paths: HOST_PATHS.claude });
+  expect(dedup).toContain('For every combined finding, including core, specialist, exploratory QA, adversarial and valid actionable Greptile findings, check:');
+  expect(dedup).toContain('Suppress only when all conditions hold: the user skipped the same unchanged finding');
+  expect(dedup).toContain('same advisory/defect kind');
+  expect(dedup).toContain('Never use a skipped advisory to suppress a real defect');
+  expect(dedup).toContain('Only suppress `skipped` findings — never `fixed` or `auto-fixed`');
+  expect(skill).toContain('Run Step 5.0 severity/prior-skip dedup on all');
+});
+
+test('Review audit and prior-Skip clarifications do not route Ship through Review steps', () => {
+  for (const host of Object.keys(HOST_PATHS) as TemplateContext['host'][]) {
+    const ctx: TemplateContext = { skillName: 'ship', tmplPath: '', host, paths: HOST_PATHS[host] };
+    const audit = generatePlanCompletionAuditShip(ctx);
+    expect(audit).toContain('Step 8.1/9');
+    expect(audit).not.toContain('Step 4.7');
+    expect(audit).not.toContain('Separate static audit evidence from behavioral checks');
+    const dedup = generateCrossReviewDedup(ctx);
+    expect(dedup).toContain('Step 9.3: Cross-review finding dedup');
+    expect(dedup).not.toContain('Step 5.0');
+    expect(dedup).not.toContain('For every combined finding');
+  }
+});
 
 test('review collects every source before its single parent fix phase', () => {
   const markers = [
@@ -108,20 +157,20 @@ test('caller QA runs charter and setup after resource loading and has a severity
     const body = generateQAReview({ skillName, tmplPath: '', host: 'claude', paths: HOST_PATHS.claude });
     const preparation = body.indexOf(skillName === 'review'
       ? '**1. Set the charter and isolation.**'
-      : 'Run the shared preflight.');
-    const probes = body.indexOf('**3. Run the checks without repairing the product.**');
+      : 'Run the shared preflight;');
+    const probes = body.indexOf('**3. Run smoke and plan checks.**');
     expect(preparation).toBeGreaterThan(-1);
     if (skillName === 'review') {
       const readiness = body.indexOf('**2. Check readiness and list required checks.**');
       expect(readiness).toBeGreaterThan(preparation);
       expect(probes).toBeGreaterThan(readiness);
-      expect(body.slice(preparation, readiness).replace(/\s+/g, ' ')).toContain('complete isolation/permission preflight');
-    } else expect(preparation).toBeGreaterThan(body.indexOf('**2. List the checks that must pass.**'));
+      expect(body.slice(preparation, readiness).replace(/\s+/g, ' ')).toContain('complete the shared isolation/permission preflight before setup');
+    } else expect(preparation).toBeGreaterThan(body.indexOf('**2. List required checks.**'));
     expect(probes).toBeGreaterThan(preparation);
-    expect(body.replace(/\s+/g, ' ')).toContain('an unmatched functional failure is `functional-contract`, `CRITICAL`');
+    expect(body.replace(/\s+/g, ' ')).toContain('unmatched functional failures are `functional-contract`, `CRITICAL`');
     expect(body).toContain('Setup/permission blockers are not defects');
     expect(body).toContain('Test creation needs user approval');
-    expect(body).toContain('Record verified defects for Fix-First');
+    expect(body).toContain('Return verified defects to Fix-First');
     expect(body).not.toContain('for parent approval');
   }
 });
@@ -181,14 +230,14 @@ test('review identifies probe selection, report assets and the detected diff bas
   const generated = generateQAReview({ skillName: 'review', tmplPath: 'review/SKILL.md.tmpl',
     host: 'claude', paths: HOST_PATHS.claude });
   const checklist = readFileSync(join(root, 'review/checklist.md'), 'utf8');
-  expect(generated).toContain('Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case');
-  expect(generated).toContain('Small diffs and missing plans/servers do not waive this smoke');
-  expect(generated.replace(/\s+/g, ' ')).toContain("Use the checklist category's severity; an unmatched functional failure is `functional-contract`, `CRITICAL`");
+  expect(generated).toContain('Smoke: 5 minutes/12 probes, one success and the riskiest changed failure/edge');
+  expect(generated).toContain('Required even for small diffs or missing plans/servers');
+  expect(generated.replace(/\s+/g, ' ')).toContain("Use checklist severity; unmatched functional failures are `functional-contract`, `CRITICAL`");
   expect(generated).toContain('Setup/permission blockers are not defects');
   expect(generated).toContain('Test creation needs user approval');
-  expect(generated).toContain("Read QA's `templates/functional-report-template.md`. Use the title");
+  expect(generated).toContain("Read QA\'s `templates/functional-report-template.md`. Title it");
   expect(generated).toContain('Link every checkpoint');
-  expect(generated).toContain('Do not write a second report');
+  expect(generated).toContain('No second report');
   expect(checklist).toContain('merge-base diff from the caller');
   expect(checklist).not.toContain('git diff origin/main');
 });
@@ -198,31 +247,36 @@ test('caller QA defines execution, evidence ownership and report adaptation befo
     const generated = generateQAReview({ skillName, tmplPath: `${skillName}/SKILL.md.tmpl`,
       host: 'claude', paths: HOST_PATHS.claude }).replace(/\s+/g, ' ');
     for (const contract of [
-      'You, the parent agent, run this phase',
+      'Only the parent runs report-only discovery',
       'Never overwrite another run',
-      'First run smoke, replays and revalidation through the shared Probe loop and its guard',
-      "Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates",
-      'Keep the same checkpoint sequence, but do not use the smoke guard or restart its clock',
-      'Before reporting, read updates from any dispatched agents',
-      'Compare current source, commands and fixture inputs with the recorded inputs, even without an update',
-      'source, tests, contracts, commands or fixture inputs changed',
-      "Use the checklist category's severity",
+      'Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit',
+      'using the same procedure but no smoke guard; never reset the clock',
+      'Read agent/user updates and await results without batching them with reporting/logging',
+      'Compare each probe\'s recorded source, tests, contracts, commands and fixtures (or input fingerprint) with current inputs, even without updates',
+      'Re-review changed or uncertain coverage',
+      "Use checklist severity",
     ]) expect(generated).toContain(contract);
+    const shared = generateQAExploratory({ skillName: 'qa', tmplPath: '', host: 'claude', paths: HOST_PATHS.claude });
+    for (const contract of ['First demonstrate success: output AND durable effects',
+      'Wait for the successful Write result before dispatch',
+      'Replay the exact failing command/request from the same initial fixture state']) {
+      expect(shared).toContain(contract);
+    }
     if (skillName === 'review') {
-      expect(generated).toContain('Use the title `## Exploratory QA and Verification Results`');
-      expect(generated).toContain('keep its metadata and outcome tables intact');
-      expect(generated).toContain('demote its other headings one level (`##` to `###`, etc.)');
-      expect(generated).toContain('replace its title with `### Browser results` in this same section');
-      expect(generated).toContain('demote its other headings two levels');
-      expect(generated).toContain('Keep browser and functional scores/outcomes separate');
-      expect(generated).toContain('save the browser baseline and evidence files normally');
-      expect(generated).toContain('Keep this section provisional through repairs and revalidation');
-      expect(generated).toContain('update affected outcomes and checkpoint links in place');
-      expect(generated).toContain('Continue to Step 4.8 even if QA is blocked');
+      expect(generated).toContain('Title it `## Exploratory QA and Verification Results`');
+      expect(generated).toContain('keep metadata/outcome tables');
+      expect(generated).toContain('demote other headings one level');
+      expect(generated).toContain('include it here under `### Browser results`');
+      expect(generated).toContain('other headings demoted two levels');
+      expect(generated).toContain('Keep browser/functional scores and outcomes separate');
+      expect(generated).toContain('save browser baseline/evidence normally');
+      expect(generated).toContain('Prepare one provisional QA section');
+      expect(generated).toContain('Update affected outcomes/checkpoint links through repairs/revalidation');
+      expect(generated).toContain('Continue to Step 4.8 even if blocked');
       expect(generated).toContain('Step 5.8 appends this section once after final findings and decides completion');
     } else {
-      expect(generated).toContain('Replace its top-level title with');
-      expect(generated).toContain('Keep its fields as subsections');
+      expect(generated).toContain('PR section `## Exploratory QA`');
+      expect(generated).toContain('fields as subsections');
     }
   }
 });

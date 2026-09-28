@@ -680,6 +680,25 @@ function curl(f: SharedLibsFixture, args: string[]) {
 }
 
 describe('shared-code curl source isolation', () => {
+  test('batched fixture blobs preserve binary bytes and empty files at immutable revisions', () => {
+    const f = createSharedLibsFixture('batch-bytes');
+    cleanup.push(f.root);
+    const bytes = Buffer.from([0, 255, 10, 13, 0, 128, 10]);
+    fs.writeFileSync(path.join(f.repo, 'binary.dat'), bytes);
+    fs.writeFileSync(path.join(f.repo, 'empty.dat'), '');
+    fixtureGit(f, 'add', 'binary.dat', 'empty.dat');
+    fixtureGit(f, 'commit', '-m', 'fixture binary and empty blobs');
+    const revision = fixtureGit(f, 'rev-parse', 'HEAD');
+    installSourceShims(f);
+    for (const [file, expected] of [['binary.dat', bytes], ['empty.dat', Buffer.alloc(0)]] as const) {
+      const response = gh(f, `repos/fixture/shared-libs/contents/${file}?ref=${revision}`);
+      expect(response.status, response.stderr).toBe(0);
+      const result = JSON.parse(response.stdout);
+      expect(Buffer.from(result.content, 'base64')).toEqual(expected);
+      expect(result.sha).toBe(fixtureGit(f, 'rev-parse', `${revision}:${file}`));
+    }
+  });
+
   test('captured curl output-file attempts are logged and rejected without writing files', () => {
     const f = createSharedLibsFixture('curl-output');
     cleanup.push(f.root);
@@ -1115,8 +1134,12 @@ describe('shared-code capture attempt accounting', () => {
     expect(result.tests[0]).toMatchObject({ passed: true, attempt: 1 });
     expect(result.tests[1]).toMatchObject({ passed: false, attempt: 2, exit_reason: 'attempt_incomplete' });
     expect(() => current.add('audit', entry('late'))).toThrow('Late shared capture');
+    expect(current.signal.aborted).toBe(true);
+    let settled = false;
+    pending.then(() => { settled = true; }, () => { settled = true; });
     release();
-    await expect(pending).rejects.toThrow('Late shared capture');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
     expect(collectorOutcomeCounts([result]).failed).toBe(1);
   });
 
@@ -1156,8 +1179,11 @@ describe('shared-code capture attempt accounting', () => {
     await captureStarted;
     await captures.finalize(null);
     expect(fs.existsSync(directory)).toBe(true);
+    let settled = false;
+    pending.then(() => { settled = true; }, () => { settled = true; });
     release();
-    await expect(pending).rejects.toThrow('Late shared capture');
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(settled).toBe(false);
     expect(fs.existsSync(directory)).toBe(false);
   });
 

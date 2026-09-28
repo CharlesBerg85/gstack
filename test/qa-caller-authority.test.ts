@@ -230,8 +230,8 @@ describe('QA caller authority in pure host renders', () => {
       const ship = RESOLVERS.QA_REVIEW(context(host.name, 'ship'));
       expect(review).toContain('a ship waiver cannot complete it');
       expect(ship).toContain('explicit named-risk acceptance');
-      expect(ship.replace(/\s+/g, ' ')).toContain('Pass only when all required checks pass on the current inputs');
-      expect(ship).toContain('list every failed, blocked, inconclusive or not-run required check otherwise');
+      expect(ship.replace(/\s+/g, ' ')).toContain('Report clean/completed only when all required checks pass on current inputs');
+      expect(ship).toContain('List failed, blocked, inconclusive and not-run checks');
     });
 
     test(`${host.name}: non-QA fallback retains its existing setup and human sign-in flow`, () => {
@@ -256,20 +256,20 @@ describe('QA caller authority in pure host renders', () => {
         expect(shared).toContain('Read `sections/system-functional.md` in full');
         expect(shared.indexOf('in full and select the surfaces')).toBeLessThan(shared.indexOf('Read `sections/system-functional.md`'));
         const required = body.indexOf(caller === 'review'
-          ? '2. Check readiness and list required checks' : '2. List the checks that must pass');
+          ? '2. Check readiness and list required checks' : '2. List required checks');
         expect(required).toBeGreaterThan(-1);
         expect(exploration).toBeLessThan(required);
-        expect(body).toContain('check one successful operation and the riskiest changed failure or edge case');
-        expect(body).toContain('Within 5 minutes/12 probes');
-        expect(body).toContain('Small diffs and missing plans/servers do not waive this smoke');
-        expect(body).toContain('List explicit plan commands/assertions separately; they remain required beyond the smoke bound');
+        expect(body).toContain('one success and the riskiest changed failure/edge');
+        expect(body).toContain('Smoke: 5 minutes/12 probes');
+        expect(body).toContain('Required even for small diffs or missing plans/servers');
+        expect(body).toContain('Required: plan commands/assertions, listed separately');
         expect(body).toContain('Other ideas are optional, untested');
-        expect(body.replace(/\s+/g, ' ')).toContain('Pass only when all required checks pass on the current inputs');
-        expect(body).toContain('list every failed, blocked, inconclusive or not-run required check otherwise');
+        expect(body.replace(/\s+/g, ' ')).toContain('Report clean/completed only when all required checks pass on current inputs');
+        expect(body).toContain('List failed, blocked, inconclusive and not-run checks');
       }
       const ship = RESOLVERS.QA_REVIEW(context(host.name, 'ship'));
-      expect(ship).toContain('the Step 9.4 parent asks');
-      expect(ship).toContain('for failed/unavailable checks; otherwise blocked');
+      expect(ship).toContain('Step 9.4 asks: permission/repair');
+      expect(ship).toContain('explicit named-risk acceptance; otherwise blocked');
     });
 
     test(`${host.name}: caller QA selects surfaces directly and links checkpoints in one final section`, () => {
@@ -282,7 +282,7 @@ describe('QA caller authority in pure host renders', () => {
         const selection = shared.indexOf('in full and select the surfaces');
         const methods = shared.indexOf('**Functional surfaces:**');
         const probes = body.indexOf(caller === 'review'
-          ? '2. Check readiness and list required checks' : '2. List the checks that must pass');
+          ? '2. Check readiness and list required checks' : '2. List required checks');
         expect(scope).toBeGreaterThan(-1);
         expect(exploration).toBeGreaterThan(-1);
         expect(selection).toBeGreaterThan(scope);
@@ -293,19 +293,19 @@ describe('QA caller authority in pure host renders', () => {
         expect(RESOLVERS.QA_RESOURCE(ctx, ['exploratory'])).toContain(`../${host.name === 'claude' ? 'qa' : 'gstack-qa'}/sections/exploratory.md`);
         if (caller === 'review') {
           const flat = body.replace(/\s+/g, ' ');
-          expect(flat).toContain('Use the title `## Exploratory QA and Verification Results`');
-          expect(flat).toContain('keep its metadata and outcome tables intact');
-          expect(flat).toContain('demote its other headings one level (`##` to `###`, etc.)');
-          expect(flat).toContain('replace its title with `### Browser results` in this same section');
-          expect(flat).toContain('demote its other headings two levels');
+          expect(flat).toContain('Title it `## Exploratory QA and Verification Results`');
+          expect(flat).toContain('keep metadata/outcome tables');
+          expect(flat).toContain('demote other headings one level');
+          expect(flat).toContain('include it here under `### Browser results`');
+          expect(flat).toContain('other headings demoted two levels');
           expect(flat).toContain('Link every checkpoint');
-          expect(flat).toContain('Do not write a second report');
-          expect(flat).toContain('Keep browser and functional scores/outcomes separate');
-          expect(flat).toContain('save the browser baseline and evidence files normally');
+          expect(flat).toContain('No second report');
+          expect(flat).toContain('Keep browser/functional scores and outcomes separate');
+          expect(flat).toContain('save browser baseline/evidence normally');
         } else {
-          expect(body.replace(/\s+/g, ' ')).toContain('Replace its top-level title with `## Exploratory QA');
-          expect(body).toContain('Keep its fields as subsections');
-          expect(body).toContain('Link every checkpoint; write no second report');
+          expect(body.replace(/\s+/g, ' ')).toContain('PR section `## Exploratory QA');
+          expect(body).toContain('fields as subsections');
+          expect(body).toContain('Link every checkpoint; no second report');
         }
         expect(body).toContain('templates/functional-report-template.md');
         expect(body).not.toContain('not a second report');

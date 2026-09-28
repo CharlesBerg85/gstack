@@ -63,7 +63,8 @@ but missing dispatched output still blocks continuation, even with a QA exceptio
    Save each explicit Skip immediately in the invocation action list with its
    identity, scope and supporting source evidence; keep it across repeats.
 
-4. **Finish and log this pass before choosing the next step.** Increment CYCLES
+4. **Finish and log this pass before choosing the next step.** Recheck freshness
+   (Step 9.2.1) before items 5–6. Increment CYCLES
    once if fixes were applied. Complete items 5–6 exactly once with the original
    REVIEW_START. Missing dispatched output uses `status:"unavailable"`,
    `completed:false` and `converged:false`; fixes also require `converged:false`.

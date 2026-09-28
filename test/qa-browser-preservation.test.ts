@@ -139,15 +139,15 @@ describe('compact QA browser recipes retain native operations', () => {
       const loop = generateQAExploratory({ ...ctx, skillName });
       for (const contract of [
         'bun G start D SECONDS [EARLIER_UTC]',
-        'selected/caller limits apply',
+        "Set SECONDS to the mode's limit or a shorter caller duration",
         'G enforces the deadline',
         'QA_DEADLINE receipts are not observations',
         'Never reset D/bypass G',
-        'On refusal, mark the note not-run in the report',
+        'Report refusals as not-run',
         'Every bounded probe: `bun G run D -- COMMAND ARGS`',
         'Use documented or announced finite command timeouts',
       ]) expect(loop).toContain(contract);
-      expect(loop).toContain('observationCommand, observed, hypothesis, nextCommand');
+      for (const field of ['observationCommand', 'observed', 'hypothesis', 'nextCommand']) expect(loop).toContain(`${field}:`);
       expect(loop).toContain('Functional Full, Quick and Regression have no default total timer');
       if (skillName !== 'qa-only') expect(loop).toContain('Explicit plan checks remain required beyond this smoke budget');
     }

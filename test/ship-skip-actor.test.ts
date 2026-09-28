@@ -334,6 +334,53 @@ for (const [label, costs, expected, known] of [
   } finally { fs.rmSync(artifacts, { recursive: true, force: true }); }
 });
 
+test.each(['empty', 'foreign-config'])('ship fixture seeds real commits with %s identity-free HOME', mode => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sskip-ident-'));
+  try {
+    const home = path.join(root, 'home');
+    const hooks = path.join(root, 'hooks');
+    fs.mkdirSync(home);
+    fs.mkdirSync(hooks);
+    fs.writeFileSync(path.join(hooks, 'pre-commit'), '#!/bin/sh\nexit 97\n', { mode: 0o755 });
+    const config = path.join(home, '.gitconfig');
+    fs.writeFileSync(config, mode === 'empty' ? '' : `[core]\n\thooksPath = ${JSON.stringify(hooks)}\n`);
+    const worker = path.join(root, 'worker.ts');
+    fs.writeFileSync(worker, `
+import * as fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { createShipSkipFixture } from ${JSON.stringify(path.join(import.meta.dir, 'helpers/ship-skip-actor.ts'))};
+const fixture = createShipSkipFixture('identity-only setup control', ${JSON.stringify(path.join(root, 'fixture'))});
+const git = (...args: string[]) => {
+  const result = spawnSync('git', args, { cwd: fixture.repo, env: fixture.env, encoding: 'utf8', timeout: 5000 });
+  if (result.status !== 0) throw new Error(result.stderr);
+  return result.stdout.trim();
+};
+console.log(JSON.stringify({
+  commits: git('rev-list', '--count', 'HEAD'),
+  branch: git('branch', '--show-current'),
+  top: git('rev-parse', '--show-toplevel'),
+  config: fs.readFileSync(fixture.repo + '/.git/config', 'utf8'),
+  authors: git('log', '--format=%an <%ae>'),
+  source: fs.readFileSync(fixture.repo + '/invoice.ts', 'utf8'),
+}));
+`);
+    const result = spawnSync(process.execPath, [worker], {
+      env: { PATH: process.env.PATH, HOME: home, GIT_CONFIG_GLOBAL: config,
+        GIT_CONFIG_SYSTEM: os.devNull, GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_COUNT: '0' },
+      encoding: 'utf8', timeout: 20000,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    const evidence = JSON.parse(result.stdout.trim());
+    expect(evidence.commits).toBe('2');
+    expect(evidence.branch).toBe('fixture/queued-finding');
+    expect(evidence.top).toBe(fs.realpathSync(path.join(root, 'fixture/project')));
+    expect(evidence.authors.split('\n')).toHaveLength(2);
+    expect(evidence.authors).toMatch(/\S+ <[^<>\s]+>/);
+    expect(evidence.config).not.toMatch(/include|hooksPath|remote|credential/i);
+    expect(evidence.source).toContain('=> true;');
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test('Git routing variables fail before any Git invocation or foreign state write', () => {
   const artifacts = fs.mkdtempSync(path.join(os.tmpdir(), 'sskip-art-'));
   const worker = path.join(artifacts, 'git-routing.ts');

@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { ChildProcess } from 'node:child_process';
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeFileSync, writeSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BunTestOutputClassifier, forwardAndClassify, runShardChild, strictTestExitCode } from '../scripts/test-strict-output';
@@ -216,13 +216,15 @@ test.skipIf(process.platform === 'win32')('a grandchild holding the output pipe 
 test('a timed-out registered spool retains the complete byte prefix, never a passing shard', async () => {
   const root = mkdtempSync(join(tmpdir(), 'strict-prefix-'));
   const spool = join(root, 'shard.log');
+  const source = join(root, 'payload.ts');
   const fd = openSync(spool, 'wx', 0o600);
   const payload = 'évidence '.repeat(8192) + '\n' + passingOutput;
   const classifier = new BunTestOutputClassifier();
-  let release!: () => void;
+  let release: (() => void) | undefined;
   try {
+    writeFileSync(source, `process.stdout.write(${JSON.stringify(payload)})`);
     const result = await runShardChild({ ...options,
-      args: ['-e', `process.stdout.write(${JSON.stringify(payload)})`],
+      args: [source],
       hookStreams: child => {
         const sink = { write: (chunk: Buffer | string) => { writeSync(fd, Buffer.from(chunk)); return true; } } as NodeJS.WriteStream;
         return [
@@ -237,7 +239,7 @@ test('a timed-out registered spool retains the complete byte prefix, never a pas
     const summary = classifier.end();
     expect(strictTestExitCode(0, summary, 1)).toBe(0);
     expect(result.timedOut ? 'timed-out' : strictTestExitCode(result.exitCode ?? 1, summary, 1) === 0 ? 'passed' : 'failed').toBe('timed-out');
-  } finally { release(); closeSync(fd); rmSync(root, { recursive: true, force: true }); }
+  } finally { release?.(); closeSync(fd); rmSync(root, { recursive: true, force: true }); }
 }, 30_000);
 
 test('spawn errors preserve their identity and metadata even when output never settles', async () => {

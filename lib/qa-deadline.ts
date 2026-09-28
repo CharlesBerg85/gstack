@@ -205,17 +205,21 @@ async function runWindowsWorker(args: string[], emit: Emit): Promise<number> {
 }
 
 export async function qaDeadlineMain(args: string[], receiptWorker = false): Promise<number> {
+  const output = {
+    stdout: fs.createWriteStream('', { fd: 1, autoClose: false }),
+    stderr: fs.createWriteStream('', { fd: 2, autoClose: false }),
+  };
   const writes: Promise<void>[] = [];
   let writeFailed = false;
   const failed = () => { writeFailed = true; };
-  process.stdout.on('error', failed);
-  process.stderr.on('error', failed);
+  output.stdout.on('error', failed);
+  output.stderr.on('error', failed);
   const emit: Emit = (stream, receipt) => {
     writes.push(new Promise<void>(resolve => {
       const done = (error?: Error | null) => { if (error) writeFailed = true; resolve(); };
       try {
         if (receiptWorker) process.send!({ type: 'qa-deadline-receipt', stream, receipt }, done);
-        else process[stream].write('\nQA_DEADLINE ' + JSON.stringify({ guard: 'qa-deadline', ...receipt }) + '\n', done);
+        else output[stream].write('\nQA_DEADLINE ' + JSON.stringify({ guard: 'qa-deadline', ...receipt }) + '\n', done);
       } catch { writeFailed = true; resolve(); }
     }));
   };

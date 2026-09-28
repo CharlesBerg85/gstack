@@ -18,9 +18,9 @@ test('cache extraction preserves every byte of the original workflow request and
   expect(createHash('sha256').update(prompt).digest('hex')).toBe('71cc9c777bf28ff0efd610259b411e3539852f83a0888fa0e92469331f8b9a43');
 });
 
-test('ship clarity targets frontier readers without excusing missing decisions or authority', () => {
+test.each(['ship', 'review'])('%s clarity targets frontier readers without excusing missing decisions or authority', skill => {
   const source = readFileSync(join(ROOT, 'test/skill-llm-eval.test.ts'), 'utf8');
-  const registration = source.match(/testIfSelected\('ship\/SKILL\.md workflow',[\s\S]*?await runWorkflowJudge\(\{([\s\S]*?)\n    \}\);/);
+  const registration = source.match(new RegExp(`testIfSelected\\('${skill}/SKILL\\.md workflow',[\\s\\S]*?await runWorkflowJudge\\(\\{([\\s\\S]*?)\\n    \\}\\);`));
   expect(registration).not.toBeNull();
   const options = new Function('QA_DISCOVERY_REFERENCES', `return ({${registration![1]}});`)(QA_DISCOVERY_REFERENCES);
   expect(options.agentCapability).toBe('frontier');

@@ -186,13 +186,16 @@ CI never records). Missing seed → silent hash-shard fallback; corrupt seed →
 one warning + fallback; unknown files get 75th-percentile pessimism. Packed
 shards get duration-aware walls (`max(base, predicted × 3, files × 5s)`). The
 legacy `--shards N --shard i` path keeps stable hash indices. Required CI uses
-one duration-packed `--ci-plan`, 20 isolated `--ci-run` machines, and a
-`--ci-verify` aggregate. `TREE_MUTATING` is EMPTY:
-`gen-skill-docs.ts` has a `main()` guard (imports never regenerate; pinned by
-`test/gen-skill-docs-import-purity.test.ts`) and `--out-dir` renders every
-host, so all former mutators render into mkdtemps and the trailing serial
-shard is gone. The map remains a mechanism — a test that genuinely must write
-shared artifacts in place earns a reasoned entry and is serialized again.
+one duration-packed `--ci-plan`, 20 ordinary `--ci-run` shards plus a separate
+exclusive-fixture shard, and a `--ci-verify` aggregate. CI shards still run on
+independent machines without ordering unrelated jobs. The public
+`TREE_MUTATING` map now classifies exclusive host-state fixtures; its sole
+entry is `test/bootstrap-retention.test.ts`, whose same-UID nondumpable actors
+affect host-wide procfs permission checks. Locally, this file runs only after
+all parallel shards settle, and cancellation prevents that final phase from
+starting. No selected files, retries, budgets, or receipt requirements are
+removed. Former generator mutators still render into private output directories;
+this serial phase protects process visibility, not in-place doc generation.
 
 **PTY fixture timing.** Plan-count sessions wake on terminal output or exit,
 with at least 250ms between expensive observations and a 2s fallback for

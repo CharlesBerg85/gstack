@@ -500,24 +500,16 @@ export const WORKER_HOSTILE: Record<string, string> = {
 };
 
 /**
- * TREE-SERIAL files: run in ONE serial shard AFTER the parallel shards.
- * EMPTY since the 2026-08 dissolution — kept as a mechanism, not a museum:
- * a test that must regenerate shared repo artifacts IN PLACE (and cannot
- * render into an out-dir instead) earns an entry here with a reason, and
- * the runner will serialize it again.
- *
- * How it emptied: gen-skill-docs gained a main() guard (imports stopped
- * regenerating 71 files at load) and --out-dir grew to every host, so all
- * eight mutators now render into mkdtemps — the live tree is never written
- * by the suite (pinned by gen-skill-docs-import-purity + each migrated
- * file's own porcelain/mtime assertions). With zero mutators, the four
- * ratchet READERS (parity caps, size budgets, carve parity/ordering) get a
- * quiet tree by construction in any shard, so they rejoined the parallel
- * phase — the ~35-40s serial tail on every full-suite run is gone.
+ * Exclusive host-state fixtures: run in ONE serial shard AFTER the parallel
+ * shards. The public name is retained for callers of the original tree-write
+ * classification. Entries need a concrete shared-state hazard that fixture
+ * directories cannot isolate, such as host-wide procfs visibility.
  * Keys are pinned against the live file census by test-free-shards.test.ts —
  * a renamed file fails the suite instead of silently dropping serialization.
  */
-export const TREE_MUTATING: Record<string, string> = {};
+export const TREE_MUTATING: Record<string, string> = {
+  'test/bootstrap-retention.test.ts': 'Creates nondumpable same-UID processes visible to every host procfs census; must not overlap other native-retention fixtures.',
+};
 
 export function isFreeTestFile(relativePath: string): boolean {
   const normalized = normalizeRelativePath(relativePath);
@@ -732,10 +724,10 @@ const planDigest = (plan: Omit<FreeCiPlan, 'id'>): string =>
 /** One immutable plan is shared by isolated CI machines; never repack per job. */
 export function createFreeCiPlan(files: string[], count: number, durations: Record<string, number>, revision: string): FreeCiPlan {
   const readers = files.filter(file => !(file in TREE_MUTATING));
-  const mutators = files.filter(file => file in TREE_MUTATING).sort();
+  const exclusive = files.filter(file => file in TREE_MUTATING).sort();
   const packed = packShardsByDuration(readers, count, durations);
   const shards = packed.shards.map((files, index) => ({ shard: index + 1, files, predictedMs: packed.predictedMs[index] }));
-  if (mutators.length) shards.push({ shard: shards.length + 1, files: mutators, predictedMs: mutators.reduce((ms, file) => ms + (durations[file] ?? 0), 0) });
+  if (exclusive.length) shards.push({ shard: shards.length + 1, files: exclusive, predictedMs: exclusive.reduce((ms, file) => ms + (durations[file] ?? 0), 0) });
   const body = { version: 1 as const, revision, shards };
   return { ...body, id: planDigest(body) };
 }
@@ -2023,11 +2015,11 @@ async function recordFreeTestDurations(files: string[], jobs: number): Promise<n
       if (outcome.status !== 'passed') failed.push(file);
     }
   };
-  // As in full-suite mode, finish readers before any checkout-mutating tests.
-  const mutators = files.filter(file => file in TREE_MUTATING);
+  // As in full-suite mode, finish parallel work before exclusive host-state fixtures.
+  const exclusive = files.filter(file => file in TREE_MUTATING);
   files = files.filter(file => !(file in TREE_MUTATING));
   await Promise.all(Array.from({ length: Math.max(1, jobs) }, () => worker()));
-  files = mutators;
+  files = exclusive;
   cursor = 0;
   await worker();
   if (Object.keys(durations).length !== expectedCount) {
@@ -2211,7 +2203,7 @@ async function main(): Promise<number> {
     console.log(
       `\nWould run ${files.length} files across ${shards.length} shards (${occupied} occupied). `
       + 'Without --shard, the full suite runs as N concurrent shard processes '
-      + '(plus a serial tree-mutating shard) instead.',
+      + '(plus an exclusive host-state shard) instead.',
     );
     for (const line of formatShardSummary(shards)) console.log(line);
     return 0;
@@ -2244,17 +2236,17 @@ async function main(): Promise<number> {
   // wedge only ever costs its own shard. WORKER_HOSTILE files are moot in
   // process shards (no workers) and fold back into normal assignment.
   const jobs = fullSuiteJobs();
-  // Phase split: tree-mutating tests run AFTER the parallel shards, in one
-  // serial shard, so no concurrent shard ever reads a half-regenerated tree.
-  const mutators = files.filter((f) => f in TREE_MUTATING);
+  // Phase split: exclusive host-state fixtures run AFTER the parallel shards,
+  // so their shared process or filesystem state cannot interfere with readers.
+  const exclusive = files.filter((f) => f in TREE_MUTATING);
   const readers = files.filter((f) => !(f in TREE_MUTATING));
   const durations = loadFreeTestDurations();
   const packed = durations ? packShardsByDuration(readers, jobs, durations) : null;
   const shards = packed ? packed.shards : assignFilesToShards(readers, jobs);
-  const totalShards = jobs + (mutators.length > 0 ? 1 : 0);
+  const totalShards = jobs + (exclusive.length > 0 ? 1 : 0);
   console.log(`[test:free] full suite: ${readers.length} files across ${jobs} shard processes`
     + (packed ? ' (duration-packed)' : '')
-    + (mutators.length > 0 ? `, then ${mutators.length} tree-mutating file(s) serially` : ''));
+    + (exclusive.length > 0 ? `, then ${exclusive.length} exclusive host-state file(s) serially` : ''));
   if (packed) {
     // One line per shard so a packing regression is diagnosable from any log.
     packed.predictedMs.forEach((ms, i) => {
@@ -2275,33 +2267,33 @@ async function main(): Promise<number> {
     })),
   );
   let worst = Math.max(...outcomes.map((o) => exitCodeFor(o.status)));
-  // Cancellation stops the run: don't launch the serial tree-mutating shard
+  // Cancellation stops the run: don't launch the exclusive host-state shard
   // after a SIGINT/SIGTERM already killed the parallel phase.
-  if (mutators.length > 0 && !isTerminationRequested()) {
-    const mutatorOutcome = await runFreeShard(mutators, totalShards, totalShards, {
-      wallTimeoutMs: shardTimeout(mutators.length),
+  if (exclusive.length > 0 && !isTerminationRequested()) {
+    const exclusiveOutcome = await runFreeShard(exclusive, totalShards, totalShards, {
+      wallTimeoutMs: shardTimeout(exclusive.length),
       verbose: options.verbose,
     });
-    worst = Math.max(worst, exitCodeFor(mutatorOutcome.status));
-    if (mutatorOutcome.status !== 'passed') {
-      // Mutator safety rests on each test restoring default state itself; a
+    worst = Math.max(worst, exitCodeFor(exclusiveOutcome.status));
+    if (exclusiveOutcome.status !== 'passed') {
+      // Fixture safety rests on each test restoring default state itself; a
       // SIGKILL at the wall deadline (or a mid-regeneration crash) defeats
       // that by construction. Say so, loudly, before someone commits
       // regenerated SKILL.md / .agents artifacts by accident.
       const dirty = spawnSyncGitStatusGenerated();
       if (dirty.length > 0) {
-        console.error('[test:free] ⚠ tree-mutating shard did not finish cleanly — generated artifacts may be mid-regeneration:');
+        console.error('[test:free] ⚠ exclusive host-state shard did not finish cleanly — generated artifacts are dirty:');
         for (const line of dirty.slice(0, 20)) console.error(`[test:free]   ${line}`);
         console.error('[test:free]   restore with: bun run gen:skill-docs (or git checkout -- <paths>)');
       }
     }
-    outcomes.push(mutatorOutcome);
+    outcomes.push(exclusiveOutcome);
   }
 
   return (await retryFailedFreeFiles(outcomes, totalShards, options)).exitCode;
 }
 
-/** Dirty generated artifacts (SKILL.md / host outputs) after a failed mutator shard. */
+/** Dirty generated artifacts (SKILL.md / host outputs) after a failed exclusive shard. */
 function spawnSyncGitStatusGenerated(): string[] {
   const result = spawnSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' });
   if (result.status !== 0 || !result.stdout) return [];

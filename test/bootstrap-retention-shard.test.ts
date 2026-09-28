@@ -8,23 +8,22 @@ describe.skipIf(process.platform !== 'linux')('bootstrap paid-shard cleanup inte
   test.each(['success', 'retry', 'callback-kill', 'ack-failure'])('%s preserves the real attempt through runner cleanup', async scenario => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bs-shard-'));
     try {
-      const config = spawnSync('git', ['rev-parse', '--path-format=absolute', '--git-path', 'config'], { cwd: path.join(import.meta.dir, '..'), encoding: 'utf8', timeout: 5000 });
-      expect(config.status).toBe(0);
       const script = path.join(root, 'bootstrap.test.ts');
       fs.writeFileSync(script, `
         import { test } from 'bun:test';
         import * as fs from 'node:fs';
         import * as os from 'node:os';
         import * as path from 'node:path';
-        import { spawn, spawnSync } from 'node:child_process';
+        import { spawn } from 'node:child_process';
         import { registerBootstrapRetention } from ${JSON.stringify(path.join(import.meta.dir, 'helpers/bootstrap-retention.ts'))};
+        import { gitArgvIn } from ${JSON.stringify(path.join(import.meta.dir, 'helpers/scratch-repo.ts'))};
         let attempt = 0;
         test('qa-bootstrap', async () => {
           attempt++;
           const root = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-e2e-bs-'));
           fs.writeFileSync(path.join(root,'package.json'),'{"name":"synthetic-bootstrap","version":"1.0.0"}');
-          for (const args of [['init','-q'],['add','.'],['-c',${JSON.stringify(`include.path=${config.stdout.trim()}`)},'commit','-qm','initial']]) {
-            const result = spawnSync('git',args,{cwd:root,timeout:5000});
+          for (const args of [['init','-q'],['add','.'],['commit','-qm','initial']]) {
+            const result = gitArgvIn(root,args,5000);
             if (result.status !== 0) throw new Error('fixture Git seed failed');
           }
           const retention = registerBootstrapRetention(root,process.env.EVALS_RUN_ID!,{deadline:Date.now()+5000});

@@ -64,7 +64,7 @@ Report QA setup blockers.
 
 Reuse resolved REPORT_DIR; otherwise resolve ownership of an invocation-owned \`.gstack/qa-reports\` subdirectory.
 Write a **charter** (test plan) for each behavior: contract, risk,
-entrypoint, isolation and exit condition. Keep charters as Markdown in the report with exact source, commands and inputs.
+entrypoint, isolation and exit condition. Save charters as Markdown in the report: exact source, commands and inputs.
 
 ${reportOnly ? '' : `For /review and /ship, no plan/server is required.
 Stop after 5 minutes or 12 probes, whichever comes first (SECONDS=300 across surfaces).
@@ -76,8 +76,8 @@ Set SECONDS to the mode's limit or a shorter caller duration. With no mode limit
 Without a total time limit, do not use the guard. Use documented or announced finite command timeouts instead.
 Stop when scoped contracts are tested or blocked.
 Use REPORT_DIR for clocks/checkpoints. For mixed standalone runs, create REPORT_DIR/browser and REPORT_DIR/functional instead; keep one final report at REPORT_DIR. Caller paths win.
-For bounded commands below, replace G with \`${quoteSafePath(ctx.paths.binDir)}/gstack-qa-deadline\` and D with \`<probe directory>/deadline.json\`, using quoted absolute paths.
-Start once before baseline: \`bun G start D SECONDS [EARLIER_UTC]\`; selected/caller limits apply.
+G = \`${quoteSafePath(ctx.paths.binDir)}/gstack-qa-deadline\`, D = \`<probe directory>/deadline.json\`; quote absolute paths.
+Start once before baseline: \`bun G start D SECONDS [EARLIER_UTC]\`.
 EARLIER_UTC is the caller's absolute deadline, if set.
 Every bounded probe: \`bun G run D -- COMMAND ARGS\` (scripts: \`bash -c 'script'\`). No detached probes.
 Never reset D/bypass G. Expiry or missing/invalid state stops probes; report unfinished coverage.
@@ -90,25 +90,25 @@ Never bootstrap functional/report-only QA.
 This loop decides each probe (one command/interaction plus checks).
 Do not batch probes across a checkpoint.
 
-1. First demonstrate success: output AND durable effects. Use the guard if bounded; wait for its result.
+1. First demonstrate success: output AND durable effects. Guard if bounded; await completion.
 2. **Decide whether another probe is needed.** If bounded, run \`bun G status D\`.
    If expired or no safe next probe remains, STOP exploration; write the report, not a checkpoint.
-   Otherwise **Write before probing.** Write a new \`exploration-NNN.json\` beside that surface's deadline file (or in its probe directory without a timer):
-   exactly four top-level fields: observationCommand, observed, hypothesis, nextCommand.
+   Otherwise **Write before probing.** Write a new \`exploration-NNN.json\` in the probe directory, beside its deadline if bounded, with exactly four top-level fields:
    observationCommand: last completed probe's full outer command, including guard.
    observed: its exact decoded child JSON (no wrapper/extra keys), or its full non-JSON text.
 ${reportOnly ? `   For guarded text, copy the complete span between the guard's started and finished receipt lines.
    Keep its whitespace and content fences verbatim. Do not summarize, relabel or add timing text.
    The guard adds one newline before its finished receipt; that separator is not child text.
    For unguarded text, copy the complete result instead.
-   Compare the value with the tool result before Write. If capture is incomplete, report that limit instead of reconstructing it.
-` : ''}   hypothesis explains nextCommand (exact command/request, guarded if bounded).
+   If capture is incomplete, report that limit instead of reconstructing it.
+` : ''}   hypothesis: why nextCommand. nextCommand: exact command/request, guarded if bounded.
    Preserve every safe program-JSON key/value and identity hash unchanged. Put tool metadata in the report, interpretations in hypothesis.
    Redact secrets/private payloads; disclose limits.
+   Before Write, complete and check all fields against the result and next probe. No drafts/placeholders or invented safe-path redactions; corrections cannot repair published notes.
    Wait for the successful Write result before dispatch.
    Captions, private thinking and retrospective notes do not count. Never overwrite notes.
 3. Run that exact probe; G enforces the deadline when bounded.
-   On refusal, mark the note not-run in the report. Retain initial state/inputs/results.
+   Report refusals as not-run. Retain initial state/inputs/results.
    Repeat from step 2.
 4. Replay the exact failing command/request from the same initial fixture state via steps 2–3
    ${reportOnly ? 'to confirm it' : 'before repair'}, then minimize via those gates. Expiry leaves confirmation/minimization incomplete.
@@ -223,12 +223,11 @@ ${setup ? 'Read `sections/browser-setup.md` in full unless already completed;\n'
 
 export function generateQAReviewPreflight(ctx: TemplateContext): string {
   sectionPath(ctx, 'qa', 'exploratory');
-  return `> **STOP.** Load the installed exploratory section below and complete its ordered scope/method Reads.
-> A plan command is a probe, not an exception to this gate.
+  return `> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below. Templates cannot replace them.
 ${ctx.skillName === 'review' ? 'Step 4 is read-only: defer charters, setup and probes to Step 4.7.\n' : ''}
 {{QA_RESOURCE:exploratory}}
 
-Caller/report templates cannot replace these method Reads.`;
+Resolve QA's \`sections/...\` and \`templates/...\` paths from that installed QA SKILL.md directory, not the caller or product directory.`;
 }
 
 export function generateQAReview(ctx: TemplateContext): string {
@@ -236,62 +235,56 @@ export function generateQAReview(ctx: TemplateContext): string {
   if (!ship) sectionPath(ctx, 'qa', 'browser-setup');
   return `### ${ship ? 'Step 9.2.1' : 'Step 4.7'}: Exploratory QA (before Fix-First)
 
-You, the parent agent, run this phase, not specialists.
-Discovery is report-only. Use the caller's report directory or a new owned
-\`.gstack/qa-reports\` subdirectory. Never overwrite another run.
+Only the parent runs report-only discovery.
+Never overwrite another run's reports. Batch only independent Reads.
 
 ${ship ? `**1. Load methods before any QA or explicit-verification probe.**
 
 ${generateQAReviewPreflight(ctx)}` : `**1. Set the charter and isolation.**
-Use Step 4's recorded surface selection and loaded methods; complete any missing
-required Read before probing. Write the Charter and complete isolation/permission
-preflight from \`sections/exploratory.md\` for those surfaces before setup.`}
+Reuse Step 4's surfaces and completed Reads. Finish missing methods before charters; do not repeat completed Reads.
+Write the Charter and complete the shared isolation/permission preflight before setup.`}
 
-**2. ${ship ? 'List the checks that must pass.' : 'Check readiness and list required checks.'}**
-${ship ? 'Run the shared preflight. For browser surfaces, Read \`sections/browser-setup.md\` in that QA installation and follow its report-only access rules before probing.' : `For browser surfaces, Read \`sections/browser-setup.md\` now and follow its report-only
-access rules. Reuse setup only when its tools, session, target and ownership are
-still verified; otherwise repeat the readiness checks. Never install, import cookies
-or bootstrap tests during discovery. Functional-only runs do not load browser setup.`}
-- Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
-- List explicit plan commands/assertions separately; they remain required beyond the smoke bound.
-- Other ideas are optional, untested.
+**2. ${ship ? 'List required checks.' : 'Check readiness and list required checks.'}**
+${ship ? "Run the shared preflight; start its smoke guard once. Guard every smoke probe. For browsers, Read QA's \`sections/browser-setup.md\` for report-only rules." : `For browsers, Read QA's \`sections/browser-setup.md\` and follow its report-only rules.
+Reuse setup only with verified tools/session/target/ownership; otherwise recheck.
+Never install, import cookies or bootstrap tests. Functional-only skips browser setup.`}
+- Smoke: 5 minutes/12 probes, one success and the riskiest changed failure/edge.
+  Required even for small diffs or missing plans/servers.
+- Required: plan commands/assertions, listed separately. Other ideas are optional, untested.
 
-**3. Run the checks without repairing the product.**
-First run smoke, replays and revalidation through the shared Probe loop and its guard.
-Then run every required plan check, even if smoke expired. Keep the same checkpoint sequence,
-but do not use the smoke guard or restart its clock. Give each plan command a finite timeout
-capped by the caller's remaining deadline. If that deadline expired, mark the check not-run.
-Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates.
+**3. Run smoke and plan checks.**
+Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.
+Then run required plan checks, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
+Use finite command timeouts, capped at the caller's remaining time if it has a deadline.
+Await clock/guard results before acting. When the caller's deadline expires, mark unfinished checks not-run.
 
-**4. Check for changes before reporting.**
-Before reporting, read updates from any dispatched agents and the user. Compare
-current source, commands and fixture inputs with the recorded inputs, even without
-an update. If source, tests, contracts, commands or fixture inputs changed, repeat affected review and probes
-through the same loop without resetting its checkpoint sequence. Unknown impact
-requires revalidation. Pass only when all required checks pass on the current
-inputs; list every failed, blocked, inconclusive or not-run required check otherwise.
+**4. Check freshness before reporting.**
+Before every completion report or log, even with zero fixes or skipped specialists:
+a. Read agent/user updates and await results without batching them with reporting/logging.
+b. Compare each probe's recorded source, tests, contracts, commands and fixtures (or input fingerprint)
+   with current inputs, even without updates. Never rerun valid current passes.
+c. Re-review changed or uncertain coverage and repeat step 3 for affected checks.
+   Reporting reserves cannot stop required revalidation within the caller's deadline.
+d. Compare again after revalidation or edits/updates. Failed or unavailable Reads or
+   insufficient time block affected required checks. List failed, blocked, inconclusive and not-run checks.
+   Report clean/completed only when all required checks pass on current inputs; optional untested ideas do not block it.
 
-Record verified defects for Fix-First with \`path\`, \`line\`, \`category\`,
-\`fingerprint: path:line:category\`, replay and \`test_stub\`. Use the checklist category's
-severity; an unmatched functional failure is \`functional-contract\`, \`CRITICAL\`.
+Return verified defects to Fix-First: \`path\`, \`line\`, \`category\`,
+\`fingerprint: path:line:category\`, replay, \`test_stub\`. Use checklist severity;
+unmatched functional failures are \`functional-contract\`, \`CRITICAL\`.
 Setup/permission blockers are not defects. Test creation needs user approval.
-${ship ? 'After fixes settle, the Step 9.4 parent asks for setup/permission, repair or explicit named-risk acceptance for failed/unavailable checks; otherwise blocked.' : 'Ask for setup/permission, never secrets. Unresolved coverage makes Step 5.8 incomplete; a ship waiver cannot complete it.'}
+${ship ? 'Step 9.4 asks: permission/repair or explicit named-risk acceptance; otherwise blocked.' : 'Ask for setup/permission, never secrets. Unresolved coverage makes Step 5.8 incomplete; a ship waiver cannot complete it.'}
 
-${ship ? `Read QA's \`templates/functional-report-template.md\`. Replace its top-level title with
-\`## Exploratory QA\` in the PR body.
-Keep its fields as subsections. Link every checkpoint; write no second report.
-Separate browser results. Put plan outcomes in \`## Verification Results\`.` : `**5. Prepare one draft QA section, not a separate report.**
-Read QA's \`templates/functional-report-template.md\`. Use the title
-\`## Exploratory QA and Verification Results\`; keep its metadata and outcome
-tables intact and demote its other headings one level (\`##\` to \`###\`, etc.).
-Link every checkpoint. Mark functional contracts not applicable for browser-only runs.
-
-For browser evidence, Read \`templates/qa-report-template.md\` as Phase 6 directs,
-but replace its title with \`### Browser results\` in this same section and demote
-its other headings two levels. Do not write a second report. Keep browser and functional scores/outcomes separate;
-save the browser baseline and evidence files normally.
-
-Keep this section provisional through repairs and revalidation; update affected
-outcomes and checkpoint links in place. Continue to Step 4.8 even if QA is blocked.
-Step 5.8 appends this section once after final findings and decides completion.`}`;
+${ship ? `Read QA's \`templates/functional-report-template.md\`: PR section \`## Exploratory QA\`,
+fields as subsections. Link every checkpoint; no second report. Separate browser results;
+plans in \`## Verification Results\`.` : `**5. Prepare one provisional QA section.**
+Read QA's \`templates/functional-report-template.md\`. Title it
+\`## Exploratory QA and Verification Results\`; keep metadata/outcome tables and demote
+other headings one level. Link every checkpoint. Browser-only: functional contracts N/A.
+For browser evidence, Read QA's \`templates/qa-report-template.md\` as Phase 6 directs;
+include it here under \`### Browser results\`, other headings demoted two levels.
+Keep browser/functional scores and outcomes separate; save browser baseline/evidence normally.
+No second report. Update affected outcomes/checkpoint links through repairs/revalidation.
+Continue to Step 4.8 even if blocked. Step 5.8 appends this section once after final
+findings and decides completion.`}`;
 }

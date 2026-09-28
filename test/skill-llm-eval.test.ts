@@ -891,6 +891,7 @@ describeIfSelected('Other skill evals', [
       references: [...QA_DISCOVERY_REFERENCES, 'review/checklist.md', 'review/specialists/testing.md'],
       judgeContext: 'a pre-landing review with bounded exploratory QA',
       judgeGoal: 'how to review and explore changed behavior even for small diffs without a plan or server, preserve report-only discovery and the test_stub ASK gate, handle incomplete probes honestly, and rerun affected evidence after approved repairs',
+      agentCapability: 'frontier',
     });
   }, WORKFLOW_JUDGE_TEST_MS);
 

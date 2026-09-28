@@ -32,8 +32,15 @@ evidence and regression baselines. Do not combine their scores or outcomes.
 
 ## Discoveries and permanent tests
 
-Link each `exploration-NNN.json` checkpoint, saved before its next probe, and explain
-how that prior observation shaped the probe. Keep these original notes with the report.
+Link each `exploration-NNN.json` checkpoint, saved before its next probe, in this report.
+Use one Markdown entry per checkpoint, for example:
+
+- [checkpoint 001](exploration-001.json) — how this observation shaped the next probe.
+
+Use the actual filename and a path relative to this report (or its owned absolute
+path); plain or backticked filenames are not links.
+Include superseded checkpoints as history, not current passing evidence.
+Keep these original notes with the report.
 
 | Hypothesis / discovery | Native test or proposed case | Red evidence before repair | Green + original + adjacent evidence | Parent disposition |
 |---|---|---|---|---|

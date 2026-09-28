@@ -2,17 +2,29 @@ import { expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { ALL_HOST_CONFIGS } from '../hosts';
 import { generateAdversarialStep, generatePlanCompletionGateShip } from '../scripts/resolvers/review';
+import { generateQAReview } from '../scripts/resolvers/qa';
 import { HOST_PATHS } from '../scripts/resolvers/types';
 import { readWorkflowExcerpt } from './helpers/workflow-excerpt';
 
 const readShip = () => readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
 
+test('Ship initializes and applies its smoke guard independently of required plan checks', () => {
+  for (const host of ALL_HOST_CONFIGS) {
+    const body = generateQAReview({ host: host.name, skillName: 'ship', tmplPath: '', paths: HOST_PATHS[host.name] });
+    expect(body).toContain('Run the shared preflight; start its smoke guard once. Guard every smoke probe.');
+    expect(body.indexOf('start its smoke guard once')).toBeLessThan(body.indexOf('**3. Run smoke and plan checks.**'));
+    expect(body).toContain('Required even for small diffs or missing plans/servers');
+    expect(body).toContain('Then run required plan checks, even after smoke expires');
+    expect(body).toContain('using the same procedure but no smoke guard; never reset the clock');
+  }
+});
+
 test('ship uses the PR template headings instead of a competing combined QA report', () => {
   const ship = readShip().replace(/\s+/g, ' ');
-  expect(ship).toContain('`## Exploratory QA` in the PR body');
-  expect(ship).toContain('Put plan outcomes in `## Verification Results`');
-  expect(ship).toContain("Read QA's `templates/functional-report-template.md`. Replace its top-level title with");
-  expect(ship).toContain('Link every checkpoint; write no second report');
+  expect(ship).toContain('PR section `## Exploratory QA`');
+  expect(ship).toContain('plans in `## Verification Results`');
+  expect(ship).toContain('Read QA\'s `templates/functional-report-template.md`: PR section');
+  expect(ship).toContain('Link every checkpoint; no second report');
   expect(ship).not.toContain('## Exploratory QA and Verification Results');
 });
 

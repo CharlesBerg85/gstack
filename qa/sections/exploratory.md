@@ -23,7 +23,7 @@ Report QA setup blockers.
 
 Reuse resolved REPORT_DIR; otherwise resolve ownership of an invocation-owned `.gstack/qa-reports` subdirectory.
 Write a **charter** (test plan) for each behavior: contract, risk,
-entrypoint, isolation and exit condition. Keep charters as Markdown in the report with exact source, commands and inputs.
+entrypoint, isolation and exit condition. Save charters as Markdown in the report: exact source, commands and inputs.
 
 For /review and /ship, no plan/server is required.
 Stop after 5 minutes or 12 probes, whichever comes first (SECONDS=300 across surfaces).
@@ -35,8 +35,8 @@ Set SECONDS to the mode's limit or a shorter caller duration. With no mode limit
 Without a total time limit, do not use the guard. Use documented or announced finite command timeouts instead.
 Stop when scoped contracts are tested or blocked.
 Use REPORT_DIR for clocks/checkpoints. For mixed standalone runs, create REPORT_DIR/browser and REPORT_DIR/functional instead; keep one final report at REPORT_DIR. Caller paths win.
-For bounded commands below, replace G with `$HOME/.claude/skills/gstack/bin/gstack-qa-deadline` and D with `<probe directory>/deadline.json`, using quoted absolute paths.
-Start once before baseline: `bun G start D SECONDS [EARLIER_UTC]`; selected/caller limits apply.
+G = `$HOME/.claude/skills/gstack/bin/gstack-qa-deadline`, D = `<probe directory>/deadline.json`; quote absolute paths.
+Start once before baseline: `bun G start D SECONDS [EARLIER_UTC]`.
 EARLIER_UTC is the caller's absolute deadline, if set.
 Every bounded probe: `bun G run D -- COMMAND ARGS` (scripts: `bash -c 'script'`). No detached probes.
 Never reset D/bypass G. Expiry or missing/invalid state stops probes; report unfinished coverage.
@@ -49,20 +49,20 @@ Never bootstrap functional/report-only QA.
 This loop decides each probe (one command/interaction plus checks).
 Do not batch probes across a checkpoint.
 
-1. First demonstrate success: output AND durable effects. Use the guard if bounded; wait for its result.
+1. First demonstrate success: output AND durable effects. Guard if bounded; await completion.
 2. **Decide whether another probe is needed.** If bounded, run `bun G status D`.
    If expired or no safe next probe remains, STOP exploration; write the report, not a checkpoint.
-   Otherwise **Write before probing.** Write a new `exploration-NNN.json` beside that surface's deadline file (or in its probe directory without a timer):
-   exactly four top-level fields: observationCommand, observed, hypothesis, nextCommand.
+   Otherwise **Write before probing.** Write a new `exploration-NNN.json` in the probe directory, beside its deadline if bounded, with exactly four top-level fields:
    observationCommand: last completed probe's full outer command, including guard.
    observed: its exact decoded child JSON (no wrapper/extra keys), or its full non-JSON text.
-   hypothesis explains nextCommand (exact command/request, guarded if bounded).
+   hypothesis: why nextCommand. nextCommand: exact command/request, guarded if bounded.
    Preserve every safe program-JSON key/value and identity hash unchanged. Put tool metadata in the report, interpretations in hypothesis.
    Redact secrets/private payloads; disclose limits.
+   Before Write, complete and check all fields against the result and next probe. No drafts/placeholders or invented safe-path redactions; corrections cannot repair published notes.
    Wait for the successful Write result before dispatch.
    Captions, private thinking and retrospective notes do not count. Never overwrite notes.
 3. Run that exact probe; G enforces the deadline when bounded.
-   On refusal, mark the note not-run in the report. Retain initial state/inputs/results.
+   Report refusals as not-run. Retain initial state/inputs/results.
    Repeat from step 2.
 4. Replay the exact failing command/request from the same initial fixture state via steps 2–3
    before repair, then minimize via those gates. Expiry leaves confirmation/minimization incomplete.

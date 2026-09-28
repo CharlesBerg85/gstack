@@ -65,7 +65,13 @@ export interface CallerTool {
   output: string;
   failed: boolean;
   index: number;
+  resultIndex: number;
+  messageId?: string;
+  sessionId?: string;
+  handoffContent?: string;
 }
+
+const UNCHANGED_READ = 'Wasted call — file unchanged since your last Read. Refer to that earlier tool_result instead.';
 
 export function callerTools(transcript: unknown[]): CallerTool[] {
   const tools: CallerTool[] = [];
@@ -79,7 +85,7 @@ export function callerTools(transcript: unknown[]): CallerTool[] {
       const key = JSON.stringify([parent, block.type === 'tool_use' ? block.id : block.tool_use_id]);
       if (event.type === 'assistant' && block.type === 'tool_use') {
         if (typeof block.id !== 'string' || pending.has(key)) throw new Error('Ambiguous native tool id');
-        const tool = { id: block.id, parent, name: block.name, input: block.input ?? {}, output: '', failed: false, index };
+        const tool: CallerTool = { id: block.id, parent, name: block.name, input: block.input ?? {}, output: '', failed: false, index, resultIndex: -1, messageId: event.message.id, sessionId: event.session_id };
         tools.push(tool);
         pending.set(key, tool);
       } else if (event.type === 'user' && block.type === 'tool_result') {
@@ -90,6 +96,25 @@ export function callerTools(transcript: unknown[]): CallerTool[] {
           .filter((part: any) => part.type === 'text' && typeof part.text === 'string')
           .map((part: any) => part.text).join('\n');
         tool.failed = block.is_error === true;
+        tool.resultIndex = index;
+        const native = event.tool_use_result;
+        if (!tool.failed && tool.name === 'Read' && typeof tool.input.file_path === 'string'
+          && tool.input.file_path.endsWith('/HANDOFF.md') && Object.keys(tool.input).length === 1
+          && typeof tool.sessionId === 'string' && event.session_id === tool.sessionId
+          && event.message.content.length === 1 && native?.file?.filePath === tool.input.file_path) {
+          if (native.type === 'text' && typeof native.file.content === 'string') {
+            const lines = native.file.content.split('\n');
+            if (native.file.startLine === 1 && native.file.numLines === lines.length && native.file.totalLines === lines.length
+              && tool.output === lines.map((line: string, i: number) => `${i + 1}\t${line}`).join('\n')) {
+              tool.handoffContent = native.file.content;
+            }
+          } else if (native.type === 'file_unchanged' && tool.output === UNCHANGED_READ) {
+            const prior = tools.findLast(read => read.name === 'Read' && read.parent === tool.parent && read.sessionId === tool.sessionId
+              && read.input.file_path === tool.input.file_path
+              && read.resultIndex >= 0 && read.resultIndex < tool.index && (!tool.messageId || read.messageId !== tool.messageId));
+            tool.handoffContent = prior?.handoffContent;
+          }
+        }
         pending.delete(key);
       }
     }
@@ -294,10 +319,10 @@ export function validateCallerEvidence(input: {
     if (!tool) errors.push(`probe missing native command/result: ${probe.id}`);
     else {
       checkpointProbes.push({ command: String(tool.input.command), observed: probe, index: tool.index });
-      if (parentRead && tool.index < parentRead.index) errors.push(`probe preceded parent entrypoint: ${probe.id}`);
+      if (parentRead && (tool.index <= parentRead.resultIndex || tool.messageId && tool.messageId === parentRead.messageId)) errors.push(`probe preceded parent entrypoint: ${probe.id}`);
       for (const id of ['exploratory', 'system-functional']) {
         const resource = readOf(`/qa/sections/${id}.md`);
-        if (resource && tool.index < resource.index) errors.push(`probe preceded resource read: ${id}`);
+        if (resource && (tool.index <= resource.resultIndex || tool.messageId && tool.messageId === resource.messageId)) errors.push(`probe preceded resource read: ${id}`);
       }
       if (input.requireGuardedSmoke) {
         const command = String(tool.input.command);
@@ -359,12 +384,29 @@ export function validateCallerEvidence(input: {
   }));
   const selected = input.receipt.probes.map(id => input.probes.find(probe => probe.id === id));
   if (selected.some(probe => !probe)) errors.push('receipt references an unobserved probe');
+  const currentProbes = selected.filter((probe): probe is CallerProbe => !!probe && probe.snapshot === input.currentSnapshot);
+  const boundary = currentProbes.find(probe => probe.charter === 'plan:nine' && probe.input === '9'
+    && probe.exit === 0 && probe.stdout === '18\n' && probe.stderr === '' && probe.status === 'pass');
+  const happyProof = currentProbes.find(probe => probe.charter === 'happy' && probe.status === 'pass') ?? boundary;
   for (const charter of input.requiredCharters) {
-    const current = selected.filter((probe): probe is CallerProbe => !!probe)
-      .filter(probe => (probe.charter === charter || charter === 'happy' && probe.charter === 'plan:nine' && probe.input === '9' && probe.exit === 0 && probe.stdout === '18\n' && probe.stderr === '') && probe.snapshot === input.currentSnapshot);
+    const current = currentProbes.filter(probe => probe.charter === charter
+      || charter === 'happy' && probe === boundary
+      || charter === 'adverse' && probe === boundary && (!input.requiredCharters.includes('happy') || probe.id !== happyProof?.id));
     if (!current.length && !input.receipt.remaining.length) errors.push(`missing current charter: ${charter}`);
     if (input.receipt.status === 'pass' && !current.some(probe => probe.status === 'pass')) {
       errors.push(`false green for charter: ${charter}`);
+    }
+  }
+  const handoffs = reads.filter(tool => String(tool.input.file_path ?? '').endsWith('/HANDOFF.md'));
+  for (const tool of tools) {
+    if (tool.name !== 'Bash' || !/gstack-review-log['"]?\s/.test(String(tool.input.command))
+      || !/"completed"\s*:\s*true/.test(String(tool.input.command))) continue;
+    if (handoffs.some(read => (read.resultIndex >= tool.index || tool.messageId && tool.messageId === read.messageId)
+      && !handoffs.some(prior => prior.input.file_path === read.input.file_path && prior.parent === read.parent && prior.sessionId === read.sessionId
+        && (read.output !== UNCHANGED_READ && prior.output === read.output
+          || read.handoffContent !== undefined && prior.handoffContent === read.handoffContent)
+        && prior.resultIndex < tool.index && (!tool.messageId || tool.messageId !== prior.messageId)))) {
+      errors.push('review completion preceded handoff freshness decision');
     }
   }
   if (input.receipt.status === 'pass' && (input.receipt.remaining.length || selected.some(probe => probe?.status !== 'pass'))) {
@@ -534,7 +576,7 @@ process.exit(exit ?? 127);
       lateApplied: false, snapshot, probes,
       observe: async () => {
         if (observer || fixture.observation) throw new Error('Caller observation cannot restart mid-capture');
-        observer = await observeQAWrites(cwd);
+        observer = await observeQAWrites(cwd, { reportDirectory: 'reports' });
       },
       close: async () => {
         coordinator?.close();
@@ -565,6 +607,11 @@ process.exit(exit ?? 127);
 export function qaCallerSessionOptions(fixture: QaCallerFixture, runId: string): Parameters<typeof runSkillTest>[0] {
   return {
     prompt: `Load gstack's /${fixture.caller} supplied parent phase from caller-${fixture.caller}.md and resume it on the selected working-tree diff against origin/main. This excerpt comes from ${fixture.runtime}/${fixture.caller}/SKILL.md; resolve installed-relative references there, not from the excerpt file or product directory. That path identifies the asset base, not another entrypoint: do not read or invoke the full parent SKILL.md or rerun its preamble. Earlier preamble/branch/base setup is complete; use the existing local origin/main ref without fetch. Earlier-phase asset locators are ${fixture.runtime}/review/checklist.md and ${fixture.runtime}/qa/templates/functional-report-template.md. Read those files directly when referenced; recursive Glob does not follow the installed asset symlinks. Cross-project learnings are configured off in this owned fixture. ${fixture.reviewStart ? `The actual review-start helper already captured REVIEW_START=${fixture.reviewStart} for this unchanged core pass; retain that token. ` : ''} This fixture evaluates only the supplied parent phase, not later publication stages. Read README.md for the project contract and commands. Use diagnostic-client commands such as \`bun scripts/probe.ts <literal>\` for exploratory discoveries and their checkpoint evidence. A required \`bun run test\` is separate suite verification: report it as verification, never as a diagnostic observation or checkpoint anchor/target. Write each diagnostic checkpoint directly to \`reports/exploration-NNN.json\`, not inside a nested directory. ${fixture.caseId === 'ship-exploratory-plan-checks' ? 'The previously discovered plan is PLAN.md.' : 'No plan file was found.'} There is no remote service and no release publication is authorized. There is no interactive approver; do not invent answers or permission. Keep normal parent decision gates. Before your final report, read HANDOFF.md and reports/HANDOFF.md if present for any concurrent collaborator update.\n\nDeadline bookkeeping additionally permits \`bun ${fixture.runtime}/bin/gstack-qa-deadline start ${fixture.cwd}/reports/deadline.json SECONDS [EARLIER_UTC]\`, \`bun ${fixture.runtime}/bin/gstack-qa-deadline status ${fixture.cwd}/reports/deadline.json\`, and \`bun ${fixture.runtime}/bin/gstack-qa-deadline run ${fixture.cwd}/reports/deadline.json -- bun scripts/probe.ts [literal]\`. These are closed literal forms: SECONDS must be positive and at most 300, EARLIER_UTC is an optional literal UTC timestamp, and the child is only the existing diagnostic client with zero or one literal argument. Resolve these exact helper and state paths; do not use variables, another helper, another state file, nested wrappers, scripts, operators or substitutions. Only this helper may create or change reports/deadline.json and its .qa-deadline- temporary files; never use Write/Edit/MultiEdit on those paths. Record the full outer run command in checkpoints and evidence; keep the unchanged child JSON as observed, separate from prefixed guard diagnostics. A completed expired guard-run is not a probe or a pass: retain its unused checkpoint, report not-run coverage and do not restart the deadline. Keep the 12-probe smoke limit. Required suites and explicit plan checks are outside the bounded smoke budget, not permission to reset it.\n\nThe supported Bash interface is one literal documented native command or one exact generated workflow shell block with main substituted for <base>; even read-only commands must not be chained except for the exact DIFF_BASE preface below. Native CLI commands accept no argument or one literal argument: an unquoted shell-safe word, single-quoted text, or double-quoted text without expansion or escapes; no multiline arguments or shell composition. Inventory commands are pwd, bun --version, and ls with an optional combined -l/-a flag, optional -- separator, and literal path operands using the same quoting rules; operands beginning with - require --. Listing never permits other options, glob expansion, substitution, redirection or composition. The supported Git forms are git status --short, git status --porcelain, git branch --show-current, git rev-parse HEAD, git rev-parse --short HEAD, git merge-base origin/main HEAD, git diff (optional origin/main base and at most one output mode: --stat, --numstat, --name-only, or --name-status, before or after the base; optional literal pathspec arguments after --), git ls-files, and git ls-files --others --exclude-standard. Diff pathspecs use the same literal argument syntax as the CLI; quote globs so Git, not the shell, interprets them. The only variable-base form is DIFF_BASE=$(git merge-base origin/main HEAD) && git diff with exactly the double-quoted "$DIFF_BASE" base, the same optional output mode and literal pathspecs. That exact preface recomputes the base in the same command; other assignments and variable expansions are forbidden; the only additional command substitutions are the two installed bookkeeping fields described below. No other Git options, configuration overrides, --output, --no-index, --ext-diff, --textconv, external helpers or mutations are authorized. Exact generated workflow blocks remain allowed. Review bookkeeping permits the installed gstack-review-log start commands and single-quoted JSON records for review/adversarial-review (the installed quote-spliced double-quoted $(date -u +%Y-%m-%dT%H:%M:%SZ) is permitted only as the complete top-level timestamp value, and $(git rev-parse --short HEAD) only as the complete top-level commit value; no other substitutions, field placements or shell evaluation), gstack-review-read, gstack-specialist-stats, plus date -u +%Y-%m-%dT%H:%M:%SZ; use an original start token for a started attempt and completed:false/converged:false without a token for an unstarted one. Bookkeeping has an owned state directory and private Git object store; the real product, index, refs and config must stay unchanged. Outside providers are unavailable in this isolated fixture; the native reviewer is still required. Other interpreters, shell composition outside those generated blocks or the exact DIFF_BASE preface, global setup and external operations are not authorized. Use Read/Glob/Grep for discovery instead of cat/head/tail; use native Write/Edit tools for any authorized file output. Pass these same command and write boundaries to any child; generated shell fragments remain verbatim apart from the declared substitutions.\n\nWrite the phase report to reports/review.md. Also save reports/receipt.json with this machine-readable result shape: {\"status\":\"pass|fail|blocked|inconclusive\",\"probes\":[\"observed diagnostic receipt ids\"],\"remaining\":[\"names of incomplete contracts\"]}. The status is the overall supplied phase gate, not whether some probes passed. The probes array names observed diagnostic receipts used as evidence; remaining names unresolved required contracts or gates in this phase. Pass requires no remaining required contracts or gates. Optional unavailable providers and later stages outside this excerpt are not required remainder. This format does not establish that any work succeeded. Stop at the end of this phase, or at its first unresolved approval gate.`,
+    appendSystemPrompt: `Caller execution scheduling (fixture contract):
+This session has at most 25 assistant turns, including required verification and final artifacts. The command boundary applies to each Bash call, not to the number of independent tool calls in an assistant turn.
+After required clock and approval prerequisites settle, issue independent source Reads and read-only discovery together as separate native tool calls once their paths and inputs are known. Wait for their results before decisions that depend on them.
+The completion reserve is for required verification, affected-input revalidation and artifacts, not an earlier deadline. Keep completing required work within the actual remaining deadline; reserve entry alone is not a reason to stop. Use each native probe's snapshot to distinguish current from superseded evidence before deciding which checks still need revalidation.
+Never group diagnostic probes, a checkpoint Write with its next probe, or any action with the clock/status/approval result it needs. Shell composition remains forbidden outside the declared forms. Preserve every required Read, probe, verification, freshness check, approval and report field; the turn limit does not authorize skipping work or reporting incomplete work as passed.`,
     workingDirectory: fixture.cwd,
     timeout: CAPTURE_MS,
     completionReserveMs: CAPTURE_MS / 4,
@@ -597,10 +644,21 @@ export function retainQaCallerEvidence(fixture: QaCallerFixture, dir: string, re
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (!fs.lstatSync(dir).isDirectory() || fs.realpathSync(dir) !== path.resolve(dir)) throw new Error('Evidence directory must be a real owned directory');
   fs.chmodSync(dir, 0o700);
+  const handoffReads = new Set<string>();
   const publicEvents = result?.transcript.flatMap(event => {
     if (!['assistant', 'user'].includes(event.type)) return [];
     const content = (event.message?.content ?? []).filter((block: any) => ['tool_use', 'tool_result'].includes(block.type));
-    return content.length ? [{ type: event.type, parent_tool_use_id: event.parent_tool_use_id ?? null, message: { content } }] : [];
+    for (const block of content) {
+      if (event.type === 'assistant' && block.type === 'tool_use' && block.name === 'Read'
+        && typeof block.input?.file_path === 'string' && block.input.file_path.endsWith('/HANDOFF.md')) {
+        handoffReads.add(JSON.stringify([event.parent_tool_use_id ?? null, block.id]));
+      }
+    }
+    const handoffResult = event.type === 'user' && content.length === 1 && content[0].type === 'tool_result'
+      && handoffReads.has(JSON.stringify([event.parent_tool_use_id ?? null, content[0].tool_use_id]));
+    return content.length ? [{ type: event.type, parent_tool_use_id: event.parent_tool_use_id ?? null,
+      session_id: event.session_id, message: { id: event.message?.id, content },
+      ...(handoffResult && event.tool_use_result ? { tool_use_result: event.tool_use_result } : {}) }] : [];
   }) ?? [];
   const retain = (file: string, content: string) => {
     const destination = path.join(dir, file);

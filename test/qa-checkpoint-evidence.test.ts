@@ -50,6 +50,33 @@ function rejected(input: ReturnType<typeof fixture>, message: string) {
   expect(validateQACheckpoints(input).some(failure => failure.includes(message))).toBe(true);
 }
 
+describe('functional report checkpoint-link contract', () => {
+  const template = fs.readFileSync(path.join(import.meta.dir, '../qa/templates/functional-report-template.md'), 'utf8');
+
+  test('the shared report template gives concrete Markdown syntax without discarding superseded evidence', () => {
+    expect(template).toContain('[checkpoint 001](exploration-001.json)');
+    expect(template).toContain('plain or backticked filenames are not links');
+    expect(template).toContain('Include superseded checkpoints as history, not current passing evidence');
+    expect(template).toContain('saved before its next probe');
+    expect(template).toContain('path relative to this report');
+  });
+
+  test('links built from the actual report-template example satisfy the native checkpoint validator', () => {
+    const input = fixture();
+    const example = template.match(/\[checkpoint 001\]\(exploration-001\.json\)/)?.[0];
+    expect(example).toBeDefined();
+    input.reportMarkdown = Object.keys(input.files).map(name => example!.replaceAll('001', name.slice(12, 15))).join('\n');
+    expect(validateQACheckpoints(input)).toEqual([]);
+  });
+
+  test.each(['plain', 'backticked', 'superseded'])('a %s checkpoint reference is not a Markdown link', style => {
+    const input = fixture();
+    input.reportMarkdown = `${style === 'backticked' ? '`exploration-001.json`' : `${style}: exploration-001.json`}\n`
+      + '[Current checkpoint](exploration-002.json)';
+    expect(validateQACheckpoints(input)).toEqual(['QA checkpoint: Report does not link checkpoint: exploration-001.json']);
+  });
+});
+
 describe('program observations and terminal checkpoint boundaries', () => {
   test('keeps nonzero tool wrapper metadata outside the unchanged program JSON', () => {
     const input = fixture();
