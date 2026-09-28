@@ -145,6 +145,41 @@ case/sample inventory and report skips and unavailable platforms separately.
 Do not subtract failures from elapsed time or use a smaller selection as proof
 that the complete suite got faster.
 
+### Functional-QA cleanup measurement — September 28, 2026
+
+On the same four-CPU Linux machine, using Bun 1.4.0, Node 22.20.0 and Claude
+Code 2.1.251, the existing duration recorder measured all 1,113 free files.
+The refreshed seed selects 931 files for quick feedback: 90 newly included and
+20 newly excluded by measured cost, a net increase of 70. No files remain
+unclassified. All 182 slow files remain in the complete suite. The functional
+command observer, checkpoint decoder and log-capture controls are explicit
+quick-core cases; each measured under two seconds.
+
+| Existing command / attempt | Executed scope | Result | Wall time |
+| --- | --- | --- | ---: |
+| `bun run test:free --record-durations` | 1,113 files | 29,175 pass, 5 fail, 131 skip | 680.64s |
+| `bun run test:quick`, first measured attempt | 931 files | 22,160 pass, 2 fail, 100 skip | 125.39s |
+| `bun run test:quick`, repaired attempt | The same 931 files | 22,162 pass, 0 fail, 100 skip | 52.43s |
+
+The profile's five failures came from the machine's Git identity wrapper
+overwriting synthetic fixture authors. Running the two affected files with native
+Git in the isolated test environment passed all 59 tests in 75.32s; normal checkout
+commits retained the configured identity. Both quick attempts used that corrected
+environment. Their two telemetry timeouts used Bun's synchronous piped-input
+path; the repair reuses the existing file-backed command capture helper without
+changing commands, assertions or deadlines. The seed retains observed costs,
+including failed attempts; it is a scheduling hint, not a passing receipt.
+
+Cold dependency installation took 0.477s and the integrated build took 3.84s,
+separate from warm test execution; CLI installation was not independently timed.
+An earlier 63.37s profile was cancelled for a decoder repair, with an additional
+scoped browser cleanup, and earns no completion credit. Failed, cancelled and
+repair runs are costs, not time removed from the workflow. The quick target of
+one minute was met on this machine, but these measurements establish neither a
+cross-environment speedup nor full release, live-model or Windows acceptance.
+
+### Earlier component comparisons
+
 Measured component comparisons:
 
 | Workload | Before | After | Coverage retained |

@@ -25,6 +25,8 @@ and every ship audits relevant documentation before final verification and publi
 - Ship keeps repair and late-change instructions in the steps that own them. Nested repairs preserve their return destination, and release preparation requires matching review records before version or documentation writes.
 - Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
 - Paid-test `--list` also stays read-only with a saved plan and selected slice: it validates and lists the selected work without API preflight, test launches or result files.
+- Functional-QA test fixtures enforce their declared foreground command boundary before execution, and shared native-event decoding rejects malformed or incomplete evidence while preserving caller-specific handoff rules.
+- Free tests retain private full logs, fail when evidence cannot be saved, and give an actionable recovery step. Linux and Windows CI collect the retained logs. Refreshed timings make new fast regressions reachable through the existing quick lane without removing complete-suite coverage.
 
 ## [1.91.4.0] - 2026-09-28
 
