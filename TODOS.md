@@ -774,6 +774,81 @@ audit trail lives in Aside.
 **Priority:** P3
 **Depends on:** None.
 
+## Browser cookie import follow-ups (filed via /autoplan on the Windows Opera fix wave, #2980/#2957)
+
+### P2: Preserve receipts when key acquisition fails in a mixed batch
+
+**What:** `importCookies` derives the key for the whole batch before the row loop, so one v10 row plus a DPAPI/Keychain failure throws a typed key error and loses plaintext and App-Bound counts for the other rows.
+
+**Why:** A mixed plaintext + v20 + v10 batch with an unavailable key reports only the key error; recoverable plaintext cookies and the unsupported-encryption count disappear.
+
+**Context:** Raised by the outside Eng voice. Deferred because turning a thrown typed key error into partial receipts changes a cross-platform contract, including macOS Keychain "click Allow and retry" prompts. Start at `getDerivedKeys` call in `browse/src/cookie-import-browser.ts` `importCookies`.
+
+**Effort:** M (human ~1 day / CC+gstack ~30 min). **Priority:** P2.
+**Depends on:** a decision on how retry-able key errors surface in a receipt.
+
+### P3: Use the SHA-256(host_key) check on the macOS/Linux CBC path
+
+**What:** The CBC branch of `decryptCookieValue` always drops 32 bytes; databases older than Chromium meta version 24 have no prefix, so their values lose 32 real bytes.
+
+**Why:** Same correctness rule the Windows GCM branch now uses (strip only when the first 32 bytes equal SHA-256(host_key)).
+
+**Context:** Found during the Opera wave's Eng review; affects only old profiles. yt-dlp keys this on `meta.version >= 24`.
+
+**Effort:** S (human ~2 h / CC+gstack ~10 min). **Priority:** P3.
+**Depends on:** nothing.
+
+### P3: macOS and Linux Opera / Opera GX cookie import
+
+**What:** Register Opera on macOS (`~/Library/Application Support/com.operasoftware.Opera`, GX `com.operasoftware.OperaGX`) and Linux (`~/.config/opera`).
+
+**Why:** Opera users off Windows get "available on Windows only".
+
+**Context:** Paths from yt-dlp's `cookies.py`; Keychain service and libsecret application names are unverified. Needs a person on each OS.
+
+**Effort:** M (human ~1 day / CC+gstack ~30 min plus hardware verification). **Priority:** P3.
+**Depends on:** a tester on macOS and Linux.
+
+### P3: Opera Beta/Developer and Opera GX channel directories
+
+**What:** Detect `Opera Next`/`Opera Developer`/GX beta user-data directories.
+
+**Why:** Channel users are currently "not found".
+
+**Context:** Directory names are unverified; add registry rows once confirmed on hardware.
+
+**Effort:** S. **Priority:** P3. **Depends on:** confirmed directory names.
+
+### P3: Opera side profiles (`_side_profiles/<id>/`)
+
+**What:** Opera GX stores extra profiles under `<root>\_side_profiles\<id>\`, which `listProfiles`, `validateProfile` and the native profile regex do not accept.
+
+**Why:** Side-profile users only see their main profile.
+
+**Context:** Needs a profile-naming rule beyond `Default`/`Profile N` and an account-selection safety review.
+
+**Effort:** M. **Priority:** P3. **Depends on:** a real side-profile layout sample.
+
+### P3: Legacy root-level Opera layouts
+
+**What:** Older Opera stored cookies at `<root>\Network\Cookies` with no `Default\`.
+
+**Why:** Old installs report "not found".
+
+**Context:** Cut from the wave by both CEO voices: a stale root DB can be imported as the wrong account when side profiles or a migrated `Default\` exist. Sources: yt-dlp, forensics guides. Build only on a real report, with stale-root/side-profile coexistence tests.
+
+**Effort:** S-M. **Priority:** P3. **Depends on:** a user report with this layout.
+
+### P3: User-supplied Chromium user-data path option
+
+**What:** A yt-dlp-style `chrome:PATH` option for portable or relocated installs and unlisted forks.
+
+**Why:** Each new fork currently needs a registry change and a release.
+
+**Context:** `ARCHITECTURE.md` prefers a hardcoded registry for safety; needs a threat review (arbitrary paths, key sources) before building.
+
+**Effort:** M. **Priority:** P3. **Depends on:** threat review.
+
 ## Test infrastructure
 
 ### P1: skillify gate test red — HOME-override sessions never discover project skills (pre-existing)

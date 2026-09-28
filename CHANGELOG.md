@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.91.3.0] - 2026-09-25
+## [1.91.5.0] - 2026-09-28
 
 QA can test APIs, CLIs, jobs, workers and webhooks with the project's own tools,
 without starting a browser. Review and ship now run bounded exploratory checks,
@@ -25,6 +25,23 @@ and every ship audits relevant documentation before final verification and publi
 - Ship keeps repair and late-change instructions in the steps that own them. Nested repairs preserve their return destination, and release preparation requires matching review records before version or documentation writes.
 - Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
 - Paid-test `--list` also stays read-only with a saved plan and selected slice: it validates and lists the selected work without API preflight, test launches or result files.
+
+## [1.91.4.0] - 2026-09-28
+
+Windows users can copy signed-in cookies from Opera and Opera GX into gstack's browser. On Windows, where Chrome, Edge and Brave increasingly store App-Bound Encryption cookies that gstack cannot decrypt, Opera and Opera GX still use DPAPI-protected cookies, so they may be the browsers where import keeps working.
+
+### Added
+- `cookie-import-browser opera` and `opera-gx` (also `operagx` and "Opera GX") on Windows, read from `%APPDATA%\Opera Software\Opera Stable` or `Opera GX Stable` in `Default` or `Profile N` directories. Legacy root-level layouts, Opera side profiles and portable installs are not detected. Includes the Opera registry and Roaming-root contribution from @mvanhorn in #2980 (refs #2957).
+
+### Fixed
+- Windows v10 cookies from current Chromium databases decrypted with 32 bytes of hash in front of the value, so imports could report success while the site stayed signed out. The SHA-256(host_key) prefix is now removed when present, for Chrome, Chromium, Edge and Brave as well as Opera.
+- App-Bound Encryption rows in a browser without native extraction keep their receipt (counts and reasons) and name the recovery: `$B handoff`, sign in, `$B resume`. Partial imports warn that the session may not be restored.
+- Missing browsers, missing profiles and ambiguous profile selection now say what was checked and what to run next, including which OS supports a browser and the typeable browser names available on this one. CLI receipts list failure reasons.
+- A relative `APPDATA` no longer redirects the Opera root.
+
+### Changed
+- BROWSER.md has a Windows Opera walkthrough and tables for receipt failure reasons and import error codes; a free test keeps the browser lists in the docs and command reference in step with the registry.
+- A Windows CI test decrypts a host-bound Opera cookie with real DPAPI through the Node server runtime. Real Opera sessions on Windows are still awaiting confirmation from the issue reporter.
 
 ## [1.91.2.0] - 2026-09-25
 

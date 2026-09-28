@@ -5,10 +5,23 @@ import type { EvalTestEntry } from './eval-store';
 import { buildCookieWorkflowJudgeInput } from './cookie-workflow-judge-input';
 import { COOKIE_MANUAL_REVIEW_FILE } from './cookie-workflow-manual-review';
 
+// Later documentation added to the judged BROWSER.md section after the approval
+// was recorded (v1.91.4.0 Windows Opera wave). Reversing it reconstructs the
+// exact historical prompt bytes, including the section's line range.
+const LATER_BROWSER_BLOCK = /\*\*Windows: Opera and Opera GX\.\*\*[\s\S]*?appear in CLI output\.\n\n/;
+const LATER_BROWSER_EDITS: Array<[string, string]> = [
+  ['The picker recognizes Chrome, Chromium, Brave, Edge, Windows-only Opera and Opera GX, and macOS-only Comet, Arc, and Dia.', 'The picker recognizes Chrome, Chromium, Brave, Edge, and macOS-only Comet, Arc, and Dia.'],
+  [' Opera and Opera GX are Windows-only and read from `%APPDATA%\\Opera Software\\Opera Stable` or `Opera GX Stable`, in `Default` or `Profile N` directories; legacy root-level layouts, Opera side profiles and portable or relocated installs are not detected. Opera has no native extraction, so its App-Bound cookies (if any) need manual sign-in.', ''],
+];
+
 export function approvedCookieWorkflowSource(source: string): string {
-  return source
+  let removedLines = 0;
+  let historical = source
     .replace('sha256sum < "$tmpfile" | awk \'{print $(1)}\'', 'sha256sum "$tmpfile" | awk \'{print $1}\'')
-    .replace('shasum -a 256 < "$tmpfile" | awk \'{print $(1)}\'', 'shasum -a 256 "$tmpfile" | awk \'{print $1}\'');
+    .replace('shasum -a 256 < "$tmpfile" | awk \'{print $(1)}\'', 'shasum -a 256 "$tmpfile" | awk \'{print $1}\'')
+    .replace(LATER_BROWSER_BLOCK, block => { removedLines = block.split('\n').length - 1; return ''; });
+  for (const [later, earlier] of LATER_BROWSER_EDITS) historical = historical.replace(later, earlier);
+  return historical.replace(/(--- BEGIN FILE "BROWSER\.md" \(lines \d+-)(\d+)(; section\) ---)/, (_, head, end, tail) => `${head}${Number(end) - removedLines}${tail}`);
 }
 
 export function manualReviewFixture(root = resolve(import.meta.dir, '../..')): EvalTestEntry {
