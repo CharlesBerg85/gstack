@@ -145,11 +145,11 @@ describe('actual Node importer runtime', () => {
       const result = await importCookies('opera', ['dpapi.fixture']);
       console.log(JSON.stringify({ count: result.count, failed: result.failed, reasons: result.failureReasons, matches: result.cookies[0]?.value === process.argv[3] }));
     `, path.resolve(import.meta.dir, '../src/bun-polyfill.cjs'), pathToFileURL(bundle).href, expected], {
-      encoding: 'utf8', timeout: 30_000, windowsHide: true,
-      env: {
-        HOME: root, USERPROFILE: root, APPDATA: appData, LOCALAPPDATA: path.join(root, 'AppData/Local'), TEMP: root, TMP: root,
-        NODE_NO_WARNINGS: '1', SystemRoot: systemRoot, PATHEXT: process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD', PATH: [path.dirname(node!), powershellDir, path.win32.join(systemRoot, 'System32')].join(';'),
-      },
+      encoding: 'utf8', timeout: 45_000, windowsHide: true,
+      // Keep the runner's full environment: PowerShell started with a stripped
+      // environment takes ~20s on Windows CI (measured), past dpapiDecrypt's 10s
+      // deadline. Only APPDATA moves, to the fixture's Opera root.
+      env: { ...process.env, APPDATA: appData, NODE_NO_WARNINGS: '1' },
     });
     expect(child.error).toBeUndefined();
     expect(child.stderr).toBe('');
@@ -157,7 +157,7 @@ describe('actual Node importer runtime', () => {
     expect(JSON.parse(child.stdout)).toEqual({ count: 1, failed: 1, reasons: { decryption_failed: 1 }, matches: true });
     expect(child.stdout).not.toContain(expected);
     expect(child.stdout).not.toContain(key.toString('base64'));
-  });
+  }, 90_000);
 
   test('Node server build does not stub away the database', () => {
     const script = readFileSync(path.resolve(import.meta.dir, '../scripts/build-node-server.sh'), 'utf8');
