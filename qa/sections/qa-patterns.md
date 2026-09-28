@@ -2,7 +2,7 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 # Browser QA methodology
 
-Run only for selected browser surfaces. Source reads may map the diff; browser discovery stays black-box and later diagnosis stays caller-owned.
+Run only for selected browser surfaces. Map diffs with source before probes; discovery stays black-box, diagnosis caller-owned.
 
 The shared exploratory loop owns execution order, not these technique phases. Its
 checkpoint rule covers every probe after the baseline, including orientation, links,
@@ -50,7 +50,7 @@ Use the supplied URL or first responder/staging/preview; ask if none. Test chang
 Visit every reachable page (5-15 minutes). Score health; document 5-10 evidenced issues, never invent any.
 
 ### Quick (`--quick`)
-30 seconds: homepage + top 5 navigation targets. Check loads/console/broken links, score coverage; skip detailed issues/checklist, never the shared loop's gates.
+30 seconds: homepage + top 5 navigation targets. Check loads/console/broken links; score per Health Score Rubric; skip detailed issues/checklist, never the shared loop's gates.
 
 ### Regression (`--regression <baseline>`)
 Run Full; append fixed/new issues and score delta. Preserve the supplied prior baseline.
@@ -59,9 +59,9 @@ Run Full; append fixed/new issues and score delta. Preserve the supplied prior b
 
 ### Phase 1: Initialize
 
-Reuse the caller's BROWSER SETUP (Aside READY or `$B` fallback for any non-READY
-result, including `NEEDS_ASIDE`/`ASIDE_NOT_RUNNING`) and owned artifact paths. Complete only missing setup within caller
-authority. Start a timer before baseline unless the caller's timer is already running.
+Reuse the caller's BROWSER SETUP and owned artifact paths: Aside READY, otherwise `$B`
+(`NEEDS_ASIDE`/`ASIDE_NOT_RUNNING`). Complete only missing setup within caller
+authority. Clamp the shared loop's deadline guard to the caller's running deadline.
 
 ### Phase 2: Authenticate (if needed)
 

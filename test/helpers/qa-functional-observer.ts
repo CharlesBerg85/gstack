@@ -15,10 +15,26 @@ export function qaWriteAllowed(relative: string, mode: QAMode): boolean {
   return mode === 'qa' && /^(?:src|test)\//.test(relative);
 }
 
+function pathFailure(root: string, relative: string, error: unknown): Error {
+  let cursor = root;
+  let detail = 'missing';
+  for (const part of relative.split(path.sep)) {
+    cursor = path.join(cursor, part);
+    try {
+      const entry = fs.lstatSync(cursor, { throwIfNoEntry: false });
+      detail = entry ? `dev=${entry.dev} ino=${entry.ino} nlink=${entry.nlink} mode=${(entry.mode & 0o777).toString(8)}` : 'missing';
+      if (!entry || entry.isSymbolicLink() || (entry.isFile() && entry.nlink !== 1)) break;
+    } catch { detail = 'stat unavailable'; break; }
+  }
+  return new Error(`${String(error)} [path=${relative} entry=${cursor} ${detail}]`);
+}
+
 export function qaTreeSnapshot(root: string): Record<string, string> {
   const result: Record<string, string> = {};
   const visit = (relative: string) => {
-    const file = relative ? ownedPath(root, relative) : root;
+    let file: string;
+    try { file = relative ? ownedPath(root, relative) : root; }
+    catch (error) { throw pathFailure(root, relative, error); }
     const entry = fs.lstatSync(file);
     if (entry.isDirectory()) {
       if (relative) result[relative] = `directory:${entry.mode & 0o777}`;
@@ -69,21 +85,71 @@ export async function observeQAWrites(root: string) {
   const watches = new Map<number, { relative: string; directory: boolean }>();
   const events: QAWriteObservation['events'] = [];
   const failures: string[] = [];
+  const publications = new Map<string, { temporary: string; dev: number; ino: number; bytes: string; parentDev: number; parentIno: number }>();
   let stopped = false;
+  const observedPath = (relative: string, knownPair = false): string => {
+    try {
+      if (knownPair) throw new Error('Fixture path traverses a link');
+      return relative ? ownedPath(root, relative) : root;
+    } catch (error) {
+      const basename = path.basename(relative);
+      const temporaryName = /^\.qa-deadline-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+      if (!/^(?:reports|qa-reports|\.qa-state)\//.test(relative)
+        || (basename !== 'deadline.json' && !temporaryName.test(basename))) throw error;
+      const parent = ownedPath(root, path.dirname(relative));
+      const parentStat = fs.lstatSync(parent);
+      const target = path.join(parent, 'deadline.json');
+      let receipt: number | undefined;
+      try {
+        receipt = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+        const entry = fs.fstatSync(receipt);
+        if (!parentStat.isDirectory() || parentStat.uid !== fs.lstatSync(root).uid
+          || !entry.isFile() || entry.uid !== parentStat.uid || entry.nlink !== 2
+          || (entry.mode & 0o777) !== 0o400 || entry.size > 4096) throw error;
+        const aliases = fs.readdirSync(parent).filter(name => {
+          if (!temporaryName.test(name)) return false;
+          const alias = fs.lstatSync(path.join(parent, name), { throwIfNoEntry: false });
+          return alias?.isFile() && alias.dev === entry.dev && alias.ino === entry.ino && alias.nlink === 2;
+        });
+        if (aliases.length !== 1 || (basename !== 'deadline.json' && basename !== aliases[0])) throw error;
+        const bytes = fs.readFileSync(receipt, 'utf8');
+        const state = JSON.parse(bytes);
+        const canonicalUTC = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+          && [new Date(value).toISOString(), new Date(value).toISOString().replace('.000Z', 'Z')].includes(value);
+        if (!state || Object.keys(state).sort().join(',') !== 'budgetMs,deadlineAt,startedAt,version'
+          || state.version !== 1 || !Number.isSafeInteger(state.budgetMs) || state.budgetMs <= 0 || state.budgetMs > 2_147_483_647
+          || !canonicalUTC(state.startedAt) || !canonicalUTC(state.deadlineAt)
+          || Date.parse(state.deadlineAt) > Date.parse(state.startedAt) + state.budgetMs) throw error;
+        const final = fs.lstatSync(target);
+        if (!final.isFile() || final.dev !== entry.dev || final.ino !== entry.ino || ![1, 2].includes(final.nlink)
+          || (final.mode & 0o777) !== 0o400) throw error;
+        const relativeTarget = path.relative(root, target);
+        const publication = { temporary: path.join(path.dirname(relative), aliases[0]), dev: entry.dev, ino: entry.ino,
+          bytes, parentDev: parentStat.dev, parentIno: parentStat.ino };
+        const previous = publications.get(relativeTarget);
+        if (previous && JSON.stringify(previous) !== JSON.stringify(publication)) throw error;
+        publications.set(relativeTarget, publication);
+        return target;
+      } catch (publicationError) {
+        try { return ownedPath(root, relative); } catch { throw publicationError; }
+      } finally { if (receipt !== undefined) fs.closeSync(receipt); }
+    }
+  };
   const add = (relative: string, fileHint = false) => {
     if (fileHint && qaWriteAllowed(relative, 'qa-only')) {
       const parent = ownedPath(root, path.dirname(relative));
       const entry = fs.lstatSync(path.join(parent, path.basename(relative)), { throwIfNoEntry: false });
-      if (entry?.isSymbolicLink() || (entry?.isFile() && entry.nlink > 1)) throw new Error('Fixture path traverses a link');
+      if (entry?.isSymbolicLink() || (entry?.isFile() && entry.nlink > 2)) throw new Error('Fixture path traverses a link');
+      if (entry?.isFile() && entry.nlink === 2) observedPath(relative, true);
       return;
     }
-    const file = relative ? ownedPath(root, relative) : root;
+    const file = observedPath(relative);
     const entry = fs.lstatSync(file);
     if (entry.isFile() && qaWriteAllowed(relative, 'qa-only')) return;
     const name = Buffer.from(file + '\0');
     const wd = libc.symbols.inotify_add_watch(fd, ptr(name), 0x00000fce);
     if (wd < 0) throw new Error(`Could not watch ${relative}`);
-    watches.set(wd, { relative, directory: entry.isDirectory() });
+    watches.set(wd, { relative: path.relative(root, file), directory: entry.isDirectory() });
     if (entry.isDirectory()) for (const child of fs.readdirSync(file, { withFileTypes: true })) {
       add(path.join(relative, child.name), child.isFile());
     }
@@ -106,11 +172,11 @@ export async function observeQAWrites(root: string) {
           const directory = !!(record.mask & 0x40000000);
           if (!directory && qaWriteAllowed(relative, 'qa-only')) add(relative, true);
           else {
-            const target = ownedPath(root, relative);
-            if (fs.existsSync(target)) add(relative, !directory);
+            const target = observedPath(relative);
+            if (fs.existsSync(target)) add(path.relative(root, target), !directory);
             else if (directory) failures.push(`new directory vanished before watch: ${relative}`);
           }
-        } catch (error) { failures.push(String(error)); }
+        } catch (error) { failures.push(String(pathFailure(root, relative, error))); }
       }
     }
   };
@@ -145,6 +211,17 @@ export async function observeQAWrites(root: string) {
       try { fs.writeFileSync(checkpoint, 'stop'); } catch (error) { failures.push(String(error)); }
       drain();
       if (!events.slice(previous).some(event => event.path === '.qa-state/.observer-check')) failures.push('stop marker was not observed');
+      for (const [relative, publication] of publications) {
+        try {
+          const target = ownedPath(root, relative);
+          const temporary = ownedPath(root, publication.temporary);
+          const parent = fs.lstatSync(ownedPath(root, path.dirname(relative)));
+          const entry = fs.lstatSync(target);
+          if (fs.existsSync(temporary) || entry.dev !== publication.dev || entry.ino !== publication.ino || entry.nlink !== 1
+            || (entry.mode & 0o777) !== 0o400 || parent.dev !== publication.parentDev || parent.ino !== publication.parentIno
+            || fs.readFileSync(target, 'utf8') !== publication.bytes) throw new Error('Deadline publication did not settle unchanged');
+        } catch (error) { failures.push(String(pathFailure(root, relative, error))); }
+      }
       let after: Record<string, string> = {};
       try { after = qaTreeSnapshot(root); } catch (error) { failures.push(String(error)); }
       fs.closeSync(fd);

@@ -239,16 +239,17 @@ test('both gate executors cover the complete census without increasing aggregate
     expect(executor.strategy.matrix.slice).toEqual(Array.from({ length: slices }, (_, i) => i + 1));
     expect(planned.slices).toBe(slices);
     const manifest = buildRunManifest({ tier: 'gate', sliceCount: planned.slices, evalsAll: true, env: { EVALS_ALL: '1' } });
-    expect(manifest.entries.filter(row => row.status === 'planned')).toHaveLength(61);
+    expect(manifest.entries.filter(row => row.status === 'planned')).toHaveLength(62);
     const files = manifest.entries.filter(row => row.status === 'planned').map(row => row.file);
-    expect(new Set(files).size).toBe(61);
+    expect(new Set(files).size).toBe(62);
+    expect(files).toContain('test/skill-e2e-ship-skip.test.ts');
     expect(files.sort()).toEqual(selectPaidTestFiles(collectPaidTestFiles(), 'gate').selected.sort());
     const walls = executor.strategy.matrix.slice.map((slice: number) => paidShardWallUpperBoundMs(
       manifest.entries.filter(row => row.status === 'planned' && row.slice === slice).map(row => row.file), workers,
     ));
     expect(executor['timeout-minutes'] * 60_000).toBeGreaterThanOrEqual(Math.max(...walls) + 20 * 60_000);
     if (jobName === 'gate-census') {
-      expect(Math.max(...walls)).toBe(18_120_000);
+      expect(Math.max(...walls)).toBe(18_240_000);
       expect(executor['timeout-minutes']).toBe(352);
       expect(emit[0].env.EVALS_ALL).toBe('1');
       expect(executor.strategy['max-parallel']).toBe(4);

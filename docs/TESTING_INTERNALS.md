@@ -127,6 +127,21 @@ on a Mac they drive Aside and on Linux CI they drive the built browse binary,
 skipping only when neither exists. The `$B`-driven E2E cases and `browse/test/`
 run on every platform as before, so Linux CI proves the fallback engine live.
 
+**Bootstrap dependency retention is opt-in qualification, not the behavior test.**
+`qa-bootstrap` still runs its original unpinned Vitest installation and assertions
+on macOS and Linux, including documented unsharded commands. Only a Linux paid
+shard runner issues the owned retention scope: it binds each actual fixture and
+native lifetime, retains locks, package manifests and the installed file/link
+inventory, and acknowledges capture before deleting the fixture. The outer
+runner also captures evidence when a callback is killed. Incomplete capture
+fails qualification and preserves the source fixture as well as partial evidence.
+Other platforms explicitly report retention as unavailable and still execute the
+native behavior test. A run without the runner-issued scope earns no retained
+dependency qualification credit; candidate acceptance requiring that evidence
+must use the Linux sharded path and verify every attempt's complete capture,
+acknowledgment and cleanup fallback. A passing unsharded or macOS behavior test
+does not substitute for that evidence.
+
 **The renderer picks the same way, so the render gates are engine-agnostic.**
 `/make-pdf`, `/diagram`, and design previews print and screenshot their local
 HTML through `lib/aside-render.ts` / `bin/gstack-render.ts`, which render in

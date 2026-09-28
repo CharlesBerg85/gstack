@@ -278,6 +278,12 @@ fix/test approval rules still apply. Missing dependencies, denied actions and ti
 limits remain visible coverage gaps; a short smoke pass never means exhaustive QA.
 Production access and destructive or external effects require specific permission.
 
+Bounded exploration uses an executable deadline guard, not an estimated clock: it
+refuses late probes and stops owned foreground work at the limit. Unfinished checks
+stay visible in the report. Required plan checks remain outside the review/ship smoke
+budget. See [QA deadlines](docs/reference-qa-deadlines.md) for command, platform and
+cleanup limits.
+
 Every ship also runs the existing documentation audit, including repeat ships and
 existing PR updates. Clear factual corrections join the final checked change; risky
 rewrites need approval. A failed audit stops for recovery or explicit acceptance of

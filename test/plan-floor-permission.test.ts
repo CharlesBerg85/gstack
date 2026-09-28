@@ -448,10 +448,17 @@ test('interruption retains the last sampled binding and final recorder status be
     const runRoot=path.join(evalDir,'pty-count','floor-retention-free');
     const dirs=fs.readdirSync(runRoot);expect(dirs).toHaveLength(1);
     const record=JSON.parse(fs.readFileSync(path.join(runRoot,dirs[0],'observation.json'),'utf8'));
-    expect(record.state).toBe('in_progress');expect(record.captureReason).toBe('before_cleanup');
+    expect(record.state).toBe('threw');expect(record.captureReason).toBe('before_cleanup');
+    expect(record.error).toBe(String(e.error));
     expect(record.outcome).toBeUndefined();expect(record.auqObserved).toBeUndefined();
     expect(record.questionDiagnostics.recorderStatus.status).toBe('pending');
     expect(record.questionDiagnostics.validatedPendingQuestion.questions).toEqual([QUESTIONS.eng]);
+    const progress=e.snapshots.filter(s=>s.observation.state==='in_progress');
+    expect(progress.length).toBeGreaterThan(0);
+    expect(record.questionDiagnostics.sampledAt).toBe(progress.at(-1)!.observation.questionDiagnostics.sampledAt);
+    expect(record.questionDiagnostics.validatedPendingQuestion).toEqual(progress.at(-1)!.observation.questionDiagnostics.validatedPendingQuestion);
+    expect(record.pendingQuestion).toBeUndefined();expect(record.publicTools).toEqual([]);expect(e.judgments).toHaveLength(0);
+    expect(fs.readFileSync(path.join(runRoot,dirs[0],'terminal.screen.log'),'utf8')).toBe(e.saved.viewport);
     expect(fs.existsSync(record.capture.cwd)).toBe(false);
   } finally {fs.rmSync(evalDir,{recursive:true,force:true});}
 });

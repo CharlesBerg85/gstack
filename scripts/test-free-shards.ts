@@ -83,7 +83,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { spawn, spawnSync } from 'child_process';
 import { StringDecoder } from 'node:string_decoder';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isPaidTestFile } from '../test/helpers/paid-test-set';
 import {
   BunTestOutputClassifier,
@@ -325,6 +325,14 @@ export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }>
 // pattern hit is a false positive — the point of these files is Windows
 // coverage, so auto-excluding them defeats the regression tests they carry.
 const KNOWN_WINDOWS_SAFE: Array<{ file: string; reason: string }> = [
+  {
+    file: 'test/qa-deadline.test.ts',
+    reason: 'launches the guard through Bun argv; mode assertions and POSIX signal cases are platform-gated, while Windows job cleanup must execute natively',
+  },
+  {
+    file: 'test/qa-deadline-selection.test.ts',
+    reason: 'bin/ strings are dependency-selection inputs; this suite never launches a shebang executable',
+  },
   {
     file: 'test/shared-libs-source-reads.test.ts',
     reason: 'bin/ literal is a mocked launch assertion; actual worktree fingerprinting explicitly invokes Bash on Windows',
@@ -1365,6 +1373,370 @@ const EPILOGUE_WORD: Record<FreeShardStatus, string> = {
   'timed-out': 'timed-out',
 };
 
+function trackShardBrowser(stateDir: string, env: NodeJS.ProcessEnv) {
+  class BrowserCleanupError extends Error {}
+  class CaptureStopped extends Error {}
+  type Identity = { pid: number; parent: number; start: string; daemon: number; root: boolean };
+  type Capture = { abort: AbortController; deadline: number; probes: Set<Promise<unknown>>; records?: [string, string] };
+  const identities = new Map<number, Identity>();
+  const nativeStarts = new Map<string, string>();
+  const interrupted = new Set<string>();
+  const errors = new Set<string>();
+  const stateFile = env.BROWSE_STATE_FILE!;
+  let stopping = false;
+  let ready = true;
+  let closed = false;
+  let forced = false;
+  let cancellation = false;
+  let deadline = Infinity;
+  let forceAt = Infinity;
+  let active: Capture | null = null;
+  let pending: Promise<void> | null = null;
+  let observed = false;
+  let alive = true;
+
+  const check = (capture: Capture) => {
+    if (closed || capture.abort.signal.aborted || active !== capture) throw new CaptureStopped();
+    if (performance.now() >= Math.min(capture.deadline, deadline)) throw new BrowserCleanupError('browser ownership deadline exceeded');
+  };
+  const probe = async (capture: Capture, command: string, args: string[], timeout: number) => {
+    check(capture);
+    const remaining = Math.min(timeout, capture.deadline - performance.now() - 100, deadline - performance.now() - 100);
+    if (remaining <= 0) throw new BrowserCleanupError('browser ownership deadline exceeded');
+    const task = new Promise<{ status: number | null; stdout: string }>((resolve, reject) => {
+      const child = spawn(command, args, { detached: true, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true });
+      let output = '';
+      let failed = false;
+      let done = false;
+      let reaper: ReturnType<typeof setTimeout> | undefined;
+      const finish = (status: number | null) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        clearTimeout(reaper);
+        capture.abort.signal.removeEventListener('abort', stop);
+        child.stdout?.destroy();
+        child.unref();
+        if (failed) reject(new BrowserCleanupError('browser identity probe did not complete'));
+        else resolve({ status, stdout: output });
+      };
+      const stop = () => {
+        if (done || failed) return;
+        failed = true;
+        killProcessGroup(child, 'SIGKILL');
+        reaper = setTimeout(() => finish(null), 100);
+      };
+      const timer = setTimeout(stop, Math.max(1, remaining));
+      capture.abort.signal.addEventListener('abort', stop, { once: true });
+      child.once('error', () => { failed = true; finish(null); });
+      child.once('close', finish);
+      child.stdout?.on('data', chunk => {
+        output += chunk.toString();
+        if (output.length > 65536) stop();
+      });
+    });
+    capture.probes.add(task);
+    try {
+      const result = await task;
+      check(capture);
+      return result;
+    } finally { capture.probes.delete(task); }
+  };
+
+  const failure = (error: unknown) => {
+    if (error instanceof CaptureStopped) return;
+    const code = (error as NodeJS.ErrnoException)?.code;
+    const file = (error as NodeJS.ErrnoException & { path?: string })?.path;
+    const pid = typeof file === 'string' ? /^\/proc\/(\d+)\//.exec(file)?.[1] : undefined;
+    if (pid && identities.has(Number(pid)) && ['EACCES', 'EPERM', 'ENOENT', 'ESRCH'].includes(code ?? '')) return;
+    errors.add(error instanceof BrowserCleanupError ? error.message : 'browser ownership unavailable');
+  };
+
+  const inspectLinux = (pid: number): Omit<Identity, 'daemon' | 'root'> | null => {
+    try {
+      const raw = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const fields = raw.slice(raw.lastIndexOf(') ') + 2).trim().split(/\s+/);
+      if (!/^\d+$/.test(fields[19] ?? '')) throw new BrowserCleanupError('process start identity unavailable');
+      return fields[0] === 'Z' || fields[0] === 'X' ? null
+        : { pid, parent: Number(fields[1]), start: fields[19] };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ESRCH') return null;
+      throw error;
+    }
+  };
+  const inspect = async (capture: Capture, pid: number): Promise<Omit<Identity, 'daemon' | 'root'> | null> => {
+    check(capture);
+    if (!Number.isSafeInteger(pid) || pid <= 1) throw new BrowserCleanupError('invalid process identity');
+    if (process.platform === 'linux') return inspectLinux(pid);
+    const result = await probe(capture, 'ps', ['-p', String(pid), '-o', 'ppid=,stat=,lstart='], 500);
+    if (result.status === 1 && !result.stdout.trim()) return null;
+    if (result.status !== 0) throw new BrowserCleanupError('process identity unavailable');
+    const fields = result.stdout.trim().split(/\s+/);
+    return fields[1]?.startsWith('Z') ? null : { pid, parent: Number(fields[0]), start: fields.slice(2).join(' ') };
+  };
+  const required = [`BROWSE_STATE_FILE=${stateFile}`, `GSTACK_FREE_SHARD_ID=${env.GSTACK_FREE_SHARD_ID}`];
+  const boundLinux = (pid: number) => {
+    try {
+      const values = fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0');
+      return required.every(value => values.includes(value));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT' || (error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+      throw error;
+    }
+  };
+  const bound = async (capture: Capture, pid: number): Promise<boolean> => {
+    check(capture);
+    if (process.platform === 'linux') return boundLinux(pid);
+    const [command, environment] = await Promise.all([
+      probe(capture, 'ps', ['-ww', '-p', String(pid), '-o', 'command='], 500),
+      probe(capture, 'ps', ['eww', '-p', String(pid), '-o', 'command='], 500),
+    ]);
+    if (command.status !== 0 || environment.status !== 0) return false;
+    const prefix = command.stdout.trim();
+    if (!prefix || !environment.stdout.trim().startsWith(prefix + ' ')) return false;
+    const values = ' ' + environment.stdout.trim().slice(prefix.length).trim() + ' ';
+    return required.every(value => values.includes(' ' + value + ' '));
+  };
+  const live = async (capture: Capture, identity: Identity): Promise<boolean> => {
+    const current = await inspect(capture, identity.pid);
+    check(capture);
+    if (!current) return false;
+    if (!current.start || current.start !== identity.start) {
+      errors.add('captured process identity was replaced');
+      return false;
+    }
+    return true;
+  };
+  const record = (file: string): any => {
+    if (!fs.existsSync(file)) return null;
+    const info = fs.lstatSync(file);
+    if (!info.isFile() || info.size > 65536) throw new BrowserCleanupError('unsafe browser state record');
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  };
+  const nativeStart = async (capture: Capture, identity: Identity): Promise<string> => {
+    check(capture);
+    const key = `${identity.pid}:${identity.start}`;
+    const recorded = nativeStarts.get(key);
+    if (recorded) return recorded;
+    if (!await live(capture, identity)) throw new BrowserCleanupError('process exited before its native identity was captured');
+    const result = await probe(capture, 'ps', ['-p', String(identity.pid), '-o', 'lstart='], 2000);
+    const value = result.status === 0 ? result.stdout.trim().replace(/\s+/g, ' ') : '';
+    if (!value || !await live(capture, identity)) throw new BrowserCleanupError('native process identity unavailable');
+    check(capture);
+    nativeStarts.set(key, value);
+    return value;
+  };
+  const remember = (capture: Capture, identity: Identity) => {
+    check(capture);
+    const previous = identities.get(identity.pid);
+    if (previous && previous.start !== identity.start) throw new BrowserCleanupError('captured process identity was replaced');
+    identities.set(identity.pid, identity);
+  };
+  const descendants = async (capture: Capture, parent: Identity, visited: Set<number>): Promise<void> => {
+    check(capture);
+    if (visited.has(parent.pid)) return;
+    visited.add(parent.pid);
+    if (visited.size > 256) throw new BrowserCleanupError('owned browser process limit exceeded');
+    if (!await live(capture, parent)) return;
+    let children: number[];
+    if (process.platform === 'linux') {
+      try {
+        children = fs.readFileSync(`/proc/${parent.pid}/task/${parent.pid}/children`, 'utf8').trim().split(/\s+/).filter(Boolean).map(Number);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+        throw error;
+      }
+    } else {
+      const result = await probe(capture, 'pgrep', ['-P', String(parent.pid)], 500);
+      if (result.status !== 0 && result.status !== 1) throw new BrowserCleanupError('owned child identities unavailable');
+      children = result.stdout.trim().split(/\s+/).filter(Boolean).map(Number);
+    }
+    for (const pid of children) {
+      const child = await inspect(capture, pid);
+      if (!child || child.parent !== parent.pid || !await live(capture, parent)) continue;
+      const identity = { ...child, daemon: parent.daemon, root: false };
+      remember(capture, identity);
+      await descendants(capture, identity, visited);
+    }
+  };
+  const capture = async (operation: Capture) => {
+    check(operation);
+    ready = true;
+    if (process.platform === 'win32') return;
+    try {
+      if (fs.realpathSync(stateDir) !== stateDir) throw new BrowserCleanupError('shard directory was replaced');
+      const directory = path.dirname(stateFile);
+      if (fs.existsSync(directory) && (!fs.lstatSync(directory).isDirectory()
+        || fs.lstatSync(directory).isSymbolicLink())) throw new BrowserCleanupError('browser directory was replaced');
+      const state = record(stateFile);
+      if (state?.pid !== undefined) {
+        const current = await inspect(operation, state.pid);
+        if (current) {
+          if (!await bound(operation, current.pid)) {
+            if (!await inspect(operation, current.pid)) return;
+            throw new BrowserCleanupError('daemon is not bound to this shard');
+          }
+          remember(operation, { ...current, daemon: current.pid, root: true });
+        } else if (!identities.has(state.pid)) {
+          throw new BrowserCleanupError('daemon exited before ownership was captured');
+        }
+      }
+      for (const identity of identities.values()) if (identity.root) await descendants(operation, identity, new Set());
+      const validateChild = async (pid: unknown, start: unknown, daemon: unknown) => {
+        check(operation);
+        if (!Number.isSafeInteger(pid) || (pid as number) <= 1) throw new BrowserCleanupError('invalid browser child identity');
+        const identity = identities.get(pid as number);
+        if (!identity || identity.daemon !== daemon || identity.root) throw new BrowserCleanupError('browser child ownership is unconfirmed');
+        if (await live(operation, identity) && (typeof start !== 'string' || !start
+          || await nativeStart(operation, identity) !== start.replace(/\s+/g, ' '))) throw new BrowserCleanupError('browser child identity was replaced');
+      };
+      const agent = record(path.join(directory, 'terminal-agent-pid'));
+      const validations: Promise<unknown>[] = [];
+      if (agent) {
+        const daemon = identities.get(agent.ownerPid);
+        if (!daemon?.root || (state?.pid !== undefined && agent.ownerPid !== state.pid)) throw new BrowserCleanupError('terminal owner is unconfirmed');
+        validations.push(nativeStart(operation, daemon).then(start => {
+          if (start !== agent.ownerStartTime?.replace(/\s+/g, ' ')) throw new BrowserCleanupError('terminal owner is unconfirmed');
+        }));
+        if (agent.pid === 0) ready = false;
+        else validations.push(validateChild(agent.pid, agent.startTime, agent.ownerPid));
+      }
+      if (state?.chromiumPid !== undefined) validations.push(validateChild(state.chromiumPid, state.chromiumStartTime, state.pid));
+      const results = await Promise.allSettled(validations);
+      check(operation);
+      for (const result of results) if (result.status === 'rejected') throw result.reason;
+      operation.records = [JSON.stringify(state), JSON.stringify(agent)];
+    } catch (error) {
+      check(operation);
+      ready = false;
+      failure(error);
+    }
+  };
+  const signalOwned = async (operation: Capture, force: boolean) => {
+    for (const identity of identities.values()) {
+      if (!force && (!identity.root || !ready || errors.size > 0)) continue;
+      const key = `${identity.pid}:${identity.start}`;
+      if (!force && interrupted.has(key)) continue;
+      try {
+        if (!await live(operation, identity)) continue;
+        if (identity.root && !await bound(operation, identity.pid)) {
+          if (!await live(operation, identity)) continue;
+          throw new BrowserCleanupError('daemon environment changed before termination');
+        }
+        if (!await live(operation, identity)) continue;
+        check(operation);
+        if (!force && (!operation.records || JSON.stringify(record(stateFile)) !== operation.records[0]
+          || JSON.stringify(record(path.join(path.dirname(stateFile), 'terminal-agent-pid'))) !== operation.records[1])) {
+          ready = false;
+          continue;
+        }
+        process.kill(identity.pid, force ? 'SIGKILL' : 'SIGINT');
+        if (!force) interrupted.add(key);
+      } catch (error) {
+        check(operation);
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') failure(error);
+      }
+    }
+  };
+  const forceLinux = () => {
+    if (process.platform !== 'linux') return;
+    for (const identity of identities.values()) {
+      try {
+        const current = inspectLinux(identity.pid);
+        if (!current) continue;
+        if (current.start !== identity.start) throw new BrowserCleanupError('captured process identity was replaced');
+        if (identity.root && !boundLinux(identity.pid)) {
+          if (!inspectLinux(identity.pid)) continue;
+          throw new BrowserCleanupError('daemon environment changed before termination');
+        }
+        if (inspectLinux(identity.pid)?.start === identity.start) process.kill(identity.pid, 'SIGKILL');
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') failure(error);
+      }
+    }
+  };
+  const enqueue = () => {
+    if (closed || pending || process.platform === 'win32') return;
+    const operation: Capture = { abort: new AbortController(), deadline: Math.min(performance.now() + 10000, deadline, forced ? Infinity : forceAt), probes: new Set() };
+    active = operation;
+    pending = (async () => {
+      try {
+        if (!forced) await capture(operation);
+        if (stopping) {
+          await signalOwned(operation, forced);
+          let stillAlive = false;
+          for (const identity of identities.values()) if (await live(operation, identity)) stillAlive = true;
+          check(operation);
+          alive = stillAlive;
+          observed = true;
+        }
+      } catch (error) {
+        if (!closed && !operation.abort.signal.aborted) failure(error);
+      } finally {
+        operation.abort.abort();
+        await Promise.allSettled([...operation.probes]);
+        if (active === operation) active = null;
+      }
+    })().finally(() => { pending = null; });
+  };
+  const signal = (force: boolean) => {
+    if (closed) return;
+    if (!cancellation) {
+      cancellation = true;
+      stopping = true;
+      deadline = Math.min(deadline, performance.now() + 5500);
+      forceAt = Math.min(forceAt, performance.now() + 5000);
+      active?.abort.abort();
+    }
+    if (force) {
+      forced = true;
+      active?.abort.abort();
+      forceLinux();
+    }
+    if (pending) void pending.then(enqueue);
+    else enqueue();
+  };
+  const timer = setInterval(enqueue, process.platform === 'darwin' ? 1000 : 250);
+  timer.unref();
+  return {
+    signal,
+    async settle(): Promise<string | null> {
+      clearInterval(timer);
+      if (process.platform === 'win32') { closed = true; return null; }
+      stopping = true;
+      deadline = Math.min(deadline, performance.now() + 10000);
+      forceAt = Math.min(forceAt, performance.now() + 5000);
+      active?.abort.abort();
+      try {
+        while (true) {
+          if (performance.now() >= deadline) {
+            errors.add('owned browser settlement deadline exceeded');
+            break;
+          }
+          if (!forced && performance.now() >= forceAt) {
+            forced = true;
+            active?.abort.abort();
+            forceLinux();
+          }
+          if (pending) await pending;
+          enqueue();
+          if (pending) await pending;
+          if (observed && !alive) break;
+          await new Promise(resolve => setTimeout(resolve, Math.min(50, Math.max(0, deadline - performance.now()))));
+        }
+      } catch {
+        errors.add('owned browser settlement could not be verified');
+      } finally {
+        closed = true;
+        clearInterval(timer);
+        active?.abort.abort();
+        if (pending) await pending;
+      }
+      return errors.size ? [...errors].join('; ') : null;
+    },
+  };
+}
+
 /** One line per shard, printed after the run: `[test:free] shard i/N: M files, XXs, pass|fail|timed-out`. */
 function shardEpilogue(outcome: FreeShardOutcome, totalShards: number): string {
   return `[test:free] shard ${outcome.shard}/${totalShards}: ${outcome.files.length} files, `
@@ -1435,7 +1807,7 @@ export async function runFreeShard(
     : { command: process.execPath, args: buildShardArgs(files, { parallel: options.parallel, rootDir }) };
 
   const env = { ...(options.env ?? process.env) };
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-free-shard-'));
+  const stateDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-free-shard-')));
   const childTmp = path.join(stateDir, 'tmp');
   fs.mkdirSync(childTmp);
   env.TMPDIR = childTmp;
@@ -1446,6 +1818,7 @@ export async function runFreeShard(
   // daemons from prior runs can then replace or remove each other's state.
   // Override inherited state too; the shard owns this directory's cleanup.
   env.BROWSE_STATE_FILE = path.join(stateDir, '.gstack', 'browse.json');
+  env.GSTACK_FREE_SHARD_ID = randomUUID();
   // Per-shard Chromium profile (same isolation idea as TMPDIR): nine test
   // files launch in-process persistent contexts or daemons that default to
   // the SHARED ~/.gstack/chromium-profile, and two concurrent shards on one
@@ -1467,10 +1840,12 @@ export async function runFreeShard(
     windowsHide: true,
   });
   const groupPid = child.pid ?? null;
+  const browser = trackShardBrowser(stateDir, env);
   // Group-kill on parent SIGINT/SIGTERM too, not just on timeout.
   const forwarding = installChildSignalForwarding({
     kill: (signal?: NodeJS.Signals | number) => {
       killProcessGroup(child, (signal as NodeJS.Signals) ?? 'SIGTERM');
+      browser.signal(signal === 'SIGKILL');
       return true;
     },
   });
@@ -1532,6 +1907,7 @@ export async function runFreeShard(
   }, wallTimeoutMs);
 
   let exitCode: number | null = null;
+  let cleanupError: string | null = null;
   try {
     const streams = [consumeStream(child.stdout, 'stdout'), consumeStream(child.stderr, 'stderr')];
     exitCode = await new Promise<number | null>((resolve, reject) => {
@@ -1541,9 +1917,9 @@ export async function runFreeShard(
     await Promise.all(streams);
   } finally {
     clearTimeout(killTimer);
-    forwarding.dispose();
     // Reap survivors of this shard even on the clean path.
     killProcessGroup(child, 'SIGKILL');
+    cleanupError = await browser.settle();
     reporter.end();
     for (const [origin, error] of captureFailures) {
       const diagnostic = `${label} ${origin} capture incomplete: ${error.message} `
@@ -1553,24 +1929,28 @@ export async function runFreeShard(
     }
     await new Promise<void>((resolve) => logStream.end(() => resolve()));
     try {
-      fs.rmSync(stateDir, { recursive: true, force: true });
+      if (!cleanupError) fs.rmSync(stateDir, { recursive: true, force: true });
     } catch {
       // Best-effort cleanup of a throwaway temp dir — a locked file on
       // Windows must not turn a real verdict into an exception.
+      if (process.platform !== 'win32') cleanupError = 'could not remove the owned shard directory';
     }
+    forwarding.dispose();
   }
 
   const summary = classifier.end();
   const status: FreeShardStatus = timedOut
     ? 'timed-out'
-    : captureFailures.size === 0 && strictTestExitCode(exitCode ?? 1, summary, files.length) === 0 ? 'passed' : 'failed';
+    : !cleanupError && captureFailures.size === 0 && strictTestExitCode(exitCode ?? 1, summary, files.length) === 0 ? 'passed' : 'failed';
+
+  if (cleanupError) console.error(`${label} browser cleanup failed: ${cleanupError}; retained ${stateDir}`);
 
   if (status === 'timed-out') {
     console.error(
       `${label} exceeded the ${Math.round(wallTimeoutMs / 1000)}s wall-clock deadline — `
       + 'killed the process group. Reporting as TIMED-OUT (distinct from failed).',
     );
-  } else if (status === 'failed' && captureFailures.size === 0 && (exitCode ?? 1) === 0) {
+  } else if (status === 'failed' && !cleanupError && captureFailures.size === 0 && (exitCode ?? 1) === 0) {
     const reason = summary.failedTests > 0 || summary.unhandledBetweenTests > 0
       ? `reported ${summary.failedTests} failing test(s) and ${summary.unhandledBetweenTests} unhandled error(s) between tests`
       : summary.terminalFileCounts.length === 0
@@ -1591,6 +1971,7 @@ export async function runFreeShard(
       + report.unreportedFailures
       + report.unhandledErrors.length
       + captureFailures.size
+      + (cleanupError ? 1 : 0)
       + (report.sawTerminalSummary ? 0 : 1);
   const outcome: FreeShardOutcome = {
     shard: shardNumber, files, status, exitCode, elapsedMs: Date.now() - startedAt, groupPid, failingFiles, unattributedFailures,

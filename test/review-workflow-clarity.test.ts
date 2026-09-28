@@ -108,7 +108,7 @@ test('caller QA runs charter and setup after resource loading and has a severity
     const body = generateQAReview({ skillName, tmplPath: '', host: 'claude', paths: HOST_PATHS.claude });
     const preparation = body.indexOf(skillName === 'review'
       ? '**1. Set the charter and isolation.**'
-      : 'Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup');
+      : 'Run the shared preflight.');
     const probes = body.indexOf('**3. Run the checks without repairing the product.**');
     expect(preparation).toBeGreaterThan(-1);
     if (skillName === 'review') {
@@ -200,9 +200,9 @@ test('caller QA defines execution, evidence ownership and report adaptation befo
     for (const contract of [
       'You, the parent agent, run this phase',
       'Never overwrite another run',
-      'Follow the numbered Probe loop in `sections/exploratory.md`',
-      'Start with a successful operation',
-      'a successful checkpoint Write before each later probe',
+      'First run smoke, replays and revalidation through the shared Probe loop and its guard',
+      "Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates",
+      'Keep the same checkpoint sequence, but do not use the smoke guard or restart its clock',
       'Before reporting, read updates from any dispatched agents',
       'Compare current source, commands and fixture inputs with the recorded inputs, even without an update',
       'source, tests, contracts, commands or fixture inputs changed',

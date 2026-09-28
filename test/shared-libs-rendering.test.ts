@@ -65,14 +65,22 @@ describe('shared-code skill distribution', () => {
       expect(texts[2]).toContain('snapshot_covered_paths');
       expect(texts[2]).toContain('Exclude assume-unchanged, skip-worktree');
       expect(texts[2]).toContain('byte-for-byte with its blob');
-      for (const parent of [texts[2], rendered(host, 'ship')]) {
-        const validation = parent.indexOf('**Validate advisory severity first.**');
+      for (const [skill, parent] of [['review', texts[2]], ['ship', rendered(host, 'ship')]]) {
+        const validation = parent.indexOf(skill === 'ship' ? '1. **Validate severity.**' : '**Validate advisory severity first.**');
         expect(validation).toBeGreaterThanOrEqual(0);
-        expect(validation).toBeLessThan(parent.indexOf('Before classifying findings, check'));
-        expect(parent).toContain('remove `advisory` and retain its `CRITICAL` severity');
-        expect(parent).toContain('Never downgrade severity to make advisory metadata consistent');
-        expect(parent).toContain('Valid INFORMATIONAL advisories remain advisory in every category, including simplification');
-        expect(parent).toContain('contradictory CRITICAL/advisory metadata cannot establish a skipped defect or advisory decision');
+        expect(validation).toBeLessThan(parent.indexOf(skill === 'ship' ? '2. **Read decisions.**' : 'Before classifying findings, check'));
+        if (skill === 'ship') {
+          const matching = parent.slice(validation).replace(/\s+/g, ' ');
+          expect(matching).toContain('For CRITICAL/advisory contradictions, remove `advisory`, never downgrade severity');
+          expect(matching).toContain('Valid INFORMATIONAL advisories stay advisory, including simplification');
+          expect(matching).toContain('Reject contradictory saved decisions');
+          expect(matching).toContain('they cannot suppress defects');
+        } else {
+          expect(parent).toContain('remove `advisory` and retain its `CRITICAL` severity');
+          expect(parent).toContain('Never downgrade severity to make advisory metadata consistent');
+          expect(parent).toContain('Valid INFORMATIONAL advisories remain advisory in every category, including simplification');
+          expect(parent).toContain('contradictory CRITICAL/advisory metadata cannot establish a skipped defect or advisory decision');
+        }
         if (host.name !== 'codex' && !host.suppressedResolvers?.includes('REVIEW_ARMY')) {
           const stages = ['#### 1. Parse outputs', '#### 2. Validate severity', '#### 3. Identify and merge',
             '#### 4. Apply specialist confidence gates', '#### 5. Score and present specialists'];

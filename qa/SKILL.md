@@ -490,7 +490,7 @@ Read sections in full when directed; do not work from memory.
 - **Exhaustive:** + low/cosmetic severity
 
 `--quick` also selects Quick exploration; `--exhaustive` changes only the fix tier.
-Regression mode preserves the selected fix tier. Each surface's method defines its modes.
+Regression mode preserves the selected fix tier.
 If both `--quick` and `--regression` are supplied, ask which exploration mode to use
 before setup or probes. Keep the selected fix tier; this choice concerns exploration only.
 
@@ -590,22 +590,14 @@ Prefer the richer of recent project test plans and plans in conversation over gi
 
 ## Phases 1-6: QA Baseline
 
-Read each selected surface's methods below, then run one shared exploratory loop.
+Follow the shared section's ordered preparation, then run its probe loop.
 The numbered browser phases label techniques, not another workflow.
-
-**Functional surfaces:**
-Read `sections/system-functional.md` in full.
-
-**Browser surfaces only:**
-Read `sections/qa-patterns.md` in full.
 
 > **STOP.** Before running the selected target's QA baseline and exploratory probes, with caller-owned authority, Read `sections/exploratory.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full and follow it.
 > Use this host's installed path, never the product working directory or another host's assets.
 > If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
-Report baseline findings before fixing. Browser baselines retain the Health Score Rubric;
-functional baselines use contract outcomes/evidence, never a visual score. Keep mixed
-surfaces separate.
+Report baseline findings before fixing. Keep browser scores and functional outcomes separate.
 
 ---
 
@@ -616,7 +608,7 @@ Under `$REPORT_DIR`, write `qa-report-{target}-{YYYY-MM-DD}.md` and the browser'
 Browser evidence goes in `screenshots/`: `initial.jpg`,
 `issue-NNN-step-N.jpg`, `issue-NNN-result.jpg`, annotated `issue-NNN.png` and
 `issue-NNN-after.jpg` (Phase 5 is the before). Functional reports use a safe command/service
-label and sanitized command/request/state evidence, not a domain or screenshots.
+label and sanitized command/request/state evidence.
 
 ---
 

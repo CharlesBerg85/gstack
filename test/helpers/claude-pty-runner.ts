@@ -123,6 +123,7 @@ export interface ClaudePtyOptions {
   rows?: number;
   /** Opt in when input targeting or completion needs the actual VT viewport. */
   observeScreen?: boolean;
+  screenDeadlineAt?: number;
   /** Count-only pending identity; the hook never approves or changes native tools. */
   observePlanReady?: boolean;
   /** Pending AUQ identity for explicit navigation; never supplies answered coverage. */
@@ -156,9 +157,9 @@ export interface ClaudePtySession {
   /** Visible (ANSI-stripped) output for the entire session. For pattern matching. */
   visibleText(): string;
   /** Flush the opted-in terminal parser and return only its current viewport. */
-  currentScreen(): Promise<string>;
+  currentScreen(deadlineAt?: number): Promise<string>;
   /** Same decoded viewport with styles and input epoch for acknowledged paste. */
-  currentScreenFrame(): Promise<{ text: string; rawEnd: number;
+  currentScreenFrame(deadlineAt?: number): Promise<{ text: string; rawEnd: number;
     styledText: Array<{ row: number; start: number; text: string; dim: boolean; inverse: boolean }> }>;
   /**
    * Mark the current buffer position. Subsequent waitForAny / visibleSince
@@ -4022,6 +4023,8 @@ export async function launchClaudePty(
   const cols = opts.cols ?? 120;
   const rows = opts.rows ?? 40;
   const timeoutMs = opts.timeoutMs ?? 240_000;
+  const wallDeadline = performance.now() + timeoutMs;
+  const screenAbort = new AbortController();
 
   let buffer = '';
   let exited = false;
@@ -4085,7 +4088,9 @@ export async function launchClaudePty(
     ? hermeticSkillStateRoot : undefined;
 
   // Construction must succeed before any CLI can be spawned.
-  const screen = opts.observeScreen ? await createPtyScreen(cols, rows) : undefined;
+  const screen = opts.observeScreen ? await createPtyScreen(cols, rows, {
+    deadlineAt: Math.min(opts.screenDeadlineAt ?? wallDeadline, wallDeadline), signal: screenAbort.signal,
+  }) : undefined;
   let screenClosing: Promise<void> | undefined;
   let screenFailure: unknown;
   const disposeScreen = () => screenClosing ??= (screen?.dispose() ?? Promise.resolve()).catch(error => { screenFailure = error; });
@@ -4132,33 +4137,34 @@ export async function launchClaudePty(
     },
     cwd,
     env: childEnv,
-  }); } catch (error) { pendingFiles.forEach(({ recorder }) => recorder.dispose()); pendingExit?.dispose(); pendingQuestion?.dispose(); pendingArtifact?.dispose(); await disposeScreen(); throw error; }
+  }); } catch (error) { screenAbort.abort(error); pendingFiles.forEach(({ recorder }) => recorder.dispose()); pendingExit?.dispose(); pendingQuestion?.dispose(); pendingArtifact?.dispose(); await disposeScreen(); throw error; }
 
   // Track exit so waitForAny can fail fast if claude crashes.
   let exitedPromise: Promise<void> = Promise.resolve();
   if (proc.exited && typeof proc.exited.then === 'function') {
     exitedPromise = proc.exited
-      .then(async (code: number | null) => {
+      .then((code: number | null) => {
         exitCodeCaptured = code;
         exited = true;
         notifyOutput();
-        await disposeScreen();
+        void disposeScreen();
       })
-      .catch(async () => {
+      .catch(() => {
         exited = true;
         notifyOutput();
-        await disposeScreen();
+        void disposeScreen();
       });
   }
 
   // Top-level timeout. If a test forgets to close, this kills it eventually.
   const wallTimer = setTimeout(() => {
+    screenAbort.abort(new Error('PTY work deadline exceeded.'));
     try {
       proc.kill?.('SIGKILL');
     } catch {
       /* ignore */
     }
-  }, timeoutMs);
+  }, Math.max(0, wallDeadline - performance.now()));
 
   // Auto-handle the workspace-trust dialog. Runs once during the boot
   // window, after both choices and the selected cursor are visible. Newer
@@ -4275,34 +4281,45 @@ export async function launchClaudePty(
     await waitForAny([pattern], waitOpts);
   }
 
-  async function close(): Promise<void> {
+  let closePromise: Promise<void> | undefined;
+  function close(): Promise<void> {
+    return closePromise ??= closeOnce();
+  }
+  async function closeOnce(): Promise<void> {
     closing = true;
     notifyOutput();
-    clearTimeout(wallTimer);
+    const cleanupDeadline = Math.min(wallDeadline, performance.now() + 3_000);
+    const cleanupTimer = setTimeout(() => screenAbort.abort(new Error('PTY cleanup deadline exceeded.')),
+      Math.max(0, cleanupDeadline - performance.now()));
     clearTimeout(trustWatcherStop);
     clearInterval(trustWatcher);
     for (const timer of trustInputTimers) clearTimeout(timer);
-    if (exited) { pendingFiles.forEach(({ recorder }) => recorder.dispose()); pendingExit?.dispose(); pendingQuestion?.dispose(); pendingArtifact?.dispose(); await disposeScreen(); return; }
-    for (const [signal, timeout] of [['SIGINT', 2000], ['SIGKILL', 1000]] as const) {
-      if (exited) break;
-      try {
-        proc.kill?.(signal);
-      } catch {
-        /* ignore */
+    try {
+      for (const [signal, timeout] of [['SIGINT', 2000], ['SIGKILL', 1000]] as const) {
+        if (exited) break;
+        try {
+          proc.kill?.(signal);
+        } catch {
+          /* ignore */
+        }
+        let deadline!: ReturnType<typeof setTimeout>;
+        try {
+          await Promise.race([exitedPromise, new Promise<void>((resolve) => {
+            deadline = setTimeout(resolve, Math.max(0, Math.min(timeout, cleanupDeadline - performance.now())));
+          })]);
+        } finally {
+          clearTimeout(deadline);
+        }
       }
-      let deadline!: ReturnType<typeof setTimeout>;
-      try {
-        await Promise.race([exitedPromise, new Promise<void>((resolve) => {
-          deadline = setTimeout(resolve, timeout);
-        })]);
-      } finally {
-        clearTimeout(deadline);
-      }
+      pendingFiles.forEach(({ recorder }) => recorder.dispose());
+      pendingExit?.dispose();
+      pendingQuestion?.dispose(); pendingArtifact?.dispose();
+      await disposeScreen();
+      if (screenFailure) throw screenFailure;
+    } finally {
+      clearTimeout(cleanupTimer);
+      clearTimeout(wallTimer);
     }
-    pendingFiles.forEach(({ recorder }) => recorder.dispose());
-    pendingExit?.dispose();
-    pendingQuestion?.dispose(); pendingArtifact?.dispose();
-    await disposeScreen();
   }
 
   return {
@@ -4310,17 +4327,15 @@ export async function launchClaudePty(
     sendKey,
     rawOutput: () => buffer,
     visibleText: () => stripAnsi(buffer),
-    currentScreen: async () => {
+    currentScreen: async (deadlineAt?: number) => {
       if (!screen) throw new Error('PTY screen observation was not enabled for this session.');
-      if (screenClosing) await screenClosing;
       if (screenFailure) throw new Error('PTY screen observation failed.', { cause: screenFailure });
-      return screen.read();
+      return screen.read(deadlineAt);
     },
-    currentScreenFrame: async () => {
+    currentScreenFrame: async (deadlineAt?: number) => {
       if (!screen) throw new Error('PTY screen observation was not enabled for this session.');
-      if (screenClosing) await screenClosing;
       if (screenFailure) throw new Error('PTY screen observation failed.', { cause: screenFailure });
-      const frame = await screen.readFrame();
+      const frame = await screen.readFrame(deadlineAt);
       return {text: frame.text, rawEnd: frame.inputOffset, styledText: frame.styledText};
     },
     mark,
@@ -4567,6 +4582,7 @@ export async function runPlanSkillObservation(opts: {
   const startedAt = Date.now();
   const budgetMs = opts.timeoutMs ?? 180_000;
   const deadlineAt = startedAt + budgetMs;
+  const screenDeadlineAt = performance.now() + budgetMs;
   // Explicitly identify only a new seeded plan-mode session. Caller-owned
   // resume/session arguments retain their existing behavior.
   const scopeSessionId = opts.initialPlanContent && opts.inPlanMode !== false &&
@@ -4588,8 +4604,10 @@ export async function runPlanSkillObservation(opts: {
     model: opts.model,
     seedSkills: true,
     observeScreen: !!opts.initialPlanContent,
+    screenDeadlineAt,
   });
 
+  let observationFailed = false;
   try {
     const preflightTimeout = async (summary: string): Promise<PlanSkillObservation> => {
       let viewport: string | undefined, viewportError: string | undefined;
@@ -4817,8 +4835,21 @@ export async function runPlanSkillObservation(opts: {
       elapsedMs: Date.now() - startedAt,
       ...highWaterFlags(),
     };
+  } catch (error) {
+    observationFailed = true;
+    try {
+      const publicTools: NativePublicToolEvent[] = [];
+      const transcript = session.hermeticConfigDir ? readPlanCountTranscript(session.hermeticConfigDir,
+        path.resolve(opts.cwd ?? process.cwd()), event => publicTools.push(event)) : undefined;
+      const saved = saveSnapshot({ skillName: opts.skillName, cwd: path.resolve(opts.cwd ?? process.cwd()),
+        claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(), visible: session.visibleText(),
+        observation: { state: 'threw', error: String(error), transcript, publicTools } });
+      if (saved.artifactError) console.error(`PTY artifact write failed: ${saved.artifactError}`);
+    } catch (captureError) { console.error(`PTY failure capture failed: ${String(captureError)}`); }
+    throw error;
   } finally {
-    await session.close();
+    try { await session.close(); }
+    catch (error) { if (!observationFailed) throw error; }
   }
 }
 
@@ -5043,6 +5074,7 @@ export async function runPlanSkillCounting(opts: {
       // Stop new output at the work cutoff so screen drain cannot consume
       // the reserve while the CLI continues streaming.
       timeoutMs: Math.max(1, remainingWork()),
+      screenDeadlineAt: workDeadline,
       env: { ...opts.env, ...fixture.env,
         // The renderer may cd into its artifact directory before starting the daemon.
         ...(opts.bindDesignBoardState ? { DESIGN_DAEMON_STATE_FILE: path.join(fixture.cwd, '.gstack', 'design.json') } : {}),
@@ -5080,14 +5112,20 @@ export async function runPlanSkillCounting(opts: {
   let lastCheckpointAt = Date.now();
   let viewport = '';
 
-  const capture = (observation: object) => saveSnapshot({
-    skillName: opts.skillName, observation: { ...observation,
-      pendingWriteInputs: ownedFilePermissions.flatMap(binding => {
-        const input = readPendingWriteInput(binding.file, binding.expected, fixture.cwd, session.hermeticConfigDir, startedAt);
-        return input ? [input] : [];
-      }) }, raw: session.rawOutput(), visible: session.visibleText(), viewport,
-    cwd: fixture.cwd, claudeConfigDir: session.hermeticConfigDir,
-  });
+  const capture = (observation: object) => {
+    const publicTools: NativePublicToolEvent[] = [];
+    if (session.hermeticConfigDir) readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd,
+      event => publicTools.push(event));
+    return saveSnapshot({
+      skillName: opts.skillName, observation: { ...observation,
+        publicTools,
+        pendingWriteInputs: ownedFilePermissions.flatMap(binding => {
+          const input = readPendingWriteInput(binding.file, binding.expected, fixture.cwd, session.hermeticConfigDir, startedAt);
+          return input ? [input] : [];
+        }) }, raw: session.rawOutput(), visible: session.visibleText(), viewport,
+      cwd: fixture.cwd, claudeConfigDir: session.hermeticConfigDir,
+    });
+  };
 
   function snapshot(
     outcome: PlanSkillCountObservation['outcome'],
@@ -5120,6 +5158,7 @@ export async function runPlanSkillCounting(opts: {
 
   let observedOutput = session.mark();
   let lastObservationAt = -Infinity;
+  let countingFailed = false;
   try {
     let startupReady: boolean;
     if (opts.startupReadyMarker !== undefined) {
@@ -5424,6 +5463,7 @@ export async function runPlanSkillCounting(opts: {
       viewport,
     );
   } catch (error) {
+    countingFailed = true;
     // Caller/actor errors used to leave only the preceding 30s checkpoint.
     // Retain the actual throw frame and public native state before close()
     // removes the hook and fixture, without replacing the original failure.
@@ -5441,6 +5481,11 @@ export async function runPlanSkillCounting(opts: {
   } finally {
     try {
       await session.close();
+    } catch (error) {
+      if (!countingFailed) {
+        capture({ state: 'cleanup_failed', error: String(error), transcript, fingerprints });
+        throw error;
+      }
     } finally {
       fixture.cleanup();
     }
@@ -5630,7 +5675,9 @@ export async function runPlanSkillFloorCheck(opts: {
   const submittedSetup = new Set<string>();
   const assessed = new Map<string, PlanFloorAssessment>();
   const dxReplies = new Map<string, PlanFloorDXReply>();
-  let captureBeforeClose: (() => void) | undefined;
+  let captureBeforeClose: ((error?: unknown) => void) | undefined;
+  let floorFailed = false;
+  let floorError: unknown;
   try {
     await Bun.sleep(8000); // boot grace + auto-trust handler window
     const since = session.mark();
@@ -5672,8 +5719,13 @@ export async function runPlanSkillFloorCheck(opts: {
       lastCheckpointState = state; lastCheckpointAt = Date.now();
       capture({ state: 'in_progress', elapsedMs: Date.now() - startedAt });
     };
-    captureBeforeClose = () => {
-      if (!finished) capture({ state: 'in_progress', captureReason: 'before_cleanup', elapsedMs: Date.now() - startedAt });
+    captureBeforeClose = (error) => {
+      if (floorFailed && session.hermeticConfigDir) {
+        publicTools = [];
+        transcript = readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd, event => publicTools.push(event));
+      }
+      if (!finished) capture({ state: floorFailed ? 'threw' : 'in_progress', error: floorFailed ? String(error) : undefined,
+        captureReason: 'before_cleanup', elapsedMs: Date.now() - startedAt });
     };
     const finish = (observation: PlanSkillFloorObservation): PlanSkillFloorObservation => {
       const artifacts = capture(observation);
@@ -5683,6 +5735,7 @@ export async function runPlanSkillFloorCheck(opts: {
 
     const start = Date.now();
     const deadlineAt = start + timeoutMs;
+    const screenDeadlineAt = performance.now() + timeoutMs;
     while (Date.now() - start < timeoutMs) {
       await Bun.sleep(2000);
       const visible = session.visibleSince(since);
@@ -5710,7 +5763,7 @@ export async function runPlanSkillFloorCheck(opts: {
         targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
           { ...deliveryOptions, now: Date.now() });
         if (targetDelivery.status !== 'ready') {
-          viewport = await session.currentScreen();
+          viewport = await session.currentScreen(screenDeadlineAt);
           checkpoint();
           continue;
         }
@@ -5718,7 +5771,7 @@ export async function runPlanSkillFloorCheck(opts: {
 
       // Current native identity precedes permission handling and finding assessment.
       floorReview = undefined; floorAssessment = undefined;
-      viewport = await session.currentScreen();
+      viewport = await session.currentScreen(screenDeadlineAt);
       publicTools = [];
       transcript = session.hermeticConfigDir
         ? readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd, event => publicTools.push(event))
@@ -5877,9 +5930,17 @@ export async function runPlanSkillFloorCheck(opts: {
       evidence: session.visibleSince(since).slice(-3000),
       elapsedMs: Date.now() - startedAt,
     });
+  } catch (error) {
+    floorFailed = true;
+    floorError = error;
+    throw error;
   } finally {
-    try { captureBeforeClose?.(); } finally {
-      try { await session.close(); } finally { fixture.cleanup(); }
+    try { captureBeforeClose?.(floorError); }
+    catch (error) { if (!floorFailed) { floorFailed = true; throw error; } }
+    finally {
+      try { await session.close(); }
+      catch (error) { if (!floorFailed) throw error; }
+      finally { fixture.cleanup(); }
     }
   }
 }

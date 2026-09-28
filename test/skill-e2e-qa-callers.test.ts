@@ -37,6 +37,8 @@ async function capture(caseId: QaCallerCase) {
       mutations: fixture.mutationEvents, observerComplete: fixture.observation?.complete === true && fixture.observerErrors.length === 0,
       workflowCommands: fixture.workflowCommands,
       fixtureRoot: fixture.cwd,
+      runtime: fixture.runtime,
+      requireGuardedSmoke: true,
       reportRoot: path.join(fixture.cwd, 'reports'),
       checkpointFiles: readQACheckpointFiles(path.join(fixture.cwd, 'reports')),
       reportMarkdown: fs.readFileSync(path.join(fixture.cwd, 'reports/review.md'), 'utf8'),

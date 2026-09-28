@@ -1984,31 +1984,25 @@ Discovery is report-only. Use the caller's report directory or a new owned
 
 **1. Load methods before any QA or explicit-verification probe.**
 
-From the installed /ship SKILL.md's directory, Read `../gstack-qa/sections/scope.md` in full. Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
-
-Resolve later QA paths in that installed QA directory.
-> **STOP.** Read `sections/exploratory.md` in that QA installation and the selected methods below before continuing.
+> **STOP.** Load the installed exploratory section below and complete its ordered scope/method Reads.
 > A plan command is a probe, not an exception to this gate.
-**Functional surfaces:**
-Read `sections/system-functional.md` in full.
 
-**Browser surfaces only:**
-Read `sections/browser-setup.md` in full unless already completed;
-Read `sections/qa-patterns.md` in full.
+From the installed /ship SKILL.md's directory, Read `../gstack-qa/sections/exploratory.md` in full. Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
 Caller/report templates cannot replace these method Reads.
 
 **2. List the checks that must pass.**
-Run the shared exploratory Charter and preflight now; only browser surfaces need browser setup.
+Run the shared preflight. For browser surfaces, Read `sections/browser-setup.md` in that QA installation and follow its report-only access rules before probing.
 - Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
-- Explicit plan commands/assertions remain required beyond that bound.
-- Other ideas are optional, untested coverage.
+- List explicit plan commands/assertions separately; they remain required beyond the smoke bound.
+- Other ideas are optional, untested.
 
 **3. Run the checks without repairing the product.**
-Follow the numbered Probe loop in `sections/exploratory.md` for discovery, replays
-and revalidation. Start with a successful operation, then require a successful
-checkpoint Write before each later probe. Replay a defect from its original fixture
-state before proposing a regression test or fix.
+First run smoke, replays and revalidation through the shared Probe loop and its guard.
+Then run every required plan check, even if smoke expired. Keep the same checkpoint sequence,
+but do not use the smoke guard or restart its clock. Give each plan command a finite timeout
+capped by the caller's remaining deadline. If that deadline expired, mark the check not-run.
+Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates.
 
 **4. Check for changes before reporting.**
 Before reporting, read updates from any dispatched agents and the user. Compare
@@ -2031,42 +2025,36 @@ Separate browser results. Put plan outcomes in `## Verification Results`.
 
 ### Step 9.3: Cross-review finding dedup
 
-**Validate advisory severity first.** If a current finding has `"severity":"CRITICAL"` and `"advisory":true`, remove `advisory` and retain its `CRITICAL` severity. Handle it as a normal defect before suppression, classification, counting, scoring, and persistence. Never downgrade severity to make advisory metadata consistent. Valid INFORMATIONAL advisories remain advisory in every category, including simplification. A prior saved finding with contradictory CRITICAL/advisory metadata cannot establish a skipped defect or advisory decision: exclude it from reuse and revalidate the current finding.
+Apply this procedure to checklist, specialist, exploratory QA and queued Steps
+10–11 findings before classification or requeueing:
 
-Before classifying findings, check this branch's prior user skips.
-
-```bash
-$GSTACK_ROOT/bin/gstack-review-read
-```
-
-Parse only lines BEFORE `---CONFIG---` as JSONL; ignore the non-JSONL footer sections.
-
-If no prior reviews exist or none have a `findings` array, skip history matching silently; still classify current findings.
-
-**Shared-code advisory decisions use the stricter rule below.** Do not send a
-finding through the ordinary primary-file rule if its category is `shared-libs`,
-its fingerprint starts `shared-libs:`, or it has `evidence_paths` / `helper_target`.
-Missing legacy metadata requires revalidation, not fallback to a line fingerprint.
-
-For each JSONL entry that has a `findings` array, for ordinary findings only:
-1. Collect all fingerprints where `action: "skipped"`
-2. Note the `commit` field from that entry
-
-If skipped fingerprints exist, get the list of files changed since that review:
-
-```bash
-git diff --name-only <prior-review-commit> HEAD
-```
-
-For each finding from the checklist pass (Step 9), specialist review (Step 9.1-9.2) and exploratory QA, check:
-- Does its fingerprint match a previously skipped finding?
-- Is the finding's file path NOT in the changed-files set?
-- Is it the same advisory/defect kind? Never use a skipped advisory to suppress a real defect, including a defect with a colliding supplied fingerprint.
-
-Suppress only when all conditions hold: the user skipped the same unchanged finding.
-
-Matching explicitly skipped shared-code advice requires the complete procedure below.
-Failed/unknown eligibility requires fresh source review, never ordinary suppression.
+1. **Validate severity.** For CRITICAL/advisory contradictions, remove `advisory`,
+   never downgrade severity. Reject contradictory saved decisions. Valid INFORMATIONAL
+   advisories stay advisory, including simplification; they cannot suppress defects.
+2. **Read decisions.** Run `$GSTACK_ROOT/bin/gstack-review-read`; parse
+   JSONL only before `---CONFIG---`. Combine saved `findings` with the invocation
+   action list, honoring later user decisions. Only explicit `skipped` actions
+   qualify, never `fixed`, `auto-fixed` or unanswered questions.
+   If both history and the invocation action list lack decisions, classify normally.
+3. **Match evidence.** Require the same fingerprint, advisory/defect kind and scope.
+   Compare supporting source and finding evidence with the saved decision, including
+   committed, staged, unstaged and non-ignored untracked source, not just HEAD.
+   For ordinary history, use `git diff --name-only <prior-review-commit>` as a
+   shortlist, not proof. Changed inputs, proposal, behavior, risk or new evidence
+   reopen the finding; unrelated edits do not. Missing proof or unknown comparisons
+   require a fresh decision, not suppression.
+4. **Match shared-code structurally.** A `shared-libs` category, `shared-libs:`
+   fingerprint or `evidence_paths`/`helper_target` requires re-reading all callers
+   (including indirect callers) and the helper destination, with unchanged identity,
+   contract and tradeoffs. Missing metadata never permits ordinary line matching.
+   Prior-review reuse additionally requires the checker below; invocation decisions
+   cannot replace it. Retain validated Skips and their evidence in the action list.
+5. **Apply dispositions.** Revalidated Skips suppress repeat questions and fixes,
+   not unresolved defects: retain them in counts, status and the final report.
+   Report the suppressed count once if nonzero.
+   Keep required-probe failures failed. List advice separately as `[ADVISORY]`,
+   preserving its records but excluding score penalties, unresolved-defect totals
+   and clean-status blockers. Completion, convergence and missing-reviewer gates remain.
 
 **Reuse a skipped shared-code advisory only with complete structural evidence:**
 
@@ -2101,16 +2089,6 @@ GSTACK_SHARED_LIBS_REUSE_JSON
 - Safe inspection: disables fsmonitor and optional locks; never uses external diff/textconv.
   Unknown evidence fails closed.
 
-If N > 0, print once: "Suppressed N findings from prior reviews (previously skipped by user)"; do not repeat the items. Otherwise skip the summary.
-
-**Only suppress `skipped` findings — never `fixed` or `auto-fixed`** (those might regress and should be re-checked).
-
-Count only non-advisory defects in the final summary; list optional advice separately
-with `[ADVISORY]`. Preserve advisory records and explicit decisions for
-persistence, but exclude advisories from score penalties, unresolved-defect
-totals, and clean-status blockers. This does not relax completion, convergence,
-or missing-reviewer rules.
-
 ## Step 9.4: Fix-First and persistence
 
 Before edits, inspect every dispatched reader/writer's handle. Wait for return
@@ -2118,7 +2096,7 @@ or confirm termination; otherwise log incomplete through items 5–6 and STOP
 without edits. After terminal failure, independent evidence may support fixes,
 but missing dispatched output still blocks continuation, even with a QA exception.
 
-1. **Classify each finding from the checklist pass, specialists, exploratory QA and queued Steps 10–11 findings as AUTO-FIX or ASK** per the Fix-First Heuristic in
+1. **Classify only unmatched or reopened findings as AUTO-FIX or ASK** after Step 9.3 matches all sources, including queued Steps 10–11 findings, per the Fix-First Heuristic in
    checklist.md. Critical findings lean toward ASK; informational lean toward AUTO-FIX.
 
 2. **Auto-fix all AUTO-FIX items.** Apply each fix. Output one line per fix:
@@ -2129,6 +2107,9 @@ but missing dispatched output still blocks continuation, even with a QA exceptio
    - Per-item options: A) Fix  B) Skip
    - Overall RECOMMENDATION
    - If 3 or fewer ASK items, you may use individual AskUserQuestion calls instead
+
+   Save each explicit Skip immediately in the invocation action list with its
+   identity, scope and supporting source evidence; keep it across repeats.
 
 4. **Finish and log this pass before choosing the next step.** Increment CYCLES
    once if fixes were applied. Complete items 5–6 exactly once with the original
@@ -2161,9 +2142,11 @@ $GSTACK_ROOT/bin/gstack-review-log '{"skill":"review","timestamp":"TIMESTAMP","s
 - `specialists`: `{}` for a small-diff skip; otherwise every considered specialist's Step 9.2 stats:
   `{"dispatched":true,"findings":N,"critical":N,"informational":N}` or
   `{"dispatched":false,"reason":"scope|gated"}`.
-- `findings`: checklist, specialist and exploratory QA records with
+- `findings`: checklist, specialist, exploratory QA and queued Steps 10–11 records with
   `{"fingerprint":"path:line:category","severity":"CRITICAL|INFORMATIONAL","action":"ACTION"}`.
   ACTION: `"auto-fixed"`, `"fixed"` (approved), or `"skipped"` (explicit Skip).
+  Merge revalidated invocation decisions by identity and advisory/defect kind;
+  preserve `advisory`, `evidence_paths` and `helper_target`.
 Save the review output — it goes into the PR body in Step 19.
 
 ### Decide whether to repeat Step 9
@@ -2555,6 +2538,11 @@ ADVERSARIAL REVIEW SYNTHESIS (always-on, N lines):
 High-confidence findings (agreed on by multiple sources) should be prioritized for fixes.
 
 ### Finish the adversarial phase
+
+Apply Step 9.3's matching procedure before testing the actionable fix queue below.
+Only unmatched or reopened findings remain queued. Unvalidated historical Skips
+stay unmatched for the full Step 9 repeat below; never jump to 9.3 or mint a late
+REVIEW_START. Keep scoped approvals.
 
 Optional outside failures retain their own incomplete records. Apply these decisions
 in order before leaving Step 11:

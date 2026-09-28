@@ -16,8 +16,11 @@
  * the network stack) lives in pair-agent-e2e.test.ts.
  */
 
-import { describe, test, expect, beforeEach } from 'bun:test';
+import { describe, test, expect, beforeEach, afterAll } from 'bun:test';
 import * as crypto from 'crypto';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import {
   buildFetchHandler,
   GSTACK_EXTENSION_ID,
@@ -28,6 +31,12 @@ import { BrowserManager } from '../src/browser-manager';
 import { resolveConfig } from '../src/config';
 
 const PINNED_ORIGIN = `chrome-extension://${GSTACK_EXTENSION_ID}`;
+const fixtureDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-extension-token-')));
+const fixtureConfig = resolveConfig({ BROWSE_STATE_FILE: path.join(fixtureDir, 'state/browse.json') });
+
+afterAll(() => {
+  fs.rmSync(fixtureDir, { recursive: true, force: true });
+});
 
 function makeConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   const token = 'ext-token-test-' + crypto.randomBytes(16).toString('hex');
@@ -35,8 +44,9 @@ function makeConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     authToken: token,
     browsePort: 34567,
     idleTimeoutMs: 1_800_000,
-    config: resolveConfig(),
+    config: fixtureConfig,
     browserManager: new BrowserManager(),
+    ownsTerminalAgent: false,
     startTime: Date.now(),
     ...overrides,
   };

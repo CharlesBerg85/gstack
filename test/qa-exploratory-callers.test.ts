@@ -13,7 +13,7 @@ import type { runSkillTest, SkillTestResult } from './helpers/session-runner';
 import { SESSION_DRAIN_GRACE_MS } from './helpers/session-runner';
 import { CAPTURE_MS } from './helpers/eval-budgets';
 import { readQACheckpointFiles } from './helpers/qa-checkpoint-evidence';
-import { generateQAExploratory, generateQAReview, generateQAReviewPreflight } from '../scripts/resolvers/qa';
+import { generateQAExploratory, generateQAResource, generateQAReview, generateQAReviewPreflight } from '../scripts/resolvers/qa';
 import { HOST_PATHS } from '../scripts/resolvers/types';
 
 function nativeCall(id: string, name: string, input: object, output: string, parent: string | null = null, failed = false) {
@@ -435,13 +435,27 @@ describe('generated actual parent paths', () => {
         expect(readiness).toContain('Never install, import cookies or bootstrap tests during discovery');
         expect(load).not.toContain('sections/browser-setup.md');
       }
-      expect(load).toContain('{{QA_RESOURCE:scope}}');
-      expect(load).toContain('sections/exploratory.md');
-      expect(load).toContain('sections/system-functional.md');
+      expect(load).toContain('{{QA_RESOURCE:exploratory}}');
+      expect(load).not.toContain('{{QA_RESOURCE:scope}}');
+      expect(load).not.toContain('sections/system-functional.md');
+      const resource = generateQAResource(ctx, ['exploratory']);
+      expect(resource).toContain(`installed /${skillName} SKILL.md's directory`);
+      expect(resource).toContain('`../qa/sections/exploratory.md`');
+      const shared = generateQAExploratory({ ...ctx, skillName: 'qa' });
+      const preparation = ['1. Read `sections/scope.md`', 'in full and select the surfaces',
+        'Read `sections/system-functional.md` in full.', 'Read `sections/qa-patterns.md` in full.',
+        'Write a **charter**', '1. First demonstrate success'].map(marker => shared.indexOf(marker));
+      expect(preparation.every(position => position >= 0)).toBe(true);
+      expect(preparation).toEqual([...preparation].sort((a, b) => a - b));
       expect(load).toContain('Caller/report templates cannot replace these method Reads');
       const flat = parent.replace(/\s+/g, ' ');
       expect(flat).toContain('Discovery is report-only');
-      expect(flat).toContain('Follow the numbered Probe loop in `sections/exploratory.md` for discovery, replays and revalidation');
+      expect(flat).toContain('First run smoke, replays and revalidation through the shared Probe loop and its guard');
+      expect(flat).toContain('Then run every required plan check, even if smoke expired');
+      expect(flat).toContain('Keep the same checkpoint sequence, but do not use the smoke guard or restart its clock');
+      expect(flat).toContain("Give each plan command a finite timeout capped by the caller's remaining deadline");
+      expect(flat).toContain('If that deadline expired, mark the check not-run');
+      expect(flat).toContain("Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates");
       expect(flat).toContain('Before reporting, read updates from any dispatched agents');
       expect(flat).toContain('repeat affected review and probes through the same loop without resetting its checkpoint sequence');
       expect(flat).toContain('Pass only when all required checks pass on the current inputs');
@@ -451,17 +465,22 @@ describe('generated actual parent paths', () => {
 
   test('authored shared loop preserves complete safe observations and re-enters checkpoints after input changes', () => {
     const text = generateQAExploratory({ skillName: 'qa', tmplPath: 'qa/SKILL.md.tmpl', host: 'claude', paths: HOST_PATHS.claude }).replace(/\s+/g, ' ');
-    for (const contract of ['immediately preceding completed probe', 'copy every key and value', 'nonsecret source/fixture identity hashes', 'Interpretations belong in hypothesis, not observed', 'Terminal summaries belong in the report, not a checkpoint', 'return to step 2 for each affected revalidation', 'Pass requires all required current-input contracts to pass with no required remainder']) {
+    for (const contract of ["last completed probe's full outer command", 'Preserve every safe program-JSON key/value', 'identity hash unchanged', 'Put tool metadata in the report, interpretations in hypothesis', 'write the report, not a checkpoint', 'return to step 2 for each affected revalidation', 'Pass requires all required current-input contracts to pass with no required remainder']) {
       expect(text).toContain(contract);
     }
+    expect(text).toContain("observationCommand: last completed probe's full outer command, including guard");
+    expect(text).toContain('observed: its exact decoded child JSON (no wrapper/extra keys)');
+    expect(text).toContain('or its full non-JSON text');
+    expect(text).not.toContain('nest unchanged child JSON');
   });
   test('the shared smoke has explicit limits without waiving required plan checks', () => {
     const body = fs.readFileSync(path.join(import.meta.dir, '../qa/sections/exploratory.md'), 'utf8').replace(/\s+/g, ' ');
     expect(body).toContain('Stop after 5 minutes or 12 probes, whichever comes first');
-    expect(body).toContain('Bound commands by remaining time');
+    expect(body).toContain('G enforces the deadline');
+    expect(body).toContain('Never reset D/bypass G');
     expect(body).toContain('Explicit plan checks remain required beyond this smoke budget');
-    expect(body).toContain('make /review incomplete.');
-    expect(body).toContain('They block /ship absent explicit user acceptance of that named risk');
+    expect(body).toContain('make /review incomplete');
+    expect(body).toContain('block /ship without explicit user acceptance of that named risk');
   });
 
   test('excerpt extraction fails loudly instead of producing an empty passing fixture', () => {
@@ -503,13 +522,403 @@ describe('generated actual parent paths', () => {
 });
 
 describe('real caller-specific native fixture and capture boundary', () => {
-  const fixtureFor = async (id: Parameters<typeof createQaCallerFixture>[0]) => {
-    const fixture = createQaCallerFixture(id, { instructions: 'Free fixture control: no agent instructions or workflow credit.', installRuntime: false });
+  const fixtureFor = async (id: Parameters<typeof createQaCallerFixture>[0], installRuntime = false) => {
+    const fixture = createQaCallerFixture(id, { instructions: 'Free fixture control: no agent instructions or workflow credit.', installRuntime });
     await fixture.observe();
     return fixture;
   };
   const probe = (fixture: QaCallerFixture, value: string) => spawnSync(process.execPath, ['scripts/probe.ts', value], { cwd: fixture.cwd, encoding: 'utf8', timeout: 5000 });
   const dispose = async (fixture: QaCallerFixture) => { await fixture.close(); fs.rmSync(fixture.root, { recursive: true, force: true }); };
+
+  test('deadline authority is closed over the installed helper, owned state and literal probe child', async () => {
+    const fixture = await fixtureFor('ship-exploratory-small-cli', true);
+    try {
+      const context = { runtime: fixture.runtime, fixtureRoot: fixture.cwd };
+      const helper = path.join(fixture.runtime, 'bin/gstack-qa-deadline');
+      const state = path.join(fixture.cwd, 'reports/deadline.json');
+      const run = `bun ${helper} run ${state} -- `;
+      for (const command of [
+        `bun ${helper} start ${state} 300`, `bun ${helper} start ${state} 0.001`,
+        `bun '${helper}' start '${state}' 1.001 '2026-09-27T00:00:00Z'`,
+        `bun ${helper} status ${state}`, `${run}bun scripts/probe.ts`, `${run}bun scripts/probe.ts 3`,
+        `${run}bun scripts/probe.ts 'git push; $(touch forged)'`, `${run}bun scripts/probe.ts "invalid; text"`,
+      ]) expect(qaCallerCommandAllowed(command, [], context), command).toBe(true);
+      const forbidden = [
+        `${run}bun cli.ts 3`, `${run}bun run test`, `${run}bun scripts/probe.ts 3 no`,
+        `${run}bun /tmp/probe.ts 3`, `${run}bun -e 'console.log(1)'`, `${run}bash -c 'bun scripts/probe.ts 3'`,
+        `${run}git push`, `${run}gh pr create`, `${run}bun ${helper} run ${state} -- bun scripts/probe.ts 3`,
+        `${run}env bun scripts/probe.ts 3`, `${run}timeout 1 bun scripts/probe.ts 3`,
+        `${run}bun scripts/probe.ts $(date)`, `${run}bun scripts/probe.ts "$VALUE"`, `${run}bun scripts/probe.ts 3 > reports/out`,
+        `${run}bun scripts/probe.ts 3 && git push`, `${run}bun scripts/probe.ts 3; git push`, `${run}bun scripts/probe.ts 3 | cat`,
+        `bun ${helper} status ${state} extra`, `bun ${helper} start ${state} 0`, `bun ${helper} start ${state} 300.001`,
+        `bun ${helper} start ${state} -1`, `bun ${helper} start ${state} 1e2`, `bun ${helper} start ${state} 1.0001`,
+        `bun ${helper} start ${state} 1 not-a-time`, `bun ${helper} start ${state} 1 2026-02-30T00:00:00Z`,
+        `bun ${helper} start ${state} 1 2026-09-27T00:00:00+00:00`, `bun ${helper} start ${state} 1 2026-09-27T00:00:00Z extra`,
+        `bun ${helper} start ${state} 1 $(date -u +%Y-%m-%dT%H:%M:%SZ)`,
+        `bun ${helper} run reports/deadline.json -- bun scripts/probe.ts 3`,
+        `bun ${helper} run ${fixture.cwd}/reports/other.json -- bun scripts/probe.ts 3`,
+        `bun ${helper} run ${fixture.cwd}/reports/../reports/deadline.json -- bun scripts/probe.ts 3`,
+        `bun ${helper} run ${fixture.root}/outside.json -- bun scripts/probe.ts 3`,
+        `bun ${helper}-lookalike run ${state} -- bun scripts/probe.ts 3`,
+        `${run}bun scripts/probe.ts 'line\nbreak'`, `${run}bun scripts/probe.ts 3\nbun scripts/probe.ts no`,
+      ];
+      for (const command of forbidden) {
+        expect(qaCallerCommandAllowed(command, [], context), command).toBe(false);
+        expect(qaCallerCommandAllowed(command, [command], context), command).toBe(false);
+      }
+      expect(qaCallerCommandAllowed(`${run}bun scripts/probe.ts 3`)).toBe(false);
+      expect(qaCallerCommandAllowed(`${run}bun scripts/probe.ts 3`, [], { ...context, fixtureRoot: fixture.root })).toBe(false);
+      const fakeRuntime = path.join(fixture.root, 'forged-runtime');
+      fs.mkdirSync(path.join(fakeRuntime, 'bin'), { recursive: true });
+      fs.copyFileSync(helper, path.join(fakeRuntime, 'bin/gstack-qa-deadline'));
+      const forged = `bun ${fakeRuntime}/bin/gstack-qa-deadline run ${state} -- bun scripts/probe.ts 3`;
+      expect(qaCallerCommandAllowed(forged, [forged], { ...context, runtime: fakeRuntime })).toBe(false);
+      fs.symlinkSync(path.join(fixture.root, 'outside.json'), state);
+      expect(qaCallerCommandAllowed(`${run}bun scripts/probe.ts 3`, [], context)).toBe(false);
+      fs.unlinkSync(state);
+      fs.renameSync(path.dirname(state), path.join(fixture.cwd, 'original-reports'));
+      fs.symlinkSync(path.join(fixture.cwd, 'original-reports'), path.dirname(state), 'dir');
+      expect(qaCallerCommandAllowed(`${run}bun scripts/probe.ts 3`, [], context)).toBe(false);
+    } finally { await dispose(fixture); }
+  });
+
+  test('actual runner binds guarded child JSON and journal to full outer checkpoint commands', async () => {
+    const fixture = await fixtureFor('ship-exploratory-plan-checks', true);
+    try {
+      const reportRoot = path.join(fixture.cwd, 'reports');
+      const helper = path.join(fixture.runtime, 'bin/gstack-qa-deadline');
+      const state = path.join(reportRoot, 'deadline.json');
+      const command = (value: string) => `bun ${helper} run ${state} -- bun scripts/probe.ts ${value}`;
+      const result = await runQaCaller(fixture, 'free-guarded-callback', async options => {
+        const transcript: unknown[] = [
+          ...nativeCall('parent', 'Read', { file_path: `${fixture.cwd}/caller-ship.md` }, 'parent workflow'),
+          ...nativeCall('shared', 'Read', { file_path: `${fixture.runtime}/qa/sections/exploratory.md` }, 'shared method'),
+          ...nativeCall('functional', 'Read', { file_path: `${fixture.runtime}/qa/sections/system-functional.md` }, 'functional method'),
+        ];
+        transcript.push(...nativeCall('ship-army', 'Read', { file_path: `${fixture.runtime}/ship/sections/review-army.md` }, 'ship Step 9'));
+        const execute = (id: string, cmd: string, exit: number) => {
+          expect(qaCallerCommandAllowed(cmd, fixture.workflowCommands, { runtime: fixture.runtime, fixtureRoot: fixture.cwd })).toBe(true);
+          const actual = spawnSync('bash', ['-c', cmd], { cwd: options.workingDirectory, env: { ...process.env, ...options.env }, encoding: 'utf8', timeout: 5000 });
+          expect(actual.error).toBeUndefined();
+          expect(actual.status, actual.stderr).toBe(exit);
+          transcript.push(...nativeCall(id, 'Bash', { command: cmd }, actual.stdout + actual.stderr, null, actual.status !== 0));
+          return actual;
+        };
+        execute('start', `bun ${helper} start ${state} 300`, 0);
+        const prior = JSON.parse(execute('happy', command('3'), 0).stdout);
+        const content = JSON.stringify({ observationCommand: command('3'), observed: prior, hypothesis: 'The invalid input should reject with the documented exit and stderr.', nextCommand: command("'git push; $(touch forged)'") });
+        const file = path.join(reportRoot, 'exploration-001.json');
+        fs.writeFileSync(file, content, { mode: 0o600 });
+        transcript.push(...nativeCall('checkpoint', 'Write', { file_path: file, content }, 'File created successfully'));
+        const adverse = execute('adverse', command("'git push; $(touch forged)'"), 2);
+        expect(adverse.stderr).toContain('QA_DEADLINE ');
+        const planContent = JSON.stringify({ observationCommand: command("'git push; $(touch forged)'"), observed: JSON.parse(adverse.stdout), hypothesis: 'The separate required plan check must also double its boundary input correctly.', nextCommand: 'bun scripts/probe.ts 9' });
+        const planFile = path.join(reportRoot, 'exploration-002.json');
+        fs.writeFileSync(planFile, planContent, { mode: 0o600 });
+        transcript.push(...nativeCall('plan-checkpoint', 'Write', { file_path: planFile, content: planContent }, 'File created successfully'));
+        execute('required-plan', 'bun scripts/probe.ts 9', 0);
+        return { exitReason: 'success', transcript } as SkillTestResult;
+      });
+      await fixture.close();
+      const input = {
+        caller: fixture.caller, result, probes: fixture.probes(),
+        receipt: { status: 'pass' as const, probes: fixture.probes().map(probe => probe.id), remaining: [] },
+        currentSnapshot: fixture.snapshot(), requiredCharters: ['happy', 'adverse', 'plan:nine'], mutations: fixture.mutationEvents,
+        observerComplete: fixture.observation?.complete === true && !fixture.observerErrors.length,
+        fixtureRoot: fixture.cwd, runtime: fixture.runtime, reportRoot, requireGuardedSmoke: true,
+        checkpointFiles: readQACheckpointFiles(reportRoot), reportMarkdown: '[Reasoning](exploration-001.json)\n[Required plan](exploration-002.json)',
+      };
+      expect(input.probes).toHaveLength(3);
+      expect(validateCallerEvidence(input)).toEqual([]);
+      expect(validateCallerEvidence({ ...input, requireGuardedSmoke: false })).toEqual([]);
+      expect(validateCallerEvidence({ ...input, requiredCharters: ['happy', 'adverse'] })).toContain(`smoke probe missing trusted deadline run: ${input.probes[2].id}`);
+      for (const [name, writeId, probeId] of [
+        ['exploration-001.json', 'checkpoint', 'happy'],
+        ['exploration-002.json', 'plan-checkpoint', 'adverse'],
+      ]) {
+        const original = input.checkpointFiles[name];
+        const completion = (result.transcript as any[]).find(event => event.message.content[0].tool_use_id === probeId).message.content[0];
+        const receipts = completion.content.split('\n').filter((line: string) => line.startsWith('QA_DEADLINE '))
+          .map((line: string) => JSON.parse(line.slice('QA_DEADLINE '.length)));
+        for (const shape of ['child', 'guard-envelope', 'interpretation']) {
+          const note = JSON.parse(original);
+          if (shape === 'child') note.observed = { child: note.observed };
+          if (shape === 'guard-envelope') note.observed = { guardStarted: receipts[0], child: note.observed, guardFinished: receipts[1], outerExit: receipts[1].exitCode };
+          if (shape === 'interpretation') note.observed = { ...note.observed, classification: 'expected rejection' };
+          const content = JSON.stringify(note);
+          fs.writeFileSync(path.join(reportRoot, name), content);
+          const transcript = structuredClone(result.transcript) as any[];
+          transcript.find(event => event.message.content[0].id === writeId).message.content[0].input.content = content;
+          const errors = validateCallerEvidence({ ...input, checkpointFiles: { ...input.checkpointFiles, [name]: content }, result: { ...result, transcript } });
+          expect(errors, `${name}: ${shape}`).toContain(`QA checkpoint: Missing unique completed checkpoint before probe: ${note.nextCommand}`);
+          expect(errors, `${name}: ${shape}`).toContain(`QA checkpoint: Unrelated, reused or retrospective checkpoint: ${name}`);
+        }
+        fs.writeFileSync(path.join(reportRoot, name), original);
+      }
+      expect(validateCallerEvidence(input)).toEqual([]);
+      for (const change of ['missing-start', 'missing-finish', 'missing-both', 'extra-receipt', 'reversed', 'malformed', 'forged-guard', 'wrong-state', 'wrong-budget', 'wrong-deadline', 'stale-start', 'late-start', 'wrong-remaining', 'finish-before-start', 'late-finish', 'timeout', 'child-124', 'wrong-exit', 'wrong-failed-status', 'extra-field']) {
+        const transcript = structuredClone(result.transcript) as any[];
+        const completion = transcript.find(event => event.message.content[0].tool_use_id === 'adverse').message.content[0];
+        const lines = completion.content.split('\n') as string[];
+        const receipts = lines.filter(line => line.startsWith('QA_DEADLINE ')).map(line => JSON.parse(line.slice('QA_DEADLINE '.length)));
+        const [started, finished] = receipts;
+        if (change === 'missing-start') receipts.shift();
+        if (change === 'missing-finish') receipts.pop();
+        if (change === 'missing-both') receipts.length = 0;
+        if (change === 'extra-receipt') receipts.push({ ...finished });
+        if (change === 'reversed') receipts.reverse();
+        if (change === 'forged-guard') started.guard = 'not-the-deadline-helper';
+        if (change === 'wrong-state') started.startedAt = new Date(Date.parse(started.startedAt) - 1).toISOString();
+        if (change === 'wrong-budget') started.budgetMs += 1;
+        if (change === 'wrong-deadline') finished.deadlineAt = new Date(Date.parse(finished.deadlineAt) + 1).toISOString();
+        if (change === 'stale-start' || change === 'late-start') {
+          started.observedAt = change === 'stale-start' ? new Date(Date.parse(started.startedAt) - 1).toISOString() : started.deadlineAt;
+          started.remainingMs = Date.parse(started.deadlineAt) - Date.parse(started.observedAt);
+        }
+        if (change === 'wrong-remaining') started.remainingMs += 1;
+        if (change === 'finish-before-start') finished.observedAt = new Date(Date.parse(started.observedAt) - 1).toISOString();
+        if (change === 'late-finish' || change === 'timeout') finished.observedAt = finished.deadlineAt;
+        if (change === 'timeout') finished.timedOut = true;
+        if (change === 'timeout' || change === 'child-124') finished.exitCode = 124;
+        if (change === 'wrong-exit') finished.exitCode = 0;
+        if (change === 'wrong-failed-status') completion.is_error = false;
+        if (change === 'extra-field') started.untrusted = true;
+        completion.content = [...lines.filter(line => !line.startsWith('QA_DEADLINE ')), ...receipts.map(receipt => `QA_DEADLINE ${JSON.stringify(receipt)}`)].join('\n');
+        if (change === 'malformed') completion.content = completion.content.replace(/QA_DEADLINE [^\n]+/, 'QA_DEADLINE {');
+        const altered = { ...input, result: { ...result, transcript } };
+        expect(validateCallerEvidence({ ...altered, requireGuardedSmoke: false }), change).toEqual([]);
+        expect(validateCallerEvidence(altered), change).toContain(`smoke probe missing consistent deadline receipts: ${input.probes[1].id}`);
+      }
+      const allBare = structuredClone(result.transcript) as any[];
+      const bareFiles: Record<string, string> = {};
+      const unwrap = (value: string) => value.replace(`bun ${helper} run ${state} -- `, '');
+      for (const event of allBare) {
+        const block = event.message.content[0];
+        if (block.type === 'tool_use' && block.name === 'Bash') block.input.command = unwrap(block.input.command);
+        if (block.type === 'tool_use' && block.name === 'Write') {
+          const note = JSON.parse(block.input.content);
+          note.observationCommand = unwrap(note.observationCommand);
+          note.nextCommand = unwrap(note.nextCommand);
+          block.input.content = JSON.stringify(note);
+          bareFiles[path.basename(block.input.file_path)] = block.input.content;
+          fs.writeFileSync(block.input.file_path, block.input.content);
+        }
+        if (['happy', 'adverse'].includes(block.tool_use_id)) block.content = block.content.split('\n').filter((line: string) => !line.startsWith('QA_DEADLINE ')).join('\n');
+      }
+      const bareInput = { ...input, checkpointFiles: bareFiles, result: { ...result, transcript: allBare } };
+      expect(validateCallerEvidence({ ...bareInput, requireGuardedSmoke: false })).toEqual([]);
+      expect(validateCallerEvidence(bareInput)).toContain('no authenticated guarded diagnostic executed');
+      for (const probe of input.probes.slice(0, 2)) expect(validateCallerEvidence(bareInput)).toContain(`smoke probe missing trusted deadline run: ${probe.id}`);
+      for (const [name, content] of Object.entries(input.checkpointFiles)) fs.writeFileSync(path.join(reportRoot, name), content);
+      expect(fs.existsSync(path.join(fixture.cwd, 'forged'))).toBe(false);
+      expect(validateCallerEvidence({ ...input, runtime: undefined })).toContain('command outside declared caller observation interface');
+      for (const name of ['Write', 'Edit', 'MultiEdit']) {
+        for (const file of [state, 'reports/deadline.json', 'reports/../reports/deadline.json', path.join(reportRoot, '.qa-deadline-forged')]) {
+          const transcript = [...result.transcript, ...nativeCall(`reserved-${name}`, name, { file_path: file, content: '{}' }, 'done')];
+          expect(validateCallerEvidence({ ...input, result: { ...result, transcript } })).toContain('actor attempted to replace reserved deadline state');
+        }
+      }
+      const linked = path.join(reportRoot, 'clock-alias');
+      fs.symlinkSync(state, linked);
+      const aliasTranscript = [...result.transcript, ...nativeCall('alias', 'Write', { file_path: linked, content: '{}' }, 'done')];
+      expect(validateCallerEvidence({ ...input, result: { ...result, transcript: aliasTranscript } })).toContain('write outside the declared report/fixture interface');
+      fs.unlinkSync(linked);
+      fs.linkSync(state, linked);
+      expect(qaCallerCommandAllowed(command('3'), [], { runtime: fixture.runtime, fixtureRoot: fixture.cwd })).toBe(false);
+      expect(validateCallerEvidence({ ...input, result: { ...result, transcript: aliasTranscript } })).toContain('write outside the declared report/fixture interface');
+      fs.unlinkSync(linked);
+      const original = input.checkpointFiles['exploration-001.json'];
+      for (const field of ['observationCommand', 'nextCommand', 'observed']) {
+        const changed = JSON.parse(original);
+        if (field === 'observed') delete changed.observed.snapshot;
+        else changed[field] = field === 'observationCommand' ? 'bun scripts/probe.ts 3' : "bun scripts/probe.ts 'git push; $(touch forged)'";
+        const content = JSON.stringify(changed);
+        fs.writeFileSync(path.join(reportRoot, 'exploration-001.json'), content);
+        const transcript = structuredClone(result.transcript) as any[];
+        transcript.find(event => event.message.content[0].id === 'checkpoint').message.content[0].input.content = content;
+        expect(validateCallerEvidence({ ...input, checkpointFiles: { ...input.checkpointFiles, 'exploration-001.json': content }, result: { ...result, transcript } }).some(error => error.includes('checkpoint'))).toBe(true);
+      }
+      fs.writeFileSync(path.join(reportRoot, 'exploration-001.json'), original);
+      const duplicateJSON = structuredClone(result.transcript) as any[];
+      duplicateJSON.find(event => event.message.content[0].tool_use_id === 'adverse').message.content[0].content += '\n{}';
+      expect(validateCallerEvidence({ ...input, result: { ...result, transcript: duplicateJSON } }).some(error => /ambiguous native probe/.test(error))).toBe(true);
+    } finally { await dispose(fixture); }
+  });
+
+  test('a completed child exit 124 is guarded negative evidence, not expiry or a passing contract', async () => {
+    const fixture = createQaCallerFixture('ship-exploratory-small-cli', { instructions: 'Free completed-child exit control.', installRuntime: true });
+    try {
+      const cli = path.join(fixture.cwd, 'cli.ts');
+      expect(fs.realpathSync(cli)).toBe(cli);
+      fs.appendFileSync(cli, '\nprocess.exit(124);\n');
+      await fixture.observe();
+      const reportRoot = path.join(fixture.cwd, 'reports');
+      const helper = path.join(fixture.runtime, 'bin/gstack-qa-deadline');
+      const state = path.join(reportRoot, 'deadline.json');
+      const result = await runQaCaller(fixture, 'free-completed-child-124', async options => {
+        const transcript: unknown[] = [
+          ...nativeCall('parent', 'Read', { file_path: `${fixture.cwd}/caller-ship.md` }, 'parent workflow'),
+          ...nativeCall('shared', 'Read', { file_path: `${fixture.runtime}/qa/sections/exploratory.md` }, 'shared method'),
+          ...nativeCall('functional', 'Read', { file_path: `${fixture.runtime}/qa/sections/system-functional.md` }, 'functional method'),
+          ...nativeCall('ship-army', 'Read', { file_path: `${fixture.runtime}/ship/sections/review-army.md` }, 'ship Step 9'),
+        ];
+        for (const [id, command, exit] of [
+          ['start', `bun ${helper} start ${state} 300`, 0],
+          ['child-124', `bun ${helper} run ${state} -- bun scripts/probe.ts 3`, 124],
+        ] as const) {
+          expect(qaCallerCommandAllowed(command, [], { runtime: fixture.runtime, fixtureRoot: fixture.cwd })).toBe(true);
+          const actual = spawnSync('bash', ['-c', command], { cwd: options.workingDirectory, env: { ...process.env, ...options.env }, encoding: 'utf8', timeout: 5000 });
+          expect(actual.error).toBeUndefined();
+          expect(actual.status, actual.stderr).toBe(exit);
+          transcript.push(...nativeCall(id, 'Bash', { command }, actual.stdout + actual.stderr, null, actual.status !== 0));
+          if (id === 'child-124') {
+            const frames = actual.stderr.split('\n').filter(line => line.startsWith('QA_DEADLINE ')).map(line => JSON.parse(line.slice('QA_DEADLINE '.length)));
+            expect(frames.map(frame => frame.event)).toEqual(['started', 'finished']);
+            expect(frames[1]).toMatchObject({ timedOut: false, exitCode: 124 });
+            expect(JSON.parse(actual.stdout)).toMatchObject({ exit: 124, status: 'fail', stdout: '6\n' });
+          }
+        }
+        return { exitReason: 'success', transcript } as SkillTestResult;
+      });
+      await fixture.close();
+      const input = {
+        caller: fixture.caller, result, probes: fixture.probes(),
+        receipt: { status: 'fail' as const, probes: fixture.probes().map(probe => probe.id), remaining: ['adverse not run'] },
+        currentSnapshot: fixture.snapshot(), requiredCharters: ['happy', 'adverse'], mutations: fixture.mutationEvents,
+        observerComplete: fixture.observation?.complete === true && !fixture.observerErrors.length,
+        fixtureRoot: fixture.cwd, runtime: fixture.runtime, reportRoot, requireGuardedSmoke: true,
+        checkpointFiles: readQACheckpointFiles(reportRoot), reportMarkdown: 'The diagnostic ran and failed its required exit-status contract.',
+      };
+      expect(input.probes).toHaveLength(1);
+      expect(validateCallerEvidence(input)).toEqual([]);
+      const green = validateCallerEvidence({ ...input, receipt: { ...input.receipt, status: 'pass', remaining: [] } });
+      expect(green).toContain('false green for charter: happy');
+      expect(green).toContain('blocked, failing or incomplete coverage reported green');
+    } finally { await dispose(fixture); }
+  });
+
+  test('only a completed authenticated expired guard-run consumes an unused checkpoint without probe credit', async () => {
+    const fixture = await fixtureFor('ship-exploratory-small-cli', true);
+    const retained = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'qc-deadline-evidence-'));
+    checkpointRoots.push(retained);
+    let deadlineBytes = '';
+    try {
+      const reportRoot = path.join(fixture.cwd, 'reports');
+      const helper = path.join(fixture.runtime, 'bin/gstack-qa-deadline');
+      const state = path.join(reportRoot, 'deadline.json');
+      const guarded = `bun ${helper} run ${state} -- bun scripts/probe.ts no`;
+      const result = await runQaCaller(fixture, 'free-expired-callback', async options => {
+        const transcript: unknown[] = [
+          ...nativeCall('parent', 'Read', { file_path: `${fixture.cwd}/caller-ship.md` }, 'parent workflow'),
+          ...nativeCall('shared', 'Read', { file_path: `${fixture.runtime}/qa/sections/exploratory.md` }, 'shared method'),
+          ...nativeCall('functional', 'Read', { file_path: `${fixture.runtime}/qa/sections/system-functional.md` }, 'functional method'),
+        ];
+        transcript.push(...nativeCall('ship-army', 'Read', { file_path: `${fixture.runtime}/ship/sections/review-army.md` }, 'ship Step 9'));
+        const execute = (id: string, command: string, exit: number) => {
+          expect(qaCallerCommandAllowed(command, [], { runtime: fixture.runtime, fixtureRoot: fixture.cwd })).toBe(true);
+          const actual = spawnSync('bash', ['-c', command], { cwd: options.workingDirectory, env: { ...process.env, ...options.env }, encoding: 'utf8', timeout: 5000 });
+          expect(actual.error).toBeUndefined();
+          expect(actual.status, actual.stderr).toBe(exit);
+          transcript.push(...nativeCall(id, 'Bash', { command }, actual.stdout + actual.stderr, null, actual.status !== 0));
+          return actual;
+        };
+        const prior = JSON.parse(execute('baseline', 'bun scripts/probe.ts 3', 0).stdout);
+        execute('start', `bun ${helper} start ${state} 1 2000-01-01T00:00:00Z`, 124);
+        const content = JSON.stringify({ observationCommand: 'bun scripts/probe.ts 3', observed: prior, hypothesis: 'The next distinct invalid input should reject according to the CLI contract.', nextCommand: guarded });
+        fs.writeFileSync(path.join(reportRoot, 'exploration-001.json'), content, { mode: 0o600 });
+        transcript.push(...nativeCall('checkpoint', 'Write', { file_path: path.join(reportRoot, 'exploration-001.json'), content }, 'File created successfully'));
+        expect(execute('expired', guarded, 124).stdout).toBe('');
+        return { exitReason: 'success', transcript } as SkillTestResult;
+      });
+      await fixture.close();
+      const input = {
+        caller: fixture.caller, result, probes: fixture.probes(),
+        receipt: { status: 'blocked' as const, probes: fixture.probes().map(probe => probe.id), remaining: ['adverse not run: deadline expired'] },
+        currentSnapshot: fixture.snapshot(), requiredCharters: ['happy', 'adverse'], mutations: fixture.mutationEvents,
+        observerComplete: fixture.observation?.complete === true && !fixture.observerErrors.length,
+        fixtureRoot: fixture.cwd, runtime: fixture.runtime, reportRoot,
+        checkpointFiles: readQACheckpointFiles(reportRoot), reportMarkdown: '[Unexecuted follow-up](exploration-001.json)',
+      };
+      expect(input.probes).toHaveLength(1);
+      expect(validateCallerEvidence(input)).toEqual([]);
+      expect(validateCallerEvidence({ ...input, requireGuardedSmoke: true })).toContain('no authenticated guarded diagnostic executed');
+      expect(validateCallerEvidence({ ...input, receipt: { ...input.receipt, status: 'pass', remaining: [] } })).toContain('false green for charter: adverse');
+      const childLocal = structuredClone(result.transcript) as any[];
+      for (const event of childLocal) {
+        const block = event.message.content[0];
+        if (['baseline', 'start', 'checkpoint', 'expired'].includes(block.id ?? block.tool_use_id)) event.parent_tool_use_id = 'discovery-child';
+      }
+      expect(validateCallerEvidence({ ...input, result: { ...result, transcript: childLocal } })).toEqual([]);
+      const original = input.checkpointFiles['exploration-001.json'];
+      for (const change of ['status-only', 'unprefixed', 'success', 'missing-result', 'wrong-state', 'not-expired', 'started', 'finished-timeout', 'child-124', 'mixed-started', 'mixed-finished', 'duplicate-expired', 'extra-json', 'wrong-parent', 'late-write', 'pending-write', 'forged-helper']) {
+        const transcript = structuredClone(result.transcript) as any[];
+        const use = transcript.find(event => event.message.content[0].id === 'expired');
+        const completion = transcript.find(event => event.message.content[0].tool_use_id === 'expired');
+        const write = transcript.find(event => event.message.content[0].id === 'checkpoint');
+        const writeResult = transcript.find(event => event.message.content[0].tool_use_id === 'checkpoint');
+        if (change === 'status-only' || change === 'forged-helper') {
+          use.message.content[0].input.command = change === 'status-only' ? `bun ${helper} status ${state}` : guarded.replace(helper, `${helper}-lookalike`);
+          const note = { ...JSON.parse(original), nextCommand: use.message.content[0].input.command };
+          write.message.content[0].input.content = JSON.stringify(note);
+        } else if (change === 'unprefixed') completion.message.content[0].content = completion.message.content[0].content.replace('QA_DEADLINE ', '');
+        else if (change === 'success') completion.message.content[0].is_error = false;
+        else if (change === 'missing-result') transcript.splice(transcript.indexOf(completion), 1);
+        else if (change === 'extra-json') completion.message.content[0].content += '\n{}';
+        else if (change === 'wrong-parent') { use.parent_tool_use_id = 'other-parent'; completion.parent_tool_use_id = 'other-parent'; }
+        else if (change === 'late-write' || change === 'pending-write') {
+          transcript.splice(transcript.indexOf(writeResult), 1);
+          if (change === 'late-write') transcript.splice(transcript.indexOf(write), 1);
+          transcript.push(...(change === 'late-write' ? [write, writeResult] : [writeResult]));
+        } else {
+          const diagnostic = completion.message.content[0].content.split('\n').find((line: string) => line.startsWith('QA_DEADLINE '));
+          const receipt = JSON.parse(diagnostic.slice('QA_DEADLINE '.length));
+          if (change === 'wrong-state') receipt.budgetMs += 1;
+          if (change === 'not-expired') receipt.expired = false;
+          if (change === 'started') receipt.event = 'started';
+          completion.message.content[0].content = `QA_DEADLINE ${JSON.stringify(receipt)}\n`;
+          if (change === 'finished-timeout' || change === 'child-124') {
+            const finished = { guard: 'qa-deadline', event: 'finished', observedAt: receipt.observedAt, deadlineAt: receipt.deadlineAt, timedOut: change === 'finished-timeout', exitCode: 124 };
+            completion.message.content[0].content = `QA_DEADLINE ${JSON.stringify(finished)}\n`;
+          }
+          if (change === 'mixed-started' || change === 'mixed-finished' || change === 'duplicate-expired') {
+            const event = change === 'mixed-started' ? 'started' : change === 'mixed-finished' ? 'finished' : 'expired';
+            completion.message.content[0].content += `QA_DEADLINE ${JSON.stringify({ ...receipt, event })}\n`;
+          }
+        }
+        const content = write.message.content[0].input.content;
+        fs.writeFileSync(path.join(reportRoot, 'exploration-001.json'), content);
+        const errors = validateCallerEvidence({ ...input, checkpointFiles: { 'exploration-001.json': content }, result: { ...result, transcript } });
+        expect(errors.length, change).toBeGreaterThan(0);
+        if (change !== 'missing-result') expect(errors.some(error => /checkpoint/i.test(error)), change).toBe(true);
+      }
+      fs.writeFileSync(path.join(reportRoot, 'exploration-001.json'), original);
+      expect(fixture.probes()).toEqual(input.probes);
+      expect(validateCallerEvidence(input)).toEqual([]);
+      deadlineBytes = fs.readFileSync(state, 'utf8');
+      retainQaCallerEvidence(fixture, retained, result);
+    } finally { await dispose(fixture); }
+    expect(fs.existsSync(fixture.root)).toBe(false);
+    expect(fs.readFileSync(path.join(retained, 'deadline.json'), 'utf8')).toBe(deadlineBytes);
+    expect(fs.statSync(path.join(retained, 'deadline.json')).mode & 0o777).toBe(0o600);
+  });
+
+  test('deadline capture preserves diagnostics without following linked state or losing other evidence', async () => {
+    const fixture = await fixtureFor('ship-exploratory-small-cli', true);
+    const retained = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'qc-unsafe-deadline-'));
+    checkpointRoots.push(retained);
+    try {
+      const witness = path.join(fixture.root, 'outside-state.json');
+      fs.writeFileSync(witness, 'outside witness must never be captured');
+      fs.symlinkSync(witness, path.join(fixture.cwd, 'reports/deadline.json'));
+      await fixture.close();
+      retainQaCallerEvidence(fixture, retained, undefined);
+      expect(fs.existsSync(path.join(retained, 'deadline.json'))).toBe(false);
+      expect(fs.readFileSync(path.join(retained, 'deadline-capture-error.txt'), 'utf8')).toContain('Symlinked deadline paths are forbidden');
+      expect(fs.readFileSync(path.join(retained, 'native-events.json'), 'utf8')).toBe('[]');
+      expect(fs.readFileSync(witness, 'utf8')).toBe('outside witness must never be captured');
+      expect(fs.readdirSync(retained).some(file => fs.readFileSync(path.join(retained, file), 'utf8').includes('outside witness must never be captured'))).toBe(false);
+    } finally { await dispose(fixture); }
+  });
 
   test('actual runner receives a safe receipt interface without scenario answers or a duplicate QA workflow', async () => {
     const fixture = await fixtureFor('ship-exploratory-small-cli');

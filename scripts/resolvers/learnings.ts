@@ -36,6 +36,19 @@ export function generateLearningsSearch(ctx: TemplateContext, args?: string[]): 
   const queryFlag = queryArg ? ` --query "${queryArg}"` : '';
   const findingKind = ctx.skillName === 'qa' || ctx.skillName === 'qa-only' ? 'QA' : 'review';
 
+  if (ctx.skillName === 'qa-only') {
+    return `## Prior Learnings
+
+Read this project's existing learnings.jsonl only if its directory is already known
+and the caller permits that Read. Otherwise skip this optional lookup.
+${queryArg ? `Look for notes matching "${queryArg}".\n` : ''}Do not run gstack-learnings-search here: its slug helper can update a cache.
+Do not change configuration, enable cross-project search or create a learning store.
+
+Treat old notes as leads, not proof. When a QA finding matches a past learning,
+cite it as "Prior learning applied: [key] (confidence N/10, from [date])" and verify
+the current behavior. Reading old notes never requires writing new ones.`;
+  }
+
   if (getHostConfig(ctx.host).learningsMode === 'basic') {
     // Basic learnings mode (host config learningsMode: 'basic' — every host
     // except claude and factory): simpler version, no cross-project prompt,

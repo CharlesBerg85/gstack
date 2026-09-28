@@ -993,6 +993,11 @@ High-confidence findings (agreed on by multiple sources) should be prioritized f
 
 ${isShip ? `### Finish the adversarial phase
 
+Apply Step 9.3's matching procedure before testing the actionable fix queue below.
+Only unmatched or reopened findings remain queued. Unvalidated historical Skips
+stay unmatched for the full Step 9 repeat below; never jump to 9.3 or mint a late
+REVIEW_START. Keep scoped approvals.
+
 Optional outside failures retain their own incomplete records. Apply these decisions
 in order before leaving Step 11:
 
@@ -1783,13 +1788,42 @@ in Step 19's \`## Verification Results\`, separately from automatic QA.`;
 // ─── Cross-Review Finding Dedup ──────────────────────────────────────
 
 export function generateCrossReviewDedup(ctx: TemplateContext): string {
-  const isShip = ctx.skillName === 'ship';
-  const stepNum = isShip ? '9.3' : '5.0';
-  const findingsRef = isShip
-    ? 'the checklist pass (Step 9), specialist review (Step 9.1-9.2) and exploratory QA'
-    : 'Step 4 critical pass, Step 4.5-4.6 specialists and exploratory QA';
+  if (ctx.skillName === 'ship') return `### Step 9.3: Cross-review finding dedup
 
-  return `### Step ${stepNum}: Cross-review finding dedup
+Apply this procedure to checklist, specialist, exploratory QA and queued Steps
+10–11 findings before classification or requeueing:
+
+1. **Validate severity.** For CRITICAL/advisory contradictions, remove \`advisory\`,
+   never downgrade severity. Reject contradictory saved decisions. Valid INFORMATIONAL
+   advisories stay advisory, including simplification; they cannot suppress defects.
+2. **Read decisions.** Run \`~/.claude/skills/gstack/bin/gstack-review-read\`; parse
+   JSONL only before \`---CONFIG---\`. Combine saved \`findings\` with the invocation
+   action list, honoring later user decisions. Only explicit \`skipped\` actions
+   qualify, never \`fixed\`, \`auto-fixed\` or unanswered questions.
+   If both history and the invocation action list lack decisions, classify normally.
+3. **Match evidence.** Require the same fingerprint, advisory/defect kind and scope.
+   Compare supporting source and finding evidence with the saved decision, including
+   committed, staged, unstaged and non-ignored untracked source, not just HEAD.
+   For ordinary history, use \`git diff --name-only <prior-review-commit>\` as a
+   shortlist, not proof. Changed inputs, proposal, behavior, risk or new evidence
+   reopen the finding; unrelated edits do not. Missing proof or unknown comparisons
+   require a fresh decision, not suppression.
+4. **Match shared-code structurally.** A \`shared-libs\` category, \`shared-libs:\`
+   fingerprint or \`evidence_paths\`/\`helper_target\` requires re-reading all callers
+   (including indirect callers) and the helper destination, with unchanged identity,
+   contract and tradeoffs. Missing metadata never permits ordinary line matching.
+   Prior-review reuse additionally requires the checker below; invocation decisions
+   cannot replace it. Retain validated Skips and their evidence in the action list.
+5. **Apply dispositions.** Revalidated Skips suppress repeat questions and fixes,
+   not unresolved defects: retain them in counts, status and the final report.
+   Report the suppressed count once if nonzero.
+   Keep required-probe failures failed. List advice separately as \`[ADVISORY]\`,
+   preserving its records but excluding score penalties, unresolved-defect totals
+   and clean-status blockers. Completion, convergence and missing-reviewer gates remain.
+
+{{SECTION:shared-code-reuse}}`;
+
+  return `### Step 5.0: Cross-review finding dedup
 
 **Validate advisory severity first.** If a current finding has \`"severity":"CRITICAL"\` and \`"advisory":true\`, remove \`advisory\` and retain its \`CRITICAL\` severity. Handle it as a normal defect before suppression, classification, counting, scoring, and persistence. Never downgrade severity to make advisory metadata consistent. Valid INFORMATIONAL advisories remain advisory in every category, including simplification. A prior saved finding with contradictory CRITICAL/advisory metadata cannot establish a skipped defect or advisory decision: exclude it from reuse and revalidate the current finding.
 
@@ -1818,7 +1852,7 @@ If skipped fingerprints exist, get the list of files changed since that review:
 git diff --name-only <prior-review-commit> HEAD
 \`\`\`
 
-For each finding from ${findingsRef}, check:
+For each finding from Step 4 critical pass, Step 4.5-4.6 specialists and exploratory QA, check:
 - Does its fingerprint match a previously skipped finding?
 - Is the finding's file path NOT in the changed-files set?
 - Is it the same advisory/defect kind? Never use a skipped advisory to suppress a real defect, including a defect with a colliding supplied fingerprint.

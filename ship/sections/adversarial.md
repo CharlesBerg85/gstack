@@ -267,6 +267,11 @@ High-confidence findings (agreed on by multiple sources) should be prioritized f
 
 ### Finish the adversarial phase
 
+Apply Step 9.3's matching procedure before testing the actionable fix queue below.
+Only unmatched or reopened findings remain queued. Unvalidated historical Skips
+stay unmatched for the full Step 9 repeat below; never jump to 9.3 or mint a late
+REVIEW_START. Keep scoped approvals.
+
 Optional outside failures retain their own incomplete records. Apply these decisions
 in order before leaving Step 11:
 

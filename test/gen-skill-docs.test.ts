@@ -578,7 +578,8 @@ describe('gen-skill-docs', () => {
   test('qa and qa-only load the shared QA_METHODOLOGY through exploration', () => {
     const qaSkeletonTmpl = fs.readFileSync(path.join(ROOT, 'qa', 'SKILL.md.tmpl'), 'utf-8');
     expect(qaSkeletonTmpl).toContain('{{SECTION:exploratory}}');
-    expect(qaSkeletonTmpl).toContain('{{QA_METHOD_READS}}');
+    expect(qaSkeletonTmpl).not.toContain('{{QA_METHOD_READS}}');
+    expect(qaSkeletonTmpl).toContain("Follow the shared section's ordered preparation");
     expect(qaSkeletonTmpl).not.toContain('{{QA_METHODOLOGY}}');
     const qaSectionTmpl = fs.readFileSync(path.join(ROOT, 'qa', 'sections', 'qa-patterns.md.tmpl'), 'utf-8');
     expect(qaSectionTmpl).toContain('{{QA_METHODOLOGY}}');
@@ -586,26 +587,32 @@ describe('gen-skill-docs', () => {
     const qaOnlyTmpl = fs.readFileSync(path.join(ROOT, 'qa-only', 'SKILL.md.tmpl'), 'utf-8');
     expect(qaOnlyTmpl).not.toContain('{{QA_METHODOLOGY}}');
     expect(qaOnlyTmpl).toContain('{{SECTION:exploratory}}');
-    expect(qaOnlyTmpl).toContain('{{QA_METHOD_READS}}');
+    expect(qaOnlyTmpl).not.toContain('{{QA_METHOD_READS}}');
+    expect(qaOnlyTmpl).toContain("Follow the shared section's ordered preparation");
     for (const skill of ['qa', 'qa-only']) {
       expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md.tmpl'), 'utf8'))
         .toContain('{{QA_EXPLORATORY}}');
       const entry = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf8');
+      const explorer = fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md'), 'utf8');
       const directoryRead = skill === 'qa'
         ? 'Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory'
         : "Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads";
-      expect(entry).toContain(directoryRead);
+      expect(entry).toContain('sections/exploratory.md');
+      expect(explorer).toContain(directoryRead);
       for (const method of ['system-functional', 'qa-patterns']) {
         const methodRead = `Read \`sections/${method}.md\` in full.`;
-        expect(entry).toContain(methodRead);
-        expect(entry.indexOf(directoryRead)).toBeLessThan(entry.indexOf(methodRead));
+        expect(entry).not.toContain(methodRead);
+        expect(explorer).toContain(methodRead);
+        expect(explorer.split(methodRead)).toHaveLength(2);
+        expect(explorer.indexOf(directoryRead)).toBeLessThan(explorer.indexOf(methodRead));
         const directory = path.resolve(ROOT, skill, skill === 'qa-only' ? '../qa' : '.');
         expect(fs.realpathSync(path.join(directory, 'sections', `${method}.md`)))
           .toBe(path.join(ROOT, 'qa', 'sections', `${method}.md`));
       }
-      expect(entry).toContain('**Browser surfaces only:**\nRead `sections/qa-patterns.md` in full.');
-      expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md'), 'utf8'))
-        .toContain('Read the selected surface methods first.');
+      expect(explorer).toContain('**Browser surfaces only:**\nRead `sections/qa-patterns.md` in full.');
+      expect(explorer).toContain('Complete these Reads in order before writing charters or probing');
+      expect(explorer).toContain('Do not repeat a Read already completed in this invocation');
+      expect(explorer.indexOf('Read `sections/qa-patterns.md`')).toBeLessThan(explorer.indexOf('Write a **charter**'));
     }
   });
 
@@ -1362,13 +1369,21 @@ describe('PLAN_VERIFICATION_EXEC placeholder', () => {
   });
 
   test('references the shared explorer without invoking an entire QA workflow', () => {
-    expect(shipSkill).toContain("From the installed /ship SKILL.md's directory, Read `../qa/sections/scope.md` in full");
-    const load = shipSkill.indexOf('Read `sections/exploratory.md` in that QA installation and the selected methods below before continuing');
-    const preflight = shipSkill.indexOf('Run the shared exploratory Charter and preflight now');
+    const resource = "From the installed /ship SKILL.md's directory, Read `../qa/sections/exploratory.md` in full";
+    expect(shipSkill).toContain(resource);
+    const load = shipSkill.indexOf(resource);
+    const preflight = shipSkill.indexOf('Run the shared preflight.');
     const probes = shipSkill.indexOf('**3. Run the checks without repairing the product.**');
     expect(load).toBeGreaterThan(-1);
     expect(preflight).toBeGreaterThan(load);
     expect(probes).toBeGreaterThan(preflight);
+    const shared = fs.readFileSync(path.join(ROOT, 'qa/sections/exploratory.md'), 'utf8');
+    const selection = shared.indexOf('in full and select the surfaces');
+    const methods = shared.indexOf('Read `sections/system-functional.md`');
+    expect(selection).toBeGreaterThan(shared.indexOf('Read `sections/scope.md`'));
+    expect(methods).toBeGreaterThan(selection);
+    expect(shared.indexOf('Write a **charter**')).toBeGreaterThan(methods);
+    expect(shipSkill.slice(preflight, probes)).toContain('For browser surfaces, Read `sections/browser-setup.md`');
     expect(shipSkill).toContain('Do not invoke an entire QA skill or start probes here');
   });
 

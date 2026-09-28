@@ -115,6 +115,11 @@ export const FREE_ONLY_PR_FILES = [
   'test/helpers/auq-parallel-worker.ts',
 ] as const;
 
+const FULL_GATE_PR_FILES = [
+  'package.json', 'bun.lock', '.github/docker/Dockerfile.ci',
+  'scripts/host-config.ts', 'scripts/discover-skills.ts', 'hosts/index.ts',
+] as const;
+
 function knownNonBehaviorFile(file: string): boolean {
   // A mapped dependency still wins over these exemptions. New helper/fixture,
   // runtime, dependency, or workflow files are deliberately not exempted.
@@ -169,7 +174,8 @@ export function selectPrProfile(options: {
   ])];
   const unknownFiles = files.filter(file => file !== TOUCHFILES_DATA_PATH
     && !depends(file, dependencyPatterns) && !knownNonBehaviorFile(file));
-  const fallback = unknownFiles.length > 0;
+  const sharedInputs = files.filter(file => depends(file, FULL_GATE_PR_FILES));
+  const fallback = unknownFiles.length > 0 || sharedInputs.length > 0;
   const candidates = fallback ? Object.keys(maps.e2eTouchfiles).sort() : selectedE2E;
   const e2e = candidates.filter(id => maps.tiers[id] === 'gate' && (fallback || profile.includes(id)));
   const judges = fallback ? Object.keys(maps.judgeTouchfiles).sort() : selectedJudges;
@@ -189,9 +195,10 @@ export function selectPrProfile(options: {
   const deferredPromptFiles = noQuickCoverage.filter(file => !hasQuickDependency(file)
     && Object.values(maps.e2eTouchfiles).some(patterns => depends(file, patterns)));
   const missingCoverage = noQuickCoverage.filter(file => !deferredPromptFiles.includes(file));
-  const reasons = fallback
-    ? [`Unknown dependencies restore every gate case and judge: ${unknownFiles.join(', ')}`]
-    : ['Changed-input selection intersected with the fast PR profile; selected judges retained'];
+  const reasons: string[] = [];
+  if (unknownFiles.length) reasons.push(`Unknown dependencies restore every gate case and judge: ${unknownFiles.join(', ')}`);
+  if (sharedInputs.length) reasons.push(`Shared runtime/build inputs restore every gate case and judge: ${sharedInputs.join(', ')}`);
+  if (!fallback) reasons.push('Changed-input selection intersected with the fast PR profile; selected judges retained');
   if (deferred.length) reasons.push(`${deferred.length} selected behaviors remain scheduled/release coverage, not PR passes`);
   if (deferredPromptFiles.length) reasons.push(`No quick live coverage; known broad prompt checks deferred: ${deferredPromptFiles.join(', ')}`);
   if (missingCoverage.length) reasons.push(`Full validation required for prompts without a relevant PR check: ${missingCoverage.join(', ')}`);

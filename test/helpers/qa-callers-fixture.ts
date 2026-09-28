@@ -3,6 +3,8 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { isDeepStrictEqual } from 'node:util';
+import { readQaDeadline } from '../../lib/qa-deadline';
 import type { SkillTestResult } from './session-runner';
 import { runSkillTest, SESSION_DRAIN_GRACE_MS } from './session-runner';
 import { CAPTURE_MS } from './eval-budgets';
@@ -10,6 +12,7 @@ import { refreshHermeticSkillRuntime } from './hermetic-skill-runtime';
 import { seedHermeticGstackHome } from './hermetic-env';
 import { observeQAWrites, type QAWriteObservation } from './qa-functional-observer';
 import { readQACheckpointFiles, validateQACheckpoints } from './qa-checkpoint-evidence';
+import { ownedPath } from './qa-functional-fixture';
 
 export type QaCaller = 'review' | 'ship';
 export const QA_CALLER_ROOT = path.resolve(import.meta.dir, '../..');
@@ -114,6 +117,8 @@ export interface CallerReceipt {
 
 const literalCallerArgument = /(?:[^\s'"\\;&|<>`$(){}*?\[\]~#]+|'[^'\r\n]*'|"[^"\\$`\r\n]*")/.source;
 const literalCallerCLI = new RegExp(`^bun (?:scripts/probe\\.ts|cli\\.ts)(?: ${literalCallerArgument})?$`);
+const literalCallerProbe = new RegExp(`^bun scripts/probe\\.ts(?: ${literalCallerArgument})?$`);
+const literalDeadlineCommand = new RegExp(`^bun (${literalCallerArgument}) (start|status|run) (${literalCallerArgument})(?: (.*))?$`);
 const literalCallerListing = new RegExp(`^ls(?: -[la]+)?(?: --)?(?: ${literalCallerArgument})*$`);
 const callerDiffMode = '(--stat|--numstat|--name-only|--name-status)';
 const literalCallerDiff = new RegExp(`^git diff(?: ${callerDiffMode})?(?: (origin/main|"\\$DIFF_BASE"))?(?: ${callerDiffMode})?(?: --(?: ${literalCallerArgument})+)?$`);
@@ -132,8 +137,53 @@ function literalCallerListingAllowed(text: string): boolean {
   return operands[0] === '--' || operands.every(operand => !operand.replace(/^['"]/, '').startsWith('-'));
 }
 
-export function qaCallerCommandAllowed(command: string, workflowCommands: string[] = []): boolean {
+export interface CallerDeadlineContext {
+  runtime: string;
+  fixtureRoot: string;
+}
+
+function callerDeadlineCommand(command: string, context?: CallerDeadlineContext) {
+  if (!context) return;
+  const match = literalDeadlineCommand.exec(command.trim());
+  if (!match) return;
+  const literal = (value: string) => /^['"]/.test(value) ? value.slice(1, -1) : value;
+  const helper = path.join(context.runtime, 'bin/gstack-qa-deadline');
+  const stateFile = path.join(context.fixtureRoot, 'reports/deadline.json');
+  if (literal(match[1]) !== helper || literal(match[3]) !== stateFile) return;
+  try {
+    if (!path.isAbsolute(context.runtime) || path.resolve(context.runtime) !== context.runtime
+      || !path.isAbsolute(context.fixtureRoot) || path.resolve(context.fixtureRoot) !== context.fixtureRoot
+      || context.runtime !== path.join(path.dirname(context.fixtureRoot), 'host/runtime')
+      || fs.realpathSync(context.runtime) !== context.runtime
+      || ownedPath(context.fixtureRoot, 'reports/deadline.json') !== stateFile
+      || !fs.lstatSync(path.dirname(stateFile)).isDirectory()
+      || !fs.statSync(helper).isFile()
+      || fs.realpathSync(helper) !== path.join(fs.realpathSync(QA_CALLER_ROOT), 'bin/gstack-qa-deadline')) return;
+  } catch { return; }
+  const action = match[2];
+  const rest = match[4];
+  if (action === 'status' && rest === undefined) return { action, stateFile };
+  if (action === 'run' && rest?.startsWith('-- ') && literalCallerProbe.test(rest.slice(3))) {
+    return { action, stateFile };
+  }
+  if (action !== 'start' || rest === undefined) return;
+  const start = new RegExp(`^(0|[1-9]\\d*)(\\.\\d{1,3})?(?: (${literalCallerArgument}))?$`).exec(rest);
+  if (!start) return;
+  const seconds = Number(start[1] + (start[2] ?? ''));
+  if (!(seconds > 0 && seconds <= 300)) return;
+  const earlier = start[3] === undefined ? undefined : literal(start[3]);
+  if (earlier !== undefined) {
+    const time = Date.parse(earlier);
+    if (!Number.isFinite(time) || ![new Date(time).toISOString(), new Date(time).toISOString().replace('.000Z', 'Z')].includes(earlier)) return;
+  }
+  return { action, stateFile };
+}
+
+export function qaCallerCommandAllowed(command: string, workflowCommands: string[] = [], deadline?: CallerDeadlineContext): boolean {
   const text = command.trim();
+  if (callerDeadlineCommand(text, deadline)) return true;
+  if (/\bgstack-qa-deadline\b/.test(text) && !literalCallerCLI.test(text)
+    && !literalCallerDiffAllowed(text) && !literalCallerListingAllowed(text)) return false;
   if (workflowCommands.includes(text)) return true;
   if (literalCallerCLI.test(text)) return true;
   if (literalCallerDiffAllowed(text)) return true;
@@ -175,11 +225,15 @@ export function validateCallerEvidence(input: {
   observerComplete: boolean;
   workflowCommands?: string[];
   fixtureRoot?: string;
+  runtime?: string;
+  requireGuardedSmoke?: boolean;
   reportRoot: string;
   checkpointFiles: Record<string, string>;
   reportMarkdown: string;
 }): string[] {
   const errors: string[] = [];
+  const deadline = input.fixtureRoot && input.runtime ? { fixtureRoot: input.fixtureRoot, runtime: input.runtime } : undefined;
+  if (deadline && input.reportRoot !== path.join(deadline.fixtureRoot, 'reports')) errors.push('deadline report root differs from the owned caller report root');
   if (input.result.exitReason !== 'success') errors.push(`session did not complete: ${input.result.exitReason}`);
   if (!input.observerComplete) errors.push('observer incomplete');
   if (input.mutations.length) errors.push(...input.mutations.map(file => `unauthorized mutation: ${file}`));
@@ -197,11 +251,15 @@ export function validateCallerEvidence(input: {
   if (input.caller === 'ship' && !readOf('/ship/sections/review-army.md')) errors.push('missing ship Step 9 read');
   for (const tool of tools) {
     const file = String(tool.input.file_path ?? '');
+    const guarded = tool.name === 'Bash' ? callerDeadlineCommand(String(tool.input.command), deadline) : undefined;
     if (input.fixtureRoot && ['Write', 'Edit', 'MultiEdit'].includes(tool.name)) {
-      const relative = path.relative(input.fixtureRoot, path.resolve(input.fixtureRoot, file));
-      if (!/^(?:reports|\.qa-state)\//.test(relative)) errors.push('write outside the declared report/fixture interface');
+      try {
+        const relative = path.relative(input.fixtureRoot, ownedPath(input.fixtureRoot, file));
+        if (!/^(?:reports|\.qa-state)\//.test(relative)) errors.push('write outside the declared report/fixture interface');
+        if (relative === 'reports/deadline.json' || /^reports\/\.qa-deadline-/.test(relative)) errors.push('actor attempted to replace reserved deadline state');
+      } catch { errors.push('write outside the declared report/fixture interface'); }
     }
-    if (tool.name === 'Bash' && !qaCallerCommandAllowed(String(tool.input.command), input.workflowCommands)) {
+    if (tool.name === 'Bash' && !qaCallerCommandAllowed(String(tool.input.command), input.workflowCommands, deadline)) {
       errors.push('command outside declared caller observation interface');
     }
     if (tool.name === 'Read' && /\/(?:browse|devex-review)\/SKILL\.md$|\/qa\/sections\/(?:browser-[^/]+|qa-patterns)\.md$/.test(file)) {
@@ -213,7 +271,7 @@ export function validateCallerEvidence(input: {
     if (tool.name === 'Read' && /\/(?:qa|qa-only|review|ship)\/SKILL\.md$/.test(file)) {
       errors.push(`recursive full skill read: ${file}`);
     }
-    if (tool.name === 'Bash' && !literalCallerCLI.test(String(tool.input.command).trim()) && !literalCallerDiffAllowed(String(tool.input.command).trim()) && !literalCallerListingAllowed(String(tool.input.command).trim()) && /\bgit\s+(?:(?:-C|-c)\s+\S+\s+)*(?:add|commit|push|stash|reset|checkout|restore|merge|rebase|cherry-pick)(?=\s|[;&|<>]|$)|\bgh\s+pr\s+(?:create|merge)\b/.test(String(tool.input.command))) {
+    if (tool.name === 'Bash' && guarded?.action !== 'run' && !literalCallerCLI.test(String(tool.input.command).trim()) && !literalCallerDiffAllowed(String(tool.input.command).trim()) && !literalCallerListingAllowed(String(tool.input.command).trim()) && /\bgit\s+(?:(?:-C|-c)\s+\S+\s+)*(?:add|commit|push|stash|reset|checkout|restore|merge|rebase|cherry-pick)(?=\s|[;&|<>]|$)|\bgh\s+pr\s+(?:create|merge)\b/.test(String(tool.input.command))) {
       errors.push('unauthorized git/publication action');
     }
     if (tool.parent && ['Write', 'Edit', 'MultiEdit'].includes(tool.name) && !/\/(?:reports|evidence|state)\//.test(file)) {
@@ -221,13 +279,15 @@ export function validateCallerEvidence(input: {
     }
   }
   const seen = new Set<string>();
+  let guardedDiagnostics = 0;
   const checkpointProbes: Array<{ command: string; observed: CallerProbe; index: number }> = [];
   for (const probe of input.probes) {
     const key = JSON.stringify([probe.charter, probe.input, probe.snapshot]);
     if (seen.has(key) && probe.status === 'pass') errors.push(`duplicate unchanged passing probe: ${probe.id}`);
     seen.add(key);
     const tool = tools.find(tool => tool.name === 'Bash'
-      && /^(?:\s*cd\s+[^\n&;]+\s*&&)?\s*(?:bun|[\w./-]+\/bun)\s+(?:run\s+)?(?:scripts\/probe\.ts|'scripts\/probe\.ts'|"scripts\/probe\.ts")(?:\s|$)/.test(String(tool.input.command))
+      && (/^(?:\s*cd\s+[^\n&;]+\s*&&)?\s*(?:bun|[\w./-]+\/bun)\s+(?:run\s+)?(?:scripts\/probe\.ts|'scripts\/probe\.ts'|"scripts\/probe\.ts")(?:\s|$)/.test(String(tool.input.command))
+        || callerDeadlineCommand(String(tool.input.command), deadline)?.action === 'run')
       && tool.output.split('\n').some(line => {
         try { return JSON.stringify(JSON.parse(line)) === JSON.stringify(probe); } catch { return false; }
       }));
@@ -239,13 +299,62 @@ export function validateCallerEvidence(input: {
         const resource = readOf(`/qa/sections/${id}.md`);
         if (resource && tool.index < resource.index) errors.push(`probe preceded resource read: ${id}`);
       }
+      if (input.requireGuardedSmoke) {
+        const command = String(tool.input.command);
+        const guarded = callerDeadlineCommand(command, deadline);
+        const requiredPlan = probe.charter === 'plan:nine' && probe.input === '9' && input.requiredCharters.includes('plan:nine')
+          && /^bun scripts\/probe\.ts (?:9|'9'|"9")$/.test(command.trim());
+        if (guarded?.action !== 'run') {
+          if (!requiredPlan) errors.push(`smoke probe missing trusted deadline run: ${probe.id}`);
+        } else {
+          let valid = false;
+          try {
+            const receipts = tool.output.split('\n').filter(line => line.startsWith('QA_DEADLINE '))
+              .map(line => JSON.parse(line.slice('QA_DEADLINE '.length)));
+            const [started, finished] = receipts;
+            const state = readQaDeadline(guarded.stateFile);
+            const start = Date.parse(started.observedAt), end = Date.parse(finished.observedAt);
+            const limit = Date.parse(state.deadlineAt);
+            valid = receipts.length === 2 && state.budgetMs <= 300_000
+              && Number.isFinite(start) && Number.isFinite(end)
+              && new Date(start).toISOString() === started.observedAt && new Date(end).toISOString() === finished.observedAt
+              && start >= Date.parse(state.startedAt) && start < limit && end >= start && end < limit
+              && Number.isInteger(probe.exit) && probe.exit !== null && probe.exit >= 0 && probe.exit <= 255
+              && tool.failed === (probe.exit !== 0)
+              && isDeepStrictEqual(started, { guard: 'qa-deadline', event: 'started', ...state, observedAt: started.observedAt, remainingMs: limit - start, expired: false })
+              && isDeepStrictEqual(finished, { guard: 'qa-deadline', event: 'finished', observedAt: finished.observedAt, deadlineAt: state.deadlineAt, timedOut: false, exitCode: probe.exit });
+          } catch {}
+          if (valid) guardedDiagnostics++;
+          else errors.push(`smoke probe missing consistent deadline receipts: ${probe.id}`);
+        }
+      }
     }
     if (probe.status === 'pass' && probe.exit === null) errors.push(`unfinished probe reported pass: ${probe.id}`);
   }
+  if (input.requireGuardedSmoke && !guardedDiagnostics) errors.push('no authenticated guarded diagnostic executed');
   checkpointProbes.sort((a, b) => a.index - b.index);
+  const expiredTargets = tools.flatMap(tool => {
+    if (tool.name !== 'Bash' || !tool.failed) return [];
+    const command = String(tool.input.command);
+    const guarded = callerDeadlineCommand(command, deadline);
+    if (guarded?.action !== 'run') return [];
+    const diagnostics = tool.output.split('\n').filter(line => line.startsWith('QA_DEADLINE '));
+    if (diagnostics.length !== 1) return [];
+    try {
+      const receipt = JSON.parse(diagnostics[0].slice('QA_DEADLINE '.length));
+      const state = readQaDeadline(guarded.stateFile);
+      const observed = Date.parse(receipt.observedAt);
+      if (state.budgetMs > 300_000 || !Number.isFinite(observed) || new Date(observed).toISOString() !== receipt.observedAt
+        || observed < Date.parse(state.startedAt) || observed < Date.parse(state.deadlineAt)
+        || !isDeepStrictEqual(receipt, { guard: 'qa-deadline', event: 'expired', ...state, observedAt: receipt.observedAt, remainingMs: 0, expired: true })
+        || tool.output.split('\n').some(line => { try { JSON.parse(line); return true; } catch { return false; } })) return [];
+      return [{ command, output: tool.output }];
+    } catch { return []; }
+  });
   errors.push(...validateQACheckpoints({
     transcript: input.result.transcript, reportRoot: input.reportRoot,
     probes: checkpointProbes, requiredProbes: checkpointProbes.slice(1),
+    additionalTargets: expiredTargets,
     files: input.checkpointFiles, reportMarkdown: input.reportMarkdown,
   }));
   const selected = input.receipt.probes.map(id => input.probes.find(probe => probe.id === id));
@@ -455,7 +564,7 @@ process.exit(exit ?? 127);
 
 export function qaCallerSessionOptions(fixture: QaCallerFixture, runId: string): Parameters<typeof runSkillTest>[0] {
   return {
-    prompt: `Load gstack's /${fixture.caller} supplied parent phase from caller-${fixture.caller}.md and resume it on the selected working-tree diff against origin/main. This excerpt comes from ${fixture.runtime}/${fixture.caller}/SKILL.md; resolve installed-relative references there, not from the excerpt file or product directory. That path identifies the asset base, not another entrypoint: do not read or invoke the full parent SKILL.md or rerun its preamble. Earlier preamble/branch/base setup is complete; use the existing local origin/main ref without fetch. Earlier-phase asset locators are ${fixture.runtime}/review/checklist.md and ${fixture.runtime}/qa/templates/functional-report-template.md. Read those files directly when referenced; recursive Glob does not follow the installed asset symlinks. Cross-project learnings are configured off in this owned fixture. ${fixture.reviewStart ? `The actual review-start helper already captured REVIEW_START=${fixture.reviewStart} for this unchanged core pass; retain that token. ` : ''} This fixture evaluates only the supplied parent phase, not later publication stages. Read README.md for the project contract and commands. Use diagnostic-client commands such as \`bun scripts/probe.ts <literal>\` for exploratory discoveries and their checkpoint evidence. A required \`bun run test\` is separate suite verification: report it as verification, never as a diagnostic observation or checkpoint anchor/target. Write each diagnostic checkpoint directly to \`reports/exploration-NNN.json\`, not inside a nested directory. ${fixture.caseId === 'ship-exploratory-plan-checks' ? 'The previously discovered plan is PLAN.md.' : 'No plan file was found.'} There is no remote service and no release publication is authorized. There is no interactive approver; do not invent answers or permission. Keep normal parent decision gates. Before your final report, read HANDOFF.md and reports/HANDOFF.md if present for any concurrent collaborator update.\n\nThe supported Bash interface is one literal documented native command or one exact generated workflow shell block with main substituted for <base>; even read-only commands must not be chained except for the exact DIFF_BASE preface below. Native CLI commands accept no argument or one literal argument: an unquoted shell-safe word, single-quoted text, or double-quoted text without expansion or escapes; no multiline arguments or shell composition. Inventory commands are pwd, bun --version, and ls with an optional combined -l/-a flag, optional -- separator, and literal path operands using the same quoting rules; operands beginning with - require --. Listing never permits other options, glob expansion, substitution, redirection or composition. The supported Git forms are git status --short, git status --porcelain, git branch --show-current, git rev-parse HEAD, git rev-parse --short HEAD, git merge-base origin/main HEAD, git diff (optional origin/main base and at most one output mode: --stat, --numstat, --name-only, or --name-status, before or after the base; optional literal pathspec arguments after --), git ls-files, and git ls-files --others --exclude-standard. Diff pathspecs use the same literal argument syntax as the CLI; quote globs so Git, not the shell, interprets them. The only variable-base form is DIFF_BASE=$(git merge-base origin/main HEAD) && git diff with exactly the double-quoted "$DIFF_BASE" base, the same optional output mode and literal pathspecs. That exact preface recomputes the base in the same command; other assignments and variable expansions are forbidden; the only additional command substitutions are the two installed bookkeeping fields described below. No other Git options, configuration overrides, --output, --no-index, --ext-diff, --textconv, external helpers or mutations are authorized. Exact generated workflow blocks remain allowed. Review bookkeeping permits the installed gstack-review-log start commands and single-quoted JSON records for review/adversarial-review (the installed quote-spliced double-quoted $(date -u +%Y-%m-%dT%H:%M:%SZ) is permitted only as the complete top-level timestamp value, and $(git rev-parse --short HEAD) only as the complete top-level commit value; no other substitutions, field placements or shell evaluation), gstack-review-read, gstack-specialist-stats, plus date -u +%Y-%m-%dT%H:%M:%SZ; use an original start token for a started attempt and completed:false/converged:false without a token for an unstarted one. Bookkeeping has an owned state directory and private Git object store; the real product, index, refs and config must stay unchanged. Outside providers are unavailable in this isolated fixture; the native reviewer is still required. Other interpreters, shell composition outside those generated blocks or the exact DIFF_BASE preface, global setup and external operations are not authorized. Use Read/Glob/Grep for discovery instead of cat/head/tail; use native Write/Edit tools for any authorized file output. Pass these same command and write boundaries to any child; generated shell fragments remain verbatim apart from the declared substitutions.\n\nWrite the phase report to reports/review.md. Also save reports/receipt.json with this machine-readable result shape: {\"status\":\"pass|fail|blocked|inconclusive\",\"probes\":[\"observed diagnostic receipt ids\"],\"remaining\":[\"names of incomplete contracts\"]}. The status is the overall supplied phase gate, not whether some probes passed. The probes array names observed diagnostic receipts used as evidence; remaining names unresolved required contracts or gates in this phase. Pass requires no remaining required contracts or gates. Optional unavailable providers and later stages outside this excerpt are not required remainder. This format does not establish that any work succeeded. Stop at the end of this phase, or at its first unresolved approval gate.`,
+    prompt: `Load gstack's /${fixture.caller} supplied parent phase from caller-${fixture.caller}.md and resume it on the selected working-tree diff against origin/main. This excerpt comes from ${fixture.runtime}/${fixture.caller}/SKILL.md; resolve installed-relative references there, not from the excerpt file or product directory. That path identifies the asset base, not another entrypoint: do not read or invoke the full parent SKILL.md or rerun its preamble. Earlier preamble/branch/base setup is complete; use the existing local origin/main ref without fetch. Earlier-phase asset locators are ${fixture.runtime}/review/checklist.md and ${fixture.runtime}/qa/templates/functional-report-template.md. Read those files directly when referenced; recursive Glob does not follow the installed asset symlinks. Cross-project learnings are configured off in this owned fixture. ${fixture.reviewStart ? `The actual review-start helper already captured REVIEW_START=${fixture.reviewStart} for this unchanged core pass; retain that token. ` : ''} This fixture evaluates only the supplied parent phase, not later publication stages. Read README.md for the project contract and commands. Use diagnostic-client commands such as \`bun scripts/probe.ts <literal>\` for exploratory discoveries and their checkpoint evidence. A required \`bun run test\` is separate suite verification: report it as verification, never as a diagnostic observation or checkpoint anchor/target. Write each diagnostic checkpoint directly to \`reports/exploration-NNN.json\`, not inside a nested directory. ${fixture.caseId === 'ship-exploratory-plan-checks' ? 'The previously discovered plan is PLAN.md.' : 'No plan file was found.'} There is no remote service and no release publication is authorized. There is no interactive approver; do not invent answers or permission. Keep normal parent decision gates. Before your final report, read HANDOFF.md and reports/HANDOFF.md if present for any concurrent collaborator update.\n\nDeadline bookkeeping additionally permits \`bun ${fixture.runtime}/bin/gstack-qa-deadline start ${fixture.cwd}/reports/deadline.json SECONDS [EARLIER_UTC]\`, \`bun ${fixture.runtime}/bin/gstack-qa-deadline status ${fixture.cwd}/reports/deadline.json\`, and \`bun ${fixture.runtime}/bin/gstack-qa-deadline run ${fixture.cwd}/reports/deadline.json -- bun scripts/probe.ts [literal]\`. These are closed literal forms: SECONDS must be positive and at most 300, EARLIER_UTC is an optional literal UTC timestamp, and the child is only the existing diagnostic client with zero or one literal argument. Resolve these exact helper and state paths; do not use variables, another helper, another state file, nested wrappers, scripts, operators or substitutions. Only this helper may create or change reports/deadline.json and its .qa-deadline- temporary files; never use Write/Edit/MultiEdit on those paths. Record the full outer run command in checkpoints and evidence; keep the unchanged child JSON as observed, separate from prefixed guard diagnostics. A completed expired guard-run is not a probe or a pass: retain its unused checkpoint, report not-run coverage and do not restart the deadline. Keep the 12-probe smoke limit. Required suites and explicit plan checks are outside the bounded smoke budget, not permission to reset it.\n\nThe supported Bash interface is one literal documented native command or one exact generated workflow shell block with main substituted for <base>; even read-only commands must not be chained except for the exact DIFF_BASE preface below. Native CLI commands accept no argument or one literal argument: an unquoted shell-safe word, single-quoted text, or double-quoted text without expansion or escapes; no multiline arguments or shell composition. Inventory commands are pwd, bun --version, and ls with an optional combined -l/-a flag, optional -- separator, and literal path operands using the same quoting rules; operands beginning with - require --. Listing never permits other options, glob expansion, substitution, redirection or composition. The supported Git forms are git status --short, git status --porcelain, git branch --show-current, git rev-parse HEAD, git rev-parse --short HEAD, git merge-base origin/main HEAD, git diff (optional origin/main base and at most one output mode: --stat, --numstat, --name-only, or --name-status, before or after the base; optional literal pathspec arguments after --), git ls-files, and git ls-files --others --exclude-standard. Diff pathspecs use the same literal argument syntax as the CLI; quote globs so Git, not the shell, interprets them. The only variable-base form is DIFF_BASE=$(git merge-base origin/main HEAD) && git diff with exactly the double-quoted "$DIFF_BASE" base, the same optional output mode and literal pathspecs. That exact preface recomputes the base in the same command; other assignments and variable expansions are forbidden; the only additional command substitutions are the two installed bookkeeping fields described below. No other Git options, configuration overrides, --output, --no-index, --ext-diff, --textconv, external helpers or mutations are authorized. Exact generated workflow blocks remain allowed. Review bookkeeping permits the installed gstack-review-log start commands and single-quoted JSON records for review/adversarial-review (the installed quote-spliced double-quoted $(date -u +%Y-%m-%dT%H:%M:%SZ) is permitted only as the complete top-level timestamp value, and $(git rev-parse --short HEAD) only as the complete top-level commit value; no other substitutions, field placements or shell evaluation), gstack-review-read, gstack-specialist-stats, plus date -u +%Y-%m-%dT%H:%M:%SZ; use an original start token for a started attempt and completed:false/converged:false without a token for an unstarted one. Bookkeeping has an owned state directory and private Git object store; the real product, index, refs and config must stay unchanged. Outside providers are unavailable in this isolated fixture; the native reviewer is still required. Other interpreters, shell composition outside those generated blocks or the exact DIFF_BASE preface, global setup and external operations are not authorized. Use Read/Glob/Grep for discovery instead of cat/head/tail; use native Write/Edit tools for any authorized file output. Pass these same command and write boundaries to any child; generated shell fragments remain verbatim apart from the declared substitutions.\n\nWrite the phase report to reports/review.md. Also save reports/receipt.json with this machine-readable result shape: {\"status\":\"pass|fail|blocked|inconclusive\",\"probes\":[\"observed diagnostic receipt ids\"],\"remaining\":[\"names of incomplete contracts\"]}. The status is the overall supplied phase gate, not whether some probes passed. The probes array names observed diagnostic receipts used as evidence; remaining names unresolved required contracts or gates in this phase. Pass requires no remaining required contracts or gates. Optional unavailable providers and later stages outside this excerpt are not required remainder. This format does not establish that any work succeeded. Stop at the end of this phase, or at its first unresolved approval gate.`,
     workingDirectory: fixture.cwd,
     timeout: CAPTURE_MS,
     completionReserveMs: CAPTURE_MS / 4,
@@ -507,6 +616,12 @@ export function retainQaCallerEvidence(fixture: QaCallerFixture, dir: string, re
     'receipt.json': fs.existsSync(path.join(fixture.cwd, 'reports/receipt.json')) ? fs.readFileSync(path.join(fixture.cwd, 'reports/receipt.json'), 'utf8') : 'null\n',
   })) {
     retain(file, content);
+  }
+  try {
+    const deadline = path.join(fixture.cwd, 'reports/deadline.json');
+    if (fs.lstatSync(deadline, { throwIfNoEntry: false })) retain('deadline.json', JSON.stringify(readQaDeadline(deadline)) + '\n');
+  } catch (error) {
+    retain('deadline-capture-error.txt', `Deadline capture failed: ${(error as Error).message}\n`);
   }
   let checkpoints: Record<string, string>;
   try { checkpoints = readQACheckpointFiles(path.join(fixture.cwd, 'reports')); }

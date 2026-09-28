@@ -167,39 +167,50 @@ test('R29 captured webhook bytes bind across a green test; test summaries and al
 
 test('report-only exploration requires a completed written checkpoint before the next probe', () => {
   const section = readFileSync(join(import.meta.dir, '../qa-only/sections/exploratory.md'), 'utf8');
-  const positions = ['1. First demonstrate a successful operation', '2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe']
+  const positions = ['1. First demonstrate success', '2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
     .map(marker => section.indexOf(marker));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
   expect(section).toContain('exploration-NNN.json');
-  expect(section).toContain("Use the caller's report directory");
-  expect(section).toContain('invocation-owned subdirectory');
-  expect(section).toContain('after resolving ownership');
+  expect(section).toContain("Reuse resolved REPORT_DIR");
+  expect(section).toContain('invocation-owned');
+  expect(section).toContain('resolve ownership');
   expect(section).toContain('observationCommand, observed, hypothesis, nextCommand');
   expect(section).toContain('Wait for the successful Write result');
-  expect(section).toContain('Bash captions, private thinking and retrospective notes do not count');
+  expect(section).toContain('Captions, private thinking and retrospective notes do not count');
   expect(section).toContain('Link each checkpoint in the final report');
   expect(section).not.toContain('a separate assistant text message');
 });
 
 test('surface evidence checks defer to one exploratory execution sequence', () => {
   const source = readFileSync(join(import.meta.dir, '../scripts/resolvers/qa.ts'), 'utf8');
-  expect(source).toContain('the following loop decides when to run each probe (one command or interaction plus its checks)');
-  const positions = ['2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe']
+  expect(source).toContain('This loop decides each probe (one command/interaction plus checks)');
+  const positions = ['2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
     .map(marker => source.indexOf(marker));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
   expect(source).toContain('Do not batch probes across a checkpoint');
   expect(source).toContain('Follow the shared exploratory loop\'s order and written checkpoints');
-  expect(source).toContain('Re-run the exact failing command/request from the same initial fixture state');
-  expect(source).toContain('A different malformed input or a regression test is not that replay');
+  expect(source).toContain('Replay the exact failing command/request from the same initial fixture state');
+  expect(source).toContain('Another input or a regression test is not that replay');
 });
 
 test('all public callers directly require the functional method before exploration', () => {
   for (const skill of ['qa', 'qa-only', 'review', 'ship']) {
     const file = skill === 'ship' ? 'ship/sections/review-army.md' : `${skill}/SKILL.md`;
     const source = readFileSync(join(import.meta.dir, '..', file), 'utf8');
-    expect(source).toMatch(/Functional surfaces[^\n]*\n[^\n]*Read[^\n]*system-functional\.md/);
-    expect(source).toContain('Browser surfaces only');
+    expect(source).toContain(['review', 'ship'].includes(skill) ? '../qa/sections/exploratory.md' : 'sections/exploratory.md');
+    expect(source).not.toMatch(/Functional surfaces[^\n]*\n[^\n]*Read[^\n]*system-functional\.md/);
+    const explorer = readFileSync(join(import.meta.dir, '..', skill === 'qa-only' ? 'qa-only' : 'qa', 'sections/exploratory.md'), 'utf8');
+    expect(explorer).toMatch(/Functional surfaces[^\n]*\n[^\n]*Read[^\n]*system-functional\.md/);
+    expect(explorer).toContain('Browser surfaces only');
+    const stages = ['Read `sections/scope.md`', 'in full and select the surfaces',
+      'Read `sections/system-functional.md`', 'Write a **charter**', '1. First demonstrate success'];
+    const positions = stages.map(stage => explorer.indexOf(stage));
+    expect(positions.every(position => position >= 0)).toBe(true);
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const functional = readFileSync(join(import.meta.dir, '../qa/sections/system-functional.md'), 'utf8');
+    expect(functional).toContain('## Contract map');
+    expect(functional).toContain("Follow the shared exploratory loop's order and written checkpoints");
   }
 });

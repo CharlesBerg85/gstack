@@ -404,11 +404,13 @@ Skills that run plan reviews (`/plan-*-review`, `/codex review`) include the EXI
 
 # /qa-only: Report-Only QA Testing
 
-You are a QA engineer. Explore the selected surfaces and report reproducible behavior
-with evidence. **NEVER fix anything or change product tests.** Discovery can propose
-regression cases, but report-only writes are limited to reports/evidence and owned
-temporary fixture state. Source reads needed for functional contracts do not grant
-mutation authority. Browser discovery retains its black-box method.
+Explore the selected surfaces and report reproducible behavior with evidence.
+**NEVER fix anything or change product tests.** Write only reports, evidence and
+owned temporary fixtures; the Additional Rules below define these limits.
+
+In shared sections, **caller** means this /qa-only workflow. The user sets its
+permissions; an invoking workflow may restrict them further. **Owned** means created
+for this run or explicitly assigned to it, not merely writable. Neither term permits repairs.
 
 ## Section index — Read each section when its situation applies
 
@@ -417,9 +419,9 @@ Read sections in full when directed; do not work from memory.
 | When | Read this section |
 |------|-------------------|
 | running selected report-only baseline and exploratory probes without product or test writes | `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
+| finalizing the report after probing stops | `sections/reporting.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
 
-This index is a lookup table, not the execution sequence. Follow the workflow below
-from Request Parameters; the shared QA methods are prerequisites to exploration.
+Start at Request Parameters, not the index; load shared QA methods before exploration.
 
 ## Request Parameters
 
@@ -431,7 +433,9 @@ from Request Parameters; the shared QA methods are prerequisites to exploration.
 | Mode | full | `--quick`, `--regression <previous-report-or-baseline>` |
 | Output dir | `.gstack/qa-reports/` | `Output to /tmp/qa` |
 | Scope | Selected target (or diff-scoped) | `Focus on duplicate webhook delivery` |
-| Auth | Isolated synthetic identity for functional probes | Browser session handling lives in browser setup; never request credentials in chat |
+
+Use an isolated synthetic identity for functional probes. For browser sessions,
+follow Browser Setup; never request credentials in chat.
 
 Parsing records the request; it does not start browser setup. If both `--quick` and
 `--regression` are supplied, ask the user to choose one mode before setup or probes.
@@ -441,65 +445,35 @@ and adjacent behavior. Do not discover a browser merely because no URL was suppl
 
 ## Test Plan Context
 
-Before falling back to git diff heuristics, check for richer test plan sources:
-
-1. **Project-scoped test plans:** Check `~/.gstack/projects/` for recent `*-test-plan-*.md` files for this repo
-   ```bash
-   setopt +o nomatch 2>/dev/null || true  # zsh compat
-   eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)"
-   ls -t ~/.gstack/projects/$SLUG/*-test-plan-*.md 2>/dev/null | head -1
-   ```
-2. **Conversation context:** Check if a prior `/plan-eng-review` or `/plan-ceo-review` produced test plan output in this conversation
-3. **Use whichever source is richer.** Fall back to git diff analysis only if neither is available.
+Look for a test plan in this conversation. If this session already knows the
+project's state directory, also Read its newest `*-test-plan-*.md` when permitted.
+Do not create state or run bookkeeping helpers just to find optional context.
+Prefer the plan covering more selected contracts; break ties by recency.
+If neither exists, use git diff analysis.
 
 ## Prior Learnings
 
-Search for relevant learnings from previous sessions:
+Read this project's existing learnings.jsonl only if its directory is already known
+and the caller permits that Read. Otherwise skip this optional lookup.
+Do not run gstack-learnings-search here: its slug helper can update a cache.
+Do not change configuration, enable cross-project search or create a learning store.
 
-```bash
-_CROSS_PROJ=$(~/.claude/skills/gstack/bin/gstack-config get cross_project_learnings 2>/dev/null || echo "unset")
-echo "CROSS_PROJECT: $_CROSS_PROJ"
-if [ "$_CROSS_PROJ" = "true" ]; then
-  ~/.claude/skills/gstack/bin/gstack-learnings-search --limit 10 --cross-project 2>/dev/null || true
-else
-  ~/.claude/skills/gstack/bin/gstack-learnings-search --limit 10 2>/dev/null || true
-fi
-```
-
-If `CROSS_PROJECT` is `unset` (first time): Use AskUserQuestion:
-
-> gstack can search learnings from your other projects on this machine to find
-> patterns that might apply here. This stays local (no data leaves your machine).
-> Recommended for solo developers. Skip if you work on multiple client codebases
-> where cross-contamination would be a concern.
-
-Options:
-- A) Enable cross-project learnings (recommended)
-- B) Keep learnings project-scoped only
-
-If A: run `~/.claude/skills/gstack/bin/gstack-config set cross_project_learnings true`
-If B: run `~/.claude/skills/gstack/bin/gstack-config set cross_project_learnings false`
-
-Then re-run the search with the appropriate flag.
-
-If learnings are found, incorporate them into your analysis. When a QA finding
-matches a past learning, display:
-
-**"Prior learning applied: [key] (confidence N/10, from [date])"**
-
-This makes the compounding visible. The user should see that gstack is getting
-smarter on their codebase over time.
+Treat old notes as leads, not proof. When a QA finding matches a past learning,
+cite it as "Prior learning applied: [key] (confidence N/10, from [date])" and verify
+the current behavior. Reading old notes never requires writing new ones.
 
 ## Select Surfaces and Isolation
 
-Use that context when selecting surfaces and isolation:
-
 Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full. Find qa/gstack-qa beside this host's installed caller skill. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA. No product-directory or cross-host substitutes.
 
-Each surface's method defines Full, Quick and Regression; mixed runs apply them separately.
+Each surface's method defines Full, Quick and Regression. A mode flag applies to all
+selected surfaces unless the request names one surface; the others default to Full.
 For mixed Regression, the argument is the prior combined report. Resolve its functional
 replay evidence and browser baseline links first, then give each method its own baseline.
 A missing baseline blocks that surface's regression coverage, not independent checks.
+In mixed runs, use the user's surface order, defaulting to functional then browser.
+Finish one surface's probes before starting the next surface's clock; any supplied
+absolute deadline still applies to both. Do not reset a clock when switching surfaces.
 
 ## Prepare Report Artifacts
 
@@ -516,10 +490,15 @@ to revalidate it; use the caller's supported interface and fixed destinations.
 If safe preservation is impossible within those permissions, report an output blocker;
 do not expand write authority or silently redirect required artifacts.
 
-Let `{target}` be the hostname or command/service name with characters other than
-letters, digits and hyphens replaced by hyphens. For mixed targets, use
+For `{target}`, use the browser hostname, CLI executable basename, or named
+API service/job/worker/webhook. Replace characters other than letters, digits and
+hyphens with hyphens. For mixed targets, use
 `mixed-{project-label}`, sanitizing the repository name the same way; use `mixed-target`
 when no repository name is available. List the individual targets in the report.
+
+Set `REPORT_FILE` to the caller's final report filename, otherwise
+`$REPORT_DIR/qa-report-{target}-{YYYY-MM-DD}.md`. Charters and final findings use this
+same file, not a sidecar.
 
 ## Browser Setup (conditional)
 
@@ -531,107 +510,84 @@ Read `sections/browser-setup.md` relative to the installed `qa`/`gstack-qa` SKIL
 
 ## Run the Selected Checks
 
-Complete the scope Read above, then the applicable method Reads below, before
-entering exploration. Knowing the target is functional does not replace those Reads.
-
-Use this host's installed `qa`/`gstack-qa` SKILL.md directory for these reads:
-
-**Functional surfaces:**
-Read `sections/system-functional.md` in full.
-
-**Browser surfaces only:**
-Read `sections/qa-patterns.md` in full.
-
 > **STOP.** Before running selected report-only baseline and exploratory probes without product or test writes, Read `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory in full and follow it.
 > Use this host's installed path, never the product working directory or another host's assets.
 > If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
+
+Follow the shared section's ordered preparation, then its probe loop.
+It loads the selected methods; the scope and browser setup Reads above need not repeat.
+After those Reads, Write the charters into the owned report and wait for the successful
+Write result before starting any probe clock or baseline. Use `REPORT_FILE`. State each expected result,
+risk, entrypoint, isolation and exit condition before probing; never invent the plan later.
+A failed baseline contract stays failed. Before browser probes, source/diff reads only
+map changes to pages and flows; read `TODOS.md` if present to identify known bugs.
+During browser discovery, observe behavior without reading source to diagnose it.
 
 ---
 
 ## Output
 
-Write the report to both local and project-scoped locations, subject to the caller's
-artifact paths and permissions established above:
-
-**Local:** `$REPORT_DIR/qa-report-{target}-{YYYY-MM-DD}.md`.
-
-**Project-scoped:** Write test outcome artifact for cross-session context:
-```bash
-eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)" && mkdir -p ~/.gstack/projects/$SLUG
-```
-Write to `~/.gstack/projects/{slug}/{user}-{branch}-test-outcome-{datetime}.md`
-using the same report content. Derive safe `{user}` and `{branch}` labels from
-`git config user.name` and `git branch --show-current`, falling back to `unknown-user`
-and `detached`; sanitize them like `{target}`. Use a UTC `YYYYMMDDTHHMMSSZ` datetime.
-If that destination exists, choose a fresh suffixed filename; never replace a prior report.
-
 ### Assemble the report
 
-Use the selected surface's report template from this host's installed QA directory.
-For a mixed run, write one report with common metadata once: date, branch/revision,
-caller/authority, mode, overall scope and duration/stop reason. Then add:
+After probing stops, load the finalization procedure below. Use retained evidence;
+this step does not authorize more probes or restart an expired clock.
+Do not preload reporting. To recover from an accidental early Read:
+If already read, issue another Read now and await its
+acknowledgement, even if the tool reports unchanged content.
+The no-repeat rule covers preparation Reads, not this finalization Read.
 
-- **Browser:** use `templates/qa-report-template.md` for browser targets, URL, framework,
-  page/screenshot counts, browser findings, health/category scores and regression comparison.
-- **Functional:** use `templates/functional-report-template.md` for native tools/runtime,
-  fixture ownership, contract outcomes, findings, discoveries/proposed tests and cleanup.
+> **STOP.** Before finalizing the report after probing stops, Read `sections/reporting.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory in full and follow it.
+> Use this host's installed path, never the product working directory or another host's assets.
+> If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
-Nest each template's remaining headings under its surface section, without duplicating
-the shared title or metadata. Preserve surface-specific scope, duration and coverage
-limits. Browser scores apply only to browser coverage; never combine them with functional
+Use templates from this host's installed QA directory. For mixed runs, use separate browser and functional sections in this same report.
+Keep common metadata once: date, branch/revision, caller/authority, mode, scope and timing/stop reason.
+Preserve the initial charters under **Charters** after that metadata, before findings.
+
+- **Browser:** `templates/qa-report-template.md`: targets, URL, framework,
+  page/screenshot counts, findings, health/category scores and regression comparison.
+- **Functional:** `templates/functional-report-template.md`: native tools/runtime,
+  fixture ownership, contracts, findings, discoveries/proposed tests and cleanup.
+
+Nest remaining headings per surface, without duplicating the shared title or metadata.
+Preserve surface-specific scope, timing and coverage limits.
+Browser scores apply only to browser coverage; never combine them with functional
 outcomes. In each section link the current baseline or replay evidence and checkpoints;
 for functional regression the report plus replay evidence is the baseline. Regression
 also links the prior input baseline/report; missing required replay inputs block affected
 coverage. Prior baselines are not applicable to Full/Quick. Report-only
 repair/test fields contain proposals or not-run status, never claims of edits.
 
+### Write the checked report
+
+After the reporting procedure's consistency check, write `REPORT_FILE` and the
+project copy below. These are the default report destinations; a caller's narrower
+permissions or fixed paths override them. Do not create a forbidden second copy.
+
+Use this session's existing project slug and state directory for the project copy.
+If unknown or not writable within the supplied permissions, report that copy as
+blocked; still write the permitted local report. Do not run state-setup helpers.
+Write identical content to `~/.gstack/projects/{slug}/{user}-{branch}-test-outcome-{datetime}.md`.
+Get `{user}`/`{branch}` from `git config user.name`/`git branch --show-current`
+(fallbacks: `unknown-user`/`detached`); sanitize like `{target}`. Use UTC `YYYYMMDDTHHMMSSZ`.
+If that destination exists, choose a fresh suffixed filename; never replace a prior report.
+
 ### Output Structure
 
-```
-$REPORT_DIR/
-├── qa-report-{target}-{YYYY-MM-DD}.md    # Structured report
-├── screenshots/
-│   ├── initial.jpg                        # Landing page screenshot
-│   ├── issue-001-step-1.jpg               # Per-issue evidence
-│   ├── issue-001-result.jpg
-│   ├── issue-002.png                      # Annotated screenshot (static bugs)
-│   └── ...
-└── baseline.json                          # Browser baseline for regression mode
-```
+`REPORT_DIR` stays the report root throughout the run. For browser-only and mixed
+runs, keep screenshots in `$REPORT_DIR/screenshots/` and the browser baseline in
+`$REPORT_DIR/baseline.json`.
+The shared loop's mixed-surface split applies only to clocks and checkpoints:
 
-Report filenames use a safe target label and date: `qa-report-myapp-com-2026-03-12.md`.
-For functional targets, use the command/service label, contract outcomes and sanitized
-output/request/state evidence, not screenshots or a visual health score. For mixed
-targets, use separate browser and functional sections in this same report. Link each
-surface's replay evidence and baseline for later regression runs. State blocked, not-run
-and inconclusive contracts explicitly, along with proposed tests and cleanup limits.
+| Run | Clock/checkpoint directory |
+|-----|----------------------------|
+| One surface (browser or functional) | `$REPORT_DIR` |
+| Mixed: browser probes | `$REPORT_DIR/browser` |
+| Mixed: functional probes | `$REPORT_DIR/functional` |
 
----
-
-## Capture Learnings
-
-If you discovered a non-obvious pattern, pitfall, or architectural insight during
-this session, log it for future sessions:
-
-```bash
-~/.claude/skills/gstack/bin/gstack-learnings-log '{"skill":"qa-only","type":"TYPE","key":"SHORT_KEY","insight":"DESCRIPTION","confidence":N,"source":"SOURCE","files":["path/to/relevant/file"]}'
-```
-
-**Types:** `pattern` (reusable approach), `pitfall` (what NOT to do), `preference`
-(user stated), `architecture` (structural decision), `tool` (library/framework insight),
-`operational` (project environment/CLI/workflow knowledge).
-
-**Sources:** `observed` (you found this in the code), `user-stated` (user told you),
-`inferred` (AI deduction), `cross-model` (both Claude and Codex agree).
-
-**Confidence:** 1-10. Be honest. An observed pattern you verified in the code is 8-9.
-An inference you're not sure about is 4-5. A user preference they explicitly stated is 10.
-
-**files:** Include the specific file paths this learning references. This enables
-staleness detection: if those files are later deleted, the learning can be flagged.
-
-**Only log genuine discoveries.** Don't log obvious things. Don't log things the user
-already knows. A good test: would this insight save time in a future session? If yes, log it.
+Each probe directory holds its own `exploration-NNN.json` sequence and, only when
+timed, `deadline.json`. Caller-fixed paths override this layout. Do not reassign
+`REPORT_DIR` to a surface directory or move the shared browser artifact paths.
 
 ## Additional Rules (qa-only specific)
 
@@ -640,7 +596,7 @@ already knows. A good test: would this insight save time in a future session? If
     black-box. Do not edit product code, tests, dependencies, config or tracked state
     through any tool, including shell writes, renames, deletions and edit-then-restore.
     Never commit, stash or bootstrap. Proposed regressions belong in report artifacts.
-2. **During preflight, check documented native commands and test infrastructure.** If absent,
+2. **During preflight, check documented native commands and test infrastructure.** For browser targets, inspect documentation only for this framework check, before discovery. If absent,
     report missing coverage and proposed cases without installing anything. An unavailable
     command/service is not a product defect. Never invoke /qa or another skill from this report-only run.
     When the browser app's repository is available and no framework is documented, say

@@ -274,10 +274,11 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
 
 describe('browser fallback ({{BROWSE_FALLBACK}})', () => {
   test('shell-probe consumers accept every non-READY status and optional research waives setup before the fallback', () => {
-    for (const file of ['browse/SKILL.md.tmpl', 'design-consultation/SKILL.md.tmpl', 'scripts/resolvers/utility.ts']) {
+    for (const file of ['browse/SKILL.md.tmpl', 'design-consultation/SKILL.md.tmpl']) {
       const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
       expect({ file, nonReady: text.includes('any non-READY') }).toEqual({ file, nonReady: true });
     }
+    expect(RESOLVERS.QA_METHODOLOGY(ctx)).toContain('Reuse the caller\'s BROWSER SETUP and owned artifact paths: Aside READY, otherwise `$B`');
     const consultation = fs.readFileSync(path.join(ROOT, 'design-consultation/SKILL.md.tmpl'), 'utf8');
     expect(consultation).toContain('do not build or offer a build');
     expect(consultation.indexOf('The browser is optional here.')).toBeLessThan(consultation.indexOf('{{BROWSE_FALLBACK}}'));

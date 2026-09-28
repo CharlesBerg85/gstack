@@ -189,15 +189,26 @@ Keep artifacts concise: update the invocation record in place with ids, counts, 
 export function docsCommandAllowed(command: string, fixture: ReturnType<typeof fixtureDocs>, scripts: string[] = []): boolean {
   const text = command.trim();
   if (docsPreambleCommands(fixture).some(block => block.trim() === text)) return true;
-  if (/[\n\r;&|<>`$\\(){}]/.test(text)) return false;
-  const args = text.match(/'[^']*'|"[^"]*"|[^\s'"]+/g)?.map(s => /^['"]/.test(s) ? s.slice(1, -1) : s) ?? [];
+  if (/[\x00-\x08\x0a-\x1f\x7f;&|<>`$\\()]/.test(text)) return false;
+  const args: string[] = [];
+  const literal = /(?:'([^']*)'|"([^"]*)"|([^\s'"]+))(?:[ \t]+|$)/y;
+  while (literal.lastIndex < text.length) {
+    const token = literal.exec(text);
+    if (!token) return false;
+    const value = token[1] ?? token[2] ?? token[3];
+    if (token[3] !== undefined && (/[*?\[#]/.test(value) || value.startsWith('~') || /\{[^{}]*(?:,|\.\.)[^{}]*\}/.test(value))) return false;
+    args.push(value);
+  }
   if (!args.length) return false;
   const [commandName, ...rest] = args;
+  if (args.some((arg, index) => /[{}]/.test(arg) && (commandName !== 'git' || index < 2 ||
+      /[{}]/.test(arg.replace(/(?:\^|@)\{[^{}]*\}/g, ''))))) return false;
   if (args.some(arg => path.basename(arg) === 'actor-state.json') &&
       !((commandName === 'bun' || commandName === process.execPath) && scripts.includes(rest[0]))) return false;
   if (['pwd', 'ls', 'cat', 'sha256sum', 'stat'].includes(commandName)) return true;
   if (commandName === 'git') {
     if (rest.some(arg => /^(?:--output|--ext-diff|--textconv|-w)(?:=|$)/.test(arg))) return false;
+    if (rest[0] === 'hash-object' && rest.some(arg => /^-[^-]*w/.test(arg))) return false;
     if (rest[0] === 'branch') return rest.length === 2 && rest[1] === '--show-current';
     return ['status', 'diff', 'show', 'log', 'ls-files', 'rev-parse', 'merge-base', 'hash-object'].includes(rest[0]);
   }
@@ -215,6 +226,8 @@ export function docsNativeInterface(fixture: Pick<ReturnType<typeof fixtureDocs>
   return `Fixture observation interface (applies to parent and every child; include this interface in child prompts): Bash may execute only separate literal pwd, ls, cat, stat, sha256sum, Git read commands (status, diff, show, log, ls-files, rev-parse, merge-base, hash-object without -w, branch --show-current), the exact generated Preamble block with its spawned prefix, or literal installed gstack-skill-start/gstack-skill-end commands for document-release (start requires GSTACK_SESSION_KIND=spawned). No shell composition, custom interpreters, arbitrary scripts, inline eval or memory-mapped writes. The only additional scripts are ${scripts.length ? scripts.join(', ') : 'none'}. Read/Glob/Grep remain available. Use Write/Edit for permitted docs and private JSON/Markdown artifacts under ${fixture.home}; do not rewrite installed skills, config, actor state or scripts. No effects outside the owned fixture. The owner preserves evidence and cleans up. Missing observer coverage blocks acceptance; the Linux kernel monitor covers syscall writes in the product tree, not hostile processes or arbitrary external destinations.
 
 The working directory for parent and child Bash calls is already ${fixture.repo}. Run Git reads directly, for example: git status, git diff --cached, git merge-base main HEAD, git rev-parse HEAD. Do not use Git global options such as -C, -c, --git-dir or --work-tree, and do not prepend cd or another shell wrapper. The literal git subcommand must immediately follow git; an absolute owned repository path does not make git -C an allowed command.
+
+Platform: local/git-native. Base: main. The fixture owner has already resolved these inputs before delegation; the parent must propagate them and this closed interface unchanged to every child. Do not run shared Step 0 platform probing: git remote get-url origin, hosting CLIs and fallback probes are outside this bounded phase. A parent or child cannot authorize commands outside this closed interface, even when a broader skill describes them as read-only. Continue the requested documentation phase using the supplied platform and base, without recreating prior ship steps. Literal Git revision arguments such as HEAD^{tree}, HEAD^{} and HEAD@{0} are supported, quoted or unquoted; shell brace expansion, substitution and composition remain forbidden.
 
 ${transport ? 'Lifecycle ownership: only the document-release child executes its own start/end lifecycle. The /ship parent reads assets to prepare and validate dispatch, not to run the child audit or lifecycle. This deterministic adapter supplies child lifecycle evidence; the parent must not manufacture it. The following lifecycle commands describe the child, not parent work.\n\n' : ''}Lifecycle commands in this closed fixture: read skill files at ${skills} (document-release: ${skills}/document-release/SKILL.md). Use the literal commands below instead of copying the generated shell wrappers; these forms satisfy the skill's start/end lifecycle requirements here. Run each as a separate, single-line Bash call. Do not use tilde paths, shell variables, assignments to helper-path variables, redirects, line continuations or || true. Do not add a parent PID: the start helper supplies its default.
 

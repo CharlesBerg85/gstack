@@ -65,8 +65,15 @@ describe('QA caller authority in pure host renders', () => {
       for (const caller of callers) {
         const body = RESOLVERS.QA_EXPLORATORY(context(host.name, caller));
         expect(body).toContain('Read `sections/scope.md`');
-        expect(body).toContain('Skip this Read only if you already read it in this invocation');
-        expect(body).toContain('and completed surface selection and isolation');
+        expect(body).toContain('Do not repeat a Read already completed in this invocation');
+        expect(body).toContain('Complete these Reads in order before writing charters or probing');
+        const scope = body.indexOf('1. Read `sections/scope.md`');
+        const selection = body.indexOf('in full and select the surfaces');
+        const methods = body.indexOf('2. Read the selected surface methods below in full');
+        expect(scope).toBeGreaterThan(-1);
+        expect(selection).toBeGreaterThan(scope);
+        expect(methods).toBeGreaterThan(selection);
+        expect(body.indexOf('Write a **charter**')).toBeGreaterThan(methods);
         expect(body).not.toContain('If the caller has not selected surfaces and established isolation');
       }
     });
@@ -74,12 +81,12 @@ describe('QA caller authority in pure host renders', () => {
     test(`${host.name}: exploratory scope defines its controller and timing before probes`, () => {
       for (const caller of callers) {
         const body = RESOLVERS.QA_EXPLORATORY(context(host.name, caller));
-        expect(body).toContain('The **caller** is the workflow you are running: /qa, /qa-only, /review or /ship');
+        expect(body).toContain('The **caller** runs /qa, /qa-only, /review or /ship');
         expect(body).toContain('charter** (test plan) for each behavior');
-        expect(body).toContain('Start a timer before the first probe');
-        expect(body).toContain('when a total limit applies');
-        expect(body).toContain('announce a finite per-command timeout before probing');
-        expect(body.indexOf('Start a timer')).toBeLessThan(body.indexOf('## 2. Probe loop'));
+        expect(body).toContain('bun G start D SECONDS [EARLIER_UTC]');
+        expect(body).toContain('G enforces the deadline');
+        expect(body).toContain('Use documented or announced finite command timeouts');
+        expect(body.indexOf('bun G start D')).toBeLessThan(body.indexOf('1. First demonstrate success'));
         expect(body).toContain('scoped contracts are tested or blocked');
       }
     });
@@ -104,6 +111,21 @@ describe('QA caller authority in pure host renders', () => {
       for (const skill of ['review', 'ship']) {
         expect(RESOLVERS.LEARNINGS_SEARCH(context(host.name, skill))).toContain('When a review finding');
       }
+    });
+
+    test(`${host.name}: report-only learning lookup cannot configure or initialize stores`, () => {
+      const ctx = context(host.name, 'qa-only');
+      const search = RESOLVERS.LEARNINGS_SEARCH(ctx, ['query=webhook retries']);
+      expect(search).toContain('Read this project\'s existing learnings.jsonl only if its directory is already known');
+      expect(search).toContain('the caller permits that Read');
+      expect(search).toContain('Otherwise skip this optional lookup');
+      expect(search).toContain('Look for notes matching "webhook retries"');
+      expect(search).toContain('Do not run gstack-learnings-search here');
+      expect(search).toContain('Reading old notes never requires writing new ones');
+      expect(search).not.toContain('```bash');
+      expect(search).not.toContain('gstack-config');
+      expect(search).not.toContain('AskUserQuestion');
+      expect(() => RESOLVERS.LEARNINGS_SEARCH(ctx, ['query=$(touch outside)'])).toThrow();
     });
 
     test(`${host.name}: missing lazy sections stop affected probes, not independent checks`, () => {
@@ -186,8 +208,8 @@ describe('QA caller authority in pure host renders', () => {
         expect(compact).toContain('Missing or unreadable assets, prerequisites or permission block affected probes, not independent safe checks');
         expect(compact).toContain('Report QA setup blockers');
         expect(compact).not.toContain('stop all checks');
-        expect(body).toContain('Read the selected surface methods first');
-        expect(body.indexOf('Read the selected surface methods first')).toBeLessThan(body.indexOf('1. First demonstrate'));
+        expect(body).toContain('2. Read the selected surface methods below in full');
+        expect(body.indexOf('2. Read the selected surface methods below in full')).toBeLessThan(body.indexOf('1. First demonstrate success'));
         const reads = RESOLVERS.QA_METHOD_READS(context(host.name, caller));
         expect(reads).toContain('**Functional surfaces:**');
         expect(reads).toContain('sections/system-functional.md');
@@ -226,8 +248,13 @@ describe('QA caller authority in pure host renders', () => {
       for (const caller of ['review', 'ship']) {
         const ctx = context(host.name, caller);
         const body = (caller === 'review' ? RESOLVERS.QA_REVIEW_PREFLIGHT(ctx) : '') + RESOLVERS.QA_REVIEW(ctx);
-        const exploration = body.indexOf('Read `sections/exploratory.md` in that QA installation');
+        const exploration = body.indexOf('{{QA_RESOURCE:exploratory}}');
         expect(exploration).toBeGreaterThan(-1);
+        const resource = RESOLVERS.QA_RESOURCE(ctx, ['exploratory']);
+        expect(resource).toContain(`../${host.name === 'claude' ? 'qa' : 'gstack-qa'}/sections/exploratory.md`);
+        const shared = render('qa/sections/exploratory.md.tmpl', context(host.name, 'qa'));
+        expect(shared).toContain('Read `sections/system-functional.md` in full');
+        expect(shared.indexOf('in full and select the surfaces')).toBeLessThan(shared.indexOf('Read `sections/system-functional.md`'));
         const required = body.indexOf(caller === 'review'
           ? '2. Check readiness and list required checks' : '2. List the checks that must pass');
         expect(required).toBeGreaterThan(-1);
@@ -235,8 +262,8 @@ describe('QA caller authority in pure host renders', () => {
         expect(body).toContain('check one successful operation and the riskiest changed failure or edge case');
         expect(body).toContain('Within 5 minutes/12 probes');
         expect(body).toContain('Small diffs and missing plans/servers do not waive this smoke');
-        expect(body).toContain('Explicit plan commands/assertions remain required beyond that bound');
-        expect(body).toContain('Other ideas are optional, untested coverage');
+        expect(body).toContain('List explicit plan commands/assertions separately; they remain required beyond the smoke bound');
+        expect(body).toContain('Other ideas are optional, untested');
         expect(body.replace(/\s+/g, ' ')).toContain('Pass only when all required checks pass on the current inputs');
         expect(body).toContain('list every failed, blocked, inconclusive or not-run required check otherwise');
       }
@@ -249,16 +276,21 @@ describe('QA caller authority in pure host renders', () => {
       for (const caller of ['review', 'ship']) {
         const ctx = context(host.name, caller);
         const body = (caller === 'review' ? RESOLVERS.QA_REVIEW_PREFLIGHT(ctx) : '') + RESOLVERS.QA_REVIEW(ctx);
-        const scope = body.indexOf('{{QA_RESOURCE:scope}}');
-        const exploration = body.indexOf('Read `sections/exploratory.md` in that QA installation');
-        const methods = body.indexOf('**Functional surfaces:**');
+        const exploration = body.indexOf('{{QA_RESOURCE:exploratory}}');
+        const shared = render('qa/sections/exploratory.md.tmpl', context(host.name, 'qa'));
+        const scope = shared.indexOf('Read `sections/scope.md`');
+        const selection = shared.indexOf('in full and select the surfaces');
+        const methods = shared.indexOf('**Functional surfaces:**');
         const probes = body.indexOf(caller === 'review'
           ? '2. Check readiness and list required checks' : '2. List the checks that must pass');
         expect(scope).toBeGreaterThan(-1);
         expect(exploration).toBeGreaterThan(-1);
-        expect(scope).toBeLessThan(exploration);
-        expect(exploration).toBeLessThan(methods);
-        expect(methods).toBeLessThan(probes);
+        expect(selection).toBeGreaterThan(scope);
+        expect(methods).toBeGreaterThan(selection);
+        expect(shared.indexOf('Write a **charter**')).toBeGreaterThan(methods);
+        expect(exploration).toBeLessThan(probes);
+        expect(body).not.toContain('**Functional surfaces:**');
+        expect(RESOLVERS.QA_RESOURCE(ctx, ['exploratory'])).toContain(`../${host.name === 'claude' ? 'qa' : 'gstack-qa'}/sections/exploratory.md`);
         if (caller === 'review') {
           const flat = body.replace(/\s+/g, ' ');
           expect(flat).toContain('Use the title `## Exploratory QA and Verification Results`');
@@ -295,11 +327,20 @@ describe('QA caller authority in pure host renders', () => {
     test(`${host.name}: orchestration skips only history matching without user skips`, () => {
       for (const caller of ['review', 'ship']) {
         const body = RESOLVERS.CROSS_REVIEW_DEDUP(context(host.name, caller));
-        expect(body).toContain('skip history matching silently; still classify current findings');
-        expect(body.indexOf('If no prior reviews exist')).toBeLessThan(body.indexOf('For each JSONL entry'));
-        expect(body).toContain('If N > 0, print once:');
-        expect(body).toContain('Otherwise skip the summary');
-        expect(body).toContain('Only suppress `skipped` findings — never `fixed` or `auto-fixed`');
+        if (caller === 'ship') {
+          const flat = body.replace(/\s+/g, ' ');
+          expect(flat).toContain('Combine saved `findings` with the invocation action list, honoring later user decisions');
+          expect(flat).toContain('If both history and the invocation action list lack decisions, classify normally');
+          expect(body.indexOf('2. **Read decisions.**')).toBeLessThan(body.indexOf('3. **Match evidence.**'));
+          expect(flat).toContain('Only explicit `skipped` actions qualify, never `fixed`, `auto-fixed` or unanswered questions');
+          expect(flat).toContain('Report the suppressed count once if nonzero');
+        } else {
+          expect(body).toContain('skip history matching silently; still classify current findings');
+          expect(body.indexOf('If no prior reviews exist')).toBeLessThan(body.indexOf('For each JSONL entry'));
+          expect(body).toContain('If N > 0, print once:');
+          expect(body).toContain('Otherwise skip the summary');
+          expect(body).toContain('Only suppress `skipped` findings — never `fixed` or `auto-fixed`');
+        }
         expect(body).not.toContain('skip this step silently');
       }
     });

@@ -669,24 +669,15 @@ Sanitize every query before it leaves the machine: strip hostnames, IPs, file pa
 Select QA surfaces and load their methods below before static review.
 Step 4 is read-only; Step 4.7 owns setup, charters and probes.
 
+> **STOP.** Load the installed exploratory section below and complete its ordered scope/method Reads.
+> A plan command is a probe, not an exception to this gate.
+Step 4 is read-only: defer charters, setup and probes to Step 4.7.
+
 From the installed /review SKILL.md's directory, choose one path:
-- If the caller directory is `review`, Read `../qa/sections/scope.md` in full.
-- If the caller directory is prefixed `gstack-review`, use `../gstack-qa/sections/scope.md` instead and read it in full.
+- If the caller directory is `review`, Read `../qa/sections/exploratory.md` in full.
+- If the caller directory is prefixed `gstack-review`, use `../gstack-qa/sections/exploratory.md` instead and read it in full.
 - If neither layout applies, report an unresolved QA installation as a setup blocker; do not guess another path.
 Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
-
-Use scope's target-selection rules now to choose functional, browser or mixed
-surfaces from the request and diff. Record that selection before loading methods.
-Do not execute setup or probes in this read-only step; Step 4.7 owns those actions.
-
-Resolve later QA paths in that installed QA directory.
-> **STOP.** Read `sections/exploratory.md` in that QA installation and the selected methods below before continuing.
-> A plan command is a probe, not an exception to this gate.
-**Functional surfaces:**
-Read `sections/system-functional.md` in full.
-
-**Browser surfaces only:**
-Read `sections/qa-patterns.md` in full.
 
 Caller/report templates cannot replace these method Reads.
 
@@ -835,14 +826,15 @@ access rules. Reuse setup only when its tools, session, target and ownership are
 still verified; otherwise repeat the readiness checks. Never install, import cookies
 or bootstrap tests during discovery. Functional-only runs do not load browser setup.
 - Within 5 minutes/12 probes, check one successful operation and the riskiest changed failure or edge case. Small diffs and missing plans/servers do not waive this smoke.
-- Explicit plan commands/assertions remain required beyond that bound.
-- Other ideas are optional, untested coverage.
+- List explicit plan commands/assertions separately; they remain required beyond the smoke bound.
+- Other ideas are optional, untested.
 
 **3. Run the checks without repairing the product.**
-Follow the numbered Probe loop in `sections/exploratory.md` for discovery, replays
-and revalidation. Start with a successful operation, then require a successful
-checkpoint Write before each later probe. Replay a defect from its original fixture
-state before proposing a regression test or fix.
+First run smoke, replays and revalidation through the shared Probe loop and its guard.
+Then run every required plan check, even if smoke expired. Keep the same checkpoint sequence,
+but do not use the smoke guard or restart its clock. Give each plan command a finite timeout
+capped by the caller's remaining deadline. If that deadline expired, mark the check not-run.
+Both groups retain the loop's successful baseline, acknowledged Writes and exact-replay gates.
 
 **4. Check for changes before reporting.**
 Before reporting, read updates from any dispatched agents and the user. Compare

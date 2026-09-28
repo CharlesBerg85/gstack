@@ -961,7 +961,8 @@ test('checkpoint regressions select all consumers of the shared native evidence 
   const selected = selectTests([file], E2E_TOUCHFILES);
   expect(selected.reason).toBe('diff');
   expect(selected.selected.sort()).toEqual(selectTests(['test/helpers/qa-checkpoint-evidence.ts'], E2E_TOUCHFILES).selected.sort());
-  expect(selected.selected).toHaveLength(23);
+  expect(selected.selected).toHaveLength(24);
+  expect(selected.selected).toContain('qa-only-no-fix');
   expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
 });
 

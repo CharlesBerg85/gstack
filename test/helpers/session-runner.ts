@@ -247,6 +247,10 @@ export async function runSkillTest(options: {
   startupGraceMs?: number;
   /** Cancel the owned process group when an enclosing attempt expires. */
   signal?: AbortSignal;
+  nativeLifecycle?: {
+    onSpawn(pid: number): void;
+    onSettled(input: { deadline: number; exited: boolean }): Promise<void>;
+  };
 }): Promise<SkillTestResult> {
   const startTime = Date.now();
   options.signal?.throwIfAborted();
@@ -461,7 +465,7 @@ Before source Reads and after each saved checkpoint, use Bash to run exactly \`d
   phaseTimer = setTimeout(() => killRun(true), Math.max(0, startTime + startupGraceMs - Date.now()));
   proc.stdin!.on('error', () => { /* exit handling reports early child failure */ });
   if (signal?.aborted || Date.now() >= deadline) onAbort();
-  else proc.stdin!.end(prompt);
+  else if (!options.nativeLifecycle) proc.stdin!.end(prompt);
   /** Called once by the read loop on the first NDJSON byte. */
   const armWorkPhase = (elapsedMs: number): void => {
     clearTimeout(phaseTimer);
@@ -481,8 +485,11 @@ Before source Reads and after each saved checkpoint, use Bash to run exactly \`d
   const decoder = new TextDecoder();
   let buf = '';
   const projectLine = options.publicStreamDiagnostics ? publicStreamProjection(startTime) : (line: string) => line;
+  let lifecycleFailure: unknown;
 
   try {
+    options.nativeLifecycle?.onSpawn(proc.pid!);
+    if (options.nativeLifecycle && !signal?.aborted && Date.now() < deadline) proc.stdin!.end(prompt);
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -574,7 +581,36 @@ Before source Reads and after each saved checkpoint, use Bash to run exactly \`d
     }
 
     await Promise.race([Promise.all([procExited, stderrClosed]), forcedDrain]);
+  } catch (error) {
+    lifecycleFailure = error;
+    throw error;
   } finally {
+    if (options.nativeLifecycle) {
+      killProcessGroup(proc, 'SIGKILL');
+      closePipes();
+      armDrain();
+      try {
+        await Promise.race([procExited, forcedDrain]);
+        let hookTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            options.nativeLifecycle.onSettled({ deadline: drainDeadline, exited: exitCode !== undefined && !processError }),
+            new Promise<never>((_, reject) => {
+              hookTimer = setTimeout(() => reject(new Error('native lifecycle settlement deadline exceeded')), Math.max(0, drainDeadline - Date.now()));
+            }),
+          ]);
+        } finally { clearTimeout(hookTimer); }
+      } catch (error) {
+        if (lifecycleFailure) throw new AggregateError([lifecycleFailure, error], 'native lifecycle failed');
+        throw error;
+      } finally {
+        clearTimeout(phaseTimer);
+        clearTimeout(drainTimer);
+        signal?.removeEventListener('abort', onAbort);
+        proc.removeListener('exit', onExit);
+        proc.stderr!.removeListener('data', onStderr);
+      }
+    }
     clearTimeout(phaseTimer);
     clearTimeout(drainTimer);
     signal?.removeEventListener('abort', onAbort);
