@@ -298,13 +298,16 @@ export function computePaidCaseSelection(options: {
   env?: NodeJS.ProcessEnv;
   rootDir?: string;
   changedFiles?: string[];
+  /** Whether package.json differs from the base only in `version`; computed from git when omitted. */
+  packageVersionOnly?: boolean;
 }): { selection: PaidCaseSelection; reason: string; coverage?: PrProfileSelection } {
   const env = options.env ?? process.env;
   const rootDir = options.rootDir ?? ROOT;
   const baseRef = env.EVALS_BASE || detectBaseBranch(rootDir) || 'main';
   const files = options.changedFiles ?? (env.EVALS_ALL ? [] : getChangedFiles(baseRef, rootDir));
   const all = !!env.EVALS_ALL || files.length === 0;
-  const effectiveFiles = files.filter(file => options.profile !== 'pr' || file !== 'package.json' || !packageVersionOnlySinceBase(rootDir, baseRef));
+  const effectiveFiles = files.filter(file => options.profile !== 'pr' || file !== 'package.json' ||
+    !(options.packageVersionOnly ?? packageVersionOnlySinceBase(rootDir, baseRef)));
   const sourceAliases = options.profile === 'pr' ? existingPromptSourceAliases(effectiveFiles, rootDir) : {};
   const selectionFiles = [...new Set([...effectiveFiles, ...Object.values(sourceAliases)])];
   const select = (table: Record<string, string[]>) => all ? null
