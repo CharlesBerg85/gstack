@@ -62,7 +62,7 @@ describe('overlay file policy', () => {
       expect(buildPaidShardArgs([file], resolvePaidShardTimeoutMs([file]), 2, retriesForFiles([file])))
         .toContain('--timeout=1830000');
     }
-    for (const file of [normalFile, 'test/skill-e2e-overlay-harness.test.ts', 'test/model-overlay-opus-4-7.test.ts']) {
+    for (const file of [normalFile, 'test/skill-e2e-overlay-harness.test.ts', 'test/model-overlays.test.ts']) {
       expect(isOverlayTestFile(file)).toBe(false);
       expect(resolvePaidShardTimeoutMs([file])).toBe(DEFAULT_SHARD_TIMEOUT_MS);
       expect(retriesForFiles([file])).toBe(1);

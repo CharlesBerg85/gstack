@@ -147,7 +147,7 @@ describe('paid/free dependency boundary', () => {
       'scripts/test-free-shards.ts', 'scripts/test-strict-output.ts',
       'test/eng-scope-entry-ap.test.ts', 'test/helpers/plan-floor-review.ts',
       'test/plan-floor-permission.test.ts', 'test/plan-floor-review.test.ts',
-      'test/plan-review-cases.test.ts', 'test/plan-scope-recovery-av.test.ts',
+      'test/plan-review-cases.test.ts', 'test/plan-scope-selection.test.ts',
       'test/strict-output-formats.test.ts',
     ];
     const result = computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles });

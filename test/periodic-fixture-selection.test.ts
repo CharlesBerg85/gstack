@@ -310,8 +310,8 @@ test('same-plan expansion disposition replay selects the existing mode helper co
 test('structured auto-decision evidence selects every native observer', () => {
   const expected = ['auto-decide-preserved', 'plan-ceo-review-plan-mode',
     'plan-design-review-plan-mode', 'plan-devex-review-plan-mode', 'plan-eng-review-plan-mode', 'plan-mode-no-op'];
-  for (const file of ['test/auto-decide-structured.test.ts', 'test/fixtures/auto-decide-structured-77.json',
-    'test/helpers/auto-decision-state.ts', 'test/auto-decision-state.test.ts', 'test/fixtures/auto-decide-state-cab3.json']) {
+  for (const file of ['test/fixtures/auto-decide-structured-77.json',
+    'test/helpers/auto-decision-state.ts', 'test/fixtures/auto-decide-state-cab3.json']) {
     expect([...selectTests([file], E2E_TOUCHFILES).selected].sort()).toEqual(expected);
     expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
   }
@@ -326,8 +326,8 @@ test('explanatory native mode evidence selects all observers with their existing
   const expected = ['auto-decide-preserved', 'office-hours-auto-mode',
     'plan-ceo-review-plan-mode', 'plan-design-review-plan-mode', 'plan-devex-review-plan-mode',
     'plan-eng-review-plan-mode', 'plan-mode-no-op'];
-  for (const file of ['test/helpers/native-auto-decide.ts', 'test/auto-decide-current-declaration.test.ts',
-    'test/fixtures/auto-decide-current-declaration-6aef.json', 'test/auto-decide-explanatory-mode.test.ts',
+  for (const file of ['test/helpers/native-auto-decide.ts', 'test/native-auto-decide.test.ts',
+    'test/fixtures/auto-decide-current-declaration-6aef.json', 'test/native-auto-decide.test.ts',
     'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json']) {
     expect([...selectTests([file], E2E_TOUCHFILES).selected].sort()).toEqual(expected);
     expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
@@ -409,9 +409,9 @@ const nativeRepairDependencies = [
   {
     "name": "AUTO mode declarations",
     "files": [
-      "test/auto-decide-recommendation-scope.test.ts",
+      "test/native-auto-decide.test.ts",
       "test/fixtures/auto-decide-recommendation-361c.json",
-      "test/auto-decide-target-identity.test.ts",
+      "test/native-auto-decide.test.ts",
       "test/fixtures/auto-decide-target-361c.json"
     ],
     "owners": [
