@@ -260,7 +260,7 @@ describeE2E('/plan-ceo-review mode routing (gate)', () => {
             }
             const currentInput = await session.currentScreen();
             capture('awaiting_posture', currentInput, transcript);
-            const modeSubmit = ceoModeSubmissionInput(currentInput, question.nativeCall, c.mode, transcript, submittedModePackets);
+            const modeSubmit = ceoModeSubmissionInput(currentInput, question.nativeCall, c.mode, transcript, submittedModePackets, session.visibleText());
             if (modeSubmit !== null) { session.send(modeSubmit); continue; }
             const pendingQuestion = readPendingQuestion(session.pendingQuestionFile, fixture.cwd,
               session.hermeticConfigDir, selectionStartedAt, transcript);

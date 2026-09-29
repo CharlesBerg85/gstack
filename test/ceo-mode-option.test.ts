@@ -10,6 +10,7 @@ import captured_ceo_hold_commitment_ar from './fixtures/ceo-hold-commitment-ar.j
 import captured_ceo_hold_posture_ag from './fixtures/ceo-hold-posture-ag.json';
 import retainedPreservationCaptures_ceo_hold_posture_ag from './fixtures/ceo-hold-preservation-f359.json';
 import captured_ceo_mode_colon_at from './fixtures/ceo-mode-colon-at.json';
+import scrolledReview from './fixtures/ceo-mode-scrolled-review-36606688266.json';
 import fs_ceo_mode_full_ad from 'node:fs';
 import os_ceo_mode_full_ad from 'node:os';
 import path_ceo_mode_full_ad from 'node:path';
@@ -1839,4 +1840,56 @@ test('AD v2 prerequisite requires the active native packet identity',()=>{
  expect(planCountPrerequisitePick({...f.active,nativeCall:undefined})).toBeNull();
  for(const delta of [{answered:true},{failed:true},{sessionId:''},{toolUseId:''}]){const call={...pending(),...delta};const x=frame(call,2);expect(planCountPrerequisitePick(x.routing,x.active)).toBeNull();}
 });
+});
+
+describe('mode submission when the review panel scrolls past the viewport', () => {
+  // Run 36606688266 bundled routing, learnings and the mode choice into one
+  // native call. Its review panel was taller than the terminal, so the tab bar
+  // scrolled away and the harness never submitted HOLD SCOPE.
+  const scrolledTranscript = scrolledReview.transcript as unknown as PlanCountTranscript;
+  const scrolledCall = scrolledTranscript.calls[0] as NativePlanQuestionCall;
+  const scrolledSubmit = (screen: string, screenText: string, mode: 'HOLD SCOPE' | 'SCOPE EXPANSION' = 'HOLD SCOPE',
+    selected: NativePlanQuestionCall = scrolledCall, native: PlanCountTranscript = scrolledTranscript) =>
+    ceoModeSubmissionInput(screen, selected, mode, native, new Set(), screenText);
+
+  test('the captured viewport has no tab bar and ends at the focused Submit prompt', () => {
+    expect(scrolledReview.screen).not.toMatch(/←[^\r\n]+✔\s*Submit\s*→/);
+    expect(scrolledReview.screen.trimEnd()).toMatch(/❯ 1\. Submit answers\s+2\. Cancel$/);
+    expect(scrolledCall.questions.map(q => q.header)).toEqual(['Routing', 'Learnings', 'Review mode']);
+  });
+
+  test('the complete scrolled review submits the selected mode once', () => {
+    expect(scrolledSubmit(scrolledReview.screen, scrolledReview.screenText)).toBe('\r');
+    const seen = new Set<string>();
+    expect(ceoModeSubmissionInput(scrolledReview.screen, scrolledCall, 'HOLD SCOPE', scrolledTranscript, seen, scrolledReview.screenText)).toBe('\r');
+    expect(ceoModeSubmissionInput(scrolledReview.screen, scrolledCall, 'HOLD SCOPE', scrolledTranscript, seen, scrolledReview.screenText)).toBeNull();
+  });
+
+  test('without the accumulated screen text a barless viewport cannot submit', () => {
+    expect(scrolledSubmit(scrolledReview.screen, '')).toBeNull();
+  });
+
+  test('a review showing another mode is not an acknowledgement of the target mode', () => {
+    expect(scrolledSubmit(scrolledReview.screen, scrolledReview.screenText, 'SCOPE EXPANSION')).toBeNull();
+  });
+
+  for (const [name, change] of [
+    ['an answer no option offers', (text: string) => text.replace(/→ Enable cross-project \(recommended\)(?![\s\S]*→ Enable cross-project)/, '→ Upload learnings')],
+    ['an altered question', (text: string) => text.replace(/D2 — Let gstack(?![\s\S]*D2 — Let gstack)/, 'D2 — Never let gstack')],
+    ['a quoted review', (text: string) => text.replace(/Review your answers(?![\s\S]*Review your answers)/, 'Quoted example:\nReview your answers')],
+    ['output after the prompt', (text: string) => `${text}\nMore text`],
+  ] as const) test(`the scrolled route rejects ${name}`, () => {
+    expect(scrolledSubmit(scrolledReview.screen, change(scrolledReview.screenText))).toBeNull();
+  });
+
+  test('the viewport must still end at the focused Submit prompt', () => {
+    expect(scrolledSubmit(scrolledReview.screen.replace('❯ 1. Submit answers', '  1. Submit answers\n❯ 2. Cancel'), scrolledReview.screenText)).toBeNull();
+  });
+
+  test('an answered or changed native call cannot be submitted again', () => {
+    expect(scrolledSubmit(scrolledReview.screen, scrolledReview.screenText, 'HOLD SCOPE', { ...scrolledCall, answered: true })).toBeNull();
+    const other = structuredClone(scrolledCall);
+    other.questions[1]!.question += ' (changed)';
+    expect(scrolledSubmit(scrolledReview.screen, scrolledReview.screenText, 'HOLD SCOPE', other)).toBeNull();
+  });
 });

@@ -93,7 +93,13 @@ RUN curl --retry 5 --retry-delay 5 --retry-connrefused -fsSL https://bun.sh/inst
 # skillify HOME discovery on 2.1.237, guard/freeze hooks on 2.1.162).
 # Bump deliberately, via a PR that runs the PTY gate against the new TUI.
 # test/ci-image-cli-pin.test.ts fails the free suite if this pin is removed.
-RUN npm i -g @anthropic-ai/claude-code@2.1.251
+# 2.1.284 (from 2.1.251, 2026-09-29): 2.1.251 logs
+# [claude-code:unrecognized_model] for the eval model claude-fable-5-1;
+# 2.1.284 recognizes it. Local canary: the gate PTY smoke subset parsed on
+# both TUIs (7/8 pass on 2.1.284, 8/8 on 2.1.251; the one red was the model
+# still in WebSearch at 300 s), and plan-design-review-plan-mode passed at
+# 293 s on 2.1.284 where 2.1.251 timed out at 300 s.
+RUN npm i -g @anthropic-ai/claude-code@2.1.284
 
 # Playwright system deps (Chromium) — needed for browse E2E tests
 RUN npx playwright install-deps chromium

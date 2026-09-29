@@ -149,7 +149,7 @@ function hasNativePostureProse(text: string, posture: RegExp): boolean {
 /** Finish the selected native mode packet before waiting for its answer. */
 export function ceoModeSubmissionInput(
   visible: string, selected: NativePlanQuestionCall | undefined, targetMode: CeoMode,
-  transcript: PlanCountTranscript, submitted: Set<string>,
+  transcript: PlanCountTranscript, submitted: Set<string>, screenText = '',
 ): string | null {
   if (!selected || selected.answered || selected.failed || !selected.sessionId || !selected.toolUseId ||
       transcript.status !== 'ready' || selected.questions.length < 2 ||
@@ -161,16 +161,28 @@ export function ceoModeSubmissionInput(
   const modeQuestions = selected.questions.filter(q => q.options.filter(o => modeTitle(o.label)).length >= 2);
   if (modeQuestions.length !== 1 || findCeoModeOption(modeQuestions[0]!.options.map((o, i) =>
       ({index:i + 1, label:o.label})), targetMode) === null) return null;
-  const bar = posturePacketBar(visible);
-  if (!bar || !bar.answered.every(Boolean) || JSON.stringify(bar.headers) !== JSON.stringify(
-      selected.questions.map(q => q.header.trim().replace(/\s+/g, ' '))) ||
-      planCountSubmissionInput(visible) !== '\r') return null;
-  const rawBar = [...visible.matchAll(/←[^\r\n]+✔\s*Submit\s*→/g)].at(-1)!;
-  const preceding = visible.slice(0, rawBar.index);
-  if (/```|~~~|^\s*>|\b(?:example|quoted|source)[^:\n]*:\s*$/im.test(preceding)) return null;
   const compact = (text: string) => text.replace(/\s+/g, '');
-  const panel = compact(visible.slice(rawBar.index! + rawBar[0].length)
-    .replace(/^[ \t]*[│┃] ?/gm, '').replace(/^[ \t]*[●⏺] ?/gm, ''));
+  const quotedContext = /```|~~~|^\s*>|\b(?:example|quoted|source)[^:\n]*:\s*$/im;
+  const bar = posturePacketBar(visible);
+  let review: string;
+  if (bar) {
+    if (!bar.answered.every(Boolean) || JSON.stringify(bar.headers) !== JSON.stringify(
+        selected.questions.map(q => q.header.trim().replace(/\s+/g, ' '))) ||
+        planCountSubmissionInput(visible) !== '\r') return null;
+    const rawBar = [...visible.matchAll(/←[^\r\n]+✔\s*Submit\s*→/g)].at(-1)!;
+    if (quotedContext.test(visible.slice(0, rawBar.index))) return null;
+    review = visible.slice(rawBar.index! + rawBar[0].length);
+  } else {
+    // A review taller than the terminal scrolls its tab bar and heading off
+    // the viewport (run 36606688266). The viewport must still end at the
+    // focused Submit prompt; the accumulated screen text then supplies the
+    // one complete review panel, authenticated below exactly as with a bar.
+    const heading = screenText.lastIndexOf('Review your answers');
+    if (heading < 0 || !compact(visible).endsWith(BARLESS_SUBMIT_END) ||
+        quotedContext.test(screenText.slice(0, heading).split('\n').slice(-3).join('\n'))) return null;
+    review = screenText.slice(heading);
+  }
+  const panel = compact(review.replace(/^[ \t]*[│┃] ?/gm, '').replace(/^[ \t]*[●⏺] ?/gm, ''));
   // Authenticate the complete review panel against native questions and
   // offered answers. An intended keypress or a selected-mode echo is not an ACK.
   let prefixes = ['Reviewyouranswers'];

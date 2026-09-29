@@ -35,6 +35,7 @@ import {
   engStep0Boundary,
   engSetupAUQ,
   engFirstReviewAUQ,
+  hasCompletePlanReport,
 } from './helpers/claude-pty-runner';
 import { FORCING_BATCHING_ENG } from './fixtures/forcing-finding-seeds';
 import { createEngBatchingIssueCounter } from './helpers/eng-seeded-coverage';
@@ -53,6 +54,7 @@ describeE2E('/plan-eng-review multi-finding batching regression (periodic)', () 
   test(
     `4-finding plan emits >= ${FLOOR} review-phase AskUserQuestions (no batching)`,
     async () => {
+      const startedAt = Date.now();
       const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-e2e-plan-eng-batching-'));
       const planPath = path.join(tmpDir, 'gstack-test-plan-eng-batching.md');
       const followUpPrompt = FORCING_BATCHING_ENG.replaceAll(FIXTURE_PLAN_PATH, planPath);
@@ -85,8 +87,12 @@ describeE2E('/plan-eng-review multi-finding batching regression (periodic)', () 
           // review decisions exist, a batching regression can no longer occur
           // in this attempt; stop instead of letting the review run to the
           // ceiling (run 36385945043: floor at 6m41s, ceiling at 12m13s).
+          // A completed report ends the review, so the count is final there:
+          // grade it now rather than waiting out the session (run 36606688266
+          // wrote its report at 1,248 s and closed at 1,318 s).
           isCollectionComplete: (_transcript, fingerprints) =>
-            fingerprints.filter(fp => !fp.preReview && !fp.administrative).length >= FLOOR,
+            fingerprints.filter(fp => !fp.preReview && !fp.administrative).length >= FLOOR ||
+            hasCompletePlanReport(planPath, startedAt, Date.now()),
           reviewCountCeiling: N + 3, // hard cap above floor + tolerance
           // Supplied prerequisites: routing setup and cross-project learnings are
           // already declined, so the attempt starts at the review (setup answers

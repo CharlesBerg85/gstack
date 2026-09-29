@@ -8,6 +8,7 @@ import {
   createEvalCollector, finalizeEvalCollector,
 } from './helpers/e2e-helpers';
 import { extractSkillSections, REVIEW_E2E_SECTIONS } from './helpers/skill-fixture';
+import { expectContract } from './helpers/eval-store';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -291,7 +292,8 @@ Important: The design checklist should catch issues like blacklisted fonts, smal
 
       console.log(`Design review detected ${detected}/7 planted checklist signals; detector rows surfaced: ${detectorSeen}`);
       expect(detected).toBeGreaterThanOrEqual(4); // the LLM-checklist bar, unchanged by the detector
-      expect(detectorSeen).toBe(true); // the fake engine's rows are deterministic; the review must carry them
+      // The fake engine's rows are deterministic; carrying them is the contract.
+      expectContract(detectorSeen, 'review-design-lite: the review omitted the mechanical detector rows', { collector: evalCollector, name: '/review design lite' });
     }
   }, CAPTURE_MS + REVIEW_FINALIZE_MS);
 });
