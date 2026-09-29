@@ -8,6 +8,7 @@
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildHeadedServerEnv } from '../src/cli';
 
 const SERVER_SRC = fs.readFileSync(path.join(import.meta.dir, '../src/server.ts'), 'utf-8');
 const CLI_SRC = fs.readFileSync(path.join(import.meta.dir, '../src/cli.ts'), 'utf-8');
@@ -366,15 +367,12 @@ describe('Server auth security', () => {
     // The connect subprocess env must override BROWSE_PARENT_PID
     expect(pairBlock).toContain("BROWSE_PARENT_PID");
     expect(pairBlock).toContain("'0'");
-    // The connect command must propagate BROWSE_PARENT_PID=0 via the
-    // serverEnv object literal passed to startServer. The literal text
-    // `serverEnv.BROWSE_PARENT_PID` is NOT in source — the value is
-    // assigned via object-literal syntax (`BROWSE_PARENT_PID: '0'`)
-    // inside the `const serverEnv: Record<string, string> = { ... }`
-    // declaration. Assert both pieces appear in the connect block.
+    // The connect command starts its server with buildHeadedServerEnv, the
+    // same env the --supervise respawn uses, and that env disables the
+    // parent-PID watchdog.
     const connectBlock = sliceBetween(CLI_SRC, 'Launching headed Chromium', 'Terminal agent started');
-    expect(connectBlock).toContain("const serverEnv");
-    expect(connectBlock).toContain("BROWSE_PARENT_PID: '0'");
+    expect(connectBlock).toContain('startServer(buildHeadedServerEnv(globalFlags))');
+    expect(buildHeadedServerEnv({ proxyUrl: null, configHash: '' }).BROWSE_PARENT_PID).toBe('0');
   });
 
   // Regression: newtab returned 403 for scoped tokens because the tab ownership

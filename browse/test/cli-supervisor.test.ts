@@ -181,7 +181,7 @@ describe('runHeadedSupervisor (behavior)', () => {
 
 describe('buildHeadedServerEnv', () => {
   test('omits proxy and config hash when this invocation has none', () => {
-    expect(buildHeadedServerEnv({})).toEqual({ BROWSE_HEADED: '1', BROWSE_PORT: '34567', BROWSE_PARENT_PID: '0' });
+    expect(buildHeadedServerEnv({ proxyUrl: null, configHash: '' })).toEqual({ BROWSE_HEADED: '1', BROWSE_PORT: '34567', BROWSE_PARENT_PID: '0' });
   });
 });
 
