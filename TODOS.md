@@ -2,6 +2,24 @@
 
 ## NEXT PRIORITY
 
+### P1: paid-eval follow-ups from the v1.91.9.0 proof censuses (filed 2026-09-29)
+
+- **Claude Code 2.1.284 bump** — it enables per-turn effort for the eval model:
+  in gate census 36626737820, 66 of 84 sessions ran longer than on 2.1.251
+  (+20% session time, +32% thinking tokens) and 11 cases timed out on unchanged
+  budgets. The CI image stays on 2.1.251 until those cases get faster. Effort M.
+- **Recurring reds to repair, not rerun** — `plan-design-review-plan-mode`
+  (one ~250 s thinking block before its single write; times out at 300 s on
+  2.1.251 in every recent run), `review-army-perf-n-plus-one` (290-300 s on a
+  12-line diff; web search plus a conditional red-team pass), the HOLD SCOPE
+  routing case (no rigor decision within its 240 s window after the skill's own
+  defer/keep questions), and the `document-release` workflow judge (below its
+  floor in two of three censuses). Effort M each.
+- **Let pass-rate history decide the rest** — every census on this branch had
+  a different handful of single-trial reds. Once `eval:pass-rates` has 10 weekly
+  trials per case, apply the CASE_QUARANTINE entry rule instead of chasing one
+  run at a time. Effort S.
+
 ### P2/P3: impeccable interop deferrals (filed 2026-09-08, from the CEO + eng reviews of docs/designs/IMPECCABLE_INTEROP.md)
 
 Each item was weighed during the review and deferred with a reason; none blocks
@@ -144,7 +162,7 @@ wave"). Each was explicitly deferred with rationale, not dropped:
 - **#2443 AskUserQuestion numbering redesign** — real mismatch (brief letters
   vs host-rendered numbers), but a prompt-behavior redesign that shifts eval
   baselines; needs its own PR with baseline refresh. Effort S.
-- ~~**#2447 typecheck infra**~~ — superseded: the audit fix wave (v1.91.8.0)
+- ~~**#2447 typecheck infra**~~ — superseded: the audit fix wave (v1.91.9.0)
   added `tsconfig.json`, `bun run typecheck` (zero product errors) and the
   `typecheck:test` ratchet inside the required `free-tests` check, reusing
   #2447's fixes where they still applied.

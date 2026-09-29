@@ -9,11 +9,11 @@ The weekly paid eval run took 2 hours 45 minutes on Sept 28, almost all of it on
 
 ### The numbers that matter
 
-Source: the Sept 28 weekly census (run 36385945043) and the two proof censuses on this branch (runs 36597762183 and 36606688266). `bun run scripts/test-paid-shards.ts --tier periodic --slice-budget 540 --jobs 2 --list` prints the current plan.
+Source: the Sept 28 weekly census (run 36385945043) and the final proof census on this branch (run 36633323521). `bun run scripts/test-paid-shards.ts --tier periodic --slice-budget 540 --jobs 2 --list` prints the current plan.
 
 | Measure | Before | After |
 | --- | ---: | ---: |
-| Weekly periodic census wall clock | 2h 45m | 15 min for 32 of 33 machines (proof run 2) |
+| Weekly periodic census wall clock | 2h 45m | 11m 42s (gate census alongside: 10m 22s) |
 | Longest planned slice | 160 min (one test, twice) | ~10 min |
 | Automatic retries on paid evals | up to 2 per file | 0 |
 | Product-code type errors | 103 on v1.91.8.0 (no check) | 0, required in `free-tests` |
@@ -30,6 +30,7 @@ Run `bun run typecheck` and `bun run typecheck:test` before you push; both are f
 #### Fixed
 - `$B connect --supervise` respawned with a block-scoped env that no longer existed, so every restart threw and the supervisor gave up after five tries. The headed env is one helper used by connect and respawn, and the loop has behavioral tests.
 - Compiled `/cso` installs called an unimported `join` when launching the assertion-witness child, breaking runtime-tested witnessing for every installed user.
+- `/qa` checkpoint receipts now print the report link for their `exploration-NNN.json` file; reports had been linking `.qa-evidence/NNN` capture folders as checkpoints instead.
 - `/review` workflow ambiguities (smoke clock vs required revalidation, setup authority, plan-completion gate, findings record), `/office-hours` builder mode not loading its brainstorm section, `/sync-gbrain` Step 4 helper arguments and write path, `/plan-ceo-review` expansion framing and pacing menus, `/plan-design-review` with no designer API key, and `/deslop-shared-libs` one-file-per-turn reads.
 - Eval detectors that graded wording or step order now grade outcomes: eng batching, CEO split-overflow, mode routing, section-loading stale-fill, outside-voice-disabled attribution, design focus menus, and PTY permission dialogs with cropped titles.
 - Harness races and adapter gaps found by the proof runs: plan seeding accepted a stale empty input box when the CLI repainted after recording its reply, the third-party-actions recorder fixture lost every failure record, the autoplan dual-voice check could not read framed subagent reports from newer Claude Code, and the HOLD SCOPE routing check judged the skill's own defer/keep menu as its rigor decision, the outside-disabled check missed a correctly attributed quote of the pre-existing review record, and the plan-review judge was not told its reason length bound on the field it writes.
