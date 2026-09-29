@@ -15,20 +15,32 @@
  * the re-entry mechanism.
  */
 export const PERIODIC_CI_EXCLUDE: Record<string, { reason: string; tracking: string }> = {
-  'test/skill-e2e-ship-idempotency.test.ts': {
-    reason:
-      'documented-red: the PTY child sits at the Claude Code welcome screen for the full budget '
-      + '(readiness/typing race vs CLI 2.1.x); never green since it was born in v1.63',
-    tracking: 'TODOS.md "periodic tier — three documented-red tests need structural repair" (1 of 3 resolved: sidebar trio already deleted)',
+  'test/codex-e2e.test.ts': {
+    reason: 'the codex CLI is not installed in the CI image (Dockerfile.ci ships only claude-code); every case self-skips',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
   },
-  'test/skill-e2e-brain-privacy-gate.test.ts': {
-    reason:
-      'documented-red: the artifacts-sync stop-gate preconditions do not survive the hermetic env '
-      + 'even with per-test HOME/GSTACK_HOME injection; never green anywhere',
-    tracking: 'TODOS.md "periodic tier — three documented-red tests need structural repair"',
+  'test/codex-e2e-sol-scope.test.ts': {
+    reason: 'the codex CLI is not installed in the CI image (Dockerfile.ci ships only claude-code); every case self-skips',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
   },
-  'test/skill-e2e-ios.test.ts': {
-    reason: 'requires a live iOS device/simulator toolchain (xcodebuild, devicectl) — manual hardware, not a CI runner capability',
-    tracking: 'TODOS.md "skill-e2e-ios CI story" (device/runner decision)',
+  'test/codex-e2e-shared-libs.test.ts': {
+    reason: 'the codex CLI is not installed in the CI image (Dockerfile.ci ships only claude-code); every case self-skips',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
+  },
+  'test/codex-e2e-recommendation-substance.test.ts': {
+    reason: 'the codex CLI is not installed in the CI image (Dockerfile.ci ships only claude-code); every case self-skips',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
+  },
+  'test/skill-e2e-outside-voice.test.ts': {
+    reason: 'needs both the claude and codex CLIs; codex is not in the CI image, so every case self-skips',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
+  },
+  'test/skill-e2e-aside.test.ts': {
+    reason: 'needs macOS with the Aside app open (asideAvailable()); CI runners are Linux, so every case self-skips',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
+  },
+  'test/skill-e2e-ios-device.test.ts': {
+    reason: 'needs a physical iPhone over USB/devicectl — manual hardware, not a CI runner capability',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
   },
 };

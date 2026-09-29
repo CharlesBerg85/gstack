@@ -305,50 +305,6 @@ export const OVERLAY_FIXTURES: OverlayFixture[] = [
     pass: lowerIsBetter20Pct,
   },
 
-  {
-    id: 'opus-4-7-effort-match-trivial-sonnet',
-    overlayPath: 'model-overlays/opus-4-7.md',
-    model: 'claude-sonnet-4-6',
-    trials: 10,
-    concurrency: 3,
-    direction: 'lower_is_better',
-    maxTurns: 8,
-    setupWorkspace: (dir) => {
-      fs.writeFileSync(
-        path.join(dir, 'config.json'),
-        '{"name": "demo", "version": "1.0.0"}\n',
-      );
-    },
-    userPrompt: "What's the version in config.json? Return only a JSON object with the version key and its exact string value. " +
-      "The final message is consumed directly by JSON.parse: return the exact JSON object, with no Markdown fences and no other prose.",
-    metric: reportedThinkingTokens,
-    metricName: 'reported_thinking_tokens',
-    verify: (r) => assertFinalJson(r, { version: '1.0.0' }),
-    comparison: { direction: 'lower_is_better', minimum: 0 },
-    pass: lowerIsBetter20Pct,
-  },
-
-  {
-    id: 'opus-4-7-literal-interpretation-sonnet',
-    overlayPath: 'model-overlays/opus-4-7.md',
-    model: 'claude-sonnet-4-6',
-    trials: 10,
-    concurrency: 3,
-    direction: 'higher_is_better',
-    allowedTools: ['Read', 'Glob', 'Grep', 'Bash', 'Edit', 'Write'],
-    maxTurns: 15,
-    setupWorkspace: setupLiteralWorkspace,
-    userPrompt: 'Fix the failing tests. Preserve the specified behavior and repair the implementation.',
-    metric: (_r, dir, deadlineAt) => {
-      if (!dir) throw new Error('literal fixture metric needs its workspace');
-      return correctLiteralTargets(dir, deadlineAt);
-    },
-    metricName: 'correct_target_behaviors',
-    taskCorrect: (metric) => metric === 3,
-    allowedChanges: ['src/auth.ts', 'src/billing.ts', 'src/notifications.ts'],
-    comparison: { direction: 'higher_is_better', minimum: 0, maximum: 3 },
-    pass: higherIsBetter20Pct,
-  },
 ];
 
 // Validate at module load so a broken fixture fails fast at test startup,

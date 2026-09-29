@@ -25,7 +25,6 @@ const RUNNERS = [
   'test/helpers/session-runner.ts',
   'test/helpers/claude-pty-runner.ts',
   'test/helpers/codex-session-runner.ts',
-  'test/helpers/gemini-session-runner.ts',
   'test/helpers/agent-sdk-runner.ts',
 ];
 

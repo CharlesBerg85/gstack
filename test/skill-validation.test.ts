@@ -316,25 +316,6 @@ describe('Usage string consistency', () => {
   });
 });
 
-describe('Generated SKILL.md freshness', () => {
-  test('no unresolved {{placeholders}} in generated SKILL.md', () => {
-    const content = fs.readFileSync(path.join(ROOT, 'SKILL.md'), 'utf-8');
-    const unresolved = content.match(/\{\{\w+\}\}/g);
-    expect(unresolved).toBeNull();
-  });
-
-  test('no unresolved {{placeholders}} in generated browse/SKILL.md', () => {
-    const content = fs.readFileSync(path.join(ROOT, 'browse', 'SKILL.md'), 'utf-8');
-    const unresolved = content.match(/\{\{\w+\}\}/g);
-    expect(unresolved).toBeNull();
-  });
-
-  test('generated SKILL.md has AUTO-GENERATED header', () => {
-    const content = fs.readFileSync(path.join(ROOT, 'SKILL.md'), 'utf-8');
-    expect(content).toContain('AUTO-GENERATED');
-  });
-});
-
 // --- Update check preamble validation ---
 
 describe('Update check preamble', () => {

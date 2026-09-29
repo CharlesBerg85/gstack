@@ -52,7 +52,7 @@ const PLAN_MD = [
 
 export function registerCarveSectionCase(skill: string): void {
     const guard = CARVE_GUARDS[skill];
-    if (!guard || guard.behavioral === 'external') throw new Error(`No generic carved-skill case for ${skill}`);
+    if (!guard || (guard.behavioral !== 'plan' && guard.behavioral !== 'prompt')) throw new Error(`No generic carved-skill case for ${skill}`);
     // Keep explicit cost-scoped selection; the free census pins every wrapper.
     if (only && only !== guard.skill) return;
 

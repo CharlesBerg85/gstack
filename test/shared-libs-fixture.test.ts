@@ -177,17 +177,6 @@ describe('shared-code legacy interactive actor', () => {
     await expect(callback('AskUserQuestion', { questions: [{ question: 'Decision', options: [option] }] }))
       .rejects.toThrow('No unambiguous no-change option');
   });
-
-  test('both native index-flag captures select every owning interactive lifecycle case', () => {
-    for (const fixture of ['test/fixtures/shared-libs-index-flags-skip-question.json',
-      'test/fixtures/shared-libs-index-flags-no-change-description.json']) {
-      expect(selectTests([fixture], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected.sort()).toEqual([
-        'shared-libs-review-index-flags', 'shared-libs-review-lifecycle', 'shared-libs-review-path-eligibility',
-        'shared-libs-review-prior-coverage', 'shared-libs-review-revalidation',
-      ]);
-    }
-  });
-
   for (const [choose, labels] of [['approve', ['Fix it', 'Apply remedy', 'Approve', 'Extract helper', 'Reuse library', 'Choice (recommended)']],
     ['skip', ['Skip', 'Keep current', 'Decline', 'Do not change', 'Leave as-is']]] as const) {
     test.each(labels)(`${choose} supports the declared choice: %s`, async label => {
@@ -257,13 +246,6 @@ describe('shared-code legacy interactive actor', () => {
       expect(input).toEqual(original);
     }
   });
-
-  test('the captured native no-change questions select every owning interactive lifecycle case', () => {
-    expect(selectTests(['test/fixtures/shared-libs-index-flags-native-questions.json'], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected.sort())
-      .toEqual(['shared-libs-review-index-flags', 'shared-libs-review-lifecycle', 'shared-libs-review-path-eligibility',
-        'shared-libs-review-prior-coverage', 'shared-libs-review-revalidation']);
-  });
-
   test('the registered callback acknowledges the complete first-attempt native skip despite descriptive reuse', async () => {
     const native = JSON.parse(fs.readFileSync(path.join(import.meta.dir, 'fixtures/shared-libs-index-flags-native-questions.json'), 'utf8'));
     const { sourceRun, attempt, input } = native.regressions[0];
@@ -999,19 +981,13 @@ const interactive = [
   'shared-libs-plan-callers', 'shared-libs-review-index-flags', 'shared-libs-review-lifecycle',
   'shared-libs-review-path-eligibility', 'shared-libs-review-prior-coverage', 'shared-libs-review-revalidation',
 ];
-const judged = ['shared-libs-opportunity-judgment', 'shared-libs-plan-callers', 'shared-libs-pr-coverage'];
 const allShared = Object.keys(E2E_TOUCHFILES).filter(name => name.startsWith('shared-libs-')).sort();
 const selected = (dependency: string) => selectTests([dependency], E2E_TOUCHFILES, GLOBAL_TOUCHFILES)
   .selected.filter(name => name.startsWith('shared-libs-')).sort();
 
 describe('shared-code paid dependency selection', () => {
-  test('SDK and judge changes select the actual affected owners', () => {
-    expect(selected('test/helpers/agent-sdk-runner.ts')).toEqual(interactive);
-    expect(selected('test/helpers/llm-judge.ts')).toEqual(judged);
-  });
-
   test('generation, gating, fixture validation and host support keep their coverage owners', () => {
-    for (const dependency of ['scripts/gen-skill-docs.ts', 'test/helpers/e2e-gate.ts', 'test/shared-libs-fixture.test.ts']) {
+    for (const dependency of ['scripts/gen-skill-docs.ts', 'test/helpers/e2e-gate.ts']) {
       expect(selected(dependency)).toEqual(allShared);
     }
     expect(selected('lib/claude-bin.ts')).toEqual(allShared.filter(name => name !== 'shared-libs-codex-read-only'));

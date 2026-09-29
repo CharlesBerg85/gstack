@@ -417,8 +417,6 @@ describe('the seeded launcher HOME registry preserves the phase publication boun
     expect(f.audit()).toEqual({ phase: 'design', requiredPhase: 1,
       sessionId: 'd3dddf71-ec90-4aa3-a510-f0eb9d85ad5d', readToolUseId: 'toolu_01CvVuWnRgxP6wn1iFM31wnt',
       readAt: '2026-09-17T01:18:58.990Z', resultAt: '2026-09-17T01:18:59.007Z' });
-    const caller = readFileSync(join(ROOT, 'test', 'skill-e2e-autoplan-chain.test.ts'), 'utf8');
-    expect(caller).toMatch(/registerAutoplanPhaseInstructionAliases\(phaseInstructions, session\.hermeticConfigDir,\s*session\.hermeticSkillStateRoot\)/);
   });
   test.each(['design', 'dx', 'eng'] as const)('the same owned root binds both %s HOME aliases once', phase => {
     const f = fixture(phase); f.register(); f.register();

@@ -4,7 +4,6 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { OVERLAY_CASE_FILES, OVERLAY_MIN_FILE_WALL_MS } from './helpers/overlay-case-policy';
-import { AUTOPLAN_CHAIN_BUDGET } from './helpers/eval-budgets';
 import {
   applyHollowShardGuard, buildPaidShardArgs, buildRunManifest,
   DEFAULT_SHARD_TIMEOUT_MS, isOverlayTestFile, OVERLAY_MAX_ACTIVE_SHARDS,
@@ -52,7 +51,7 @@ describe('overlay file policy', () => {
   });
 
   test('only the exact wrapper family gets one attempt and the extra process grace', () => {
-    expect(overlayFiles).toHaveLength(6);
+    expect(overlayFiles).toHaveLength(4);
     expect(OVERLAY_MAX_ACTIVE_SHARDS).toBe(1);
     expect(OVERLAY_MIN_FILE_WALL_MS).toBe(1_830_000);
     for (const file of overlayFiles) {
@@ -63,7 +62,7 @@ describe('overlay file policy', () => {
       expect(buildPaidShardArgs([file], resolvePaidShardTimeoutMs([file]), 2, retriesForFiles([file])))
         .toContain('--timeout=1830000');
     }
-    for (const file of [normalFile, 'test/skill-e2e-overlay-harness.test.ts', 'test/model-overlay-opus-4-7.test.ts']) {
+    for (const file of [normalFile, 'test/skill-e2e-overlay-harness.test.ts', 'test/model-overlays.test.ts']) {
       expect(isOverlayTestFile(file)).toBe(false);
       expect(resolvePaidShardTimeoutMs([file])).toBe(DEFAULT_SHARD_TIMEOUT_MS);
       expect(retriesForFiles([file])).toBe(1);
@@ -123,16 +122,16 @@ describe('overlay file policy', () => {
 });
 
 describe('overlay manifest affinity and CI capacity', () => {
-  test('actual lifecycle wrapper guards include all six in periodic and exclude all six from gate', () => {
+  test('actual lifecycle wrapper guards include all four in periodic and exclude all four from gate', () => {
     for (const tier of ['periodic', 'gate'] as const) {
       const manifest = buildRunManifest({ tier, sliceCount: 6, evalsAll: true, env: { EVALS_ALL: '1' } });
       const entries = manifest.entries.filter(entry => isOverlayTestFile(entry.file));
-      expect(entries).toHaveLength(6);
+      expect(entries).toHaveLength(4);
       expect(entries.every(entry => entry.status === (tier === 'periodic' ? 'planned' : 'excluded'))).toBe(true);
     }
   });
 
-  test('95 files retain every case, reserve slice six, and fit 330 minutes with actual family walls', () => {
+  test('93 files retain every case, reserve slice six, and fit 330 minutes with actual family walls', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'overlay-affinity-'));
     const normalFiles = Array.from({ length: 89 }, (_, i) => `test/skill-e2e-normal-${i.toString().padStart(2, '0')}.test.ts`);
     const discovered = [...normalFiles, ...overlayFiles];
@@ -144,11 +143,11 @@ describe('overlay manifest affinity and CI capacity', () => {
       }
       const opts = { tier: 'periodic' as const, sliceCount: 6, evalsAll: true, discovered, rootDir: dir, env: { EVALS_ALL: '1' } };
       const manifest = buildRunManifest(opts);
-      expect(manifest.entries).toHaveLength(95);
-      expect(new Set(manifest.entries.map(e => e.file)).size).toBe(95);
+      expect(manifest.entries).toHaveLength(93);
+      expect(new Set(manifest.entries.map(e => e.file)).size).toBe(93);
       expect(manifest.entries.every(e => e.status === 'planned')).toBe(true);
       const counts = [1, 2, 3, 4, 5, 6].map(slice => manifest.entries.filter(e => e.slice === slice).length);
-      expect(counts).toEqual([18, 18, 18, 18, 17, 6]);
+      expect(counts).toEqual([18, 18, 18, 18, 17, 4]);
       expect(manifest.entries.filter(e => e.slice === 6).map(e => e.file).sort()).toEqual([...overlayFiles].sort());
       expect(buildRunManifest({ ...opts, discovered: [...discovered].reverse() })).toEqual(manifest);
       expect(parseRunManifest(JSON.stringify(manifest))).toEqual(manifest);
@@ -167,14 +166,13 @@ describe('overlay manifest affinity and CI capacity', () => {
       const jobs = parseCliOptions([], step.env).jobs;
       expect(jobs).toBe(2);
       expect(parseCliOptions([], step.env).withinShardConcurrency).toBe(2);
-      expect(job.strategy.matrix.slice).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      expect(job.strategy.matrix.slice).toEqual([1, 2, 3, 4, 5, 6, 7]);
       const normalMinutes = Math.ceil(18 / jobs) * resolvePaidShardTimeoutMs([normalFiles[0]]) / 60_000;
       const overlayMinutes = Math.ceil(overlayFiles.length / OVERLAY_MAX_ACTIVE_SHARDS)
         * Math.max(...overlayFiles.map(file => resolvePaidShardTimeoutMs([file]))) / 60_000;
       expect(normalMinutes).toBe(270);
-      expect(overlayMinutes).toBe(183);
+      expect(overlayMinutes).toBe(122);
       expect(job['timeout-minutes']).toBeGreaterThanOrEqual(Math.max(normalMinutes, overlayMinutes) + 20);
-      expect(job['timeout-minutes'] * 60_000).toBeGreaterThanOrEqual(AUTOPLAN_CHAIN_BUDGET.ciJobMs);
 
       // Gate selection keeps its original periodic exclusion and all six
       // ordinary slices; reservation does not spend an empty slot in gate.

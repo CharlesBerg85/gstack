@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
+import { resolveEvalModel } from '../lib/eval-model';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const source = fs.readFileSync(path.join(ROOT, 'test/skill-e2e-qa-bugs.test.ts'), 'utf8');
@@ -13,10 +13,6 @@ if (!setup || !runner || registrations.length !== 3) throw new Error('Missing ac
 const script = new Bun.Transpiler({ loader: 'ts' }).transformSync([setup, runner, ...registrations].join('\n'));
 const asset = fs.readFileSync(path.join(ROOT, 'qa/sections/browser-setup.md'), 'utf8');
 const ids = ['qa-b6-static', 'qa-b7-spa', 'qa-b8-checkout'];
-
-test('planted-browser fixture regression selects its three actual consumers', () => {
-  expect(selectTests(['test/qa-bugs-fixture.test.ts'], E2E_TOUCHFILES).selected?.sort()).toEqual(ids);
-});
 
 for (const id of ids) test.each(['complete section', 'additional trailing policy', 'missing section'])(`${id} retains the carved browser setup: %s`, async scenario => {
   const owned = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'qa-bugs-fixture-')));
@@ -29,7 +25,7 @@ for (const id of ids) test.each(['complete section', 'additional trailing policy
     fs.writeFileSync(path.join(owned, 'qa/SKILL.md'), '# QA entrypoint\nRead the carved sections.\n');
     if (scenario !== 'missing section') fs.writeFileSync(path.join(owned, 'qa/sections/browser-setup.md'), section);
     new Function('fs', 'path', 'os', 'ROOT', 'setupBrowseShims', 'testServer', 'browseBin',
-      'runSkillTest', 'runId', 'CAPTURE_MS', 'CAPTURE_LONG_MS', 'testConcurrentIfSelected', script)(
+      'runSkillTest', 'runId', 'CAPTURE_MS', 'CAPTURE_LONG_MS', 'testConcurrentIfSelected', 'resolveEvalModel', script)(
       fs, path, { ...os, tmpdir: () => owned }, owned, () => {}, { url: 'http://fixture.invalid' }, '/unused/browse',
       async (options: { workingDirectory: string; prompt: string; testName: string }) => {
         calls.push(options);
@@ -43,7 +39,7 @@ for (const id of ids) test.each(['complete section', 'additional trailing policy
         expect(options.prompt).toContain('read BROWSER-SETUP.md in this directory and follow it exactly');
         throw stopped;
       }, 'offline-fixture', 300000, 600000,
-      (name: string, callback: () => Promise<void>) => callbacks.set(name, callback),
+      (name: string, callback: () => Promise<void>) => callbacks.set(name, callback), resolveEvalModel,
     );
     expect([...callbacks.keys()]).toEqual(ids);
     if (scenario === 'missing section') {

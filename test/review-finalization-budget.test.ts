@@ -4,8 +4,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { buildPaidShardArgs, retriesForFiles, resolvePaidShardTimeoutMs } from '../scripts/test-paid-shards';
-import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
-
 const ROOT = path.resolve(import.meta.dir, '..');
 const PAID_FILE = 'test/skill-e2e-review.test.ts';
 const CASES = [
@@ -13,12 +11,6 @@ const CASES = [
   ['review-enum-completeness', 300, 15],
   ['review-design-lite', 400, 35],
 ] as const;
-
-test('review finalization regressions select all three owning cases', () => {
-  expect(selectTests(['test/review-finalization-budget.test.ts'], E2E_TOUCHFILES).selected?.sort())
-    .toEqual(CASES.map(([id]) => id).sort());
-});
-
 for (const [id, workMs, maxTurns] of CASES) {
   test.each(['recover', 'both-timeout'])(`${id} records late results before retry or finalization: %s`, scenario => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'review-finalization-'));

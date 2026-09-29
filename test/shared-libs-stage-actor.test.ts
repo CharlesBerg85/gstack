@@ -228,8 +228,8 @@ test.each(['missing', 'no-call', 'stale', 'relabeled old', 'late edit', 'edited 
     }
   }, 30_000);
 
-test('the actor helper and regression file select both existing neighboring native bodies', () => {
-  for (const file of ['test/helpers/shared-libs-path-fixture.ts', 'test/shared-libs-stage-actor.test.ts']) {
+test('the actor helper selects both existing neighboring native bodies', () => {
+  for (const file of ['test/helpers/shared-libs-path-fixture.ts']) {
     const selected = selectTests([file], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected;
     expect(selected).toContain('shared-libs-review-lifecycle');
     expect(selected).toContain('shared-libs-review-revalidation');

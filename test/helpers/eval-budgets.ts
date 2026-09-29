@@ -43,44 +43,24 @@ export const ALL_TIERS = {
   PTY_LONG_MS,
 } as const;
 
-/**
- * Explicit exception for one uninterrupted four-phase workflow. These are
- * specified allowances, not measured latency or a conservative confidence bound.
- * The historical 900-second failure remains a failure. Ordinary tiers do not grow.
- */
-export const AUTOPLAN_CHAIN_BUDGET = {
-  id: 'autoplan-four-native-phases-v1',
-  file: 'test/skill-e2e-autoplan-chain.test.ts',
-  workMs: 4 * PTY_LONG_MS,
-  sessionMs: 84 * 60_000,
-  testMs: 85 * 60_000,
-  shardMs: 172 * 60_000,
-  retries: 1,
-  shardReserveMs: 2 * 60_000,
-  ciJobMs: 200 * 60_000,
-  ciReserveMs: 28 * 60_000,
-  reason: 'One command must complete CEO, Design, DX and Eng, including native reviews and amendment handoffs.',
-} as const;
+/** Supervision reserve added to every registered whole-file wall. */
+export const SHARD_RESERVE_MS = 2 * 60_000;
 
 /** Whole-file supervision must cover each existing attempt and its retry.
- * These six fixtures already allow 25 minutes per case; the old 30-minute
+ * These fixtures already allow 25 minutes per case; the old 30-minute
  * wall could kill a second attempt after five minutes. No case budget grows.
  * Reserve the sequential upper bound even when Bun runs sibling cases together.
  */
 export const FINDING_RETRY_BUDGETS = [
-  { file: 'test/skill-e2e-plan-ceo-finding-count.test.ts', cases: 2 },
   { file: 'test/skill-e2e-plan-ceo-split-overflow.test.ts', cases: 1 },
-  { file: 'test/skill-e2e-plan-design-finding-count.test.ts', cases: 1 },
-  { file: 'test/skill-e2e-plan-devex-finding-count.test.ts', cases: 1 },
-  { file: 'test/skill-e2e-plan-eng-finding-count.test.ts', cases: 1 },
   { file: 'test/skill-e2e-plan-eng-multi-finding-batching.test.ts', cases: 1 },
 ].map(({ file, cases }) => ({
   file, cases,
   id: `${file.slice('test/skill-e2e-'.length, -'.test.ts'.length)}-existing-retry-v1`,
   testMs: 1_500_000,
   retries: 1,
-  shardReserveMs: AUTOPLAN_CHAIN_BUDGET.shardReserveMs,
-  shardMs: cases * 1_500_000 * 2 + AUTOPLAN_CHAIN_BUDGET.shardReserveMs,
+  shardReserveMs: SHARD_RESERVE_MS,
+  shardMs: cases * 1_500_000 * 2 + SHARD_RESERVE_MS,
 }));
 
 /** Three existing captures and one configured retry; only supervision grows. */
@@ -90,8 +70,8 @@ export const AUQ_CONSISTENCY_RETRY_BUDGET = {
   cases: 1,
   testMs: 3 * CAPTURE_MS + 60_000,
   retries: 1,
-  shardReserveMs: AUTOPLAN_CHAIN_BUDGET.shardReserveMs,
-  shardMs: (3 * CAPTURE_MS + 60_000) * 2 + AUTOPLAN_CHAIN_BUDGET.shardReserveMs,
+  shardReserveMs: SHARD_RESERVE_MS,
+  shardMs: (3 * CAPTURE_MS + 60_000) * 2 + SHARD_RESERVE_MS,
 } as const;
 
 /** These fixtures have a fixed case count in every supported tier. */
@@ -109,9 +89,8 @@ export const FILE_RETRY_BUDGETS = [
     { file: 'test/skill-e2e-shared-libs-paths.test.ts', attemptMs: 3 * CAPTURE_LONG_MS, retries: 1 },
     { file: 'test/skill-e2e-ship-docsync.test.ts', attemptMs: 5 * CAPTURE_LONG_MS + 8 * CAPTURE_MS, retries: 1 },
     // Seventeen workflow judges include their 10s recording grace; the other
-    // eleven judges retain 120s. Supervise all 28 and the existing one retry.
-    { file: 'test/skill-llm-eval.test.ts', attemptMs: 17 * (JUDGE_MS + 10_000) + 11 * JUDGE_MS, retries: 1 },
-    { file: 'test/codex-e2e-plan-format.test.ts', attemptMs: 4 * (CAPTURE_LONG_MS + 10_000), retries: 1 },
+    // seven judges retain 120s. Supervise all 24 and the existing one retry.
+    { file: 'test/skill-llm-eval.test.ts', attemptMs: 17 * (JUDGE_MS + 10_000) + 7 * JUDGE_MS, retries: 1 },
     { file: 'test/skill-e2e-auq-matrix.test.ts', attemptMs: 6 * CAPTURE_MS, retries: 1 },
     { file: 'test/skill-e2e-plan-format.test.ts', attemptMs: 4 * (CAPTURE_MS + 10_000), retries: 1 },
     { file: 'test/skill-e2e-auto-decide-preserved.test.ts', attemptMs: PTY_MS, retries: 1 },
@@ -128,16 +107,14 @@ export const FILE_RETRY_BUDGETS = [
   ].map(({ file, attemptMs, retries }) => ({
     file, attemptMs, retries,
     id: `${file.slice('test/'.length, -'.test.ts'.length)}-existing-retry-v1`,
-    shardReserveMs: AUTOPLAN_CHAIN_BUDGET.shardReserveMs,
-    shardMs: attemptMs * (retries + 1) + AUTOPLAN_CHAIN_BUDGET.shardReserveMs,
+    shardReserveMs: SHARD_RESERVE_MS,
+    shardMs: attemptMs * (retries + 1) + SHARD_RESERVE_MS,
   })),
 ];
 
-/** The only registered over-tier test budget; arbitrary per-file escapes fail. */
+/** No paid test may exceed the ordinary tiers; arbitrary per-file escapes fail. */
 export function assertPaidTestBudget(file: string, ms: number): void {
-  if (!Number.isSafeInteger(ms) || ms <= 0 ||
-      (ms > PTY_LONG_MS * 1.25 &&
-       (file !== AUTOPLAN_CHAIN_BUDGET.file || ms !== AUTOPLAN_CHAIN_BUDGET.testMs))) {
+  if (!Number.isSafeInteger(ms) || ms <= 0 || ms > PTY_LONG_MS * 1.25) {
     throw new Error(`Unregistered paid test budget: ${file}: ${ms}`);
   }
 }

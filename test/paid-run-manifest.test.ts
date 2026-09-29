@@ -114,7 +114,7 @@ describe('recorded-duration slice packing', () => {
   const plans = [
     { tier: 'gate' as const, sliceCount: 6 },
     { tier: 'gate' as const, sliceCount: 7 },
-    { tier: 'periodic' as const, sliceCount: 8, dedicatedAutoplanSlice: true },
+    { tier: 'periodic' as const, sliceCount: 7 },
   ];
 
   test('the committed seed records real wall times for the fast PR profile', () => {
@@ -398,7 +398,7 @@ describe('hollow-shard guard', () => {
 
 describe('retry parity', () => {
   test('registered native workflows preserve main retry policy while overlay attempts stay isolated', () => {
-    const native = 'test/skill-e2e-autoplan-chain.test.ts';
+    const native = 'test/skill-e2e-plan-ceo-split-overflow.test.ts';
     expect(retriesForFiles([native])).toBe(1);
     expect(retriesForFiles([native.replaceAll('/', '\\')])).toBe(1);
     expect(buildPaidShardArgs([native], 1_800_000, 2, retriesForFiles([native])).join(' ')).toContain('--retry 1');

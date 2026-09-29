@@ -6,8 +6,7 @@ import { curateWindowsSafe } from '../scripts/test-free-shards';
 const consumers = ['qa-functional-cli-report', 'qa-functional-webhook-report', 'qa-functional-cli-fix', 'qa-functional-webhook-fix',
   'review-exploratory-small-cli', 'ship-exploratory-small-cli', 'ship-exploratory-unavailable', 'ship-exploratory-plan-checks', 'ship-exploratory-late-input'];
 
-test.each([...QA_EVIDENCE_RUNTIME, 'test/helpers/qa-evidence-producer.ts', 'test/qa-evidence.test.ts',
-  'test/qa-evidence-producer.test.ts', 'test/qa-evidence-selection.test.ts'])('%s selects every real production capture consumer', file => {
+test.each([...QA_EVIDENCE_RUNTIME, 'test/helpers/qa-evidence-producer.ts'])('%s selects every real production capture consumer', file => {
   const selected = selectTests([file], E2E_TOUCHFILES).selected;
   for (const consumer of consumers) expect(selected).toContain(consumer);
 });

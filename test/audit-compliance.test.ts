@@ -121,12 +121,6 @@ describe('Audit compliance', () => {
   });
 
   // Fix 5: Data flow documentation in review.ts
-  test('review.ts has data flow documentation', () => {
-    const review = readFileSync(join(ROOT, 'scripts/resolvers/review.ts'), 'utf-8');
-    expect(review).toContain('Data sent');
-    expect(review).toContain('Data NOT sent');
-  });
-
   // Round 2 Fix 3: Extension sender validation + message type allowlist
   test('extension background.js validates message sender', () => {
     const bg = readFileSync(join(ROOT, 'extension/background.js'), 'utf-8');

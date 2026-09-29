@@ -57,8 +57,6 @@ const KNOWN_UNREGISTERED = new Set([
   'test/skill-e2e-auq-matrix.test.ts',
   // Standalone periodic self-gated A/B probe; template-literal testNames (auq-ab-${label}), no E2E map key — fail-open-safe, runs on every periodic sweep.
   'test/skill-e2e-auq-verbose-vs-carved-ab.test.ts',
-  // bin-script pipeline test (spawns bun scripts, no model spend) that lives under the skill-e2e-* glob; no E2E map key exists for it.
-  'test/skill-e2e-memory-pipeline.test.ts',
 ]);
 
 describe('E2E tier alignment (touchfiles declaration vs test self-gate)', () => {

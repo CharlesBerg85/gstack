@@ -3,8 +3,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JUDGE_MS, CAPTURE_MS } from './helpers/eval-budgets';
 import { SESSION_DRAIN_GRACE_MS } from './helpers/session-runner';
-import { E2E_TOUCHFILES } from './helpers/touchfiles';
-
 const source=fs.readFileSync(path.join(import.meta.dir,'skill-e2e-review.test.ts'),'utf8');
 async function exercise(scenarios: Array<'success'|'timeout'|'wrong-report'|'browse-error'|'no-report'>) {
   const setups:any[]=[],done:any[]=[],callbacks:any[]=[],rows:any[]=[],calls:any[]=[],outputs:string[]=[],preRunReports:string[][]=[];
@@ -87,8 +85,4 @@ test('Enum semantic failure records false exactly once after the existing assert
 
 test('Enum verdict retains the existing browser-error guard',async()=>{
   const x=await exercise(['browse-error']);expect(x.rows).toHaveLength(1);expect(x.rows[0].passed).toBe(false);
-});
-
-test('Enum lifecycle controls select the existing enum owner only',()=>{
-  expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes('test/review-enum-lifecycle.test.ts')).map(([name])=>name)).toEqual(['review-enum-completeness']);
 });

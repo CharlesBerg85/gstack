@@ -1,5 +1,6 @@
 /** Free recording fixtures; every runner and judge below is synthetic. */
 import { describe, expect, spyOn, test } from 'bun:test';
+import { resolveEvalModel } from '../lib/eval-model';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -649,7 +650,8 @@ describe('Plan format actual capture and judge lifecycle', () => {
         expect(output).not.toContain('Unhandled error between tests');
         const starts = events.filter(event => event.kind === 'start');
         expect(starts.map(({ timeout, maxTurns, model }) => ({ timeout, maxTurns, model })))
-          .toEqual([1, 2].map(() => ({ timeout: 300, maxTurns: 10, model: 'claude-opus-4-7' })));
+          .toEqual([1, 2].map(() => ({ timeout: 300, maxTurns: 10,
+            model: file.includes('plan-prosons') ? 'claude-opus-4-7' : resolveEvalModel('capture') })));
         expect(events.filter(event => event.kind === 'ready').map(event => event.fixtureExists)).toEqual([true, true]);
         expect(entries).toHaveLength(2);
         expect(entries.map(entry => entry.attempt)).toEqual([1, 2]);

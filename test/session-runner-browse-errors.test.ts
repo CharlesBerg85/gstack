@@ -27,11 +27,9 @@ beforeAll(() => {
 }, 20_000);
 afterAll(() => { if (fixture) fs.rmSync(fixture, { recursive: true, force: true }); });
 
-test.each(['full', 'pr'] as const)('%s selection binds the captured failure and callback regression to SQL review', profile => {
-  for (const file of ['test/session-runner-browse-errors.test.ts', 'test/fixtures/review-browse-error-ci-36516246523.json']) {
-    expect(computePaidCaseSelection({ profile, env: {}, changedFiles: [file] }).selection)
-      .toEqual({ e2e: ['review-sql-injection'], judges: [] });
-  }
+test.each(['full', 'pr'] as const)('%s selection binds the captured failure to SQL review', profile => {
+  expect(computePaidCaseSelection({ profile, env: {}, changedFiles: ['test/fixtures/review-browse-error-ci-36516246523.json'] }).selection)
+    .toEqual({ e2e: ['review-sql-injection'], judges: [] });
 });
 
 describe('native browser-error evidence', () => {

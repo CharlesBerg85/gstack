@@ -101,6 +101,29 @@ describe('GET /health never carries a token (IRON RULE)', () => {
   });
 });
 
+describe('GET /health is liveness-only', () => {
+  beforeEach(() => __resetRegistry());
+
+  // Folds the former server-auth / security-audit-r2 / sidebar-tabs /
+  // server-security-surface source greps into one check on the real body.
+  // #2557: no `security` field (its only data source had no writer).
+  const FORBIDDEN = ['token', 'security', 'currentUrl', 'currentMessage', 'agentStatus', 'messageQueue', 'agentStartTime', 'chatEnabled'];
+
+  for (const [label, browserManager, headers] of [
+    ['default mode', () => new BrowserManager(), {}],
+    ['headed mode + pinned extension Origin', headedBrowserManager, { Origin: PINNED_ORIGIN }],
+  ] as const) {
+    test(`${label}: no token, security, browsing-state or chat fields; terminal port survives`, async () => {
+      const handle = buildFetchHandler(makeConfig({ browserManager: browserManager() }));
+      const resp = await handle.fetchLocal(new Request('http://127.0.0.1:34567/health', { headers }), null);
+      expect(resp.status).toBe(200);
+      const body = await resp.json() as Record<string, unknown>;
+      expect(FORBIDDEN.filter((key) => key in body)).toEqual([]);
+      expect('terminalPort' in body).toBe(true);
+    });
+  }
+});
+
 describe('POST /extension-token pinned-origin bootstrap', () => {
   beforeEach(() => __resetRegistry());
 

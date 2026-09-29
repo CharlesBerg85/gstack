@@ -30,6 +30,8 @@ import {
   runPaidShards,
   summarize,
   summaryExitCode,
+  tierSkipReason,
+  buildRunManifest,
   type ShardOutcome,
 } from '../scripts/test-paid-shards';
 
@@ -60,11 +62,62 @@ describe('paid test enumeration', () => {
     const files = collectPaidTestFiles();
     expect(files.length).toBeGreaterThan(0);
     expect(files.every(isPaidTestFile)).toBe(true);
-    expect(PAID_TEST_GLOBS.length).toBe(7);
+    expect(PAID_TEST_GLOBS.length).toBe(6);
 
     const shards = planPaidShards(files);
     expect(shards.flat().sort()).toEqual([...files].sort());
     expect(shards.every((shard) => shard.length === 1)).toBe(true);
+  });
+});
+
+describe('tier lane skip (B5)', () => {
+  const file = 'test/skill-e2e-sample.test.ts';
+  const touchfiles = { 'sample-gate': [file, 'sample/**'], 'sample-periodic': [file], other: ['x/**'] };
+  const tiers = { 'sample-gate': 'gate', 'sample-periodic': 'periodic', other: 'periodic' };
+  const reg = { 'sample-gate': [file] } as Record<string, string[]>;
+
+  test('a fully static file with only other-tier ids is skipped with its reason', () => {
+    const source = "describeIfSelected('Sample', ['sample-gate'], () => { testIfSelected('sample-gate', async () => {}); });";
+    expect(tierSkipReason(file, source, 'periodic', reg, tiers)).toBe('skipped: no E2E_TIERS id has tier periodic');
+    expect(tierSkipReason(file, source, 'gate', reg, tiers)).toBeNull();
+  });
+
+  test('a comment or path that quotes another-tier id cannot change the decision', () => {
+    const source = "// see 'other' and 'sample-periodic' for context\nconst dir = 'sample-periodic/fixtures';\n" +
+      "testIfSelected('sample-gate', async () => {});";
+    expect(tierSkipReason(file, source, 'periodic', reg, tiers)).toBe('skipped: no E2E_TIERS id has tier periodic');
+    expect(tierSkipReason(file, source, 'gate', reg, tiers)).toBeNull();
+  });
+
+  test('computed registrations, unregistered literal ids and id-less files keep today\'s scheduling', () => {
+    for (const source of [
+      "describeIfSelected(name, keys, () => {});",
+      "describeIfSelected('Sample', [...keys], () => {});",
+      "testConcurrentIfSelected(`sample-${label}`, async () => {});",
+      "runSkillTest({ testName: `sample-${label}` });",
+      "testIfSelected(caseName, async () => {});",
+    ]) expect(tierSkipReason(file, source, 'periodic', reg, tiers)).toBeNull();
+    expect(tierSkipReason(file, "testIfSelected('sample-periodic', async () => {});", 'periodic', reg, tiers)).toBeNull();
+    expect(tierSkipReason(file, "testIfSelected('sample-gate', async () => {});", 'periodic', {}, tiers)).toBeNull();
+    expect(tierSkipReason(file, "testIfSelected('sample-gate', async () => {});", 'gate', touchfiles, tiers)).toBeNull();
+  });
+
+  test('the real constructed-name diagram file stays scheduled in both lanes', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'test/skill-e2e-diagram.test.ts'), 'utf8');
+    for (const tier of ['gate', 'periodic'] as const) expect(tierSkipReason('test/skill-e2e-diagram.test.ts', source, tier)).toBeNull();
+  });
+
+  test('the weekly gate census alone drops the LLM judges, with the reason in the manifest', () => {
+    const census = buildRunManifest({ tier: 'gate', sliceCount: 7, evalsAll: true, skipJudges: true, env: { EVALS_ALL: '1' } });
+    const judge = census.entries.find(entry => entry.file === 'test/skill-llm-eval.test.ts');
+    expect(judge).toMatchObject({ status: 'excluded', reason: 'skipped: LLM judges run in the periodic census and PR gate lanes' });
+    for (const tier of ['gate', 'periodic'] as const) {
+      const lane = buildRunManifest({ tier, sliceCount: 7, evalsAll: true, env: { EVALS_ALL: '1' } });
+      expect(lane.entries.find(entry => entry.file === 'test/skill-llm-eval.test.ts')?.status).toBe('planned');
+    }
+    const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/evals-periodic.yml'), 'utf8');
+    expect(workflow.match(/--skip-judges/g)).toHaveLength(1);
+    expect(workflow).toMatch(/--tier gate --emit-plan \/tmp\/gate-census-plan\/manifest\.json --slices 7 --skip-judges/);
   });
 });
 

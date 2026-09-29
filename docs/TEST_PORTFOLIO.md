@@ -20,12 +20,33 @@ different things even when they mention the same skill.
 | Stochastic consistency and verbose/carved comparison | Independent captures, with separate stability and A/B oracles | One successful sample reused as three trials, or one prompt version standing in for the other |
 | Decisions, findings and report completion | Per-skill native workflow fixtures | The first question alone, screen text without native evidence, or a generic question count |
 | Offline deployment and canary report construction | The explicitly simulated workflow fixtures | A real GitHub merge, deployment, rollback or production health check |
-| Multi-phase ordering and hand-offs | One uninterrupted Autoplan chain | Four independent successful skill sessions |
+| Multi-phase ordering and hand-offs | The production phase-publication hook, pinned by the free `test/autoplan-publication-guard.test.ts`; no paid chain eval since the 2026-09 audit (TODOS: "No paid eval runs the full /autoplan chain") | A live model completing CEO → Design → DX → Eng |
 | External reviewers, other model providers, browser engines and platform behavior | Their respective live integration fixtures | Prompt parity or a mock transport |
 
 Overlay efficacy experiments retain their full fixture/model/arm/trial matrix.
 Security cases retain their source, path, socket, process and lease identities.
 These are distinct scenario dimensions, not repeated work to delete.
+
+## Detector owner tests
+
+A captured paid failure becomes one row (a `describe` block or table entry) in its detector's owner test,
+never a new per-incident file; `test/test-of-test-ratchet.test.ts` enforces this. Owners after the
+2026-09 audit ([evidence](test-audit-2026-09.md)):
+
+| Detector | Owner test |
+| --- | --- |
+| `hasStaleFillRaceFinding` | `test/ceo-section-loading-fixture.test.ts` |
+| `generateModelOverlay` / `resolveModel` (overlay phrases) | `test/model-overlays.test.ts` |
+| `coverageAuditVerdict` / `coverageAuditReadEvidence` | `test/coverage-audit-evidence.test.ts` |
+| Autoplan phase completion (`autoplanPhaseCompletions`) | `test/autoplan-phase-observer.test.ts` |
+| `findNativeAutoDecision` and auto-decision state | `test/native-auto-decide.test.ts` |
+| `claudeOutsideExecutions` | `test/outside-voice-evidence.test.ts` |
+| `engStep0Boundary` / `engSetupAUQ` / `engFirstReviewAUQ` | `test/eng-first-review.test.ts` |
+| `hasNativePlanTerminal` (completion and hand-off) | `test/plan-count-completion.test.ts` |
+| `createPlanCountPermissionGuard` | `test/plan-count-file-permission.test.ts` |
+| CEO mode option parsing (`ceo-mode-option`) | `test/ceo-mode-option.test.ts` |
+| Plan scope selection (`plan-scope-selection`) | `test/plan-scope-selection.test.ts` |
+| `planCountPrerequisitePick` | `test/plan-count-prerequisite.test.ts` |
 
 ## Functional QA contract map
 
@@ -196,11 +217,13 @@ test/plan-count-design-ui-recovery.test.ts
 test/plan-count-native-input.test.ts
 test/plan-count-empty-review.test.ts
 test/plan-count-owned-permission.test.ts
-test/plan-count-quoted-frame-ak.test.ts
+test/plan-count-file-permission.test.ts
 test/plan-count-truncated-question.test.ts
 test/plan-count-preview-footer.test.ts
 test/eng-test-plan-edit-approval.test.ts
 ```
+
+The quoted-frame selector was folded into `test/plan-count-file-permission.test.ts` in the 2026-09 audit.
 
 The publication/watchdog pair is `test/autoplan-publication-guard.test.ts` and
 `test/cso-watchdog.test.ts`. The live pair is
@@ -273,6 +296,6 @@ The longest indivisible live workflow limits the benefit of extra workers.
 Historical paid-duration replay suggests better scheduling alone cannot halve
 the full lane. A follow-up should unify executable case ownership/counts before
 sharing captures between judges or splitting long files: keep each oracle,
-scenario, retry and independent-trial requirement explicit. The ordered
-Autoplan chain, host integrations and security boundary cases must not be
-replaced with cheaper look-alikes.
+scenario, retry and independent-trial requirement explicit. Host integrations
+and security boundary cases must not be replaced with cheaper look-alikes; the
+retired Autoplan chain eval needs a replacement that fits the ordinary tiers.

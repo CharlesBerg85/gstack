@@ -3,7 +3,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import native from './fixtures/shared-libs-resolved-reads-public.json';
-import { E2E_TOUCHFILES, GLOBAL_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import { execFileSync } from 'node:child_process';
 import { createSharedLibsFixture, fixtureGit } from './helpers/shared-libs-eval-fixture';
 import { seedPathReviewPrerequisites, checkPathReviewPrerequisites, hasPathReviewPrerequisiteReceipt } from './helpers/shared-libs-path-fixture';
@@ -218,13 +217,6 @@ test.each(['valid', 'missing-result', 'failed-result', 'wrong-result-id', 'metad
     expect(reads).toContain(aliases[1]);
   } else for (const alias of aliases) expect(reads).not.toContain(alias);
 });
-
-test.each(['test/shared-libs-source-reads.test.ts', 'test/fixtures/shared-libs-resolved-reads-public.json'])('%s selects every owning path callback without a global fallback', file => {
-  expect(selectTests([file], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected.sort()).toEqual([
-    'shared-libs-review-index-flags', 'shared-libs-review-path-eligibility', 'shared-libs-review-prior-coverage',
-  ]);
-});
-
 test.each([false, true])('the actual eligibility callback consumes the read detector result (missing output=%s)', async missingOutput => {
   const f = fixture();
   const result: any = capture();
