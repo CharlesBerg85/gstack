@@ -114,7 +114,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 
   // Review
   'review-sql-injection':     ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'test/fixtures/review-eval-vuln.rb', 'test/skill-e2e-review.test.ts',
-    'test/review-finalization-budget.test.ts'
+    'test/review-finalization-budget.test.ts', 'test/session-runner-browse-errors.test.ts', 'test/fixtures/review-browse-error-ci-36516246523.json'
   ],
   'review-enum-completeness': ['test/session-runner-stream-lifecycle.test.ts', 'review/**', 'test/fixtures/review-eval-enum*.rb', 'test/skill-e2e-review.test.ts', 'test/review-enum-lifecycle.test.ts',
     'test/review-finalization-budget.test.ts'

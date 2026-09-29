@@ -80,6 +80,8 @@ test('CI CLI replay summaries fail only the distinct-probe metric despite valid 
 test('functional driver discloses its learning, CLI coverage and repair acceptance requirements', () => {
   for (const entry of QA_FUNCTIONAL_CASES) {
     const prompt = qaFunctionalPrompt(entry);
+    expect(prompt).toContain(`Read ${entry.mode}/SKILL.md, qa/sections/scope.md and ${entry.mode}/sections/exploratory.md in full`);
+    expect(prompt).toContain('All three reads are required before probing in this fixture, even when its surfaces and isolation are already established');
     expect(prompt).toContain('different later command');
     expect(prompt).toContain('not the required same-command replay');
     expect(prompt).toContain('Copy that checkpoint');

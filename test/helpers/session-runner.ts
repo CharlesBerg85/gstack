@@ -73,7 +73,7 @@ const BROWSE_ERROR_PATTERNS = [
   /Unknown snapshot flag: .+/,
   /ERROR: browse binary not found/,
   /Server failed to start/,
-  /no such file or directory.*browse/i,
+  /no such file or directory[^\r\n]*\bbrowse(?:\.exe)?(?=$|[\s'":),])/i,
 ];
 
 // --- Testable NDJSON parser ---
@@ -642,8 +642,7 @@ Before source Reads and after each saved checkpoint, use Bash to run exactly \`d
   const { transcript, resultLine, toolCalls } = parsed;
   const browseErrors: string[] = [];
 
-  // Scan transcript + stderr for browse errors
-  const allText = transcript.map(e => JSON.stringify(e)).join('\n') + '\n' + stderr;
+  const allText = toolCalls.filter(call => call.tool === 'Bash').map(call => call.output).join('\n') + '\n' + stderr;
   for (const pattern of BROWSE_ERROR_PATTERNS) {
     const match = allText.match(pattern);
     if (match) {

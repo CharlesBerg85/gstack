@@ -76,12 +76,12 @@ Write your review findings to ${reviewDir}/review-output.md`,
     });
 
     logCost('/review', result);
-    recordE2E(evalCollector, '/review SQL injection', 'Review skill E2E', result);
-    expect(result.exitReason).toBe('success');
-
-    // Verify the review output mentions SQL injection-related findings
-    const reviewOutputPath = path.join(reviewDir, 'review-output.md');
-    if (fs.existsSync(reviewOutputPath)) {
+    let passed = false;
+    try {
+      expect(result.exitReason).toBe('success');
+      expect(result.browseErrors).toEqual([]);
+      const reviewOutputPath = path.join(reviewDir, 'review-output.md');
+      expect(fs.existsSync(reviewOutputPath)).toBe(true);
       const reviewContent = fs.readFileSync(reviewOutputPath, 'utf-8').toLowerCase();
       const hasSqlContent =
         reviewContent.includes('sql') ||
@@ -92,6 +92,9 @@ Write your review findings to ${reviewDir}/review-output.md`,
         reviewContent.includes('user_input') ||
         reviewContent.includes('unsanitized');
       expect(hasSqlContent).toBe(true);
+      passed = true;
+    } finally {
+      recordE2E(evalCollector, '/review SQL injection', 'Review skill E2E', result, { passed });
     }
   }, CAPTURE_MS + REVIEW_FINALIZE_MS);
 });
