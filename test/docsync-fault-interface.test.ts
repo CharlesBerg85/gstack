@@ -582,7 +582,7 @@ mock.module(path.join(root, 'test/helpers/session-runner.ts'), () => ({ async ru
   return returnedResult;
 } }));
 await import(path.join(root, 'test/skill-e2e-ship-docsync.test.ts'));
-expect(callbacks.size).toBe(13);
+expect(callbacks.size).toBe(12);
 const names = ['ship-docsync-failure', 'ship-docsync-missing-marker', 'ship-docsync-missing-asset',
   'ship-docsync-launch-failure', 'ship-docsync-timeout-unsettled', 'ship-docsync-late-result',
   'ship-docsync-stale-before', 'ship-docsync-stale-after', 'ship-docsync-recovery'];
