@@ -78,7 +78,7 @@ import { manualReviewProblem } from '../test/helpers/cookie-workflow-manual-revi
 import { preflightAnthropicApi } from '../test/helpers/anthropic-preflight';
 import { OVERLAY_MIN_FILE_WALL_MS } from '../test/helpers/overlay-case-policy';
 import { PR_PROFILE_CASE_IDS, PR_PROFILE_FILES, packageChangeOnlyVersion, selectPrProfile, type PrProfileSelection } from './test-pr-profile';
-import { e2eReuseLaneProblem, prepareE2EShardReuse } from './e2e-shard-reuse';
+import { e2eReuseLaneProblem, prepareE2EShardReuse, selectPlanReceipts, writeNegativeReceipt, writePanelReceipt } from './e2e-shard-reuse';
 
 type E2EShardReuse = NonNullable<ReturnType<typeof prepareE2EShardReuse>>;
 import {
@@ -826,6 +826,8 @@ export interface ShardOutcome {
   reused?: { inputKey: string; runId: string; revision: string; completedAt: number };
   /** The parent could not run the shard at all (a runner error, never a trial verdict). */
   runnerError?: string;
+  /** PR lane: the reuse input identity of a freshly executed shard whose inputs stayed unchanged. */
+  inputKey?: string;
   /** Isolated trial shards only: the trial record this shard produced. */
   trial?: ShardTrialRecord;
 }
@@ -1057,7 +1059,22 @@ export async function runPaidShard(
   // Bootstrap-retention qualification binds per-run state, so that shard stays fresh.
   const reuse = files.some(file => normalizeRelativePath(file) === 'test/skill-e2e-qa-workflow.test.ts')
     ? null : options.reuseFor?.(files, env, budget) ?? null;
-  const reused = reuse?.lookup() ?? null;
+  // A trial reuses only its record from a whole PASS panel receipt the
+  // planner shipped; a single trial never has a pass receipt of its own.
+  const panelHit = trialPlan && trialIndex !== null ? reuse?.lookupPanelTrial(trialIndex) ?? null : null;
+  if (panelHit && trialPlan && trialIndex !== null && caseId !== null) {
+    const reusedFrom = { inputKey: panelHit.hit.key, runId: panelHit.hit.source.runId, revision: panelHit.hit.source.revision, completedAt: panelHit.hit.source.completedAt };
+    const passedTrial = panelHit.trial.outcome === 'passed';
+    log(`${label} REUSED trial ${trialIndex}/${trialPlan.panel.n} of ${caseId} (${panelHit.trial.outcome}) from the whole PASS panel of run ${reusedFrom.runId}`);
+    return { shard: shardNumber, files, status: passedTrial ? 'passed' : 'failed', exitCode: passedTrial ? 0 : 1, elapsedMs: 0, groupPid: null,
+      executedTests: 1, skippedTests: 0, budget, reused: reusedFrom,
+      trial: { case: caseId, trial: trialIndex, kind: trialPlan.kind, panel: trialPlan.panel, quarantined: trialPlan.quarantined,
+        outcome: panelHit.trial.outcome, cost_usd: 0, duration_ms: 0,
+        ...(panelHit.trial.failure_class ? { failure_class: panelHit.trial.failure_class } : {}),
+        ...(panelHit.trial.exit_reason ? { exit_reason: panelHit.trial.exit_reason } : {}),
+        ...(panelHit.trial.error ? { error: panelHit.trial.error } : {}) } };
+  }
+  const reused = trialPlan ? null : reuse?.lookup() ?? null;
   if (reused) {
     const reusedFrom = { input_key: reused.key, run_id: reused.source.runId, revision: reused.source.revision,
       completed_at: new Date(reused.source.completedAt).toISOString() };
@@ -1255,7 +1272,8 @@ export async function runPaidShard(
     }
   }
   const elapsedMs = Date.now() - startedAt;
-  if (status === 'passed' && reuse) reuse.publish();
+  if (status === 'passed' && reuse && !trialPlan) reuse.publish();
+  const inputKey = reuse?.unchanged() ? reuse.inputKey : undefined;
 
   // Failure debuggability without the RAM cost: read back only the log's
   // tail. Live mode already streamed everything, so no re-print there.
@@ -1273,7 +1291,8 @@ export async function runPaidShard(
     ? summary.terminalTestCounts.reduce((a, b) => a + b, 0)
     : null;
   const skippedTests = summary.terminalTestCounts.length > 0 ? summary.skippedTests : null;
-  return withTrial({ shard: shardNumber, files, status, exitCode, elapsedMs, groupPid, executedTests, skippedTests, budget });
+  return withTrial({ shard: shardNumber, files, status, exitCode, elapsedMs, groupPid, executedTests, skippedTests, budget,
+    ...(inputKey ? { inputKey } : {}) });
 }
 
 export interface RunSummary {
@@ -2027,7 +2046,7 @@ export interface SliceResult {
   /** Epoch ms bounds of the slice's shard execution (lane wall time). */
   startedAt?: number;
   finishedAt?: number;
-  outcomes: Array<Pick<ShardOutcome, 'files' | 'status' | 'exitCode' | 'elapsedMs' | 'executedTests' | 'skippedTests' | 'budget' | 'reused' | 'runnerError' | 'trial'>>;
+  outcomes: Array<Pick<ShardOutcome, 'files' | 'status' | 'exitCode' | 'elapsedMs' | 'executedTests' | 'skippedTests' | 'budget' | 'reused' | 'runnerError' | 'trial' | 'inputKey'>>;
 }
 
 /**
@@ -2113,11 +2132,13 @@ export function verifySliceResults(
       if (outcome.reused !== undefined) {
         const r = outcome.reused;
         if (manifest.prCoverage?.mode !== 'pr') problems.push(`${file}: only the fast PR profile may reuse results; this lane executes fresh`);
-        if (outcome.status !== 'passed' || outcome.exitCode !== 0 || !/^[a-f0-9]{64}$/.test(r?.inputKey ?? '')
+        const reusedVerdictOk = outcome.trial ? outcome.trial.outcome !== null : outcome.status === 'passed' && outcome.exitCode === 0;
+        if (!reusedVerdictOk || !/^[a-f0-9]{64}$/.test(r?.inputKey ?? '')
           || !/^[\w./-]{1,160}$/.test(r?.runId ?? '') || !/^[a-f0-9]{40}$/.test(r?.revision ?? '') || !Number.isSafeInteger(r?.completedAt) || r.completedAt <= 0) {
           problems.push(`${file}: malformed reused result`);
         }
       }
+      if (outcome.inputKey !== undefined && !/^[a-f0-9]{64}$/.test(outcome.inputKey)) problems.push(`${file}: malformed input identity`);
       if (reported.has(file)) problems.push(`${file} reported by two slices`);
       reported.set(file, { slice: result.sliceIndex, status: outcome.status, ...(outcome.trial ? { trial: outcome.trial } : {}) });
       const registered = FILE_RETRY_BUDGETS.find(budget => budget.file === shardFile(file));
@@ -2301,6 +2322,12 @@ export function panelReports(manifest: PaidRunManifest, results: SliceResult[], 
         ...(t.timeout_at_turn !== undefined ? { timeout_at_turn: t.timeout_at_turn } : {}) }];
     });
     const verdict = panelVerdict({ case: shardCaseId(key)!, kind: plan.kind, panel: plan.panel, trials, quarantined: plan.quarantined });
+    // Reuse is whole-panel only: every trial reused from one run, or none.
+    const sources = entries.map(entry => reported.get(normalizeRelativePath(entry.file))?.outcome.reused?.runId ?? null);
+    if (sources.some(source => source !== null) && (sources.some(source => source === null) || new Set(sources).size > 1)) {
+      return { ...verdict, status: 'INCOMPLETE', split: false, failsLane: true, coverage: false, redClass: 'INCOMPLETE',
+        reason: 'partial panel reuse (every trial must come from one reused panel, or none)', file: shardFile(key), slices };
+    }
     return { ...verdict, file: shardFile(key), slices };
   });
 }
@@ -2506,6 +2533,29 @@ export function runPaidReport(reportDir: string, options: { writeDurations?: boo
   }
   const laterPanels = attempts.slice(1).flatMap(attempt => panelReports(manifest, artifacts.map(a => a.result), attempt)
     .filter(panel => panel.trials.length > 0));
+
+  // PR-lane receipts from verdicts (the planner ships them to the next run):
+  // a whole fresh PASS panel with one input identity becomes a panel receipt;
+  // a FAIL panel or a failed rule shard becomes a negative receipt that
+  // blocks reuse of any older PASS for the same identity.
+  const revision = env.GITHUB_SHA ?? '';
+  if (env.GITHUB_RUN_ID && /^[a-f0-9]{40}$/.test(revision)) {
+    const receiptsDir = path.join(reportDir, 'report-receipts');
+    const source = { runId: `${env.GITHUB_RUN_ID}/${primary}`, revision, completedAt: Date.now() };
+    const outcomes = results.flatMap(r => r.outcomes);
+    for (const panel of panels) {
+      const keys = outcomes.filter(o => o.trial?.case === panel.case && shardFile(o.files[0] ?? '') === panel.file).map(o => o.reused ? null : o.inputKey ?? null);
+      if (keys.length !== panel.panel.n || keys.some(k => k === null) || new Set(keys).size !== 1) continue;
+      if (panel.status === 'PASS') {
+        writePanelReceipt(receiptsDir, { schema: 1, key: keys[0]!, case: panel.case, kind: panel.kind, panel: panel.panel, source,
+          trials: panel.trials.map(({ trial, outcome, failure_class, exit_reason, error }) => ({ trial, outcome,
+            ...(failure_class ? { failure_class } : {}), ...(exit_reason ? { exit_reason } : {}), ...(error ? { error } : {}) })) });
+      } else if (panel.status === 'FAIL') writeNegativeReceipt(receiptsDir, { schema: 1, key: keys[0]!, source });
+    }
+    for (const outcome of outcomes.filter(o => !o.trial && o.inputKey && !o.reused && o.status !== 'passed')) {
+      writeNegativeReceipt(receiptsDir, { schema: 1, key: outcome.inputKey!, source });
+    }
+  }
 
   // Quarantine cap and expiry are the weekly pass-rates gate's (eval-flake-rank --gate).
 
@@ -2796,6 +2846,12 @@ async function main(): Promise<number> {
     );
     for (const line of formatSlicePlan(manifest)) console.log(line);
     for (const line of formatCapacityPreflight(manifest, options.maxParallel ?? undefined)) console.log(line);
+    // Planner-side reuse: ship ONE filtered receipt set with the plan, so
+    // every trial of a panel (on any slice) sees the same receipts.
+    if (manifest.profile === 'pr' && process.env.EVALS_CACHE_DIR) {
+      const shipped = selectPlanReceipts(process.env.EVALS_CACHE_DIR, path.join(path.dirname(path.resolve(options.emitPlanPath)), 'receipts'));
+      console.log(`[test:paid] reuse: shipped ${shipped.shipped} receipt(s) with the plan; blocked ${shipped.blocked.length} (newer FAIL or partial panel)`);
+    }
     return 0;
   }
 
@@ -2865,6 +2921,7 @@ async function main(): Promise<number> {
             const { registered, known } = fileCaseRegistration(file, fs.readFileSync(path.join(ROOT, file), 'utf8'));
             const exclude = mine.find(entry => entry.file === key)?.excludeCases;
             return prepareE2EShardReuse({ root: ROOT, key, file, caseIds: prProfileShardIds(key, manifest.selection!, exclude),
+              ...(trials[normalizeRelativePath(key)] ? { panel: trials[normalizeRelativePath(key)] } : {}),
               registeredIds: registered, registrationKnown: known,
               casePattern: prProfileTestNamePattern(key, manifest.selection!, exclude), expectedCases: expectedPrCaseCount(key, manifest.selection!, exclude),
               retries: retriesForFiles(files), timeoutMs: budget.timeoutMs, withinShardConcurrency: options.withinShardConcurrency,
@@ -2901,9 +2958,9 @@ async function main(): Promise<number> {
       attempt: Number.isSafeInteger(attempt) && attempt > 0 ? attempt : 1,
       startedAt,
       finishedAt: Date.now(),
-      outcomes: guarded.map(({ files, status, exitCode, elapsedMs, executedTests, skippedTests, budget, reused, runnerError, trial }) =>
+      outcomes: guarded.map(({ files, status, exitCode, elapsedMs, executedTests, skippedTests, budget, reused, runnerError, trial, inputKey }) =>
         ({ files, status, exitCode, elapsedMs, executedTests, skippedTests, ...(budget ? { budget } : {}), ...(reused ? { reused } : {}),
-          ...(runnerError !== undefined ? { runnerError } : {}), ...(trial ? { trial } : {}) })),
+          ...(runnerError !== undefined ? { runnerError } : {}), ...(trial ? { trial } : {}), ...(inputKey ? { inputKey } : {}) })),
     };
     fs.mkdirSync(evalDirBase, { recursive: true });
     const sliceResultPath = path.join(evalDirBase, `slice-${options.sliceIndex}.json`);

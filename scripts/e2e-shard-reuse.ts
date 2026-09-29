@@ -30,6 +30,8 @@ import { buildEvalInputIdentity, lookupEvalInputCache, sourceDependencyClosure, 
   type EvalCacheValue, type EvalInputIdentity, type EvalPassingProof } from './eval-input-cache';
 import { matchGlob } from '../test/helpers/test-selection';
 import { E2E_TOUCHFILES, GLOBAL_TOUCHFILES } from '../test/helpers/touchfiles-data';
+import { EVAL_CACHE_MAX_AGE_MS as RECEIPT_MAX_AGE_MS } from './eval-input-cache';
+import { panelVerdict, TRIAL_ENV, type EvalCaseKind, type PanelShape, type PanelTrial } from '../test/helpers/eval-store';
 
 export interface E2EShardReuseRequest {
   root: string;
@@ -50,6 +52,8 @@ export interface E2EShardReuseRequest {
   profile: string;
   /** The exact environment the child receives. */
   env: NodeJS.ProcessEnv;
+  /** Isolated trial shard: its panel policy is part of the identity; the trial index is run-scoped. */
+  panel?: { kind: EvalCaseKind; panel: PanelShape; quarantined: boolean };
 }
 
 export interface E2EShardReuseHit { key: string; source: EvalPassingProof['source'] }
@@ -61,7 +65,7 @@ const HARNESS_FILES = ['scripts/test-paid-shards.ts', 'scripts/e2e-shard-reuse.t
 const ENV_PREFIXES = ['EVALS_', 'GSTACK_', 'CLAUDE_', 'ANTHROPIC_', 'OPENAI_', 'GEMINI_', 'BUN_', 'NODE_', 'PLAYWRIGHT_'];
 /** Run-scoped values: provenance or transport, never behavior. Selection is bound as case ids. */
 const RUN_SCOPED_ENV = new Set(['EVALS_RUN_ID', 'GSTACK_EVAL_DIR', 'EVALS_CACHE_DIR', 'EVALS_CACHE_PR', 'EVALS_CACHE_REPOSITORY',
-  'EVALS_CACHE_RUNTIME_ID', 'EVALS_CACHE_PURPOSE', 'EVALS_SELECTION_JSON', 'EVALS_JUDGE_SELECTION_JSON']);
+  'EVALS_CACHE_RUNTIME_ID', 'EVALS_CACHE_PURPOSE', 'EVALS_SELECTION_JSON', 'EVALS_JUDGE_SELECTION_JSON', TRIAL_ENV.trial]);
 const SECRET_ENV = /KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL/;
 
 /** The reuse-relevant environment the child sees; secrets contribute presence only. */
@@ -126,7 +130,8 @@ export function e2eShardIdentity(request: E2EShardReuseRequest): { status: 'elig
       coverage: { dependencies: 'complete', prompts: 'complete', environment: 'complete' }, unknownDependencies: [],
       files,
       prompts: Object.fromEntries(request.caseIds.map(id => [id, source])),
-      parameters: { rootPackage, key: request.key, caseIds: [...request.caseIds].sort(), casePattern: request.casePattern,
+      parameters: { rootPackage, key: request.panel ? request.key.replace(/~t\d+$/, '') : request.key,
+        ...(request.panel ? { panel: { kind: request.panel.kind, n: request.panel.panel.n, k: request.panel.panel.k, quarantined: request.panel.quarantined } } : {}), caseIds: [...request.caseIds].sort(), casePattern: request.casePattern,
         expectedCases: request.expectedCases, retries: request.retries, timeoutMs: request.timeoutMs,
         withinShardConcurrency: request.withinShardConcurrency, tier: request.tier, profile: request.profile,
         environment: e2eReuseEnvironment(env) },
@@ -156,7 +161,13 @@ const validResult = (identity: EvalInputIdentity, key: string) => (value: EvalCa
  * whose inputs did not change during execution.
  */
 export function prepareE2EShardReuse(request: E2EShardReuseRequest): {
+  /** The input identity key: recorded on the outcome so the report can store verdicts against it. */
+  inputKey: string;
   lookup(): E2EShardReuseHit | null;
+  /** Trial shards only: this trial's record from a whole PASS panel receipt of the plan's receipts. */
+  lookupPanelTrial(trial: number): { hit: E2EShardReuseHit; trial: PanelTrial } | null;
+  /** True when the inputs are unchanged since `before` (the outcome may carry inputKey). */
+  unchanged(): boolean;
   publish(): void;
 } | null {
   if (e2eReuseLaneProblem(request.env, 'pr') !== null) return null;
@@ -164,6 +175,19 @@ export function prepareE2EShardReuse(request: E2EShardReuseRequest): {
   if (before.status !== 'eligible') return null;
   const common = { cacheDir: request.env.EVALS_CACHE_DIR!, purpose: 'gate' as const };
   return {
+    inputKey: before.identity.key,
+    unchanged() {
+      const after = e2eShardIdentity(request);
+      return after.status === 'eligible' && after.identity.key === before.identity.key;
+    },
+    lookupPanelTrial(trial) {
+      if (!request.panel) return null;
+      const receipt = readPanelReceipt(common.cacheDir, before.identity.key);
+      if (!receipt || receipt.case !== request.caseIds[0] || receipt.kind !== request.panel.kind
+        || receipt.panel.n !== request.panel.panel.n || receipt.panel.k !== request.panel.panel.k) return null;
+      const record = receipt.trials.find(t => t.trial === trial);
+      return record ? { hit: { key: receipt.key, source: receipt.source }, trial: record } : null;
+    },
     lookup() {
       const found = lookupEvalInputCache({ ...common, identity: before.identity, validateResult: validResult(before.identity, request.key) });
       return found.status === 'reused' ? { key: found.key, source: found.source } : null;
@@ -183,4 +207,125 @@ export function prepareE2EShardReuse(request: E2EShardReuseRequest): {
       } });
     },
   };
+}
+
+// ─── Panel receipts, negative receipts and the planner's receipt selection ──
+//
+// Reuse is decided by the planner, once per panel: it ships the plan a
+// receipt set in which every panel receipt is a whole PASS panel from one run
+// and no pass receipt has a newer FAIL for the same identity. Executors look
+// up only that set, so every trial of a panel sees the same receipts. The
+// report writes panel receipts (all n trials fresh, one identity) and
+// negative receipts (FAIL verdicts) after the verdict is known.
+
+export interface PanelReceipt {
+  schema: 1;
+  key: string;
+  case: string;
+  kind: EvalCaseKind;
+  panel: PanelShape;
+  trials: PanelTrial[];
+  source: { runId: string; revision: string; completedAt: number };
+}
+
+export interface NegativeReceipt { schema: 1; key: string; source: { runId: string; revision: string; completedAt: number } }
+
+const RECEIPT_KEY = /^[a-f0-9]{64}$/;
+const validSource = (source: any) => !!source && typeof source.runId === 'string' && /^[\w./-]{1,160}$/.test(source.runId)
+  && typeof source.revision === 'string' && /^[a-f0-9]{40}$/.test(source.revision) && Number.isSafeInteger(source.completedAt) && source.completedAt > 0;
+
+function readJson(file: string, maxBytes = 64 * 1024): any {
+  try {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.size > maxBytes) return null;
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch { return null; }
+}
+
+/** A whole, unexpired PASS panel receipt for `key`, re-verified with panelVerdict(); else null. */
+export function readPanelReceipt(cacheDir: string, key: string, now = Date.now()): PanelReceipt | null {
+  if (!RECEIPT_KEY.test(key)) return null;
+  const receipt = readJson(path.join(cacheDir, `${key}.panel.json`));
+  if (!receipt || receipt.schema !== 1 || receipt.key !== key || typeof receipt.case !== 'string' || !validSource(receipt.source)
+    || receipt.source.completedAt > now || now - receipt.source.completedAt >= RECEIPT_MAX_AGE_MS || !Array.isArray(receipt.trials)) return null;
+  try {
+    const verdict = panelVerdict({ case: receipt.case, kind: receipt.kind, panel: receipt.panel,
+      trials: receipt.trials.map((t: PanelTrial) => ({ ...t, attempt: 1 })) });
+    if (verdict.status !== 'PASS' || verdict.trials.length !== receipt.panel.n) return null;
+  } catch { return null; }
+  const negative = readJson(path.join(cacheDir, `${key}.fail.json`));
+  if (negative && validSource(negative.source) && negative.source.completedAt >= receipt.source.completedAt) return null;
+  return receipt as PanelReceipt;
+}
+
+export function writePanelReceipt(dir: string, receipt: PanelReceipt): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${receipt.key}.panel.json`), `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+}
+
+export function writeNegativeReceipt(dir: string, receipt: NegativeReceipt): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${receipt.key}.fail.json`), `${JSON.stringify(receipt)}\n`, { mode: 0o600 });
+}
+
+const receiptTime = (file: string): number => {
+  const parsed = readJson(file);
+  return Number(parsed?.source?.completedAt ?? parsed?.proof?.source?.completedAt) || 0;
+};
+
+/**
+ * Planner-side selection: copy `from` into `to`, dropping every pass or panel
+ * receipt that has a same-or-newer negative receipt for its identity, and
+ * every panel receipt that is not a whole PASS panel. Workflow-judge and
+ * other receipts pass through for their own validation at lookup.
+ */
+export function selectPlanReceipts(from: string, to: string, now = Date.now()): { shipped: number; blocked: string[] } {
+  fs.mkdirSync(to, { recursive: true });
+  const blocked: string[] = [];
+  let shipped = 0;
+  let names: string[] = [];
+  try { names = fs.readdirSync(from).filter(name => name.endsWith('.json')); } catch { return { shipped, blocked }; }
+  for (const name of names) {
+    const file = path.join(from, name);
+    const [key, suffix] = [name.slice(0, 64), name.slice(64)];
+    const negative = RECEIPT_KEY.test(key) ? readJson(path.join(from, `${key}.fail.json`)) : null;
+    const newerFail = negative && validSource(negative.source) && negative.source.completedAt >= receiptTime(file);
+    if (suffix === '.panel.json' && (newerFail || !readPanelReceipt(from, key, now))) { blocked.push(name); continue; }
+    if (suffix === '.json' && newerFail) { blocked.push(name); continue; }
+    fs.copyFileSync(file, path.join(to, name));
+    shipped++;
+  }
+  return { shipped, blocked };
+}
+
+/** Merge receipt directories into one store, keeping the newest file per name. */
+export function mergeReceiptDirs(out: string, dirs: string[]): number {
+  fs.mkdirSync(out, { recursive: true });
+  let merged = 0;
+  for (const dir of dirs) {
+    let names: string[] = [];
+    try { names = fs.readdirSync(dir).filter(name => name.endsWith('.json')); } catch { continue; }
+    for (const name of names) {
+      const source = path.join(dir, name);
+      const target = path.join(out, name);
+      if (!fs.lstatSync(source).isFile()) continue;
+      if (fs.existsSync(target) && receiptTime(target) >= receiptTime(source)) continue;
+      fs.copyFileSync(source, target);
+      merged++;
+    }
+  }
+  return merged;
+}
+
+if (import.meta.main) {
+  const [command, first, ...rest] = process.argv.slice(2);
+  if (command === 'select' && first && rest[0]) {
+    const result = selectPlanReceipts(first, rest[0]);
+    console.log(`[e2e-reuse] shipped ${result.shipped} receipt(s) to the plan; blocked ${result.blocked.length} (newer FAIL or partial panel)`);
+  } else if (command === 'merge' && first) {
+    console.log(`[e2e-reuse] merged ${mergeReceiptDirs(first, rest)} receipt(s) into ${first}`);
+  } else {
+    console.error('usage: bun run scripts/e2e-shard-reuse.ts select <from> <to> | merge <out> <dir...>');
+    process.exit(2);
+  }
 }

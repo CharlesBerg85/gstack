@@ -31,7 +31,7 @@ function manifest(entries: PaidRunManifest['entries'], sliceCount: number): Paid
 }
 
 let caseCounter = 0;
-function report(plan: PaidRunManifest, slices: SliceResult[], collectors: Record<string, unknown> = {}) {
+function report(plan: PaidRunManifest, slices: SliceResult[], collectors: Record<string, unknown> = {}, env: NodeJS.ProcessEnv = {}) {
   const dir = path.join(base, `case-${++caseCounter}`);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(plan));
@@ -41,7 +41,7 @@ function report(plan: PaidRunManifest, slices: SliceResult[], collectors: Record
     fs.writeFileSync(path.join(dir, name), JSON.stringify(body));
   }
   const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/test-paid-shards.ts'), '--tier', plan.tier, '--report', dir],
-    { cwd: ROOT, encoding: 'utf8', timeout: 30_000, env: { ...process.env, EVALS_TIER: plan.tier } });
+    { cwd: ROOT, encoding: 'utf8', timeout: 30_000, env: { ...process.env, GITHUB_RUN_ID: '', GITHUB_SHA: '', EVALS_TIER: plan.tier, ...env } });
   return { status: result.status, out: `${result.stdout}\n${result.stderr}`, dir };
 }
 
@@ -218,5 +218,20 @@ describe('behavior and quarantined panels through --report', () => {
       { cwd: ROOT, encoding: 'utf8', timeout: 30_000 });
     expect(again.status).toBe(1);
     expect(again.stdout).toContain('attempt 1 (later attempts 2 reported, never replacing it)');
+  });
+
+  test('verdicts become next-run receipts: a whole fresh PASS panel, and negatives for FAIL panels', () => {
+    const inputKey = 'b'.repeat(64);
+    const withKey = (results: TrialResult[]) => [1, 2, 3, 4].map(index => slice(index, 4, index === 4 ? [passed(RULE_A)]
+      : [{ ...trialOutcome(index, results[index - 1]!)!, inputKey }]));
+    const env = { GITHUB_RUN_ID: '77', GITHUB_SHA: 'e'.repeat(40) };
+    const green = report(plan(), withKey(['passed', 'failed', 'passed']), {}, env);
+    expect(green.status, green.out).toBe(0);
+    const receipt = JSON.parse(fs.readFileSync(path.join(green.dir, 'report-receipts', `${inputKey}.panel.json`), 'utf8'));
+    expect(receipt).toMatchObject({ key: inputKey, case: ID, panel: { n: 3, k: 2 }, source: { runId: '77/1' } });
+    expect(receipt.trials.map((t: any) => t.outcome)).toEqual(['passed', 'failed', 'passed']);
+    const red = report(plan(), withKey(['passed', 'failed', 'failed']), {}, env);
+    expect(red.status).toBe(1);
+    expect(fs.readdirSync(path.join(red.dir, 'report-receipts'))).toEqual([`${inputKey}.fail.json`]);
   });
 });

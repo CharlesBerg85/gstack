@@ -140,10 +140,23 @@ jobs:
         with:
           bun-version: 1.4.0
 
+      # Planner-side reuse: restore this PR's newest receipt store (the report
+      # job saves one merged store per run) and ship ONE filtered set with the
+      # plan, so every trial of a panel sees the same receipts and a newer FAIL
+      # blocks any older PASS for the same inputs.
+      - name: Restore this PR's verified judge and E2E results
+        if: github.event_name == 'pull_request'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: /tmp/gstack-eval-input-cache
+          key: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}-plan
+          restore-keys: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-
+
       - name: Emit run manifest
         if: github.event_name != 'workflow_dispatch' || inputs.validation_phase == 'all'
         env:
           EVALS_ALL: ${{ (github.event_name == 'workflow_dispatch' && inputs.evals_all) && '1' || '' }}
+          EVALS_CACHE_DIR: ${{ github.event_name == 'pull_request' && '/tmp/gstack-eval-input-cache' || '' }}
         run: EVALS_TIER=gate bun --no-install run scripts/test-paid-shards.ts --tier gate --emit-plan /tmp/paid-plan/manifest.json --slice-budget 540 --jobs 2 --max-parallel 16
 
       - name: Emit validation-phase manifest
@@ -182,7 +195,9 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: paid-plan
-          path: /tmp/paid-plan/manifest.json
+          path: |
+            /tmp/paid-plan/manifest.json
+            /tmp/paid-plan/receipts
           retention-days: 30
 
   eval-slices:
@@ -251,15 +266,13 @@ jobs:
           name: paid-plan
           path: /tmp/paid-plan
 
-      # Only this PR's receipts are eligible. No base-branch or cross-PR restore
-      # prefix; every receipt also verifies exact inputs and its original age.
-      - name: Restore this PR's verified judge and E2E results
-        if: github.event_name == 'pull_request'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: /tmp/gstack-eval-input-cache
-          key: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.slice }}
-          restore-keys: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-
+      # Receipts come only from the plan (this PR's store, filtered once by the
+      # planner); new receipts land beside the slice results and the report
+      # merges them into the next store.
+      - name: Seed this slice's receipts from the plan
+        run: |
+          mkdir -p /tmp/paid-slice-results/receipts
+          if [ -d /tmp/paid-plan/receipts ]; then cp -a /tmp/paid-plan/receipts/. /tmp/paid-slice-results/receipts/; fi
 
       - name: Run slice ${{ matrix.slice }}
         env:
@@ -270,34 +283,11 @@ jobs:
           EVALS_JOBS: "2"
           EVALS_CONCURRENCY: "2"
           GSTACK_EVAL_DIR: /tmp/paid-slice-results
-          EVALS_CACHE_DIR: /tmp/gstack-eval-input-cache
+          EVALS_CACHE_DIR: /tmp/paid-slice-results/receipts
           EVALS_CACHE_REPOSITORY: ${{ github.repository }}
           EVALS_CACHE_PR: ${{ github.event.pull_request.number }}
           EVALS_CACHE_RUNTIME_ID: ${{ needs.build-image.outputs.runtime-id }}
         run: EVALS_TIER=gate bun run scripts/test-paid-shards.ts --tier gate --plan /tmp/paid-plan/manifest.json --slice ${{ matrix.slice }}
-
-      - name: Find finalized passing receipts
-        id: receipts
-        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
-        run: |
-          # Only a producer publishes. A later reuse-only slice must not become
-          # the newest prefix match and hide another slice's newly earned pass.
-          for receipt in /tmp/gstack-eval-input-cache/*.json; do
-            [ -f "$receipt" ] || continue
-            if jq -e --arg run "$GITHUB_RUN_ID/$GITHUB_RUN_ATTEMPT" '.proof.source.runId == $run' "$receipt" >/dev/null 2>&1; then
-              echo 'present=true' >> "$GITHUB_OUTPUT"
-              break
-            fi
-          done
-
-      # An unrelated failing case does not discard already verified passes.
-      # Failed/retried/partial attempts never become receipts in the first place.
-      - name: Save verified judge and E2E results for this PR
-        if: ${{ !cancelled() && steps.receipts.outputs.present == 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        with:
-          path: /tmp/gstack-eval-input-cache
-          key: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.slice }}
 
       # Attempt-scoped: a re-run attempt's trials are reported under that
       # attempt and never replace (or collide with) the first attempt's.
@@ -396,8 +386,27 @@ jobs:
           echo "exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Stamp trial history series
-        if: always() && hashFiles('/tmp/paid-report/trial-outcomes.jsonl') != ''
-        run: bun --no-install run scripts/eval-trial-series.ts /tmp/paid-report/trial-outcomes.jsonl
+        if: always()
+        run: |
+          if [ -f /tmp/paid-report/trial-outcomes.jsonl ]; then
+            bun --no-install run scripts/eval-trial-series.ts /tmp/paid-report/trial-outcomes.jsonl
+          fi
+
+      # One merged receipt store per run: the plan's shipped set, every slice's
+      # new pass receipts, and the report's panel and negative receipts. Saved
+      # last, so the next planner restores it as the newest prefix match.
+      - name: Merge this run's receipts
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          bun --no-install run scripts/e2e-shard-reuse.ts merge /tmp/gstack-eval-input-cache \
+            /tmp/paid-report/receipts /tmp/paid-report/report-receipts /tmp/paid-report/paid-slice-*/receipts
+
+      - name: Save this PR's verified judge and E2E results
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: /tmp/gstack-eval-input-cache
+          key: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}-merged
 
       - name: Upload reconciliation output for the comment job
         if: always()
@@ -501,7 +510,8 @@ jobs:
           COVERAGE=$(jq -r '"Profile: \(.profile // "full") / \(.prCoverage.mode // "broad"); selected behaviors: \(.selection.e2e | if . == null then "all" else length end), judges: \(.selection.judges | if . == null then "all" else length end). Deferred to scheduled/release coverage: \(.prCoverage.deferred // [] | length) behaviors and \(.prCoverage.deferredPromptFiles // [] | length) changed prompt files. Deferred checks did not run and receive no PR-pass credit."' /tmp/paid-report/manifest.json) || COVERAGE='Coverage manifest unavailable; no coverage claim.'
 
           STATUS="✅ PASS"
-          if [ "${RECONCILE_EXIT:-1}" != "0" ]; then STATUS="❌ FAIL"; fi
+          if [ "${RECONCILE_EXIT:-1}" != "0" ] || [ "$FAILED" -gt 0 ] \
+            || { [ -n "$VERIFIED" ] && [ "$(jq -r '.verdict.verdict' "$VERIFIED")" != "GREEN" ]; }; then STATUS="❌ FAIL"; fi
           if [ "$STATUS" = '✅ PASS' ] && [ "$MANUAL" -gt 0 ]; then STATUS='⚠ MANUAL ACCEPTED (unscored)'; fi
           if [ -z "$VERIFIED" ]; then STATUS='❌ FAIL (verified report unavailable)'; fi
 

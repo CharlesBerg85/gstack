@@ -39,6 +39,7 @@ import {
   verifySliceResults,
   expandTrialShards,
   formatCapacityPreflight,
+  panelReports,
   shardSlug,
   type PaidRunManifest,
   type ShardOutcome,
@@ -606,5 +607,18 @@ describe('trial planner (behavior and quarantined panels)', () => {
     const packed = packBySliceBudget([1, 2, 3].map(n => `${key}~t${n}`), 540_000, 2, merged);
     expect(packed.slices).toHaveLength(3);
     expect(Object.values(packed.estimates)).toEqual([180_000, 180_000, 180_000]);
+  });
+
+  test('reuse is whole-panel only: a panel mixing reused and fresh trials is INCOMPLETE', () => {
+    const manifest = budgetPlan('gate', { 'review-sql-injection': 'behavior' });
+    const trials = manifest.entries.filter(entry => entry.trial);
+    const reused = { inputKey: 'c'.repeat(64), runId: '1001/1', revision: 'd'.repeat(40), completedAt: 1 };
+    const results = (reusedTrials: number[]): SliceResult[] => trials.map(entry => ({ version: 1, tier: 'gate', sliceIndex: entry.slice,
+      sliceCount: manifest.sliceCount, outcomes: [{ files: [entry.file], status: 'passed', exitCode: 0, elapsedMs: 1, executedTests: 1, skippedTests: 0,
+        trial: { case: 'review-sql-injection', trial: Number(entry.file.slice(-1)), ...entry.trial!, outcome: 'passed', cost_usd: 0, duration_ms: 1 },
+        ...(reusedTrials.includes(Number(entry.file.slice(-1))) ? { reused } : {}) }] }));
+    expect(panelReports(manifest, results([]), 1)[0]).toMatchObject({ status: 'PASS' });
+    expect(panelReports(manifest, results([1, 2, 3]), 1)[0]).toMatchObject({ status: 'PASS' });
+    expect(panelReports(manifest, results([2]), 1)[0]).toMatchObject({ status: 'INCOMPLETE', failsLane: true, reason: expect.stringContaining('partial panel reuse') });
   });
 });

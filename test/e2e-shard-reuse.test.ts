@@ -4,7 +4,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   e2eReuseEnvironment, e2eReuseLaneProblem, e2eShardIdentity, e2eShardInputFiles, prepareE2EShardReuse,
-  type E2EShardReuseRequest,
+  mergeReceiptDirs, readPanelReceipt, selectPlanReceipts, writeNegativeReceipt, writePanelReceipt,
+  type E2EShardReuseRequest, type PanelReceipt,
 } from '../scripts/e2e-shard-reuse';
 import { buildRunManifest, fileCaseRegistration, runPaidShard, verifySliceResults, type SliceResult } from '../scripts/test-paid-shards';
 
@@ -127,10 +128,13 @@ describe('E2E shard reuse through the runner', () => {
   test('a failed shard never publishes a receipt', async () => {
     let published = 0;
     const outcome = await runPaidShard([FILE], 1, 1, { rootDir: ROOT, logDir: scratch, env: laneEnv(), log: () => {},
-      reuseFor: () => ({ lookup: () => null, publish: () => { published++; } }),
+      reuseFor: () => ({ inputKey: 'e'.repeat(64), unchanged: () => true, lookupPanelTrial: () => null,
+        lookup: () => null, publish: () => { published++; } }),
       commandFor: () => ({ command: process.execPath, args: ['-e', 'process.exit(1)'] }) });
     expect(outcome.status).toBe('failed');
     expect(published).toBe(0);
+    // The identity rides on the outcome so the report can store the FAIL as a negative receipt.
+    expect(outcome.inputKey).toBe('e'.repeat(64));
   });
 
   test('the report accepts reused results only in the fast PR profile', () => {
@@ -141,5 +145,75 @@ describe('E2E shard reuse through the runner', () => {
       files: [entry.file], status: 'passed' as const, exitCode: 0, elapsedMs: 0, executedTests: 1, skippedTests: 0,
       ...(entry.budget ? { budget: entry.budget } : {}), ...(entry.file === FILE ? { reused } : {}) })) }];
     expect(verifySliceResults(manifest, results).problems).toContain(`${FILE}: only the fast PR profile may reuse results; this lane executes fresh`);
+  });
+});
+
+describe('planner-side panel reuse and negative receipts', () => {
+  const panelPlan = { kind: 'behavior' as const, panel: { n: 3, k: 2 }, quarantined: false };
+  const trialRequest = (trial: number, over: Partial<E2EShardReuseRequest> = {}) => request({
+    key: `${FILE}#setup-deploy-workflow~t${trial}`, panel: panelPlan, ...over });
+  const source = (completedAt: number, runId = '1001/1') => ({ runId, revision: 'd'.repeat(40), completedAt });
+  const panel = (key: string, outcomes: Array<'passed' | 'failed'>, completedAt = Date.now() - 1_000): PanelReceipt => ({
+    schema: 1, key, case: 'setup-deploy-workflow', kind: 'behavior', panel: { n: 3, k: 2 }, source: source(completedAt),
+    trials: outcomes.map((outcome, i) => ({ trial: i + 1, outcome, ...(outcome === 'failed' ? { failure_class: 'timeout' as const } : {}) })),
+  });
+
+  test('every trial of a panel shares one identity; the panel policy is part of it', () => {
+    const key = (r: E2EShardReuseRequest) => { const x = e2eShardIdentity(r); if (x.status !== 'eligible') throw new Error(x.reason); return x.identity.key; };
+    const t1 = key(trialRequest(1));
+    expect(key(trialRequest(2, { env: laneEnv({ GSTACK_EVAL_TRIAL: '2' }) }))).toBe(t1);
+    expect(key(trialRequest(1, { panel: { ...panelPlan, quarantined: true } }))).not.toBe(t1);
+    expect(key(request())).not.toBe(t1);
+  });
+
+  test('a whole PASS panel receipt is reused per trial, a split PASS keeps its failed trial', () => {
+    const dir = path.join(scratch, 'panel-hit');
+    const env = laneEnv({ EVALS_CACHE_DIR: dir });
+    const reuse = prepareE2EShardReuse(trialRequest(2, { env }))!;
+    expect(reuse.lookupPanelTrial(2)).toBeNull();
+    writePanelReceipt(dir, panel(reuse.inputKey, ['passed', 'failed', 'passed']));
+    expect(reuse.lookupPanelTrial(2)).toMatchObject({ trial: { trial: 2, outcome: 'failed', failure_class: 'timeout' }, hit: { source: { runId: '1001/1' } } });
+    expect(reuse.lookupPanelTrial(1)!.trial.outcome).toBe('passed');
+  });
+
+  test('FAIL, partial, expired or negatively receipted panels are never reused', () => {
+    const dir = path.join(scratch, 'panel-miss');
+    const key = 'a'.repeat(64);
+    for (const receipt of [panel(key, ['passed', 'failed', 'failed']), panel(key, ['passed', 'passed']),
+      panel(key, ['passed', 'passed', 'passed'], Date.now() - 2 * 24 * 60 * 60 * 1000)]) {
+      writePanelReceipt(dir, receipt);
+      expect(readPanelReceipt(dir, key)).toBeNull();
+    }
+    writePanelReceipt(dir, panel(key, ['passed', 'passed', 'passed'], Date.now() - 5_000));
+    expect(readPanelReceipt(dir, key)).not.toBeNull();
+    writeNegativeReceipt(dir, { schema: 1, key, source: source(Date.now() - 1_000, '1002/1') });
+    expect(readPanelReceipt(dir, key)).toBeNull();
+  });
+
+  test('the planner ships one filtered set: a newer FAIL blocks an older PASS, an older FAIL does not', () => {
+    const from = path.join(scratch, 'select-from');
+    const to = path.join(scratch, 'select-to');
+    fs.mkdirSync(from, { recursive: true });
+    const [blockedKey, keptKey, panelKey] = ['1', '2', '3'].map(c => c.repeat(64));
+    const passReceipt = (key: string, completedAt: number) => fs.writeFileSync(path.join(from, `${key}.json`),
+      JSON.stringify({ schema: 1, proof: { source: source(completedAt) } }));
+    passReceipt(blockedKey, 1_000);
+    writeNegativeReceipt(from, { schema: 1, key: blockedKey, source: source(2_000, '1002/1') });
+    passReceipt(keptKey, 3_000);
+    writeNegativeReceipt(from, { schema: 1, key: keptKey, source: source(2_000, '1002/1') });
+    writePanelReceipt(from, panel(panelKey, ['passed', 'passed']));
+    const result = selectPlanReceipts(from, to);
+    expect(result.blocked.sort()).toEqual([`${blockedKey}.json`, `${panelKey}.panel.json`].sort());
+    expect(fs.readdirSync(to).sort()).toEqual([`${blockedKey}.fail.json`, `${keptKey}.fail.json`, `${keptKey}.json`].sort());
+  });
+
+  test('merging receipt stores keeps the newest file per name', () => {
+    const [a, b, out] = ['merge-a', 'merge-b', 'merge-out'].map(name => path.join(scratch, name));
+    const key = '4'.repeat(64);
+    writeNegativeReceipt(a, { schema: 1, key, source: source(5_000, '1/1') });
+    writeNegativeReceipt(b, { schema: 1, key, source: source(9_000, '2/1') });
+    expect(mergeReceiptDirs(out, [a, b, path.join(scratch, 'missing')])).toBe(2);
+    expect(JSON.parse(fs.readFileSync(path.join(out, `${key}.fail.json`), 'utf8')).source.runId).toBe('2/1');
+    expect(mergeReceiptDirs(out, [a])).toBe(0);
   });
 });
