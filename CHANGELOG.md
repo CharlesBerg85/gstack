@@ -1,5 +1,44 @@
 # Changelog
 
+## [1.91.8.0] - 2026-09-29
+
+The test suite is smaller and every remaining test maps to a product contract: 227 fewer test files, about 90,000 fewer lines of tests, helpers and fixtures, and the weekly paid lane drops the five evals that were red eight runs straight. Free tests that only replayed one captured failure are folded into their detector's owner test, and paid eval selection is derived from each eval's own imports instead of hand-copied lists.
+
+| Measure | Before (v1.91.6.0) | After |
+| --- | ---: | ---: |
+| Tracked test files | 1,184 | 957 |
+| Test-file lines (all `*.test.ts`) | 279,640 | 244,504 |
+| `test/` TypeScript lines (tests + helpers) | 274,208 | 227,713 |
+| `test/helpers` lines | 51,390 | 39,427 |
+| `test/fixtures` bytes | 16.3 MB | 9.7 MB |
+| Free suite files / passing tests (Ubicloud standard-16) | 1,065 / 27,331 | 857 / 20,302 |
+| Free suite serial seconds (recorded durations, same machine class) | 1,888 | 1,738 |
+| Paid files / gate-lane files / periodic files | 119 / 58 / 100 | 100 / 42 / 69 |
+| Weekly gate-census files | 58 | 41 (LLM judges run in the periodic and PR lanes) |
+| Weekly periodic shard-minutes spent on files this release removes (09-21 run) | 235 of 462 | 0 |
+
+### Removed
+- The never-green finding-count cluster: `skill-e2e-autoplan-chain` and `skill-e2e-plan-{ceo,eng,design,devex}-finding-count`, whose weekly failures were harness and budget failures, never skill behavior (triage in `docs/test-audit-2026-09.md`). No paid eval now proves a live model completes the full `/autoplan` chain or asks one question per finding; both gaps have TODOS entries with re-entry tests. The dedicated eighth periodic slice and `AUTOPLAN_CHAIN_BUDGET` go with them.
+- Paid files that asserted nothing or could not pass: `skill-llm-eval-spec`, `skill-e2e-spec-execute`, `gemini-e2e` (no Gemini CLI in CI), `skill-e2e-ship-idempotency`, `skill-e2e-conductor-prose`, `codex-e2e-plan-format`, `skill-e2e-brain-privacy-gate`, `skill-e2e-opus-47` (its negative routing controls moved into `skill-routing-e2e`) and two duplicate overlay wrappers; `test:gemini` scripts removed.
+- Free tests of dead eval code, product tests that exercised copies of the product, and test-infrastructure dead code.
+
+### Changed
+- Tests that faked the product now drive it: the design `serve()` server, terminal-agent `/internal/grant` and `/internal/revoke` bearer auth, `/health` liveness, and brain-sync consent before egress.
+- Per-incident replay files are folded verbatim into twelve detector owner tests (listed in `docs/TEST_PORTFOLIO.md`), keeping every captured case.
+- Paid touchfiles are derived: `test/touchfiles.test.ts` checks that each case's key covers its eval's static helper/fixture imports and the fixture paths it names, and free `*.test.ts` files are no longer touchfiles, so editing a free test no longer selects paid evals.
+- The paid planner skips a file for a tier lane when every E2E id it registers belongs to the other tier (the hollow shards), and the weekly gate census skips the LLM judges.
+- Seven paid evals that pinned `claude-opus-4-7` or `claude-sonnet-4-6` now capture with the default model from `resolveEvalModel`; all passed on it. Four more (`skill-e2e-design`, `-office-hours-phase4`, `-plan-prosons`, `-plan`) keep `claude-opus-4-7` because six of their cases failed on the default model; TODOS tracks re-pinning them.
+- memory-pipeline, ios-qa, ios-qa-swift-build and plan-tune-cathedral make no model calls and now run in the free suite; CI-unrunnable Codex, Aside, outside-voice and iOS-device files are excluded from the weekly lane with a tracked re-entry condition.
+- The plan-count history PTY test waits for its startup marker instead of a fixed 8-second sleep.
+
+### For contributors
+- When a paid eval fails, fix the product or harness and add the captured case as one row in the detector's owner test; `test/test-of-test-ratchet.test.ts` fails on any new test file that imports only `test/` code and names the owner test to extend. `CONTRIBUTING.md` "Test tiers" has an example.
+- Deleted `test/helpers` modules and where their live cases went:
+  - `autoplan-setup-question`, `ceo-approach-pick`, `ceo-completion-handoff`, `ceo-payment-findings`, `design-artifact-question`, `design-count-fixture`, `design-count-outside`, `design-count-review`, `devex-count-fixture`, `devex-seed-coverage`, `eng-count-question-policy`: consumed only by the retired finding-count evals; runner tests that used them as caller policies now use inline policies, and the omitted-`multiSelect` default moved to `test/plan-review-decisions.test.ts`.
+  - `autoplan-phase-order`, `pty-current-screen`: never wired; the settings-overwrite card assertion moved to `test/helpers/claude-pty-runner.unit.test.ts`.
+  - `ceo-paired-fixture`, `design-ui-scope`, `plan-skill-completion`, `required-reads`, `transcript-section-logger`, `eng-finding-fixture`, `eng-completion-handoff`, `eng-retained-corpus`, `captured-paths`, `gemini-session-runner`: no live cases.
+- `test/helpers/resolve-repo-path.ts` resolves specifiers and path literals for both the ratchet and the touchfile closure check. The full evidence (inventories, selection proof, security mapping, retained false positives) is in `docs/test-audit-2026-09.md`.
+
 ## [1.91.6.0] - 2026-09-28
 
 PR eval slices are balanced by how long each eval actually takes, so the slowest slice no longer carries most of the run.

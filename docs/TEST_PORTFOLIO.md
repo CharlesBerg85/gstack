@@ -141,11 +141,13 @@ test/plan-count-design-ui-recovery.test.ts
 test/plan-count-native-input.test.ts
 test/plan-count-empty-review.test.ts
 test/plan-count-owned-permission.test.ts
-test/plan-count-quoted-frame-ak.test.ts
+test/plan-count-file-permission.test.ts
 test/plan-count-truncated-question.test.ts
 test/plan-count-preview-footer.test.ts
 test/eng-test-plan-edit-approval.test.ts
 ```
+
+The quoted-frame selector was folded into `test/plan-count-file-permission.test.ts` in the 2026-09 audit.
 
 The publication/watchdog pair is `test/autoplan-publication-guard.test.ts` and
 `test/cso-watchdog.test.ts`. The live pair is

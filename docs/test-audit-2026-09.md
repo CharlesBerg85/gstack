@@ -262,7 +262,7 @@ import/literal chain, the key, the verify command and CONTRIBUTING.md#paid-test-
 |---|---|---|
 | E | Selection proof above: no lost case for the four sample edits under either profile; growth only from real static dependencies | kept |
 | B5 | Gate lane 52 → 42 files, weekly gate census 52 → 41 (judges skipped), periodic 77 → 69; PR-profile selection for the sample edits byte-identical before and after | kept |
-| B8 | Pre-spend estimate net −$3.14/week (below); paid run result below | see paid validation |
+| B8 | Paid run: gate 16/16 pass; periodic 28 pass, 6 fail (all in four files). Fallback taken: those four files keep claude-opus-4-7; seven files re-pinned. Estimated B8 delta after the fallback: +$0.69/week (opus −$1.43, sonnet +$2.12), below zero once C and B5 savings are counted | kept (seven files) |
 
 ### B8 pre-spend estimate (recorded 2026-09-29, before any B8 paid run)
 
@@ -289,7 +289,20 @@ Fallback check: `git log -S claude-sonnet-4-6` on skill-e2e-office-hours and -br
 - B2 union judge "browse/SKILL.md reference": PASS (clarity 4, completeness 4, actionability 4), $0.02. Fallback not
   taken; the three original browse judges are deleted.
 - B6 folded journey negatives in `skill-routing-e2e`: 3/3 unrouted, $0.36. Fallback not taken; `skill-e2e-opus-47` deleted.
-- B8 re-pin run and the full gate census: recorded in the release commit.
+- B8 re-pin run (commit B8 tree, `EVALS_ALL=1`, `EVALS_TIER=gate` then `periodic`, 11 files, detached, about $32 logged
+  capture cost): gate 16 pass / 0 fail; periodic 28 pass / 6 fail / 33 skip. Failures, all passing in the 09-14, 09-21
+  and 09-28 weekly runs on the old pins, so attributed to the default model:
+  `plan-design-review-plan-mode` (timeout at 300 s, no turns recorded), `office-hours-phase4-fork` (no two-alternative
+  fork), `plan-review-prosons-neutral-neg` (output file not written), `plan-ceo-review-selective` and `plan-eng-review`
+  (600 s timeouts), `plan-ceo-review-expansion-energy` (surface-framing score 3 < 4). Fallback taken: skill-e2e-design,
+  -office-hours-phase4, -plan-prosons and -plan keep claude-opus-4-7 (TODOS entry); the other seven files stay re-pinned.
+- PR-profile list on the final diff (`--tier gate --profile pr --list`, no EVALS_ALL): unknown dependencies (deleted
+  helpers, fixtures and workflow edits) restore every gate case: 86 of 192 tests, 38 of 42 shards. Recorded as data.
+- Gate census pre-spend estimate (recorded before running): 41 planned files (judges skipped). The 21 files with
+  per-file cost in the retained weekly artifacts total about $22; the other 20 have no retained cost, so about $40–45
+  in all at the same average. Wall clock with 8 local workers: about 1–2 hours. The census is the one full paid run
+  this PR spends on; the B8 run above already covered the re-pinned files.
+- Full gate census: results in the final report and PR body.
 
 ## Before metrics (65bfb0c)
 
@@ -305,6 +318,46 @@ test/helpers LOC: 51390
 test/fixtures bytes: 16289330	total
 all test-file LOC: 279898
 - free tests: 27,331 passed, 0 failed (1065 shards)
+
+## After metrics (release commit, same counting script as before)
+
+| Measure | Before (65bfb0c) | After |
+|---|---:|---:|
+| Tracked `*.test.ts` files | 1,184 | 957 |
+| `test/*.test.ts` files | 979 | 755 |
+| `test/` TypeScript lines | 274,208 | 227,713 |
+| `test/helpers` lines | 51,390 | 39,427 |
+| `test/fixtures` bytes | 16,289,330 | 9,695,914 |
+| All `*.test.ts` lines | 279,640 | 244,504 |
+| Free suite (Ubicloud standard-16, `--record-durations`) | 1,065 files, 27,331 passing, 142 s wall, 1,888.2 s serial | 857 files, 20,302 passing, 136 s wall, 1,737.7 s serial |
+| Paid files / gate lane / periodic lane | 119 / 58 / 100 | 100 / 42 / 69 |
+| Weekly gate census planned files | 58 | 41 |
+| 09-21 weekly periodic shard-minutes on files this branch removes | 235 of 462 | 0 |
+
+`git diff --numstat 65bfb0c..release`: production, CI and scripts 21 files (+90/−215); docs 6 (+574/−78 before the
+release docs sweep); tests 383 (+9,375/−44,379); test helpers 47 (+786/−12,749); fixtures 199 (−43,667).
+
+## Kept vs plan
+
+- Kept `AUTOPLAN_PREFLIGHT_BUDGET_BYTES` (G): `skill-preflight-budget.test.ts` enforces it on real generated output.
+- Deleted `plan-tune-cathedral-fixture.test.ts` beyond the plan (B3): it only replayed the renamed file's fixture.
+- `eng-finding-fixture.test.ts`: the plan named four prompt-builder tests; only two existed, and C deleted them with
+  the paid file they read.
+- C0 agreement rule: harness and budget were treated as one non-product group; every artifact of the five files was
+  harness or budget, none product.
+- C kept seven of the eight production-touching files; `ceo-current-decision-record` went because its template read
+  only fed the retired counter. Three helpers were restored for kept tests (`autoplan-method-read-audit.ts`,
+  `autoplan-preconfigured-fixture.ts`, `readPendingAutoplanArtifact`).
+- `CARVE_GUARDS.autoplan` became `behavioral: 'none'` (the retired chain was its only section-read proof).
+- D folds incident files verbatim into owner `describe` blocks rather than rewriting them into value tables, so no
+  incident control can be dropped; the native-completion negative table is deferred (TODOS) because collapsing it
+  changes `engFirstReviewAUQ` gating on a paid verdict.
+- E stops the closure walk at global touchfile modules and excludes the selection modules; helpers imported by a
+  paid file now select every case that file registers (for example the cookie judge helpers select all judges).
+- H edited only `plan-count-history`: `eng-semantic-terminal`'s sleeping cases and `design-artifact-question` went in C.
+- B5 has no CLI file selector to bypass the skip; running a file directly with `bun test` bypasses it.
+- Fixes to earlier commits: the B commit's census, judge-count, touchfile-count and selection literals were stale
+  (nine free failures found by a full local run) and were fixed inside that commit before C.
 
 ## Retained false positives (lane reports §4)
 

@@ -842,6 +842,16 @@ and `test/dx-selected-navigation-ap.test.ts`. One shared table run once against 
 only after `engFirstReviewAUQ` checks native completion once at entry; today each branch gates it
 separately, so the change alters a paid verdict and needs its own paid run.
 
+### P3: Re-pin the four remaining claude-opus-4-7 paid files
+
+**What:** The 2026-09 audit moved seven paid evals to the default capture model (`resolveEvalModel('capture')`).
+`skill-e2e-design`, `skill-e2e-office-hours-phase4`, `skill-e2e-plan-prosons` and `skill-e2e-plan` keep
+`claude-opus-4-7` because six cases failed on the default model in one run (plan-design-review-plan-mode timeout,
+office-hours-phase4-fork format, plan-review-prosons-neutral-neg missing output, plan-ceo-review-selective and
+plan-eng-review 600 s timeouts, plan-ceo-review-expansion-energy posture score 3). They measure an old model.
+
+**Re-entry:** fix the prompt, budget or rubric so each case passes on the default model in one run, then drop the pin.
+
 ### P3: Retire the unused CEO payment seeder
 
 **What:** `seedCeoPaymentProject` and `pickSuppliedCeoPlanStart` in `test/helpers/ceo-finding-fixture.ts`

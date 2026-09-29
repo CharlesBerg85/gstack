@@ -230,6 +230,12 @@ Historical measurements from 2026-09-21:
 | Local complete free suite | All 993 files, six workers | 4m 35s |
 | Complete Linux CI | All 993 files, 20 isolated runners | 1m 40s across test steps; 3m 7s including setup and aggregation |
 
+After the 2026-09-29 test audit ([evidence](docs/test-audit-2026-09.md)):
+
+| Run | Coverage | Elapsed |
+|---|---|---|
+| Complete free suite, `bun run test:ubicloud` (standard-16) | All 857 files, 20,302 passing tests | 136 seconds on the VM; 1,738 seconds of recorded serial test time |
+
 The [Linux CI run](https://github.com/garrytan/gstack/actions/runs/35642667809)
 on `25030d68` included one recorded successful retry. Its slowest test step was 77 seconds;
 staggered starts made the complete test span longer. Typical PR paid-gate timing
