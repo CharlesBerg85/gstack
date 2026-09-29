@@ -6,8 +6,8 @@ test.each(['bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-wind
   const selected = selectTests([file], E2E_TOUCHFILES).selected;
   for (const id of ['review-exploratory-small-cli', 'ship-exploratory-small-cli', 'ship-exploratory-unavailable',
     'ship-exploratory-plan-checks', 'ship-exploratory-late-input', 'qa-quick', 'qa-only-no-fix',
-    'qa-fix-loop']) expect(selected).toContain(id);
-  for (const id of ['qa-functional-cli-report', 'qa-functional-webhook-report',
-    'qa-functional-cli-fix', 'qa-functional-webhook-fix', 'qa-b6-static', 'qa-b7-spa',
+    'qa-fix-loop', 'qa-functional-cli-report', 'qa-functional-webhook-report',
+    'qa-functional-cli-fix', 'qa-functional-webhook-fix']) expect(selected).toContain(id);
+  for (const id of ['qa-b6-static', 'qa-b7-spa',
     'qa-b8-checkout']) expect(selected).not.toContain(id);
 });

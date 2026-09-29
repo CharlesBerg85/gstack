@@ -7,7 +7,8 @@ import { initializeWindowsReviewJob } from './claude-code-windows-job';
 
 const MAX_MS = 2_147_483_647;
 class QaDeadlineError extends Error {}
-type Emit = (stream: 'stdout' | 'stderr', receipt: Record<string, unknown>) => void;
+type QaCommandResult = { exitCode: number; signal: NodeJS.Signals | null; completed: boolean };
+type Emit = (stream: 'stdout' | 'stderr', receipt: Record<string, unknown>, completion?: QaCommandResult) => void;
 
 export interface QaDeadline {
   version: 1;
@@ -111,7 +112,12 @@ export function qaDeadlineStatus(state: QaDeadline) {
   return { ...state, observedAt: new Date(now).toISOString(), remainingMs, expired: remainingMs === 0 };
 }
 
-async function runCommand(file: string, command: string, args: string[], emit: Emit): Promise<number> {
+export interface QaCommandCapture {
+  write(stream: 'stdout' | 'stderr', chunk: Buffer): void;
+  complete(result: QaCommandResult): void;
+}
+
+export async function runQaDeadlineCommand(file: string, command: string, args: string[], emit: Emit, capture?: QaCommandCapture): Promise<number> {
   if (!['linux', 'darwin', 'win32'].includes(process.platform)) throw new QaDeadlineError('Process containment is unavailable on this platform');
   let status = qaDeadlineStatus(readQaDeadline(file));
   if (status.expired) {
@@ -135,7 +141,7 @@ async function runCommand(file: string, command: string, args: string[], emit: E
     }
     let outcome: number | undefined;
     let settled = false;
-    const child = spawn(command, args, { detached: process.platform !== 'win32', stdio: 'inherit', windowsHide: true });
+    const child = spawn(command, args, { detached: process.platform !== 'win32', stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit', windowsHide: true });
     const kill = () => {
       if (!child.pid) return;
       try {
@@ -145,7 +151,7 @@ async function runCommand(file: string, command: string, args: string[], emit: E
         if ((error as NodeJS.ErrnoException).code !== 'ESRCH') outcome = 2;
       }
     };
-    const finish = (code: number) => {
+    const finish = (code: number, signal: NodeJS.Signals | null = null, completed = false) => {
       const finishedAt = Date.now();
       if (settled) return;
       settled = true;
@@ -156,11 +162,15 @@ async function runCommand(file: string, command: string, args: string[], emit: E
       process.off('SIGTERM', terminate);
       process.off('SIGHUP', hangup);
       process.off('exit', kill);
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+      const completion = { exitCode: outcome ?? code, signal, completed: completed && outcome === undefined && signal === null };
       emit('stderr', { event: 'finished', observedAt: new Date(finishedAt).toISOString(),
-        deadlineAt: status.deadlineAt, timedOut: outcome === 124, exitCode: outcome ?? code });
+        deadlineAt: status.deadlineAt, timedOut: outcome === 124, exitCode: outcome ?? code }, completion);
+      capture?.complete(completion);
       resolve(outcome ?? code);
     };
-    const stop = (code: number) => { outcome ??= code; kill(); finish(code); };
+    const stop = (code: number) => { if (settled) return; outcome ??= code; kill(); finish(code); };
     const interrupt = () => stop(130);
     const terminate = () => stop(143);
     const hangup = () => stop(129);
@@ -170,7 +180,21 @@ async function runCommand(file: string, command: string, args: string[], emit: E
     process.on('exit', kill);
     const timer = setTimeout(() => stop(124), Math.max(1, utc(status.deadlineAt) - Date.now()));
     child.once('error', () => finish(127));
-    child.once('exit', (code, signal) => finish(code ?? (signal ? 128 + (osConstants.signals[signal] ?? 1) : 1)));
+    child.once('exit', (code, signal) => {
+      if (!capture) finish(code ?? (signal ? 128 + (osConstants.signals[signal] ?? 1) : 1), signal, true);
+      else if (!settled) kill();
+    });
+    if (capture) {
+      for (const stream of ['stdout', 'stderr'] as const) {
+        child[stream]!.on('data', chunk => {
+          if (settled) return;
+          try { capture.write(stream, chunk); } catch { stop(2); }
+        });
+        child[stream]!.once('error', () => stop(2));
+      }
+      child.once('close', (code, signal) => finish(code ?? (signal ? 128 + (osConstants.signals[signal] ?? 1) : 1), signal,
+        child.stdout!.readableEnded && child.stderr!.readableEnded));
+    }
     emit('stderr', { event: 'started', ...status });
   });
 }
@@ -181,16 +205,21 @@ async function runWindowsWorker(args: string[], emit: Emit): Promise<number> {
     emit('stderr', { event: 'expired', ...status });
     return 124;
   }
+  return runQaWindowsWorker(args, emit, path.resolve(import.meta.dir, '../bin/gstack-qa-deadline'), 'qa-deadline-receipt');
+}
+
+export async function runQaWindowsWorker(args: string[], emit: Emit, entrypoint: string, messageType: string,
+  captureFiles?: { stdout: number; stderr: number }): Promise<number> {
   try { await initializeWindowsReviewJob(); } catch { throw new QaDeadlineError('Windows process containment is unavailable; no command was started'); }
   return new Promise<number>(resolve => {
-    const worker = spawn(process.execPath, [...process.execArgv, path.resolve(import.meta.dir, '../bin/gstack-qa-deadline'), '--receipt-worker', ...args], {
-      stdio: ['inherit', 'inherit', 'inherit', 'ipc'], windowsHide: true,
+    const worker = spawn(process.execPath, [...process.execArgv, entrypoint, '--receipt-worker', ...args], {
+      stdio: ['inherit', captureFiles?.stdout ?? 'inherit', captureFiles?.stderr ?? 'inherit', 'ipc'], windowsHide: true,
     });
     const kill = () => { worker.kill('SIGKILL'); };
     process.on('exit', kill);
     worker.on('message', (message: any) => {
-      if (message?.type === 'qa-deadline-receipt' && ['stdout', 'stderr'].includes(message.stream)
-        && message.receipt && typeof message.receipt === 'object') emit(message.stream, message.receipt);
+      if (message?.type === messageType && ['stdout', 'stderr'].includes(message.stream)
+        && message.receipt && typeof message.receipt === 'object') emit(message.stream, message.receipt, message.completion);
     });
     worker.once('error', () => {
       process.off('exit', kill);
@@ -204,7 +233,8 @@ async function runWindowsWorker(args: string[], emit: Emit): Promise<number> {
   });
 }
 
-export async function qaDeadlineMain(args: string[], receiptWorker = false): Promise<number> {
+export async function withQaReceiptOutput(receiptWorker: boolean, messageType: string, format: (receipt: Record<string, unknown>) => string,
+  run: (emit: Emit) => Promise<number>): Promise<number> {
   const output = {
     stdout: fs.createWriteStream('', { fd: 1, autoClose: false }),
     stderr: fs.createWriteStream('', { fd: 2, autoClose: false }),
@@ -214,36 +244,17 @@ export async function qaDeadlineMain(args: string[], receiptWorker = false): Pro
   const failed = () => { writeFailed = true; };
   output.stdout.on('error', failed);
   output.stderr.on('error', failed);
-  const emit: Emit = (stream, receipt) => {
+  const emit: Emit = (stream, receipt, completion) => {
     writes.push(new Promise<void>(resolve => {
       const done = (error?: Error | null) => { if (error) writeFailed = true; resolve(); };
       try {
-        if (receiptWorker) process.send!({ type: 'qa-deadline-receipt', stream, receipt }, done);
-        else output[stream].write('\nQA_DEADLINE ' + JSON.stringify({ guard: 'qa-deadline', ...receipt }) + '\n', done);
+        if (receiptWorker) process.send!({ type: messageType, stream, receipt, ...(completion ? { completion } : {}) }, done);
+        else output[stream].write(format(receipt), done);
       } catch { writeFailed = true; resolve(); }
     }));
   };
-  try {
-    const [action, file, ...rest] = args;
-    if (action === 'start' && file && (rest.length === 1 || rest.length === 2)) {
-      const status = qaDeadlineStatus(startQaDeadline(file, rest[0], rest[1]));
-      emit('stdout', { event: 'start', ...status });
-      return status.expired ? 124 : 0;
-    }
-    if (action === 'status' && file && rest.length === 0) {
-      const status = qaDeadlineStatus(readQaDeadline(file));
-      emit('stdout', { event: 'status', ...status });
-      return status.expired ? 124 : 0;
-    }
-    if (action === 'run' && file && rest[0] === '--' && rest[1]) {
-      if (process.platform === 'win32' && !receiptWorker) return await runWindowsWorker(args, emit);
-      return await runCommand(file, rest[1], rest.slice(2), emit);
-    }
-    throw new QaDeadlineError('Usage: gstack-qa-deadline start FILE SECONDS [EARLIER_UTC] | status FILE | run FILE -- COMMAND ARGS...');
-  } catch (error) {
-    emit('stderr', { event: 'error', message: error instanceof QaDeadlineError ? error.message : 'Deadline guard failed' });
-    return 2;
-  } finally {
+  try { return await run(emit); }
+  finally {
     let timer: ReturnType<typeof setTimeout> | undefined;
     await Promise.race([
       Promise.all(writes),
@@ -252,4 +263,30 @@ export async function qaDeadlineMain(args: string[], receiptWorker = false): Pro
     clearTimeout(timer);
     if (writeFailed) return 2;
   }
+}
+
+export async function qaDeadlineMain(args: string[], receiptWorker = false): Promise<number> {
+  return withQaReceiptOutput(receiptWorker, 'qa-deadline-receipt', receipt => '\nQA_DEADLINE ' + JSON.stringify({ guard: 'qa-deadline', ...receipt }) + '\n', async emit => {
+    try {
+      const [action, file, ...rest] = args;
+      if (action === 'start' && file && (rest.length === 1 || rest.length === 2)) {
+        const status = qaDeadlineStatus(startQaDeadline(file, rest[0], rest[1]));
+        emit('stdout', { event: 'start', ...status });
+        return status.expired ? 124 : 0;
+      }
+      if (action === 'status' && file && rest.length === 0) {
+        const status = qaDeadlineStatus(readQaDeadline(file));
+        emit('stdout', { event: 'status', ...status });
+        return status.expired ? 124 : 0;
+      }
+      if (action === 'run' && file && rest[0] === '--' && rest[1]) {
+        if (process.platform === 'win32' && !receiptWorker) return await runWindowsWorker(args, emit);
+        return await runQaDeadlineCommand(file, rest[1], rest.slice(2), emit);
+      }
+      throw new QaDeadlineError('Usage: gstack-qa-deadline start FILE SECONDS [EARLIER_UTC] | status FILE | run FILE -- COMMAND ARGS...');
+    } catch (error) {
+      emit('stderr', { event: 'error', message: error instanceof QaDeadlineError ? error.message : 'Deadline guard failed' });
+      return 2;
+    }
+  });
 }

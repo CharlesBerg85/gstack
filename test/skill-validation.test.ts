@@ -1277,8 +1277,8 @@ describe('Phase 8e.5 regression test generation', () => {
     expect(content).toContain('Run its detected command before repair');
     expect(content).toContain('Re-run the regression, original failing probe and adjacent happy path');
     const exploratory = fs.readFileSync(path.join(ROOT, 'qa', 'sections', 'exploratory.md'), 'utf-8').replace(/\s+/g, ' ');
-    expect(exploratory).toContain('Require a failing regression BEFORE repair, then green regression, original probe and adjacent happy path');
-    expect(exploratory).toContain('Replay the exact failing command/request from the same initial fixture state via steps 2–3 before repair');
+    expect(exploratory).toContain('Phase 8 regression gates before verified repair');
+    expect(exploratory).toContain('Replay the exact failing command/request from the same initial fixture state via steps 2–3 (same native command, fresh capture ID) before repair');
     expect(exploratory).toContain('Another input or a regression test is not that replay');
     expect(content).not.toContain('Never modify tests or CI configuration');
   });

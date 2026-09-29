@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { qaEvidenceRuntimeFiles } from './qa-evidence-producer';
 
 export type QAFamily = 'cli' | 'webhook';
 export type QAMode = 'qa' | 'qa-only';
@@ -217,6 +218,7 @@ export function createQAFunctionalFixture(family: QAFamily, options: { healthy?:
   const hook = [process.execPath, path.join(import.meta.dir, 'qa-functional-observer.ts'), root]
     .map(value => `'${value.replaceAll("'", "'\\''")}'`).join(' ');
   const files: Record<string, string> = {
+    ...qaEvidenceRuntimeFiles(),
     '.gitignore': '.qa-state/\nqa-reports/\n',
     'package.json': JSON.stringify({ name: 'qa-functional-fixture', private: true, type: 'module', scripts: family === 'cli' ? { cli: 'bun src/cli.ts', probe: 'bun probe.ts', test: 'bun test' } : { probe: 'bun probe.ts', test: 'bun test' } }, null, 2) + '\n',
     'src/storage.ts': storage,
@@ -268,7 +270,7 @@ test('successful delivery', () => {
   try {
     fs.writeFileSync(path.join(config, 'settings.json'), JSON.stringify({ hooks: { PreToolUse: [{ matcher: '^Bash$',
       hooks: [{ type: 'command', command: hook, timeout: 5 }] }] } }) + '\n', { mode: 0o600 });
-    for (const dir of ['src', 'test', '.qa-state', 'qa-reports']) fs.mkdirSync(ownedPath(root, dir));
+    for (const dir of ['src', 'test', 'bin', 'lib', '.qa-state', 'qa-reports']) fs.mkdirSync(ownedPath(root, dir));
     for (const [relative, content] of Object.entries(files)) fs.writeFileSync(ownedPath(root, relative), content);
     fixtureGit(root, ['init', '-b', 'main'], remaining());
     fixtureGit(root, ['config', 'user.name', 'QA Fixture'], remaining());

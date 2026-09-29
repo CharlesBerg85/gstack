@@ -2,9 +2,8 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 # Shared exploratory QA
 
-The **caller** runs /qa, /qa-only, /review or /ship.
-The caller owns decisions, tests, edits, commits, publication and continuation. Discovery writes only
-reports/evidence and owned fixture state; never invoke workflows, install frameworks or publish.
+The **caller** (/qa, /qa-only, /review or /ship) owns decisions, tests, fixes and publication. Discovery writes only reports/evidence
+and owned fixture state; no workflows, framework installs or publication.
 
 ## 0. Preparation gate
 
@@ -24,36 +23,35 @@ Await each successful Read result before continuing. A supplied target, isolatio
 description, section index or remembered method is not a completed instruction Read.
 Do not repeat a Read already completed in this invocation; reuse only its acknowledged
 full contents. If either required Read is missing, complete it now before Charter and preflight.
-Missing or unreadable assets, prerequisites or permission block affected probes, not independent safe checks.
-Report QA setup blockers.
+Missing or unreadable assets, prerequisites or permission block affected probes, not independent safe checks. Report QA setup blockers.
 
 ## 1. Charter and preflight
 
-Reuse resolved REPORT_DIR; otherwise resolve ownership of an invocation-owned `.gstack/qa-reports` subdirectory.
-Write a **charter** (test plan) for each behavior: contract, risk,
-entrypoint, isolation and exit condition. Save charters as Markdown in the report: exact source, commands and inputs.
+Reuse resolved REPORT_DIR; otherwise own a fresh `.gstack/qa-reports` subdirectory.
+Write a **charter** per behavior: contract, risk, entrypoint, isolation, exit condition, source, commands and inputs. Save charters as Markdown in the report.
 
 
 For /qa and /qa-only:
 - Browser Quick: SECONDS=30. Browser Full/Regression: SECONDS=900.
 - Functional Full, Quick and Regression have no default total timer.
-Set SECONDS to the mode's limit or a shorter caller duration. With no mode limit, use the caller's duration or seconds remaining to its deadline.
-Without a total time limit, do not use the guard. Use documented or announced finite command timeouts instead.
+Set SECONDS to the shorter mode/caller limit; an unlimited mode uses the caller's bound.
+Without a total time limit, do not start D; announce finite command timeouts.
 Stop when scoped contracts are tested or blocked.
-Use REPORT_DIR for clocks/checkpoints. For mixed standalone runs, create REPORT_DIR/browser and REPORT_DIR/functional instead; keep one final report at REPORT_DIR. Caller paths win.
-G = `$HOME/.claude/skills/gstack/bin/gstack-qa-deadline`, D = `<probe directory>/deadline.json`; quote absolute paths.
-Start once before baseline: `bun G start D SECONDS [EARLIER_UTC]`.
-EARLIER_UTC is the caller's absolute deadline, if set.
-Every bounded probe: `bun G run D -- COMMAND ARGS` (scripts: `bash -c 'script'`). No detached probes.
-Never reset D/bypass G. Expiry or missing/invalid state stops probes; report unfinished coverage.
-QA_DEADLINE receipts are not observations; retain them as timing evidence.
-
-Never bootstrap functional/report-only QA.
+Clocks/checkpoints use REPORT_DIR; mixed standalone runs use REPORT_DIR/browser and REPORT_DIR/functional, with one final report at REPORT_DIR. Caller paths win.
+R = owned probe directory; D = R/deadline.json. Quote paths.
+G = `$HOME/.claude/skills/gstack/bin/gstack-qa-deadline`; Q = `$HOME/.claude/skills/gstack/bin/gstack-qa-evidence`.
+Start once before baseline: `bun G start D SECONDS [EARLIER_UTC]` if bounded.
+EARLIER_UTC = caller's absolute deadline, if set.
+Functional: `bun Q capture R NNN [--public] --deadline D -- COMMAND ARGS`.
+Unbounded: use `--timeout-ms MS` instead. Use fresh three-digit IDs.
+--public requires approved public/synthetic output; Q screens credentials. For complete private captures, await a safe Read of `R/.qa-evidence/NNN/observation.json`. Sensitive/incomplete captures cannot anchor checkpoints.
+Bounded browsers: `bun G run D -- COMMAND ARGS`. No detached probes.
+Never reset D/bypass G. Expiry or invalid/missing D stops probes; report unfinished coverage. QA_DEADLINE receipts are not observations.
 
 ## 2. Probe loop
 
-This loop decides each probe (one command/interaction plus checks).
-Do not batch probes across a checkpoint.
+Each probe is one native command/interaction plus checks, excluding bookkeeping.
+Never batch probes.
 
 1. First demonstrate success: output AND durable effects. Guard if bounded; await completion.
 2. **Decide whether another probe is needed.** If bounded, run `bun G status D`.
@@ -64,7 +62,7 @@ Do not batch probes across a checkpoint.
    For actual secrets/private payloads, withhold those values and disclose the redaction
    and replay limits in the report. If no safe exact observation can be retained,
    stop the affected probe chain; never invent a substitute path, identity or state.
-   Otherwise **Write before probing.** Write a new `exploration-NNN.json` in the probe directory, beside its deadline if bounded, with exactly four top-level fields:
+   **Publish before probing.** Create `exploration-NNN.json` in the probe directory, beside its deadline if bounded, with exactly four top-level fields:
    observationCommand: last completed probe's full outer command, including guard.
    observed: its exact decoded child JSON (no wrapper/extra keys), or its full non-JSON text.
    For guarded text, copy the complete span between the guard's started and finished receipt lines.
@@ -73,24 +71,21 @@ Do not batch probes across a checkpoint.
    For unguarded text, copy the complete result instead.
    If capture is incomplete, report that limit instead of reconstructing it.
    hypothesis: why nextCommand. nextCommand: exact command/request, guarded if bounded.
-   Compare every observed key/value with the completed result before Write; keep safe
-   values unchanged. Put tool metadata in the report, interpretations in hypothesis.
-   Complete and check all four fields against the result and next probe before Write.
-   No drafts/placeholders; corrections cannot repair published notes.
-   Wait for the successful Write result before dispatch.
-   Captions, private thinking and retrospective notes do not count. Never overwrite notes.
+   Preserve every safe program-JSON key/value and identity hash unchanged.
+   Withhold unsafe values, disclose limits and stop that chain.
+   Check fields before publication. No drafts/placeholders or invented safe-path redactions; corrections cannot repair published notes.
+   Functional: `bun Q checkpoint R NNN CAPTURE_ID 'observationCommand' 'hypothesis' 'nextCommand'` with literal arguments. Q supplies observed; never transcribe it.
+   Browser checkpoints use Write.
+   Wait for successful checkpoint publication before dispatch.
+   Never backfill or overwrite notes.
 3. Run that exact probe; G enforces the deadline when bounded.
-   Report refusals as not-run. Retain initial state/inputs/results.
-   Repeat from step 2.
-4. Replay the exact failing command/request from the same initial fixture state via steps 2–3
+   Report refusals as not-run; retain initial state/inputs/results. Repeat from step 2.
+4. Replay the exact failing command/request from the same initial fixture state via steps 2–3 (same native command, fresh capture ID)
    to confirm it, then minimize via those gates. Expiry leaves confirmation/minimization incomplete.
    Another input or a regression test is not that replay.
 5. If the user or another process changes source, commands or fixtures, review the affected
    contracts and return to step 2 for each affected revalidation. Do not make product changes yourself.
    Keep the original limits/notes; update outcomes only from fresh evidence.
-
-Classify expected rejection, setup error, unclear contract or defect.
-Test a causal hypothesis on the failing path to explain the failure; launch/acceptance is not completion.
 
 ## 3. Parent handoff
 
@@ -100,10 +95,10 @@ with their failing contract and expected assertion; never create tests or freeze
 
 ## 4. Final report
 
-Link each checkpoint in the final report. Include findings, unfinished charters, cleanup,
-sanitized evidence, revision/runtime, replay limits, severity, browser scores,
-functional outcomes and proposed/executed tests separately.
+Use the surface report template; link each checkpoint. Separate browser scores, functional outcomes and proposed/executed tests.
+For evidence.json, Write R/annotations.json: {revision, runtime, cwd, evidence: [{capture, command, contract, expected, classification}], learning: [checkpoint IDs], limits}.
+Run `bun Q materialize R annotations.json` before Markdown; Q fills observed/learning, not classifications. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
 Evidence is invocation-local.
-Missing prerequisites/expectations, timeouts, refusal and absent observations never pass.
+Missing prerequisites/expectations/observations, timeouts and refusal never pass.
 Pass requires all required current-input contracts to pass with no required remainder.
 Report blocked, inconclusive and not-run coverage without claiming success.

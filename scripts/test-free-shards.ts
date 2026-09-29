@@ -168,6 +168,10 @@ const WINDOWS_FRAGILE_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
 // the failure mode is structural rather than detectable via source-file scan.
 export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }> = [
   {
+    file: 'test/qa-evidence-producer.test.ts',
+    reason: 'executes the registered Linux native actor and its inotify observer; portable capture and Windows job behavior are covered by qa-evidence.test.ts',
+  },
+  {
     file: 'test/qa-functional-fixture.test.ts',
     reason: 'executes graceful POSIX signal cancellation; Bun on Windows uses TerminateProcess and cannot run the fixture SIGTERM cleanup handler',
   },
@@ -325,6 +329,14 @@ export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }>
 // pattern hit is a false positive — the point of these files is Windows
 // coverage, so auto-excluding them defeats the regression tests they carry.
 const KNOWN_WINDOWS_SAFE: Array<{ file: string; reason: string }> = [
+  {
+    file: 'test/qa-evidence.test.ts',
+    reason: 'invokes the production helper through Bun argv and exercises native Windows job cleanup, private file captures and backpressured receipt output',
+  },
+  {
+    file: 'test/qa-evidence-selection.test.ts',
+    reason: 'bin/ strings are literal dependency and Windows-selection assertions; no native actor or shebang command is launched',
+  },
   {
     file: 'test/qa-deadline.test.ts',
     reason: 'launches the guard through Bun argv; mode assertions and POSIX signal cases are platform-gated, while Windows job cleanup must execute natively',

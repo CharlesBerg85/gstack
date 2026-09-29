@@ -39,6 +39,7 @@ async function capture(caseId: QaCallerCase) {
       fixtureRoot: fixture.cwd,
       runtime: fixture.runtime,
       requireGuardedSmoke: true,
+      requireCapturedEvidence: true,
       reportRoot: path.join(fixture.cwd, 'reports'),
       checkpointFiles: readQACheckpointFiles(path.join(fixture.cwd, 'reports')),
       reportMarkdown: fs.readFileSync(path.join(fixture.cwd, 'reports/review.md'), 'utf8'),
@@ -66,7 +67,7 @@ async function capture(caseId: QaCallerCase) {
     passed = true;
   } finally {
     await fixture.close();
-    const artifacts = path.join(getProjectEvalDir(), 'qa-callers', id);
+    const artifacts = path.join(process.env.GSTACK_EVAL_DIR || getProjectEvalDir(), 'qa-callers', id);
     retainQaCallerEvidence(fixture, artifacts, result);
     if (result) {
       logCost(caseId, result);

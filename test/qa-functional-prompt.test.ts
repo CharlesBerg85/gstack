@@ -80,11 +80,17 @@ test('CI CLI replay summaries fail only the distinct-probe metric despite valid 
 test('functional driver discloses its learning, CLI coverage and repair acceptance requirements', () => {
   for (const entry of QA_FUNCTIONAL_CASES) {
     const prompt = qaFunctionalPrompt(entry);
-    expect(prompt).toContain(`Read ${entry.mode}/SKILL.md, qa/sections/scope.md and ${entry.mode}/sections/exploratory.md in full`);
-    expect(prompt).toContain('All three reads are required before probing in this fixture, even when its surfaces and isolation are already established');
+    expect(prompt).toContain(`Read ${entry.mode}/SKILL.md, qa/sections/scope.md, ${entry.mode}/sections/exploratory.md and qa/sections/system-functional.md in full`);
+    expect(prompt).toContain('All four reads are required before probing in this fixture, even when its surfaces and isolation are already established');
+    expect(prompt).toContain('command is the exact full outer capture invocation, including that ID and all wrapper options, not just the native child command after --');
+    expect(prompt).toContain('"command":"<exact full outer capture invocation>"');
+    expect(prompt).not.toContain('<exact executed native probe command>');
     expect(prompt).toContain('different later command');
     expect(prompt).toContain('not the required same-command replay');
-    expect(prompt).toContain('Copy that checkpoint');
+    expect(prompt).toContain('Select that checkpoint ID in annotations.learning');
+    expect(prompt).toContain('the production helper copies its observationCommand, hypothesis and nextCommand');
+    expect(prompt).toContain('different native child commands');
+    expect(prompt).toContain('Only the helper writes observed fields');
     expect(prompt).toContain('English, more than 20 characters');
     if (entry.family === 'cli') expect(prompt).toContain('a successful apply; balance alone is not enough');
     if (entry.mode === 'qa') {
@@ -156,7 +162,7 @@ test('the native launcher consumes the family-specific actor boundary', () => {
     expect(prompt).toContain(`Read ${entry.mode}/SKILL.md`);
     expect(prompt).toContain(entry.mode === 'qa' ? 'Full exploration and the Standard fix tier' : 'Full report-only exploration');
     expect(prompt).not.toContain('at Standard depth');
-    expect(prompt).toContain('successful Write result before the next probe');
+    expect(prompt).toContain('successful checkpoint publication before the next probe');
     expect(prompt).toContain('no shell composition, scripts or added path operands');
     expect(prompt).toContain('ONLY complete JSON actually emitted');
     expect(prompt).toContain('never a combined command list');
@@ -192,13 +198,13 @@ test('declared examples respect the existing closed native grammar', () => {
 test('artifact completion preserves exact evidence before concise linked reporting', () => {
   for (const entry of QA_FUNCTIONAL_CASES) {
     const prompt = qaFunctionalPrompt(entry);
-    expect(prompt).toContain('Preserve qa-reports/evidence.json first, then write a concise qa-reports/report.md');
+    expect(prompt).toContain('Materialize qa-reports/evidence.json first, then write a concise qa-reports/report.md');
     expect(prompt).toContain('using the functional report structure');
     expect(prompt).toContain('Link the evidence and checkpoint files rather than repeating full probe payloads in Markdown');
     expect(prompt).toContain('Both artifacts are required before completion');
     expect(prompt).toContain('The learning array is a summary: choose one completed checkpoint');
     expect(prompt).toContain('not another probe or a duplicate of the complete checkpoint ledger');
-    expect(prompt).toContain('both commands must name exact captured probes and must differ');
+    expect(prompt).toContain('Both commands must name exact captured probes with different native child commands');
     expect(prompt).toContain('Preserve every checkpoint and link every checkpoint in Markdown');
     expect(prompt).toContain('keep every executed probe and its complete JSON in evidence');
     expect(prompt).toContain('Evidence rows contain ONLY complete JSON actually emitted by native probes, including failures and repeats');
@@ -362,29 +368,29 @@ test.each(JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/qa-webhook-r85
 
 test('report-only exploration requires a completed written checkpoint before the next probe', () => {
   const section = readFileSync(join(import.meta.dir, '../qa-only/sections/exploratory.md'), 'utf8');
-  const positions = ['1. First demonstrate success', '2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
+  const positions = ['1. First demonstrate success', '2. **Decide whether another probe is needed.**', '**Publish before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
     .map(marker => section.indexOf(marker));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
   expect(section).toContain('exploration-NNN.json');
   expect(section).toContain("Reuse resolved REPORT_DIR");
-  expect(section).toContain('invocation-owned');
-  expect(section).toContain('resolve ownership');
+  expect(section).toContain('own a fresh');
+  expect(section).toContain('owned probe directory');
   for (const field of ['observationCommand', 'observed', 'hypothesis', 'nextCommand']) expect(section).toContain(`${field}:`);
-  expect(section).toContain('Wait for the successful Write result');
-  expect(section).toContain('Captions, private thinking and retrospective notes do not count');
-  expect(section).toContain('Link each checkpoint in the final report');
+  expect(section).toContain('Wait for successful checkpoint publication');
+  expect(section).toContain('Never backfill or overwrite notes');
+  expect(section).toContain('link each checkpoint');
   expect(section).not.toContain('a separate assistant text message');
 });
 
 test('surface evidence checks defer to one exploratory execution sequence', () => {
   const source = readFileSync(join(import.meta.dir, '../scripts/resolvers/qa.ts'), 'utf8');
-  expect(source).toContain('This loop decides each probe (one command/interaction plus checks)');
-  const positions = ['2. **Decide whether another probe is needed.**', '**Write before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
+  expect(source).toContain('Each probe is one native command/interaction plus checks, excluding bookkeeping');
+  const positions = ['2. **Decide whether another probe is needed.**', '**Publish before probing.**', '3. Run that exact probe; G enforces the deadline when bounded']
     .map(marker => source.indexOf(marker));
   expect(positions.every(position => position >= 0)).toBe(true);
   expect(positions).toEqual([...positions].sort((a, b) => a - b));
-  expect(source).toContain('Do not batch probes across a checkpoint');
+  expect(source).toContain('Never batch probes');
   expect(source).toContain('Follow the shared exploratory loop\'s order and written checkpoints');
   expect(source).toContain('Replay the exact failing command/request from the same initial fixture state');
   expect(source).toContain('Another input or a regression test is not that replay');

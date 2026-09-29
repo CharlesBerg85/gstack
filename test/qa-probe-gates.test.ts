@@ -26,12 +26,12 @@ function assertBoundsAndLayout(text: string) {
   for (const contract of [
     'Browser Quick: SECONDS=30', 'Browser Full/Regression: SECONDS=900',
     'Functional Full, Quick and Regression have no default total timer',
-    "Set SECONDS to the mode's limit or a shorter caller duration",
-    "With no mode limit, use the caller\'s duration or seconds remaining to its deadline",
-    'Without a total time limit, do not use the guard',
-    'Use documented or announced finite command timeouts instead',
-    "EARLIER_UTC is the caller\'s absolute deadline, if set",
-    'Use REPORT_DIR for clocks/checkpoints. For mixed standalone runs, create REPORT_DIR/browser and REPORT_DIR/functional instead; keep one final report at REPORT_DIR. Caller paths win.',
+    "Set SECONDS to the shorter mode/caller limit",
+    "an unlimited mode uses the caller\'s bound",
+    'Without a total time limit, do not start D',
+    'announce finite command timeouts',
+    "EARLIER_UTC = caller\'s absolute deadline, if set",
+    'Clocks/checkpoints use REPORT_DIR; mixed standalone runs use REPORT_DIR/browser and REPORT_DIR/functional, with one final report at REPORT_DIR. Caller paths win.',
     'in the probe directory, beside its deadline if bounded',
   ]) expect(text).toContain(contract);
   expect(text.indexOf('Caller paths win.')).toBeLessThan(text.indexOf('Start once before baseline:'));
@@ -50,7 +50,7 @@ function assertPlanExecution(text: string, shared = generateQAExploratory({ host
   expect(step.indexOf('Follow the shared Probe loop')).toBeLessThan(step.indexOf('Then run required plan checks'));
   expect(step.indexOf('Then run required plan checks')).toBeLessThan(step.indexOf('same procedure'));
   for (const contract of ['First demonstrate success: output AND durable effects',
-    'Wait for the successful Write result before dispatch',
+    'Wait for successful checkpoint publication before dispatch',
     'Replay the exact failing command/request from the same initial fixture state']) {
     expect(shared).toContain(contract);
   }
@@ -103,10 +103,9 @@ describe('QA probe entry and checkpoint gates', () => {
     for (const host of ALL_HOST_CONFIGS) {
       for (const skillName of ['qa', 'qa-only']) {
         const text = generateQAExploratory({ host: host.name, skillName, tmplPath: '', paths: HOST_PATHS[host.name] });
-        const stages = [...(skillName === 'qa-only' ? ['Classify the last result before copying it',
-          'Complete and check all four fields against the result and next probe before Write']
-          : ['Before Write, complete and check all fields against the result and next probe']),
-          'Wait for the successful Write result', '3. Run that exact probe'];
+        const stages = [...(skillName === 'qa-only' ? ['Classify the last result before copying it'] : []),
+          'Check fields before publication', 'bun Q checkpoint R NNN CAPTURE_ID',
+          'Browser checkpoints use Write', 'Wait for successful checkpoint publication', '3. Run that exact probe'];
         const positions = stages.map(stage => text.indexOf(stage));
         expect(positions.every(position => position >= 0)).toBe(true);
         expect(positions).toEqual([...positions].sort((a, b) => a - b));
@@ -120,7 +119,7 @@ describe('QA probe entry and checkpoint gates', () => {
           expect(text).toContain('An absolute state path is not itself a secret');
         } else {
           expect(text).toContain('No drafts/placeholders or invented safe-path redactions');
-          expect(text).toContain('Redact secrets/private payloads; disclose limits');
+          expect(text).toContain('Withhold unsafe values, disclose limits and stop that chain');
         }
         if (skillName === 'qa-only') expect(text).toContain('If capture is incomplete, report that limit instead of reconstructing it');
       }
@@ -133,8 +132,8 @@ describe('QA probe entry and checkpoint gates', () => {
       for (const contract of [
         'Reuse resolved REPORT_DIR',
         'charters as Markdown in the report',
-        "Set SECONDS to the mode's limit or a shorter caller duration",
-        'Without a total time limit, do not use the guard',
+        "Set SECONDS to the shorter mode/caller limit",
+        'Without a total time limit, do not start D',
         'Browser Quick: SECONDS=30',
         'Browser Full/Regression: SECONDS=900',
         'exactly four top-level fields:', 'observationCommand:', 'observed:', 'hypothesis:', 'nextCommand:',
@@ -156,20 +155,20 @@ describe('QA probe entry and checkpoint gates', () => {
         expect(text.indexOf(methods)).toBeLessThan(text.indexOf('1. First demonstrate success'));
         assertPreparation(text);
         const decision = text.indexOf('Decide whether another probe is needed');
-        const write = text.indexOf('**Write before probing.**');
+        const write = text.indexOf('**Publish before probing.**');
         expect(decision).toBeGreaterThan(-1);
         expect(decision).toBeLessThan(write);
         expect(text.slice(decision, write)).toContain('write the report, not a checkpoint');
         expect(text.slice(decision, write)).toContain('If expired or no safe next probe remains');
         expect(text.slice(decision, write)).not.toContain('If done or blocked');
         if (skillName === 'qa-only') {
-          expect(text).toContain('Compare every observed key/value with the completed result before Write');
+          expect(text).toContain('Check fields before publication');
           expect(text).toContain('retain the entire result unchanged, including owned fixture paths, IDs, hashes');
         } else {
           expect(text).toContain('Preserve every safe program-JSON key/value');
           expect(text).toContain('Preserve every safe program-JSON key/value and identity hash unchanged');
         }
-        expect(text).toContain('Put tool metadata in the report');
+        expect(text).toContain('Q supplies observed; never transcribe it');
       }
     }
   });
@@ -181,13 +180,13 @@ describe('QA probe entry and checkpoint gates', () => {
       expect(steps).toHaveLength(5);
       expect(text).toContain('/gstack-qa-deadline');
       expect(text).toContain('bun G start D SECONDS [EARLIER_UTC]');
-      expect(text).toContain('Every bounded probe: `bun G run D -- COMMAND ARGS`');
+      expect(text).toContain('Bounded browsers: `bun G run D -- COMMAND ARGS`');
       expect(text).toContain('Never reset D/bypass G');
-      expect(text).toContain('missing/invalid state stops probes');
+      expect(text).toContain('invalid/missing D stops probes');
       expect(steps[0]).toContain('demonstrate success: output AND durable effects');
       expect(steps[0]).toContain('Guard if bounded; await completion');
       expect(steps[1]).toContain('If bounded, run `bun G status D`');
-      expect(steps[1].indexOf('If expired')).toBeLessThan(steps[1].indexOf('**Write before probing.**'));
+      expect(steps[1].indexOf('If expired')).toBeLessThan(steps[1].indexOf('**Publish before probing.**'));
       expect(steps[1]).toContain('STOP exploration; write the report, not a checkpoint');
       expect(steps[2]).toContain('Run that exact probe; G enforces the deadline when bounded');
       expect(steps[2]).toContain('G enforces the deadline');
@@ -250,10 +249,10 @@ describe('QA probe entry and checkpoint gates', () => {
     for (const [before, after] of [
       ['mixed standalone runs', 'all mixed runs'],
       ['REPORT_DIR/browser and REPORT_DIR/functional', 'REPORT_DIR'],
-      ['keep one final report at REPORT_DIR', 'write a final report per surface'],
+      ['with one final report at REPORT_DIR', 'write a final report per surface'],
       ['Caller paths win.', 'Surface paths win.'],
       ['finite command timeouts', 'unbounded command timeouts'],
-      ["a shorter caller duration", 'the mode duration regardless of caller'],
+      ["shorter mode/caller limit", 'the mode duration regardless of caller'],
     ]) expect(() => assertBoundsAndLayout(text.replace(before, after))).toThrow();
   });
 
@@ -276,7 +275,7 @@ describe('QA probe entry and checkpoint gates', () => {
       expect(() => assertPlanExecution(text.replace(smoke, '').replace('**4. Check', smoke + '\n**4. Check'))).toThrow();
       const shared = generateQAExploratory({ host: 'claude', skillName: 'qa', tmplPath: '', paths: HOST_PATHS.claude });
       for (const contract of ['First demonstrate success: output AND durable effects',
-        'Wait for the successful Write result before dispatch',
+        'Wait for successful checkpoint publication before dispatch',
         'Replay the exact failing command/request from the same initial fixture state']) {
         expect(() => assertPlanExecution(text, shared.replace(contract, 'Optional evidence'))).toThrow();
       }

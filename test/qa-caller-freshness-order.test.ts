@@ -40,7 +40,7 @@ describe('review and ship completion freshness contracts', () => {
 
       test(`${host.name}/${skillName}: dependent probes await prerequisites without serializing independent Reads`, () => {
         expect(shared).toContain('Complete these Reads in order before writing charters or probing');
-        expect(shared).toContain('Wait for the successful Write result before dispatch');
+        expect(shared).toContain('Wait for successful checkpoint publication before dispatch');
         expect(body).toContain('Await clock/guard results before acting');
         expect(body).toContain('Batch only independent Reads');
         expect(shared).toContain('Missing or unreadable assets, prerequisites or permission block affected probes, not independent safe checks');
@@ -65,7 +65,8 @@ describe('review and ship completion freshness contracts', () => {
 
       test(`${host.name}/${skillName}: required revalidation uses real limits rather than the optional-work reserve`, () => {
         expect(gate).toContain('repeat step 3 for affected checks');
-        expect(shared).toContain('return to step 2 for each affected revalidation without resetting limits/notes');
+        expect(shared).toContain('return to step 2 for each affected revalidation');
+        expect(shared).toContain('Keep limits/notes; status requires fresh evidence');
         expect(gate).toContain('Reporting reserves cannot stop required revalidation within the caller\'s deadline');
         expect(body).toContain('Await clock/guard results before acting');
         expect(body).toContain('Smoke: 5 minutes/12 probes');

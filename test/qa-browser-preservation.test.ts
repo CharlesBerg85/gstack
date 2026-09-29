@@ -139,13 +139,13 @@ describe('compact QA browser recipes retain native operations', () => {
       const loop = generateQAExploratory({ ...ctx, skillName });
       for (const contract of [
         'bun G start D SECONDS [EARLIER_UTC]',
-        "Set SECONDS to the mode's limit or a shorter caller duration",
+        'Set SECONDS to the shorter mode/caller limit',
         'G enforces the deadline',
         'QA_DEADLINE receipts are not observations',
         'Never reset D/bypass G',
         'Report refusals as not-run',
-        'Every bounded probe: `bun G run D -- COMMAND ARGS`',
-        'Use documented or announced finite command timeouts',
+        'Bounded browsers: `bun G run D -- COMMAND ARGS`',
+        'announce finite command timeouts',
       ]) expect(loop).toContain(contract);
       for (const field of ['observationCommand', 'observed', 'hypothesis', 'nextCommand']) expect(loop).toContain(`${field}:`);
       expect(loop).toContain('Functional Full, Quick and Regression have no default total timer');
@@ -194,10 +194,10 @@ describe('compact QA browser recipes retain native operations', () => {
     for (const skillName of ['qa', 'qa-only']) {
       const loop = generateQAExploratory({ ...ctx, skillName }).replace(/\s+/g, ' ');
       for (const contract of [
-        'This loop decides each probe', 'demonstrate success: output AND durable effects',
-        'Otherwise **Write before probing.** Write a new',
-        'Wait for the successful Write result before dispatch',
-        'Captions, private thinking and retrospective notes do not count',
+        'Each probe is one native command/interaction', 'demonstrate success: output AND durable effects',
+        '**Publish before probing.** Create',
+        'Wait for successful checkpoint publication before dispatch',
+        'Never backfill or overwrite notes',
         'Replay the exact failing command/request from the same initial fixture state',
         'then minimize via those gates',
         'Another input or a regression test is not that replay',
@@ -222,8 +222,9 @@ describe('compact QA browser recipes retain native operations', () => {
     const rules = source.slice(source.indexOf('## Additional Rules'));
     for (const rule of ['Outside an explicitly approved browser bootstrap', 'Only create tests through authorized codification in Phase 8a.5', 'Never modify CI configuration or weaken existing tests', 'use new native test files']) expect(rules).toContain(rule);
     const loop = generateQAExploratory(ctx).replace(/\s+/g, ' ');
-    for (const rule of ['unit for logic', 'integration for storage/requests/queues', 'E2E when smaller tests or mocks miss the journey', 'Do not automatically use both', 'Mock unrelated services, not the failing boundary', 'Require a failing regression BEFORE repair', 'green regression, original probe and adjacent happy path', 'Never freeze buggy output, weaken tests or delete valid red tests']) expect(loop).toContain(rule);
+    for (const rule of ['unit for logic', 'integration for state/requests', 'E2E only if smaller tests miss the journey', 'not automatically both', 'Mock only unrelated services', 'Phase 8 regression gates before verified repair', 'Never freeze buggy output, weaken tests or delete valid red tests']) expect(loop).toContain(rule);
     expect(section('### 8a.5.', '### 8b.')).toContain("shared exploratory section's native unit/integration/E2E rules");
+    expect(section('### 8a.5.', '### 8b.')).toContain('Run its detected command before repair; prove the defect caused its failure, not a bad fixture, import or service');
     expect(section('### 8c.', '### 8d.')).toContain('Re-run the regression, original failing probe and adjacent happy path');
     expect(section('### 8e.5.', '### 8f.')).toContain('This step records results; it does not create another test');
   });

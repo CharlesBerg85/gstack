@@ -81,11 +81,11 @@ describe('QA caller authority in pure host renders', () => {
     test(`${host.name}: exploratory scope defines its controller and timing before probes`, () => {
       for (const caller of callers) {
         const body = RESOLVERS.QA_EXPLORATORY(context(host.name, caller));
-        expect(body).toContain('The **caller** runs /qa, /qa-only, /review or /ship');
-        expect(body).toContain('charter** (test plan) for each behavior');
+        expect(body).toContain('The **caller** (/qa, /qa-only, /review or /ship)');
+        expect(body).toContain('charter** per behavior');
         expect(body).toContain('bun G start D SECONDS [EARLIER_UTC]');
         expect(body).toContain('G enforces the deadline');
-        expect(body).toContain('Use documented or announced finite command timeouts');
+        expect(body).toContain('announce finite command timeouts');
         expect(body.indexOf('bun G start D')).toBeLessThan(body.indexOf('1. First demonstrate success'));
         expect(body).toContain('scoped contracts are tested or blocked');
       }
@@ -215,15 +215,15 @@ describe('QA caller authority in pure host renders', () => {
         expect(reads).toContain('sections/system-functional.md');
         expect(reads).toContain('**Browser surfaces only:**');
         expect(reads).toContain('sections/qa-patterns.md');
-        expect(body).toContain('Never bootstrap functional/report-only QA');
-        expect(body).toContain('The caller owns decisions, tests, edits, commits, publication and continuation');
-        expect(body).toContain('Missing prerequisites/expectations, timeouts, refusal and absent observations never pass');
+        expect(body).toContain('no workflows, framework installs or publication');
+        expect(body).toContain('owns decisions, tests, fixes and publication');
+        expect(body).toContain('Missing prerequisites/expectations/observations, timeouts and refusal never pass');
         expect(body).toContain('Pass requires all required current-input contracts to pass with no required remainder');
         if (caller !== 'qa-only') {
-          expect(body).toContain('make /review incomplete');
-          expect(body).toContain('user acceptance of that named risk');
+          expect(body).toContain('leaves /review incomplete');
+          expect(body).toContain('unless the user explicitly accepts that named risk');
           expect(body).toContain('noninteractive runs return blocked');
-          expect(body).toContain('test_stub and require ASK approval');
+          expect(body).toContain('test_stub proposals require ASK approval');
         }
       }
       const review = RESOLVERS.QA_REVIEW(context(host.name, 'review'));

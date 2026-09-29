@@ -2,6 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { ownedPath, type QAMode } from './qa-functional-fixture';
+import { qaEvidenceCommand } from './qa-evidence-producer';
 
 export const QA_OBSERVER_LIMITS = [
   'Linux inotify only; unavailable kernel monitoring blocks acceptance.',
@@ -71,7 +72,7 @@ export interface QAWriteObservation {
   limits: string[];
 }
 
-export async function observeQAWrites(root: string, options: { reportDirectory?: string } = {}) {
+export async function observeQAWrites(root: string, options: { reportDirectory?: string; evidenceProducer?: boolean } = {}) {
   if (process.platform !== 'linux') throw new Error('QA write observer unavailable: Linux inotify required');
   if (fs.realpathSync(root) !== root) throw new Error('Observer root must be canonical');
   let reportDirectory: string | undefined;
@@ -93,7 +94,7 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
   const watches = new Map<number, { relative: string; directory: boolean }>();
   const events: QAWriteObservation['events'] = [];
   const failures: string[] = [];
-  const publications = new Map<string, { temporary: string; dev: number; ino: number; bytes: string; parentDev: number; parentIno: number }>();
+  const publications = new Map<string, { temporary: string; dev: number; ino: number; bytes: string; parentDev: number; parentIno: number; mode: number }>();
   let stopped = false;
   const observedPath = (relative: string, knownPair = false): string => {
     try {
@@ -101,39 +102,49 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
       return relative ? ownedPath(root, relative) : root;
     } catch (error) {
       const basename = path.basename(relative);
-      const temporaryName = /^\.qa-deadline-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+      const deadlineTemporary = /^\.qa-deadline-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+      const evidence = options.evidenceProducer && relative.startsWith((reportDirectory ?? 'qa-reports') + path.sep)
+        ? /^(exploration-\d{3}\.json|evidence\.json|receipt\.json)(?:\.tmp\.[1-9]\d*\.[a-f0-9]{8})?$/.exec(basename) : null;
+      const isDeadline = basename === 'deadline.json' || deadlineTemporary.test(basename);
+      const targetName = isDeadline ? 'deadline.json' : evidence?.[1];
+      const mode = isDeadline ? 0o400 : 0o600;
+      const temporaryName = isDeadline ? deadlineTemporary : new RegExp(`^${targetName?.replaceAll('.', '\\.')}\\.tmp\\.[1-9]\\d*\\.[a-f0-9]{8}$`);
       if (!/^(?:reports|qa-reports|\.qa-state)\//.test(relative)
-        || (basename !== 'deadline.json' && !temporaryName.test(basename))) throw error;
+        || !targetName || (!isDeadline && targetName === 'receipt.json' && !/\/\.qa-evidence\/\d{3}\//.test(relative))) throw error;
       const parent = ownedPath(root, path.dirname(relative));
       const parentStat = fs.lstatSync(parent);
-      const target = path.join(parent, 'deadline.json');
+      const target = path.join(parent, targetName);
       let receipt: number | undefined;
       try {
         receipt = fs.openSync(target, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
         const entry = fs.fstatSync(receipt);
         if (!parentStat.isDirectory() || parentStat.uid !== fs.lstatSync(root).uid
           || !entry.isFile() || entry.uid !== parentStat.uid || entry.nlink !== 2
-          || (entry.mode & 0o777) !== 0o400 || entry.size > 4096) throw error;
+          || (entry.mode & 0o777) !== mode || entry.size > (isDeadline ? 4096 : 8 * 1024 * 1024)) throw error;
         const aliases = fs.readdirSync(parent).filter(name => {
           if (!temporaryName.test(name)) return false;
           const alias = fs.lstatSync(path.join(parent, name), { throwIfNoEntry: false });
           return alias?.isFile() && alias.dev === entry.dev && alias.ino === entry.ino && alias.nlink === 2;
         });
-        if (aliases.length !== 1 || (basename !== 'deadline.json' && basename !== aliases[0])) throw error;
+        if (aliases.length !== 1 || (basename !== targetName && basename !== aliases[0])) throw error;
         const bytes = fs.readFileSync(receipt, 'utf8');
         const state = JSON.parse(bytes);
         const canonicalUTC = (value: unknown) => typeof value === 'string' && Number.isFinite(Date.parse(value))
           && [new Date(value).toISOString(), new Date(value).toISOString().replace('.000Z', 'Z')].includes(value);
-        if (!state || Object.keys(state).sort().join(',') !== 'budgetMs,deadlineAt,startedAt,version'
+        if (isDeadline && (!state || Object.keys(state).sort().join(',') !== 'budgetMs,deadlineAt,startedAt,version'
           || state.version !== 1 || !Number.isSafeInteger(state.budgetMs) || state.budgetMs <= 0 || state.budgetMs > 2_147_483_647
           || !canonicalUTC(state.startedAt) || !canonicalUTC(state.deadlineAt)
-          || Date.parse(state.deadlineAt) > Date.parse(state.startedAt) + state.budgetMs) throw error;
+          || Date.parse(state.deadlineAt) > Date.parse(state.startedAt) + state.budgetMs)) throw error;
+        if (!isDeadline && (!state || typeof state !== 'object' || Array.isArray(state))) throw error;
+        if (targetName.startsWith('exploration-') && Object.keys(state).sort().join(',') !== 'hypothesis,nextCommand,observationCommand,observed') throw error;
+        if (targetName === 'receipt.json' && (state.version !== 1 || !/^\d{3}$/.test(state.id) || !['complete', 'incomplete', 'sensitive'].includes(state.status))) throw error;
+        if (targetName === 'evidence.json' && (!Array.isArray(state.evidence) || !Array.isArray(state.limits))) throw error;
         const final = fs.lstatSync(target);
         if (!final.isFile() || final.dev !== entry.dev || final.ino !== entry.ino || ![1, 2].includes(final.nlink)
-          || (final.mode & 0o777) !== 0o400) throw error;
+          || (final.mode & 0o777) !== mode) throw error;
         const relativeTarget = path.relative(root, target);
         const publication = { temporary: path.join(path.dirname(relative), aliases[0]), dev: entry.dev, ino: entry.ino,
-          bytes, parentDev: parentStat.dev, parentIno: parentStat.ino };
+          bytes, parentDev: parentStat.dev, parentIno: parentStat.ino, mode };
         const previous = publications.get(relativeTarget);
         if (previous && JSON.stringify(previous) !== JSON.stringify(publication)) throw error;
         publications.set(relativeTarget, publication);
@@ -226,8 +237,8 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
           const parent = fs.lstatSync(ownedPath(root, path.dirname(relative)));
           const entry = fs.lstatSync(target);
           if (fs.existsSync(temporary) || entry.dev !== publication.dev || entry.ino !== publication.ino || entry.nlink !== 1
-            || (entry.mode & 0o777) !== 0o400 || parent.dev !== publication.parentDev || parent.ino !== publication.parentIno
-            || fs.readFileSync(target, 'utf8') !== publication.bytes) throw new Error('Deadline publication did not settle unchanged');
+            || (entry.mode & 0o777) !== publication.mode || parent.dev !== publication.parentDev || parent.ino !== publication.parentIno
+            || fs.readFileSync(target, 'utf8') !== publication.bytes) throw new Error('Evidence publication did not settle unchanged');
         } catch (error) { failures.push(String(pathFailure(root, relative, error))); }
       }
       let after: Record<string, string> = {};
@@ -249,7 +260,12 @@ export function qaWriteVerdict(observation: QAWriteObservation, mode: QAMode): s
   return failures;
 }
 
-export function qaCommandAllowed(command: string): boolean {
+export function qaCommandAllowed(command: string, root?: string): boolean {
+  const producer = root ? qaEvidenceCommand(command, { cwd: root, reportRoot: path.join(root, 'qa-reports'), executable: path.join(root, 'bin/gstack-qa-evidence') }) : undefined;
+  if (producer) {
+    try { ownedPath(root!, 'bin/gstack-qa-evidence'); } catch { return false; }
+    return producer.action !== 'capture' || producer.timeoutMs === 10000 && /^bun (?:run probe -- |cancel\.ts$)/.test(producer.nativeCommand!) && qaCommandAllowed(producer.nativeCommand!);
+  }
   if (/[\n\r;&|<>`$\\(){}]/.test(command)) return false;
   if (command === 'date -u +%Y-%m-%dT%H:%M:%SZ') return true;
   const text = command.trim();
@@ -265,7 +281,7 @@ export function qaCommandPermission(root: string, event: any) {
       && event?.hook_event_name === 'PreToolUse' && event.cwd === root && event.tool_name === 'Bash'
       && typeof event.tool_input?.command === 'string'
       && [undefined, false].includes(event.tool_input.run_in_background)
-      && qaCommandAllowed(event.tool_input.command);
+      && qaCommandAllowed(event.tool_input.command, root);
   } catch {}
   return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: allowed ? 'allow' : 'deny',
     ...(!allowed ? { permissionDecisionReason: 'Only foreground commands from the owned functional fixture interface are authorized.' } : {}) } };

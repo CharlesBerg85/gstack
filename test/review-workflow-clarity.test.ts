@@ -258,7 +258,7 @@ test('caller QA defines execution, evidence ownership and report adaptation befo
     ]) expect(generated).toContain(contract);
     const shared = generateQAExploratory({ skillName: 'qa', tmplPath: '', host: 'claude', paths: HOST_PATHS.claude });
     for (const contract of ['First demonstrate success: output AND durable effects',
-      'Wait for the successful Write result before dispatch',
+      'Wait for successful checkpoint publication before dispatch',
       'Replay the exact failing command/request from the same initial fixture state']) {
       expect(shared).toContain(contract);
     }

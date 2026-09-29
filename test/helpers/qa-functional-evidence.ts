@@ -4,6 +4,8 @@ import { createQAFunctionalFixture, fixtureCommand, ownedPath, QA_PRIVATE_SENTIN
 import { qaCommandAllowed, qaWriteAllowed, qaWriteVerdict, type QAWriteObservation } from './qa-functional-observer';
 import type { SkillTestResult } from './session-runner';
 import { readQACheckpointFiles, validateQACheckpoints } from './qa-checkpoint-evidence';
+import { nativeCalls } from './qa-checkpoint-evidence';
+import { qaNativeCapture } from './qa-evidence-producer';
 
 const canonical = (value: any): string => JSON.stringify(value && typeof value === 'object'
   ? Array.isArray(value) ? value.map(item => JSON.parse(canonical(item)))
@@ -11,8 +13,18 @@ const canonical = (value: any): string => JSON.stringify(value && typeof value =
 const failureOutput = (text: string) => /\b[1-9]\d* fail\b/.test(text) && !/SyntaxError|Cannot find module|ModuleNotFound|error:.*(?:import|resolve)/.test(text);
 const passingOutput = (text: string) => /\b[1-9]\d* pass\b/.test(text) && /\b0 fail\b/.test(text);
 
-export function qaNativeProbes(result: Pick<SkillTestResult, 'toolCalls'>) {
-  return result.toolCalls.flatMap((call, index) => {
+export function qaNativeProbes(result: Pick<SkillTestResult, 'toolCalls'> & Partial<Pick<SkillTestResult, 'transcript'>>, root?: string) {
+  const calls = root && result.transcript ? nativeCalls(result.transcript, []) : [];
+  return result.toolCalls.flatMap<{ index: number; command: string; nativeCommand?: string; observed: any }>((call, index) => {
+    if (root && call.tool === 'Bash') {
+      const native = calls.filter(native => native.name === 'Bash' && native.input.command === call.input?.command && native.output === call.output);
+      const producer = native.length === 1 ? qaNativeCapture(native[0], { cwd: root, reportRoot: path.join(root, 'qa-reports'), executable: path.join(root, 'bin/gstack-qa-evidence') }) : undefined;
+      if (producer && /^bun (?:run probe -- |cancel\.ts$)/.test(producer.command.nativeCommand!)) {
+        const observed = producer.captured.observed as any;
+        if (observed && (Array.isArray(observed.args) || typeof observed.scenario === 'string'
+          || producer.command.nativeCommand === 'bun cancel.ts' && Object.hasOwn(observed, 'exit'))) return [{ index, command: call.input.command, nativeCommand: producer.command.nativeCommand!, observed }];
+      }
+    }
     if (call.tool !== 'Bash' || !/^bun (?:run probe -- |cancel\.ts$)/.test(call.input?.command ?? '')) return [];
     for (const line of call.output.split('\n')) {
       try {
@@ -84,7 +96,7 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
   if (mode === 'qa' && observation.changed.some(file => file.startsWith('src/') && file !== repairSource)) failures.push('repair changed unrelated product source');
   if (result.exitReason !== 'success') failures.push(`session did not complete: ${result.exitReason}`);
   for (const call of result.toolCalls) {
-    if (call.tool === 'Bash' && !qaCommandAllowed(call.input?.command ?? '')) failures.push('command outside declared observation interface');
+    if (call.tool === 'Bash' && !qaCommandAllowed(call.input?.command ?? '', fixture.root)) failures.push('command outside declared observation interface');
     if (!['Read', 'Glob', 'Grep', 'Bash', 'Write', 'Edit'].includes(call.tool)) failures.push(`unsupported actor interaction: ${call.tool}`);
     if (/browse|devex-review|browser-setup|browser-verif(?:y|ication)|test-bootstrap|qa-patterns/.test(call.input?.file_path ?? '')) failures.push('functional run loaded browser or DX instructions');
     if (call.tool === 'Write' || call.tool === 'Edit') {
@@ -106,11 +118,12 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
   if (!functionalSection.content.trim() || !result.toolCalls.some(call => call.tool === 'Read' && call.input?.file_path?.endsWith(functionalSection.path)
     && call.output.replace(/^\s*\d+(?:→|\t)/gm, '').includes(functionalSection.content.trim()))) failures.push('no completed functional instruction read');
   const firstEdit = result.toolCalls.findIndex(call => ['Edit', 'Write'].includes(call.tool) && path.relative(fixture.root, path.resolve(fixture.root, call.input?.file_path ?? '')).startsWith('src/'));
-  const probes = qaNativeProbes(result);
+  const probes = qaNativeProbes(result, fixture.root);
+  const nativeCommand = (probe: typeof probes[number]) => probe.nativeCommand ?? probe.command;
   const defect = probes.find(probe => qaProbeClassification(probe.observed) === 'product-defect');
   if (!defect) failures.push('no observed unannounced defect');
   if (!probes.some(probe => qaProbeClassification(probe.observed) === 'setup-blocked')) failures.push('missing setup-blocked observation');
-  const cancellations = probes.filter(probe => fixture.family === 'cli' ? probe.command === 'bun cancel.ts' : probe.observed.scenario === 'cancel');
+  const cancellations = probes.filter(probe => fixture.family === 'cli' ? nativeCommand(probe) === 'bun cancel.ts' : probe.observed.scenario === 'cancel');
   if (!cancellations.length) failures.push('missing cancellation observation');
   if (fixture.family === 'webhook') {
     for (const scenario of ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba']) {
@@ -119,13 +132,14 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
   } else if (!probes.some(probe => probe.observed.args?.[0] === 'apply' && qaProbeClassification(probe.observed) === 'pass')) failures.push('missing adjacent valid CLI apply');
   if (defect && !probes.some(probe => probe.index < defect.index && qaProbeClassification(probe.observed) === 'pass')) failures.push('no successful observation before adversarial exploration');
   if (defect && probes.filter(probe => (firstEdit < 0 || probe.index < firstEdit)
-    && probe.command === defect.command && qaProbeClassification(probe.observed) === 'product-defect').length < 2) failures.push('failure was not reproduced before repair');
+    && nativeCommand(probe) === nativeCommand(defect) && qaProbeClassification(probe.observed) === 'product-defect').length < 2) failures.push('failure was not reproduced before repair');
   const reportRoot = ownedPath(fixture.root, 'qa-reports');
   let checkpointFiles: Record<string, string> = {};
   try {
     checkpointFiles = readQACheckpointFiles(reportRoot);
     failures.push(...validateQACheckpoints({
       transcript: result.transcript, reportRoot, probes,
+      producer: { cwd: fixture.root, reportRoot, executable: path.join(fixture.root, 'bin/gstack-qa-evidence') },
       requiredProbes: probes.filter(probe => firstEdit < 0 || probe.index < firstEdit).slice(1),
       additionalTargets: result.toolCalls.filter(call => call.tool === 'Bash' && /^bun test(?: |$)/.test(call.input?.command ?? '')
         && qaCommandAllowed(call.input.command) && (failureOutput(call.output) || passingOutput(call.output))
@@ -145,7 +159,7 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
     if (!probes.some(probe => row.command === probe.command && canonical(row.observed) === canonical(probe.observed))) failures.push('report invented an executed probe');
   }
   if (!report?.learning?.some(row => typeof row.hypothesis === 'string' && row.hypothesis.trim().length > 20
-    && probes.some(previous => previous.command === row.observationCommand && probes.some(next => next.index > previous.index && next.command === row.nextCommand && next.command !== previous.command)))) failures.push('missing observation-to-next-hypothesis evidence');
+    && probes.some(previous => previous.command === row.observationCommand && probes.some(next => next.index > previous.index && next.command === row.nextCommand && nativeCommand(next) !== nativeCommand(previous))))) failures.push('missing observation-to-next-hypothesis evidence');
   const publicText = JSON.stringify(report) + result.output + reportMarkdown + JSON.stringify(checkpointFiles);
   if (publicText.includes(QA_PRIVATE_SENTINEL)) failures.push('private sentinel leaked into published evidence');
   if (mode === 'qa' && defect) {
@@ -154,8 +168,8 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
     if (firstEdit < 0 || red < defect.index || red >= firstEdit || green <= firstEdit) failures.push('missing native regression red-before-fix and green-after sequence');
     if (red >= 0 && result.toolCalls.slice(red + 1).some(call => ['Write', 'Edit'].includes(call.tool)
       && path.relative(fixture.root, path.resolve(fixture.root, call.input?.file_path ?? '')).startsWith('test/'))) failures.push('regression changed after its red proof');
-    if (!probes.some(probe => probe.index > firstEdit && probe.command === defect.command && qaProbeClassification(probe.observed) === 'pass')) failures.push('original failing probe was not green after fix');
-    if (!probes.some(probe => probe.index > firstEdit && probe.command !== defect.command && qaProbeClassification(probe.observed) === 'pass')) failures.push('adjacent happy path was not green after fix');
+    if (!probes.some(probe => probe.index > firstEdit && nativeCommand(probe) === nativeCommand(defect) && qaProbeClassification(probe.observed) === 'pass')) failures.push('original failing probe was not green after fix');
+    if (!probes.some(probe => probe.index > firstEdit && nativeCommand(probe) !== nativeCommand(defect) && qaProbeClassification(probe.observed) === 'pass')) failures.push('adjacent happy path was not green after fix');
     if (!cancellations.some(probe => probe.index > firstEdit && qaProbeClassification(probe.observed) === 'pass')) failures.push('cancellation was not green after fix');
     if (!probes.some(probe => probe.index > firstEdit && qaProbeClassification(probe.observed) === 'setup-blocked')) failures.push('dependency blockage was not rechecked after fix');
   }
@@ -205,4 +219,25 @@ export function preserveQAArtifact(directory: string, name: string, value: unkno
   fs.writeFileSync(target, text + '\n', { mode: 0o600 });
   fs.chmodSync(target, 0o600);
   return target;
+}
+
+export function qaCaptureArtifacts(reportRoot: string) {
+  const files: Record<string, string> = {};
+  const visit = (relative: string) => {
+    const file = ownedPath(reportRoot, relative);
+    const stat = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!stat) return;
+    if (stat.isDirectory()) {
+      for (const name of fs.readdirSync(file)) visit(path.join(relative, name));
+      return;
+    }
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
+    try {
+      const opened = fs.fstatSync(fd);
+      if (!opened.isFile() || opened.nlink !== 1 || opened.dev !== stat.dev || opened.ino !== stat.ino) throw new Error('Capture artifact changed while retaining it');
+      files[relative] = fs.readFileSync(fd).toString('base64');
+    } finally { fs.closeSync(fd); }
+  };
+  visit('.qa-evidence');
+  return { encoding: 'base64', files };
 }
