@@ -976,3 +976,15 @@ export function nextCeoPostureContinuation(
   } else postureContinuations.set(seenQuestions, { modeId });
   return 'question';
 }
+
+/** HOLD SCOPE's own "Deferring current scope" menu: one question, exactly a
+ * Defer-to-TODOS option and a Keep-in-scope option. Returns the Keep index. */
+export function holdDeferKeepIndex(call: NativePlanQuestionCall | undefined): number | null {
+  if (call?.questions.length !== 1) return null;
+  const q = call.questions[0]!;
+  if (q.multiSelect || q.options.length !== 2) return null;
+  const labels = q.options.map(option => option.label.trim().replace(/^[A-Z][).:]\s+/, '').replace(/\s*\(recommended\)\s*$/i, ''));
+  const defer = labels.findIndex(label => /^Defer\b[^\n]*\bTODOS(?:\.md)?$/i.test(label));
+  const keep = labels.findIndex(label => /^Keep\b[^\n]*\bin scope$/i.test(label));
+  return defer >= 0 && keep >= 0 && defer !== keep ? keep + 1 : null;
+}

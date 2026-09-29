@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { findCeoModeOption, hasPostAnswerCeoPosture, hasNativePostAnswerCeoPosture, nativeCeoModeAnswer, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
+import { findCeoModeOption, hasPostAnswerCeoPosture, hasNativePostAnswerCeoPosture, holdDeferKeepIndex, nativeCeoModeAnswer, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
 import { parseNumberedOptions, stripAnsi, planCountQuestionInput, nativePlanCallFingerprint } from './helpers/claude-pty-runner';
 import type { PlanCountTranscript } from './helpers/plan-count-transcript';
 import * as fs from 'node:fs';
@@ -1891,5 +1891,33 @@ describe('mode submission when the review panel scrolls past the viewport', () =
     const other = structuredClone(scrolledCall);
     other.questions[1]!.question += ' (changed)';
     expect(scrolledSubmit(scrolledReview.screen, scrolledReview.screenText, 'HOLD SCOPE', other)).toBeNull();
+  });
+});
+
+describe('HOLD SCOPE defer/keep menu (census 36626737820: "Defer update to TODOS.md" was answered as the rigor decision)', () => {
+  const call = (labels: string[], extra: Record<string, unknown> = {}) => ({
+    sessionId: 's', toolUseId: 't', answered: false, failed: false,
+    questions: [{ question: 'D4 — R1: Defer the update endpoint (rename / overwrite a saved view) or keep it in scope?', header: 'Scope', multiSelect: false,
+      options: labels.map(label => ({ label, description: 'd' })) }], ...extra,
+  }) as any;
+  test.each([
+    [['Defer update to TODOS.md', 'Keep update in scope'], 2],
+    [['A) Defer this item to TODOS.md', 'B) Keep it in scope (recommended)'], 2],
+    [['Keep it in scope', 'Defer this item to TODOS'], 1],
+  ])('keeps the item in scope: %j', (labels, index) => expect(holdDeferKeepIndex(call(labels))).toBe(index));
+  test.each([
+    ['a rigor remedy', ['Add a 404 contract test', 'Leave the criterion untested']],
+    ['a third option', ['Defer update to TODOS.md', 'Keep update in scope', 'Cut update']],
+    ['a cut instead of a deferral', ['Cut update from the plan', 'Keep update in scope']],
+    ['keep without scope', ['Defer update to TODOS.md', 'Keep update']],
+  ])('ignores %s', (_name, labels) => expect(holdDeferKeepIndex(call(labels as string[]))).toBeNull());
+  test('ignores multi-select and multi-question calls', () => {
+    const multi = call(['Defer update to TODOS.md', 'Keep update in scope']);
+    multi.questions[0].multiSelect = true;
+    expect(holdDeferKeepIndex(multi)).toBeNull();
+    const two = call(['Defer update to TODOS.md', 'Keep update in scope']);
+    two.questions.push(structuredClone(two.questions[0]));
+    expect(holdDeferKeepIndex(two)).toBeNull();
+    expect(holdDeferKeepIndex(undefined)).toBeNull();
   });
 });

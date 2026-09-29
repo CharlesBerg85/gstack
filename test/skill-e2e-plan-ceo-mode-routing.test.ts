@@ -44,7 +44,7 @@ import {
   type AskUserQuestionFingerprint,
   type ClaudePtySession,
 } from './helpers/claude-pty-runner';
-import { ceoExpansionPacingChoice, ceoExpansionPacingReady, ceoModeSubmissionInput, hasNativePostAnswerCeoPosture, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
+import { ceoExpansionPacingChoice, ceoExpansionPacingReady, ceoModeSubmissionInput, hasNativePostAnswerCeoPosture, holdDeferKeepIndex, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
 import { createPlanCountFixture } from './helpers/plan-count-fixture';
 import { readPlanCountTranscript, type NativePublicToolEvent, type PlanCountTranscript } from './helpers/plan-count-transcript';
 import { readPendingQuestion, pendingQuestionRecorderStatus } from './helpers/plan-count-pending-question';
@@ -286,10 +286,14 @@ describeE2E('/plan-ceo-review mode routing (gate)', () => {
               else {
                 const pending = transcript.calls.find(call => !call.answered && !call.failed) ?? pendingQuestion;
                 const question = capturePlanCountQuestion(currentInput, new Set(), 0, false, pending)!;
-                if (c.mode === 'HOLD SCOPE' && question.nativeCall)
+                // HOLD's own defer/keep menu (0G) is scope work, not the rigor decision
+                // under assessment: keep the item in scope and assess the next decision.
+                const keep = c.mode === 'HOLD SCOPE' ? holdDeferKeepIndex(question.nativeCall) : null;
+                if (c.mode === 'HOLD SCOPE' && question.nativeCall && keep === null)
                   continuedCallId ??= `${question.nativeCall.sessionId}:${question.nativeCall.toolUseId}`;
-                const input = planCountQuestionInput(currentInput, question, 1);
-                if (input.includes('\r')) await selectPtyNumberedOption(session, 1);
+                const pick = keep ?? 1;
+                const input = planCountQuestionInput(currentInput, question, pick);
+                if (input.includes('\r')) await selectPtyNumberedOption(session, pick);
                 else session.send(input);
               }
               continue;
