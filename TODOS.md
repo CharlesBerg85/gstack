@@ -502,32 +502,6 @@ touchfiles and re-offer pending ones on the next interactive run.
 false) permanently misses the artifacts-rename migration unless they paste the
 manual command. **Effort:** M. **Priority:** P2.
 
-### P2: periodic tier — TWO documented-red tests need structural repair (was three)
-
-**2026-08-29 update (test-infra overhaul):** (1) the sidebar E2E trio is
-ALREADY DELETED — no file in the tree POSTs to /sidebar-command or
-/sidebar-chat; only tombstone tests remain (browse/test/sidebar-tabs.test.ts
-asserts the endpoints STAY deleted), so part (1) closes as already-done.
-(2) skill-e2e-ship-idempotency and (3) skill-e2e-brain-privacy-gate are now
-EXCLUDED from the weekly lane with tracking
-(test/helpers/periodic-exclude-data.ts) — removing their entries re-activates
-them; the structural investigations below are the re-entry condition.
-
-**What:** (1) The sidebar E2E trio (navigate, url-accuracy, css-interaction)
-POSTs to /sidebar-command and /sidebar-chat — endpoints removed on every tree
-when the PTY terminal replaced the chat queue (server.ts tombstone ~2671);
-rewrite them against the PTY surface or delete them. (2)
-skill-e2e-ship-idempotency: the PTY child sits at the Claude Code welcome
-screen in plan mode for the full budget — the typed /ship never lands
-(readiness/typing race vs CLI v2.1.233's welcome screen); never green since
-it was born in v1.63. (3) skill-e2e-brain-privacy-gate: never green anywhere;
-the artifacts-sync stop-gate preconditions don't survive the hermetic env
-even with per-test HOME/GSTACK_HOME injection — needs a transcript-level
-debug of what the child's preamble actually echoes.
-
-**Why:** every red periodic run costs triage time; two of these have burned
-three triage passes across two releases. **Effort:** M. **Priority:** P2.
-
 ### P1: #1882 — portable skill-install prefix (non-`gstack` install dirs break silently)
 
 **What:** Every generated SKILL.md hardcodes the literal `~/.claude/skills/gstack/...`
@@ -851,6 +825,36 @@ audit trail lives in Aside.
 
 ## Test infrastructure
 
+### P3: CI-unrunnable paid evals
+
+**What:** Seven paid files cannot execute in the CI image (no `codex` CLI, no
+macOS/Aside, no physical iPhone), so the weekly periodic lane scheduled them as
+green shards that verified nothing. They are now in `PERIODIC_CI_EXCLUDE`
+(`test/helpers/periodic-exclude-data.ts`): `codex-e2e`, `codex-e2e-sol-scope`,
+`codex-e2e-shared-libs`, `codex-e2e-recommendation-substance`,
+`skill-e2e-outside-voice`, `skill-e2e-aside`, `skill-e2e-ios-device`. They still
+run locally on a machine that has the CLI or device.
+
+**Re-entry:** the CLI or device is available in the CI image. First target:
+`codex-e2e-sol-scope` as the Codex host smoke once the Codex CLI is installed
+(see "Install the Codex CLI in the CI image"). Remove each file's exclude entry
+when its prerequisite exists.
+
+**Review by:** 2026-12-28. **Effort:** S per file. **Priority:** P3.
+
+### P3: Install the Codex CLI in the CI image
+
+**What:** Add `@openai/codex` to `.github/docker/Dockerfile.ci` and provide a
+Codex `auth.json` as a CI secret so the four `codex-e2e*` files and
+`skill-e2e-outside-voice` can leave `PERIODIC_CI_EXCLUDE`.
+
+**Cost estimate:** image build +1 npm global install (~30 s per image build);
+weekly model spend on the order of the repo's periodic rule of thumb, ~$1 per
+file per run, so ~$5/week for the five files, billed to the Codex account
+behind the secret. **Risk:** a long-lived credential in CI.
+
+**Effort:** S. **Priority:** P3.
+
 ### P1: skillify gate test red — HOME-override sessions never discover project skills (pre-existing)
 
 **What:** `test/skill-e2e-skillify.test.ts` `skillify-provenance-refusal` fails
@@ -980,9 +984,8 @@ coverage fill. Remaining, in rough priority order:
 - **P3 — eval-list should exclude _partial runs** (pinned as current
   behavior in test/eval-cli-family.test.ts with an improvement note).
   Effort S.
-- **P3 — codex-e2e-plan-format's testIfSelected names have no map keys**
-  (run-all only today) + 15 E2E / 2 judge PHANTOM touchfiles keys select
-  tests that exist nowhere — add keys or delete, one sweep. Effort S.
+- **P3 — 15 E2E / 2 judge PHANTOM touchfiles keys** select tests that exist
+  nowhere — add keys or delete, one sweep. Effort S.
 - **P3 — first-execution rot from the sliced lane's first live runs: 2 of 3
   FIXED** (PR #2721): (a) ✅ skillify family — root cause was HOME==cwd
   making claude treat <cwd>/.claude/skills as the PERSONAL dir (project
@@ -3154,7 +3157,7 @@ files have no `evals.yml` matrix row, so CI never runs them
 (`KNOWN_MATRIX_GAPS` in the test enumerates them — notably the plan-mode and
 finding-floor smokes and the AUQ format-compliance gate). (2) Four matrix rows
 point at whole-file tier-gated files but set no row `tier:` property, so with
-`EVALS_TIER` unexported those suites self-skip: `codex-e2e`/`gemini-e2e` run
+`EVALS_TIER` unexported those suites self-skip: `codex-e2e` runs
 ZERO tests and report green on every PR (vestigial rows; the periodic cron
 lane owns them — consider deleting the rows), and `e2e-pty-plan-smoke` spends
 ~7 min on setup then skips every describe (hollow-green since the files

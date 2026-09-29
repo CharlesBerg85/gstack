@@ -393,7 +393,7 @@ export interface DiffSkipOptions {
  *     than literal.
  *
  * FAIL-OPEN by construction: run-all selection, non-skill-e2e paid files
- * (llm-judge / codex-e2e / gemini-e2e / routing, keyed off other maps),
+ * (llm-judge / codex-e2e / routing, keyed off other maps),
  * unreadable sources, and files with zero mapped names all KEEP their shard —
  * the child's self-skip stays authoritative. A parent bug may only run
  * extra work, never drop it.

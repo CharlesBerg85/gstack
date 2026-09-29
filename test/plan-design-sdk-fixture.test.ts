@@ -11,9 +11,9 @@ const ROOT = path.resolve(import.meta.dir, '..');
 const source = fs.readFileSync(path.join(ROOT, 'test/skill-e2e-design.test.ts'), 'utf8');
 const id = 'plan-design-review-plan-mode';
 
-// Same source-evaluation pattern as plan-tune-cathedral-fixture.test.ts: run
-// the real suite registration and selected callback, without importing paid
-// initialization. All filesystem mutations stay in this standalone fixture.
+// Source-evaluation pattern: run the real suite registration and selected
+// callback, without importing paid initialization. All filesystem mutations
+// stay in this standalone fixture.
 async function exercise(mode: 'success' | 'max-turns' | 'first-timeout' | 'second-timeout' | 'saved-timeout' | 'empty-summary' | 'write-failure' | 'unchanged-seed' | 'no-additions' | 'short-plan' | 'api-error' | 'plan-read-failure' | 'attempt-deadline') {
   const scratch = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'legacy-design-free-')));
   const home = path.join(scratch, 'home'); fs.mkdirSync(home);

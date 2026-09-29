@@ -83,8 +83,7 @@ describe('selectTests', () => {
       // These cases use an outside-only/Code Quality excerpt or descriptive metadata.
       .filter(id => !['outside-plan-disabled-no-fallback', 'plan-ceo-review-prosons-cadence',
         'plan-review-prosons-format', 'shared-libs-plan-callers'].includes(id));
-    const existing = ['learnings-show', 'codex-plan-ceo-format-mode', 'codex-plan-ceo-format-approach',
-      'codex-plan-eng-format-coverage', 'codex-plan-eng-format-kind'];
+    const existing = ['learnings-show'];
     const result = selectTests(['scripts/resolvers/learnings.ts'], E2E_TOUCHFILES);
     expect(result.reason).toBe('diff');
     expect(result.selected.sort()).toEqual([...new Set([...consumers, ...existing])].sort());
@@ -161,12 +160,8 @@ describe('selectTests', () => {
       expect(fs.readFileSync(path.join(ROOT, `${output}.tmpl`), 'utf8')).toContain(`{{${token}}}`);
     }
     const generated = selectTests(consumers.map(([output]) => output), E2E_TOUCHFILES);
-    // These two CEO-format cases already depend on every resolver through
-    // scripts/resolvers/**; keep that existing selection alongside consumers.
     // The bounded Code Quality fixture stops before Test review.
-    const expected = [...new Set([...generated.selected.filter(id => id !== 'shared-libs-plan-callers' && !SHIP_GUARD_ONLY.includes(id)),
-      'codex-plan-ceo-format-mode', 'codex-plan-ceo-format-approach',
-    ])].sort();
+    const expected = [...new Set(generated.selected.filter(id => id !== 'shared-libs-plan-callers' && !SHIP_GUARD_ONLY.includes(id)))].sort();
     const actual = selectTests(['scripts/resolvers/testing.ts'], E2E_TOUCHFILES);
     expect(actual.reason).toBe('diff');
     expect(actual.selected.sort()).toEqual(expected);
@@ -373,11 +368,9 @@ describe('selectTests', () => {
     expect(result.selected).toContain('plan-ceo-split-overflow');
     // v2 plan Phase B carve: the section-loading E2E depends on plan-ceo-review/**.
     expect(result.selected).toContain('plan-ceo-section-loading');
-    expect(result.selected).toContain('codex-plan-ceo-format-mode');
-    expect(result.selected).toContain('codex-plan-ceo-format-approach');
     expect(result.selected).toContain('outside-plan-disabled-no-fallback');
-    expect(result.selected.length).toBe(25);
-    expect(result.skipped.length).toBe(Object.keys(E2E_TOUCHFILES).length - 25);
+    expect(result.selected.length).toBe(23);
+    expect(result.skipped.length).toBe(Object.keys(E2E_TOUCHFILES).length - 23);
   });
 
   test('global touchfile triggers ALL tests', () => {
@@ -398,7 +391,6 @@ describe('selectTests', () => {
     expect(result.reason).toBe('diff');
     expect(result.selected).toContain('autoplan-chain-pty');
     expect(result.selected).toContain('plan-ceo-mode-routing');
-    expect(result.selected).not.toContain('codex-plan-ceo-format-mode');
     expect(result.selected).not.toContain('retro');
   });
 
@@ -604,7 +596,7 @@ describe('TOUCHFILES completeness', () => {
     );
 
     const unique = registeredJudgeTestNames(llmContent);
-    expect(unique).toHaveLength(27);
+    expect(unique).toHaveLength(23);
 
     const missing = unique.filter(name => !(name in LLM_JUDGE_TOUCHFILES));
     if (missing.length > 0) {
@@ -623,7 +615,7 @@ describe('TOUCHFILES completeness', () => {
       testIfSelected('unmapped judge case', async () => {}, 120_000);
     `;
     const names = registeredJudgeTestNames(withUnmappedCase);
-    expect(names).toHaveLength(28);
+    expect(names).toHaveLength(24);
     expect(names.filter(name => !(name in LLM_JUDGE_TOUCHFILES))).toEqual(['unmapped judge case']);
   });
 

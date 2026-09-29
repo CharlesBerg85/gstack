@@ -41,8 +41,8 @@ test('the existing quality and behavior phases retain their complete separate sh
   const behaviorFiles = behavior.entries.filter(entry => entry.status === 'planned').map(entry => entry.file);
   expect(quality.evalsAll).toBe(true);
   expect(behavior.evalsAll).toBe(true);
-  expect(qualityFiles).toHaveLength(2);
-  expect(behaviorFiles).toHaveLength(56);
+  expect(qualityFiles).toHaveLength(1);
+  expect(behaviorFiles).toHaveLength(51);
   expect(qualityFiles.every(file => file.startsWith('test/skill-llm-eval'))).toBe(true);
   expect(behaviorFiles.every(file => !qualityFiles.includes(file))).toBe(true);
 });

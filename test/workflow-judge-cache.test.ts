@@ -163,7 +163,7 @@ test('workflow registration preserves model work and reserves only terminal-reco
   expect(source).toContain('const WORKFLOW_JUDGE_RECORD_MS = 5_000;');
   expect(source).toContain('const WORKFLOW_JUDGE_TEST_MS = JUDGE_MS + 10_000;');
   expect(source.match(/\}, WORKFLOW_JUDGE_TEST_MS\);/g)).toHaveLength(16);
-  expect(source.match(/\}, JUDGE_MS\);/g)).toHaveLength(11);
+  expect(source.match(/\}, JUDGE_MS\);/g)).toHaveLength(7);
 });
 
 function actualCallback(f: ReturnType<typeof fixture>, overrides: {

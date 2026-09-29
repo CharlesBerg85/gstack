@@ -369,6 +369,40 @@ describe('gstack-skill-start behavior', () => {
     const out = runStart();
     expect(out).toMatch(/^ARTIFACTS_SYNC: off$/m);
   });
+
+  test('artifacts-sync consent is asked before any artifacts egress, and only in interactive sessions', () => {
+    const gh = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-ss-privacy-'));
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-ss-privacy-bin-'));
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-ss-privacy-remote-'));
+    const git = (args: string[], cwd: string) => execFileSync('git', args, { cwd, timeout: 30_000, stdio: 'pipe' });
+    try {
+      fs.writeFileSync(path.join(bin, 'gbrain'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+      git(['init', '-q', '--bare'], remote);
+      git(['init', '-q', '-b', 'main'], gh);
+      git(['remote', 'add', 'origin', remote], gh);
+      const pullStamp = path.join(gh, '.brain-last-pull');
+      const start = (config: string, env: Record<string, string> = {}) => {
+        fs.writeFileSync(path.join(gh, 'config.yaml'), `update_check: false\n${config}`);
+        return runStart([], { GSTACK_HOME: gh, PATH: `${bin}${path.delimiter}${process.env.PATH}`, ...env });
+      };
+      const gates = (out: string) => (out.match(/^GSTACK_INSTRUCTION_BEGIN: privacy-stop-gate/gm) ?? []).length;
+
+      const pending = start('');
+      expect(gates(pending)).toBe(1);
+      expect(pending).toContain('How much should sync?');
+      expect(pending).toMatch(/^ARTIFACTS_SYNC: off$/m);
+      expect(fs.existsSync(pullStamp)).toBe(false);
+
+      expect(gates(start('', { GSTACK_SESSION_KIND: 'spawned' }))).toBe(0);
+      expect(fs.existsSync(pullStamp)).toBe(false);
+
+      const consented = start('artifacts_sync_mode: full\nartifacts_sync_mode_prompted: true\n');
+      expect(gates(consented)).toBe(0);
+      expect(fs.existsSync(pullStamp)).toBe(true);
+    } finally {
+      for (const dir of [gh, bin, remote]) fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('gstack-skill-end', () => {

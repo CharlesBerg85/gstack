@@ -1,41 +1,21 @@
 /**
- * /plan-tune cathedral E2E (T16) — 5 scenarios, all gate tier per D12.
+ * /plan-tune cathedral contract tests (T16) — 5 scenarios, free suite.
  *
  * Each scenario verifies that the cathedral's substrate works end-to-end
  * through local hook and bin invocations. No model is called: these scenarios
  * exercise the installed-file contracts, using synthetic hook envelopes and
  * a synthetic Codex session. Unit tests cover the individual components.
  *
- * Touchfile registration in test/helpers/touchfiles.ts:
- *   - plan-tune-hook-capture
- *   - plan-tune-enforcement
- *   - plan-tune-annotation
- *   - plan-tune-codex-import
- *   - plan-tune-dream-cycle
- *
  * Each scenario uses GSTACK_STATE_ROOT to isolate from the user's real
  * ~/.gstack (per cathedral T1 + Codex D16 fix). Every attempt gets a fresh fixture.
  */
 
-import { afterAll, expect } from 'bun:test';
-import {
-  ROOT,
-  describeIfSelected,
-  testConcurrentIfSelected,
-  copyDirSync,
-  createEvalCollector,
-  finalizeEvalCollector,
-} from './helpers/e2e-helpers';
+import { describe, expect, test } from 'bun:test';
+import { ROOT, copyDirSync } from './helpers/e2e-helpers';
 import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-
-const collector = createEvalCollector('e2e-plan-tune-cathedral');
-
-afterAll(() => {
-  finalizeEvalCollector(collector);
-});
 
 /** Scaffold a fixture project with the bins + scripts the cathedral needs. */
 function scaffoldFixture(workDir: string): { workDir: string; stateRoot: string; slug: string; env: NodeJS.ProcessEnv } {
@@ -114,27 +94,18 @@ function cleanupFixture(workDir: string): void {
   }
 }
 
-/** Own setup, assertions and cleanup inside each callback, including Bun retries. */
+/** Own setup, assertions and cleanup inside each callback. */
 function testCathedral(
   name: string,
   prefix: string,
   run: (fixture: ReturnType<typeof scaffoldFixture>) => Promise<void>,
 ): void {
-  testConcurrentIfSelected(name, async () => {
-    const started = Date.now();
-    let workDir: string | undefined;
-    let passed = false;
+  test(name, async () => {
+    const workDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
     try {
-      workDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
       await run(scaffoldFixture(workDir));
-      passed = true;
     } finally {
-      if (workDir) cleanupFixture(workDir);
-      collector?.addTest({
-        name, suite: 'plan-tune-cathedral', tier: 'e2e', passed,
-        duration_ms: Date.now() - started, cost_usd: 0,
-        output: 'Local hook/bin contract; no model invocation.',
-      });
+      cleanupFixture(workDir);
     }
   });
 }
@@ -143,7 +114,7 @@ function testCathedral(
 // Scenario 1: Hook capture — PostToolUse hook writes to question-log.jsonl
 // ---------------------------------------------------------------------------
 
-describeIfSelected('PlanTune cathedral E2E: hook capture', ['plan-tune-hook-capture'], () => {
+describe('PlanTune cathedral E2E: hook capture', () => {
   testCathedral('plan-tune-hook-capture', 'cathedral-cap-', async (fixture) => {
     // Direct hook invocation simulates Claude Code's PostToolUse delivery.
     // E2E verifies the hook + bin chain works against real bins on disk
@@ -190,7 +161,7 @@ describeIfSelected('PlanTune cathedral E2E: hook capture', ['plan-tune-hook-capt
 // Scenario 2: Enforcement — never-ask preference + marker + 2-way → deny
 // ---------------------------------------------------------------------------
 
-describeIfSelected('PlanTune cathedral E2E: enforcement', ['plan-tune-enforcement'], () => {
+describe('PlanTune cathedral E2E: enforcement', () => {
   testCathedral('plan-tune-enforcement', 'cathedral-enf-', async (fixture) => {
     fs.mkdirSync(path.join(fixture.stateRoot, 'projects', fixture.slug), { recursive: true });
     fs.writeFileSync(
@@ -253,7 +224,7 @@ describeIfSelected('PlanTune cathedral E2E: enforcement', ['plan-tune-enforcemen
 // Scenario 3: Annotation — declared profile injected via additionalContext
 // ---------------------------------------------------------------------------
 
-describeIfSelected('PlanTune cathedral E2E: annotation', ['plan-tune-annotation'], () => {
+describe('PlanTune cathedral E2E: annotation', () => {
   testCathedral('plan-tune-annotation', 'cathedral-ann-', async (fixture) => {
     // Strong declared profile that should annotate any signal_key=detail-preference question.
     fs.writeFileSync(
@@ -318,7 +289,7 @@ describeIfSelected('PlanTune cathedral E2E: annotation', ['plan-tune-annotation'
 // Scenario 4: Codex import — JSONL session → import bin → log fills
 // ---------------------------------------------------------------------------
 
-describeIfSelected('PlanTune cathedral E2E: codex import', ['plan-tune-codex-import'], () => {
+describe('PlanTune cathedral E2E: codex import', () => {
   testCathedral('plan-tune-codex-import', 'cathedral-cdx-', async (fixture) => {
     const sessionFile = path.join(fixture.workDir, 'rollout-cathedral.jsonl');
     const lines = [
@@ -374,7 +345,7 @@ describeIfSelected('PlanTune cathedral E2E: codex import', ['plan-tune-codex-imp
 //             re-fire → memory injection
 // ---------------------------------------------------------------------------
 
-describeIfSelected('PlanTune cathedral E2E: dream cycle', ['plan-tune-dream-cycle'], () => {
+describe('PlanTune cathedral E2E: dream cycle', () => {
   testCathedral('plan-tune-dream-cycle', 'cathedral-dream-', async (fixture) => {
     // Seed proposals file directly (the SDK call is exercised by the unit
     // test; here we verify apply → re-fire round-trip on top of a known

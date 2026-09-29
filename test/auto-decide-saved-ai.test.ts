@@ -50,7 +50,7 @@ test('failed loads, foreign sessions, actual questions and later withdrawals ret
 
 import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
 test('new evidence inputs retain every native observation caller',()=>{
-  const owners=['plan-ceo-review-plan-mode','plan-eng-review-plan-mode','plan-design-review-plan-mode','plan-devex-review-plan-mode','plan-mode-no-op','auto-decide-preserved','conductor-prose'];
+  const owners=['plan-ceo-review-plan-mode','plan-eng-review-plan-mode','plan-design-review-plan-mode','plan-devex-review-plan-mode','plan-mode-no-op','auto-decide-preserved'];
   for(const file of ['test/auto-decide-saved-ai.test.ts','test/fixtures/auto-decide-saved-ai.json','test/fixtures/auto-decide-retry-ai.json'])
     expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(file)).map(([name])=>name)).toEqual(owners);
 });

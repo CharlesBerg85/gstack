@@ -1,12 +1,9 @@
 // High-level E2E for /ios-qa skill flow.
 //
-// Two scenarios:
-//   1. NO_DEVICE (gate-tier compatible): runs the gen-accessors codegen
-//      against a SwiftUI fixture, verifies output is correct, no daemon
-//      hardware required. Catches regression in source-read + codegen +
-//      cache + render paths without an iPhone.
-//   2. WITH_DEVICE (periodic-tier, requires GSTACK_HAS_IOS_DEVICE=1): full
-//      daemon + tailnet + USB tunnel loop. Skipped in CI.
+// Runs the gen-accessors codegen against a SwiftUI fixture and simulates the
+// agent flow against the daemon with a fake device tunnel — no hardware.
+// Catches regression in source-read + codegen + cache + render paths without
+// an iPhone. The real-device loop lives in test/skill-e2e-ios-device.test.ts.
 //
 // Note: The detailed daemon HTTP unit/integration tests live next to the
 // daemon source (ios-qa/daemon/test/*). This file tests the agent-flow
@@ -22,7 +19,6 @@ import type { DeviceTunnel } from '../ios-qa/daemon/src/proxy';
 import { grantIdentity } from '../ios-qa/daemon/src/allowlist';
 import { generate } from '../ios-qa/scripts/gen-accessors';
 
-const HAS_DEVICE = process.env.GSTACK_HAS_IOS_DEVICE === '1';
 
 const DEVICE_TOKEN = 'rotated-mock-bearer-token';
 
@@ -492,16 +488,5 @@ describe('ios-qa E2E (agent-flow simulation)', () => {
     } finally {
       stub.server.close();
     }
-  });
-});
-
-// ───────── WITH_DEVICE — manual smoke tests (skipped in CI) ─────────
-
-(HAS_DEVICE ? describe : describe.skip)('ios-qa E2E (with device)', () => {
-  test('WITH_DEVICE: full agent loop against a real iPhone', () => {
-    const workDir = makeWorkDir();
-    // Stub — real implementation requires `devicectl` + an attached iPhone.
-    // Documented in ios-qa/SKILL.md.tmpl under "Manual smoke test".
-    expect(HAS_DEVICE).toBe(true);
   });
 });

@@ -60,7 +60,7 @@ describe('paid test enumeration', () => {
     const files = collectPaidTestFiles();
     expect(files.length).toBeGreaterThan(0);
     expect(files.every(isPaidTestFile)).toBe(true);
-    expect(PAID_TEST_GLOBS.length).toBe(7);
+    expect(PAID_TEST_GLOBS.length).toBe(6);
 
     const shards = planPaidShards(files);
     expect(shards.flat().sort()).toEqual([...files].sort());

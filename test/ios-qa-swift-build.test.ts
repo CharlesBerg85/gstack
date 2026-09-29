@@ -1,6 +1,7 @@
 // Swift-build invariant tests. Runs against the fixture iOS app at
 // test/fixtures/ios-qa/FixtureApp/. Requires the Swift toolchain
-// (Xcode CLI tools or stand-alone Swift). Skipped if swift is not on PATH.
+// (Xcode CLI tools or stand-alone Swift). The swift build invariants run
+// only with GSTACK_TEST_SWIFT=1; the parity and harness pins always run.
 //
 // Two invariants:
 //
@@ -298,13 +299,9 @@ describe('iOS tap harness regressions', () => {
   });
 });
 
-function hasSwift(): boolean {
-  const r = spawnSync('swift', ['--version'], { stdio: 'pipe', timeout: 30_000 });
-  return r.status === 0;
-}
-
-const swiftAvailable = hasSwift();
-const describeIfSwift = swiftAvailable ? describe : describe.skip;
+// Explicit opt-in, not tool presence: free shards run on hosts where Swift
+// may be installed, and a full swift build does not belong in every PR run.
+const describeIfSwift = process.env.GSTACK_TEST_SWIFT === '1' ? describe : describe.skip;
 
 describeIfSwift('swift build invariants', () => {
   // DebugBridgeUI + DebugBridgeTouch are iOS-only (they link UIKit). Plain
