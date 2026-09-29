@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.91.9.0] - 2026-09-30
+
+**Weekly evals finish in minutes, not hours, and a red now means something.**
+**Two real crash bugs fixed, and product code typechecks clean in CI.**
+
+The weekly paid eval run took 2 hours 45 minutes on Sept 28, almost all of it one timed-out test retried. It now runs every test on its own machine within a 9-minute budget, and a single long case runs one case per process. Automatic retries are gone. Tests that grade a live model's choice run three trials at once and pass on two; promises users rely on (asks before deciding, leaves git alone, no writes in plan mode) fail on any single bad trial. `$B connect --supervise` finally restarts a crashed browser, compiled `/cso` installs can witness runtime-tested assertions again, and a required `typecheck` job keeps that class of bug out.
+
+### The numbers that matter
+
+Source: the Sept 28 weekly census (run 36385945043) and the two proof censuses on this branch (runs 36597762183 and 36606688266). `bun run scripts/test-paid-shards.ts --tier periodic --slice-budget 540 --jobs 2 --list` prints the current plan.
+
+| Measure | Before | After |
+| --- | ---: | ---: |
+| Weekly periodic census wall clock | 2h 45m | 15 min for 32 of 33 machines (proof run 2) |
+| Longest planned slice | 160 min (one test, twice) | ~10 min |
+| Automatic retries on paid evals | up to 2 per file | 0 |
+| Product-code type errors | 105 (no check) | 0, required in `free-tests` |
+| `lib/cso` longest source line | 2,159 chars | 785 (a string literal) |
+
+The biggest change is honesty. With 238 live cases, a retry used to hide a failing test; now every trial is recorded, `bun run eval:pass-rates` shows each case's pass rate with a confidence range, and a case that slides gets flagged by its history instead of passing on a lucky rerun.
+
+### What this means for contributors
+
+Run `bun run typecheck` and `bun run typecheck:test` before you push; both are free and take seconds. A red paid run now prints a headline and one line per failure with its cause and a rerun command. New paid evals need a kind in `E2E_KINDS`: see "Add a paid eval" in CONTRIBUTING.md.
+
+### Itemized changes
+
+#### Fixed
+- `$B connect --supervise` respawned with a block-scoped env that no longer existed, so every restart threw and the supervisor gave up after five tries. The headed env is one helper used by connect and respawn, and the loop has behavioral tests.
+- Compiled `/cso` installs called an unimported `join` when launching the assertion-witness child, breaking runtime-tested witnessing for every installed user.
+- The CI image pins Claude Code 2.1.284, which recognizes the default eval model; 2.1.251 logged `unrecognized_model` and stalled mid-stream.
+- `/review` workflow ambiguities (smoke clock vs required revalidation, setup authority, plan-completion gate, findings record), `/office-hours` builder mode not loading its brainstorm section, `/sync-gbrain` Step 4 helper arguments and write path, `/plan-ceo-review` expansion framing and pacing menus, `/plan-design-review` with no designer API key, and `/deslop-shared-libs` one-file-per-turn reads.
+- Eval detectors that graded wording or step order now grade outcomes: eng batching, CEO split-overflow, mode routing, section-loading stale-fill, outside-voice-disabled attribution, design focus menus, and PTY permission dialogs with cropped titles.
+
+#### Changed
+- Paid evals: one test file or case per machine within a 540-second slice budget, planned from recorded per-tier and per-case durations; case sharding for plan, design, review-army, shared-libs, shared-libs-paths, ship-docsync and qa-callers.
+- Verdict policy: no retries; `rule` cases fail on any failed trial, `behavior` cases pass on 2 of 3 parallel trials with contract assertions still strict, `judge` entries average 3 samples against unchanged thresholds. One panel-verdict function feeds the report, PR comment, weekly issue and pass-rate history. A census whose every red is infrastructure is re-dispatched once, and both runs are reported.
+- New non-blocking weekly `evals-marathon.yml` lane for full start-to-finish flows (the full `/office-hours` workflow; a focused design-draft case replaces it in the weekly lane).
+- `lib/cso/*.ts` is formatted with pinned Prettier; minified transpile output is byte-identical except three canonicalized regex flag orders.
+- The duplicate dispatch-only `ship-docsync` case is removed; `ship-docsync-completion` asserts the same on the same fixture.
+
+#### Added
+- `tsconfig.json`, `bun run typecheck` (strict, zero product errors) and `bun run typecheck:test` (test-code diagnostic ratchet), both in the required `free-tests` check, plus `format:cso:check`.
+- `E2E_KINDS`, `BEHAVIOR_WHY`, `EVAL_POLICY` and a data-driven `CASE_QUARANTINE` (entry below 95% per trial over 10 trials, exit at 97%, 10% cap, 8-week expiry, never for product defects), and `CASE_CI_EXCLUDE` for CI-unrunnable cases.
+- `bun run eval:pass-rates` with Wilson intervals, per-input-identity series and a weekly drift gate; `--case <id> --trials N` for local diagnosis.
+
+#### For contributors
+- Open PRs touching `lib/cso` should run `bun run format:cso` before rebasing.
+- Builds on the typecheck work in #2447, contributed by @laddtnov.
+- Coordinated with #2994 (v1.91.8.0), which retired the never-green finding-count evals this wave had been repairing.
+
 ## [1.91.8.0] - 2026-09-29
 
 The test suite is smaller and every remaining test maps to a product contract: 227 fewer test files, about 90,000 fewer lines of tests, helpers and fixtures, and the weekly paid lane drops the five evals that were red eight runs straight. Free tests that only replayed one captured failure are folded into their detector's owner test, and paid eval selection is derived from each eval's own imports instead of hand-copied lists.
