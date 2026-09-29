@@ -1,7 +1,7 @@
 ## Step 2: Per-File Documentation Audit
 
-**Ship-owned documentation mode:** execute Steps 2–4 and 6 only, under the skeleton's
-audit/edit/result boundary. Then return the caller's typed completion; all standalone
+**Ship-owned documentation mode:** after Steps 1 and 1.5, execute Steps 2–4 and 6 only,
+under audit-scope's edit boundary, then return its JSON result; all standalone
 metadata, review, commit and PR steps below remain unavailable to this child.
 
 Read each documentation file and cross-reference it against the diff. Use these generic heuristics
@@ -129,8 +129,8 @@ After auditing each file individually, do a cross-doc consistency pass:
 
 In ship-owned mode, protected metadata/manifests stay untouched even for factual
 inconsistencies, and narrative contradictions return as blockers. This is the last
-ship-child step: output the doc-health summary and typed completion, then STOP. A
-partial audit or unresolved required correction is `blocked`, never `current`.
+ship-child step: output the doc-health summary and audit-scope's JSON result, then
+STOP. A partial audit or unresolved required correction is `blocked`, never `current`.
 
 ---
 
@@ -191,7 +191,7 @@ git diff <diff-base> HEAD -- VERSION
 
    **Spawned sessions** (per the spawned-dispatch contract at the top of this skill): the
    recommendation flips — choose C (leave version as-is) and record the uncovered scope in
-   your completion report (the `decisions` array when dispatched from /ship).
+   your completion report. Ship-owned children stopped at Step 6 and never reach this step.
    A spawned run must never change VERSION: the dispatching workflow owns version numbering.
 
    The key insight: a VERSION bump set for "feature A" should not silently absorb "feature B"

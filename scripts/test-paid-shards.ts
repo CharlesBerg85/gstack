@@ -149,6 +149,7 @@ export const CASE_SHARDED_FILES: readonly string[] = [
 export const CASE_TEST_NAMES: Record<string, string> = {
   'plan-review-report': '/plan-eng-review writes GSTACK REVIEW REPORT to plan file',
   'auq-format-gate': "/plan-ceo-review's first AskUserQuestion is a compliant decision brief (7/7 + substance)",
+  'autoplan-dual-voice': 'both Claude + Codex voices produce output in Phase 1 (within timeout)',
 };
 
 const CASE_KEY_SEPARATOR = '#';

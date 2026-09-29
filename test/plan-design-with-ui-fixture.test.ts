@@ -122,6 +122,8 @@ mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/claude-pty-runner.ts'
     expect(opts.isLastStep0AUQ(target)).toBe(false);
     expect(opts.isLastStep0AUQ(fp('focus', focus))).toBe(true);
     expect(opts.isLastStep0AUQ(paraphrase)).toBe(true);
+    // Census 36633323521 gate-census-7: the same Step 0D menu titled with "specific ones".
+    expect(opts.isLastStep0AUQ(fp('focus-ones', 'D1 — Review all 7 design dimensions, or focus on specific ones?'))).toBe(true);
     if (mode.startsWith('native-')) expect(opts.isLastStep0AUQ(nativeFocus)).toBe(true);
     for (const unrelated of ['Review all 4 design passes, or focus?',
       'Review all 7 engineering passes, or focus?', 'Review all 7 passes, or focus?',

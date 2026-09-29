@@ -145,22 +145,22 @@ function withoutAttributedPriorRecordData(output: string, priorRecord?: Record<s
   // An inline quotation of the retained record's exact status/source/outside_status
   // values is that record when its own sentence names it as pre-existing and
   // makes no current claim; wording order around the quotation does not matter.
+  // A named record timestamp must denote the retained record's instant at the precision written.
+  const priorMs = typeof priorRecord.timestamp === 'string' ? Date.parse(priorRecord.timestamp) : NaN;
+  const sameInstant = (stamp: string): boolean => {
+    if (!Number.isFinite(priorMs)) return false;
+    const iso = priorMs ? new Date(priorMs).toISOString() : '';
+    const clock = /^(\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?)Z?$/.exec(stamp);
+    if (clock) return iso.slice(11, 11 + clock[1]!.length) === clock[1];
+    const at = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/.test(stamp) ? Date.parse(stamp) : NaN;
+    return Number.isFinite(at) && iso.slice(0, stamp.includes('.') ? 23 : stamp.length - 1) === new Date(at).toISOString().slice(0, stamp.includes('.') ? 23 : stamp.length - 1);
+  };
   const sentenceOwnsPriorValue = (index: number, length: number): boolean => {
     const start = Math.max(output.lastIndexOf('\n', index - 1), ...['. ', '! ', '? ', '; '].map(end => output.lastIndexOf(end, index - 1) + 1)) + 1;
     const ends = ['\n', '. ', '! ', '? ', '; '].map(end => output.indexOf(end, index + length)).filter(at => at >= 0);
     const sentence = (output.slice(start, index) + ' ' + output.slice(index + length, ends.length ? Math.min(...ends) : output.length))
       .replace(/[*`]/g, '').replace(/\b(?:predates|before)\s+(?:this|my)\s+(?:run|session|workflow)(?:\s+(?:started|began))?\b/gi, 'beforehand')
       .replace(/\b(?:I|we)\s+(?:did\s+not|didn't|never)\s+(?:write|create|produce|record)\b/gi, 'unauthored');
-    // A named record timestamp must denote the retained record's instant at the precision written.
-    const priorMs = typeof priorRecord.timestamp === 'string' ? Date.parse(priorRecord.timestamp) : NaN;
-    const sameInstant = (stamp: string): boolean => {
-      if (!Number.isFinite(priorMs)) return false;
-      const iso = priorMs ? new Date(priorMs).toISOString() : '';
-      const clock = /^(\d{2}:\d{2}(?::\d{2})?)Z?$/.exec(stamp);
-      if (clock) return iso.slice(11, 11 + clock[1]!.length) === clock[1];
-      const at = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/.test(stamp) ? Date.parse(stamp) : NaN;
-      return Number.isFinite(at) && iso.slice(0, stamp.includes('.') ? 23 : stamp.length - 1) === new Date(at).toISOString().slice(0, stamp.includes('.') ? 23 : stamp.length - 1);
-    };
     const stamps = [...sentence.matchAll(/\btimestamp(?:ed)?\s+([0-9T:.Z-]+)/gi)].map(stamp => stamp[1]!.replace(/[.,;:]+$/, ''));
     if (stamps.some(stamp => !sameInstant(stamp))) return false;
     return !/\b(?:after|another|other|if|unless)\b/i.test(sentence)
@@ -190,6 +190,32 @@ function withoutAttributedPriorRecordData(output: string, priorRecord?: Record<s
     if (!fieldsOk || !items.includes(String(priorRecord.timestamp)) || !items.some(item => /^["']?outside_status\b/i.test(item))) continue;
     const start = match.index + match[0].length - match[1]!.length - 1;
     spans.push({ start, end: start + match[1]!.length + 2 });
+  }
+  // A quoted fragment carrying the retained record's exact timestamp is that
+  // record's data when every field it quotes has that record's value.
+  for (const match of output.matchAll(/`([^`\r\n]+)`/g)) {
+    if (typeof priorRecord.timestamp !== 'string' || !match[1]!.includes(priorRecord.timestamp)) continue;
+    const pairs = [...match[1]!.matchAll(/["']?([a-z_]+)["']?\s*[:=]\s*["']?([^"',}\s]+)["']?/gi)].filter(pair => fields.has(pair[1]!));
+    if (!pairs.some(pair => pair[1] === 'outside_status') || pairs.some(pair => priorRecord[pair[1]!] !== pair[2])) continue;
+    spans.push({ start: match.index!, end: match.index! + match[0].length });
+  }
+  // A whole sentence that names the pre-existing record, dates it before this
+  // run (its exact instant or an explicit "before this run"), quotes only that
+  // record's own field values and makes no current claim is that record's
+  // report, however its fields are quoted or split.
+  for (const sentence of output.matchAll(/[^\n.!?;]*(?:[.!?;](?=\S)[^\n.!?;]*)*(?:[.!?;](?=\s|$)|\n|$)/g)) {
+    const plain = sentence[0].replace(/[*`]/g, '');
+    if (!/\boutside_status["']*\s*[:=]\s*["']*completed\b/i.test(plain)) continue;
+    if (!/\b(?:earlier|prior|previous|historical|old(?:er)?|pre[- ]existing|stale|seeded)\s+(?:(?:review[- ]log|review|log)\s+)?(?:entry|record|line|row)\b/i.test(plain)) continue;
+    const beforeRun = /\b(?:predates|before)\s+(?:this|my)\s+(?:run|session|workflow)(?:\s+(?:started|began))?\b/i;
+    const stamps = [...plain.matchAll(/\b(?:\d{4}-\d{2}-\d{2}T)?\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?Z?\b/g)].map(m => m[0]);
+    if (stamps.some(stamp => !sameInstant(stamp)) || (!stamps.length && !beforeRun.test(plain))) continue;
+    const quoted = [...plain.matchAll(/\b([a-z_]+)["']?\s*[:=]\s*["']?([a-z0-9_.+-]+)["']?/gi)].filter(m => fields.has(m[1]!) && m[1] !== 'timestamp');
+    if (!['status', 'source', 'outside_status'].every(key => quoted.some(m => m[1] === key))
+      || quoted.some(m => priorRecord[m[1]!] !== m[2])) continue;
+    if (/\b(?:now|currently|current|today|new|updat\w*|append\w*|chang\w*|wrote|recorded by me)\b|\bboth reviewers agree\b/i
+      .test(plain.replace(beforeRun, ''))) continue;
+    spans.push({ start: sentence.index!, end: sentence.index! + sentence[0].length });
   }
   for (const span of spans.sort((a, b) => b.start - a.start)) {
     output = output.slice(0, span.start) + output.slice(span.start, span.end).replace(/[^\r\n]/g, ' ') + output.slice(span.end);
