@@ -363,6 +363,9 @@ describe('CEO finding fixture establishes scope before launch', () => {
       expect(committed).toBe(input);
       expect(committed).toContain(target);
       expect(committed).toContain('Proceed directly to the requested CEO review; skip the optional /office-hours prerequisite.');
+      // Supplied prerequisite: the split actor always chose HOLD SCOPE; an explicit
+      // choice skips 0E's mode question so the attempt starts at the candidates.
+      expect(committed).toContain('Use HOLD SCOPE mode for this review.');
       expect(committed.match(/^## E[1-5]\)/gm)).toHaveLength(5);
       expect(fs.readFileSync(path.join(root, 'CLAUDE.md'), 'utf8')).not.toContain('Payment processing');
     } finally { fs.rmSync(root, { recursive: true, force: true }); }

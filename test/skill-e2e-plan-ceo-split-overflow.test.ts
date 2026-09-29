@@ -29,8 +29,11 @@
  *     which is exactly the shape that hits Conductor's 4-option cap and
  *     triggers the new split-vs-drop guidance.
  *
- * Tier: periodic (~25 min, ~$0.30-$5.00/run depending on agent path).
- * Sequential by default.
+ * The fixture supplies the HOLD SCOPE mode the actor always chose, so 0E skips
+ * its mode question. Run 36385945043 acknowledged all five candidates 8m55s
+ * after launch (mode question included); collection stops there.
+ *
+ * Tier: periodic (25 min budget; ~8-9 min expected). Sequential by default.
  */
 
 import { test } from 'bun:test';
