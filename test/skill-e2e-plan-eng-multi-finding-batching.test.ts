@@ -12,7 +12,8 @@
  *     would pass that test trivially.
  *   - This test uses runPlanSkillCounting at periodic tier (~25 min budget,
  *     N-AUQ tracking, ceiling-bounded retries) to actually count distinct
- *     review-phase AUQs and assert the model fires one per finding.
+ *     review-phase AUQs and assert the model fires one per finding. Collection
+ *     stops as soon as the floor is proven (~7 min observed).
  *
  * Why a separate test from skill-e2e-plan-eng-finding-count (the existing
  * 5-finding count test):
@@ -21,7 +22,7 @@
  *     This is the tightest regression test for the original bug class —
  *     not a band-around-N test, but a "did the agent batch?" test.
  *
- * Tier: periodic (~25 min, ~$5/run). Sequential by default.
+ * Tier: periodic (~7 min observed; 25 min budget). Sequential by default.
  */
 
 import { test } from 'bun:test';
@@ -80,12 +81,18 @@ describeE2E('/plan-eng-review multi-finding batching regression (periodic)', () 
           isSetupAUQ: engSetupAUQ,
           isFirstReviewAUQ: engFirstReviewAUQ,
           isReviewAUQ: findings.isReviewAUQ,
+          // The only verdict is the floor. Once FLOOR distinct acknowledged
+          // review decisions exist, a batching regression can no longer occur
+          // in this attempt; stop instead of letting the review run to the
+          // ceiling (run 36385945043: floor at 6m41s, ceiling at 12m13s).
+          isCollectionComplete: (_transcript, fingerprints) =>
+            fingerprints.filter(fp => !fp.preReview && !fp.administrative).length >= FLOOR,
           reviewCountCeiling: N + 3, // hard cap above floor + tolerance
           timeoutMs: 1_500_000, // 25 min
           env: { QUESTION_TUNING: 'false', EXPLAIN_LEVEL: 'default' },
         });
 
-        if (!['plan_ready', 'completion_summary', 'ceiling_reached'].includes(obs.outcome)) {
+        if (!['plan_ready', 'completion_summary', 'collection_complete', 'ceiling_reached'].includes(obs.outcome)) {
           throw new Error(
             `multi-finding batching test FAILED: outcome=${obs.outcome}\n` +
               `step0=${obs.step0Count} review=${obs.reviewCount} elapsed=${obs.elapsedMs}ms\n` +
