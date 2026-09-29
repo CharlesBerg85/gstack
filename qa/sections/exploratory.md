@@ -24,7 +24,7 @@ Write a **charter** per behavior: contract, risk, entrypoint, isolation, exit co
 
 For /review and /ship, no plan/server is required.
 Stop after 5 minutes or 12 probes, whichever comes first (SECONDS=300 across surfaces).
-Explicit plan checks remain required beyond this smoke budget.
+Explicit plan checks and revalidation remain required beyond this smoke budget.
 For /qa and /qa-only:
 - Browser Quick: SECONDS=30. Browser Full/Regression: SECONDS=900.
 - Functional Full, Quick and Regression have no default total timer.
@@ -66,7 +66,7 @@ Never batch probes.
 4. Replay the exact failing command/request from the same initial fixture state via steps 2–3 (same native command, fresh capture ID)
    before repair, then minimize via those gates. Expiry leaves confirmation/minimization incomplete.
    Another input or a regression test is not that replay.
-5. After source/commands/fixtures change, repeat affected review and return to step 2 for each affected revalidation. Keep limits/notes; status requires fresh evidence.
+5. After source/commands/fixtures change, re-review and return to step 2 for each affected revalidation. Keep limits/notes; status requires fresh evidence.
 
 ## 3. Parent handoff
 

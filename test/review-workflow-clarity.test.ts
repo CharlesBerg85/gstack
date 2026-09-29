@@ -32,7 +32,7 @@ test('review audits deliverables before deferring behavioral plan checks to the 
   expect(audit.indexOf('Inspect the validator and its hooks')).toBeLessThan(audit.indexOf('If found and verified safe above, invoke it'));
   expect(audit).not.toContain('For each extracted plan item, run the verification dispatch');
   const qa = generateQAReview(ctx);
-  expect(qa).toContain('Then run required plan checks, even after smoke expires');
+  expect(qa).toContain('Then run required plan checks and revalidation, even after smoke expires');
   expect(qa).toContain('Report clean/completed only when all required checks pass on current inputs');
 });
 
@@ -249,7 +249,7 @@ test('caller QA defines execution, evidence ownership and report adaptation befo
     for (const contract of [
       'Only the parent runs report-only discovery',
       'Never overwrite another run',
-      'Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit',
+      'Follow the shared Probe loop for smoke checks and replays until the smoke limit',
       'using the same procedure but no smoke guard; never reset the clock',
       'Read agent/user updates and await results without batching them with reporting/logging',
       'Compare each probe\'s recorded source, tests, contracts, commands and fixtures (or input fingerprint) with current inputs, even without updates',
@@ -378,7 +378,7 @@ test('review finalization ownership: the plan audit retains its high-impact gate
   expect(plan).not.toContain('never blocks the review');
   expect(plan).toContain('{{PLAN_COMPLETION_AUDIT_REVIEW}}');
   const audit = readFileSync(join(root, 'review/sections/plan-completion.md'), 'utf8');
-  const gate = audit.indexOf('**HIGH-impact discrepancies** trigger AskUserQuestion');
+  const gate = audit.indexOf('**HIGH-impact plan-file discrepancies** trigger AskUserQuestion');
   expect(gate).toBeGreaterThan(-1);
   expect(gate).toBeLessThan(audit.indexOf('When continuing after the audit (no HIGH-impact gate, or option B/C)'));
   expect(audit).toContain('then it gates via AskUserQuestion');
@@ -563,4 +563,26 @@ test('ship review clarity: parent settlement gate precedes classification and ca
   expect(gate).toContain('otherwise log incomplete through items 5–6 and STOP without edits');
   expect(gate).toContain('After terminal failure, independent evidence may support fixes');
   expect(gate).toContain('missing dispatched output still blocks continuation, even with a QA exception');
+});
+
+test('review resolves the judged smoke-clock, setup-authority, plan-gate and findings-source ambiguities', () => {
+  const ctx = { skillName: 'review', tmplPath: 'review/SKILL.md.tmpl', host: 'claude', paths: HOST_PATHS.claude } as TemplateContext;
+  const qa = generateQAReview(ctx).replace(/\s+/g, ' ');
+  expect(qa).toContain('Follow the shared Probe loop for smoke checks and replays until the smoke limit');
+  expect(qa).toContain('Then run required plan checks and revalidation, even after smoke expires, using the same procedure but no smoke guard');
+  expect(qa).toContain('/review sets none; only an invoker-supplied EARLIER_UTC counts');
+  expect(qa).toContain('Report-only /review never runs setup, installs or cookie import, even after approval');
+  expect(qa).toContain('After a grant, recheck readiness and run affected checks; otherwise they stay blocked');
+  expect(qa).not.toContain('Ask for setup/permission');
+  expect(generateQAReview({ ...ctx, skillName: 'ship', tmplPath: 'ship/SKILL.md.tmpl' })).not.toContain('/review sets none');
+  const shared = generateQAExploratory({ ...ctx, skillName: 'qa' }).replace(/\s+/g, ' ');
+  expect(shared).toContain('Explicit plan checks and revalidation remain required beyond this smoke budget');
+  const audit = generatePlanCompletionAuditReview(ctx).replace(/\s+/g, ' ');
+  expect(audit).toContain('No plan file found → say "No plan file detected." and use the Fallback Intent Sources below');
+  expect(audit).not.toContain('skip with "No plan file detected — skipping."');
+  expect(audit).toContain('**HIGH-impact plan-file discrepancies** trigger AskUserQuestion');
+  expect(audit).toContain('Discrepancies derived only from fallback sources (commit messages, TODOS.md, PR description) never trigger this question');
+  expect(generatePlanCompletionAuditShip({ ...ctx, skillName: 'ship', tmplPath: 'ship/SKILL.md.tmpl' })).toContain('skip with "No plan file detected — skipping."');
+  const persist = skill.slice(skill.indexOf('### 2. Fill the record')).replace(/\s+/g, ' ');
+  expect(persist).toContain('findings Step 5 combined (core, specialist, Step 4.8 adversarial, VALID & ACTIONABLE Greptile and verified exploratory QA findings)');
 });

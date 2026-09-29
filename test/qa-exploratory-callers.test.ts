@@ -608,8 +608,8 @@ describe('generated actual parent paths', () => {
       expect(load).toContain('Templates cannot replace them');
       const flat = parent.replace(/\s+/g, ' ');
       expect(flat).toContain('Only the parent runs report-only discovery');
-      expect(flat).toContain('Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit');
-      expect(flat).toContain('Then run required plan checks, even after smoke expires');
+      expect(flat).toContain('Follow the shared Probe loop for smoke checks and replays until the smoke limit');
+      expect(flat).toContain('Then run required plan checks and revalidation, even after smoke expires');
       expect(flat).toContain('using the same procedure but no smoke guard; never reset the clock');
       expect(flat).toContain("Use finite command timeouts, capped at the caller\'s remaining time if it has a deadline");
       expect(flat).toContain('When the caller\'s deadline expires, mark unfinished checks not-run');
@@ -640,7 +640,7 @@ describe('generated actual parent paths', () => {
     expect(body).toContain('Stop after 5 minutes or 12 probes, whichever comes first');
     expect(body).toContain('G enforces the deadline');
     expect(body).toContain('Never reset D/bypass G');
-    expect(body).toContain('Explicit plan checks remain required beyond this smoke budget');
+    expect(body).toContain('Explicit plan checks and revalidation remain required beyond this smoke budget');
     expect(body).toContain('leaves /review incomplete');
     expect(body).toContain('/ship blocked unless the user explicitly accepts that named risk');
   });

@@ -14,7 +14,7 @@ test('Ship initializes and applies its smoke guard independently of required pla
     expect(body).toContain('Run the shared preflight; start its smoke guard once. Guard every smoke probe.');
     expect(body.indexOf('start its smoke guard once')).toBeLessThan(body.indexOf('**3. Run smoke and plan checks.**'));
     expect(body).toContain('Required even for small diffs or missing plans/servers');
-    expect(body).toContain('Then run required plan checks, even after smoke expires');
+    expect(body).toContain('Then run required plan checks and revalidation, even after smoke expires');
     expect(body).toContain('using the same procedure but no smoke guard; never reset the clock');
   }
 });

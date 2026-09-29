@@ -40,8 +40,8 @@ function assertBoundsAndLayout(text: string) {
 function assertPlanExecution(text: string, shared = generateQAExploratory({ host: 'claude', skillName: 'qa', tmplPath: '', paths: HOST_PATHS.claude })) {
   const step = text.slice(text.indexOf('**3. Run smoke and plan checks.**'), text.indexOf('**4. Check freshness before reporting.**')).replace(/\s+/g, ' ');
   for (const contract of [
-    'Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit',
-    'Then run required plan checks, even after smoke expires',
+    'Follow the shared Probe loop for smoke checks and replays until the smoke limit',
+    'Then run required plan checks and revalidation, even after smoke expires',
     'using the same procedure but no smoke guard; never reset the clock',
     "Use finite command timeouts, capped at the caller\'s remaining time if it has a deadline",
     'When the caller\'s deadline expires, mark unfinished checks not-run',
@@ -261,17 +261,19 @@ describe('QA probe entry and checkpoint gates', () => {
       const text = generateQAReview({ host: 'claude', skillName, tmplPath: '', paths: HOST_PATHS.claude }).replace(/\s+/g, ' ');
       assertPlanExecution(text);
       for (const [before, after] of [
-        ['Then run required plan checks, even after smoke expires', 'Skip plan checks when smoke expired'],
+        ['Then run required plan checks and revalidation, even after smoke expires', 'Skip plan checks when smoke expired'],
         ['no smoke guard; never reset the clock', 'restart and use the smoke guard'],
         ['same procedure', 'Start a new checkpoint sequence'],
         ['at the caller\'s remaining time', 'with no caller cap'],
         ['When the caller\'s deadline expires, mark unfinished checks not-run', 'If that deadline expired, mark the check passed'],
         ['Await clock/guard results before acting', 'Ignore clock results'],
+        ['plan checks and revalidation, even', 'plan checks, even'],
+        ['smoke checks and replays until', 'smoke checks, replays and revalidation until'],
       ]) {
         expect(text).toContain(before);
         expect(() => assertPlanExecution(text.replace(before, after))).toThrow();
       }
-      const smoke = 'Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.';
+      const smoke = 'Follow the shared Probe loop for smoke checks and replays until the smoke limit.';
       expect(() => assertPlanExecution(text.replace(smoke, '').replace('**4. Check', smoke + '\n**4. Check'))).toThrow();
       const shared = generateQAExploratory({ host: 'claude', skillName: 'qa', tmplPath: '', paths: HOST_PATHS.claude });
       for (const contract of ['First demonstrate success: output AND durable effects',
