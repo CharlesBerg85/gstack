@@ -6,7 +6,8 @@
  * call when the token is absent.
  */
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -53,6 +54,32 @@ describe('ubicloud free-suite runner', () => {
     const runner = read('scripts/ubicloud/ubi-runner.sh');
     expect(runner).toContain('"umask 022; $*"');
     expect(runner).toMatch(/trap 'cmd_down "\$RUN_VM"[^']*' EXIT/);
+  });
+
+  test('pull retrieves the retained free-test logs and skips a glob that matches nothing', () => {
+    const root = mkdtempSync(join(tmpdir(), 'ubi-pull-'));
+    try {
+      const remoteHome = join(root, 'remote'), bin = join(root, 'bin'), state = join(root, 'state'), local = join(root, 'local');
+      mkdirSync(join(remoteHome, 'work/gstack/.context/free-test-logs'), { recursive: true });
+      mkdirSync(join(remoteHome, 'tmp'), { recursive: true });
+      writeFileSync(join(remoteHome, 'work/gstack/.context/free-test-logs/gstack-free-test-shard-11.log'), 'shard 11 log\n');
+      mkdirSync(join(state, 'fake-vm'), { recursive: true });
+      writeFileSync(join(state, 'fake-vm/env'), 'IP=192.0.2.1\n');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'ssh'), `#!/usr/bin/env bash\ncd ${JSON.stringify(remoteHome)} && exec bash -c "\${@: -1}"\n`);
+      chmodSync(join(bin, 'ssh'), 0o755);
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}`, UBICLOUD_API_KEY: 'offline', UBI_RUNNER_STATE: state };
+      const pull = (from: string) => Bun.spawnSync(['bash', join(DIR, 'ubi-runner.sh'), 'pull', 'fake-vm', from, local], { env, timeout: 10_000 });
+      const empty = pull(join(remoteHome, 'tmp/gstack-free-test-*'));
+      expect(empty.exitCode).toBe(0);
+      expect(empty.stderr.toString()).toContain('pull: nothing matches');
+      const logs = pull('work/gstack/.context/free-test-logs');
+      expect(logs.exitCode).toBe(0);
+      expect(readFileSync(join(local, 'free-test-logs/gstack-free-test-shard-11.log'), 'utf8')).toBe('shard 11 log\n');
+      expect(existsSync(join(local, 'gstack-free-test-*'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   test('refuses to start without UBICLOUD_API_KEY, before any network call', () => {

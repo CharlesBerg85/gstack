@@ -33,6 +33,9 @@ The table compares v1.91.6.0 with this branch before it merged v1.91.7.0, which 
 - memory-pipeline, ios-qa, ios-qa-swift-build and plan-tune-cathedral make no model calls and now run in the free suite; CI-unrunnable Codex, Aside, outside-voice and iOS-device files are excluded from the weekly lane with a tracked re-entry condition.
 - The plan-count history PTY test waits for its startup marker instead of a fixed 8-second sleep.
 
+### Fixed
+- `bun run test:ubicloud` no longer reports `pull failed` when a run leaves no flake ledger in `/tmp`: a retrieval glob that matches nothing is skipped with a note, and the retained shard logs still land in `.context/ubicloud/<timestamp>/free-test-logs/`.
+
 ### For contributors
 - When a paid eval fails, fix the product or harness and add the captured case as one row in the detector's owner test; `test/test-of-test-ratchet.test.ts` fails on any new test file that imports only `test/` code and names the owner test to extend. `CONTRIBUTING.md` "Test tiers" has an example.
 - Deleted `test/helpers` modules and where their live cases went:

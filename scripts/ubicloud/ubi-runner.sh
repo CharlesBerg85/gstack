@@ -178,11 +178,17 @@ cmd_sync() {
 }
 
 # pull NAME REMOTE_GLOB LOCAL_DIR: copy matching remote entries into LOCAL_DIR.
-# Relative remote paths start at /home/ubi.
+# Relative remote paths start at /home/ubi. A glob that matches nothing (for
+# example an optional flake ledger) is reported and skipped, not a failure.
 cmd_pull() {
-  local name=$1 from=$2 to=$3
+  local name=$1 from=$2 to=$3 dir
+  dir=$(printf %q "$(dirname "$from")")
+  if ! remote "$name" "cd $dir 2>/dev/null && ls -d -- $(basename "$from") >/dev/null 2>&1"; then
+    log "pull: nothing matches $from"
+    return 0
+  fi
   mkdir -p "$to"
-  remote "$name" "cd $(printf %q "$(dirname "$from")") && tar -czf - $(basename "$from")" | tar -xzf - -C "$to"
+  remote "$name" "cd $dir && tar -czf - $(basename "$from")" | tar -xzf - -C "$to"
 }
 
 cmd_run() {
