@@ -1,13 +1,12 @@
 /** Audited cache adapter for runWorkflowJudge only. Native/PTY evals stay fresh. */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { isBuiltin } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { DEFAULT_JUDGE_MAX_TOKENS, resolveEvalModel } from '../../lib/eval-model';
 import { JUDGE_MS } from './eval-budgets';
 import type { JudgeScore } from './llm-judge';
 import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, WORKFLOW_JUDGE_RESPONSE_SCHEMA, WORKFLOW_JUDGE_REASONING_WORD_LIMIT } from './workflow-judge-input';
-import { buildEvalInputIdentity, lookupEvalInputCache, storeEvalInputCache,
+import { buildEvalInputIdentity, lookupEvalInputCache, sourceDependencyClosure, storeEvalInputCache,
   type EvalCacheValue, type EvalInputIdentity, type EvalPassingProof } from '../../scripts/eval-input-cache';
 
 type Thresholds = { clarity: number; completeness: number; actionability: number };
@@ -25,44 +24,13 @@ export interface WorkflowJudgeReuse {
   key: string; source: EvalPassingProof['source'];
 }
 
-/** Follow literal module imports, including installed SDK bytes, without executing them. */
+/** The judge's audited closure: its runner, rubric and documents, installed SDK bytes included. */
 export function workflowJudgeDependencies(root: string, documents: string[]): string[] {
-  const seen = new Set<string>();
-  const scan = new Bun.Transpiler({ loader: 'tsx' });
-  const visit = (file: string) => {
-    file = path.resolve(file);
-    const relative = path.relative(root, file).split(path.sep).join('/');
-    if (relative.startsWith('../') || path.isAbsolute(relative)) throw new Error('Dependency outside checkout');
-    // Root version labels collector output only; its remaining semantic fields
-    // are hashed separately. Installed package manifests remain byte-exact.
-    if (relative === 'package.json') return;
-    if (seen.has(relative)) return;
-    seen.add(relative);
-    const source = fs.readFileSync(file, 'utf8');
-    if (!/\.[cm]?[jt]sx?$/.test(file)) return;
-    // Entrypoint scripts carry hashbangs, which scanImports does not accept.
-    // Strip only for parsing; buildEvalInputIdentity still hashes the full file.
-    for (const entry of scan.scanImports(source.replace(/^#![^\n]*(?:\n|$)/, '\n'))) {
-      if (isBuiltin(entry.path) || entry.path.startsWith('bun:')) continue;
-      const resolved = Bun.resolveSync(entry.path, path.dirname(file));
-      visit(resolved);
-      // Package export maps/defaults affect resolution independently of code.
-      let directory = path.dirname(resolved);
-      while (directory !== root && directory.startsWith(root + path.sep)) {
-        const manifest = path.join(directory, 'package.json');
-        if (fs.existsSync(manifest)) { visit(manifest); break; }
-        directory = path.dirname(directory);
-      }
-    }
-  };
-  for (const file of ['test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-cache.ts',
+  return sourceDependencyClosure(root, ['test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-cache.ts',
     'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/helpers/eval-budgets.ts',
     'scripts/test-paid-shards.ts', 'scripts/test-strict-output.ts', 'scripts/eval-select.ts',
     'scripts/test-pr-profile.ts', '.github/workflows/evals.yml',
-    'package.json', 'bun.lock', '.github/docker/Dockerfile.ci', ...documents]) visit(path.join(root, file));
-  for (const file of ['bunfig.toml', 'tsconfig.json', 'jsconfig.json'])
-    if (fs.existsSync(path.join(root, file))) visit(path.join(root, file));
-  return [...seen].sort();
+    'package.json', 'bun.lock', '.github/docker/Dockerfile.ci', ...documents]);
 }
 
 export function validWorkflowJudgeScore(value: EvalCacheValue, thresholds: Thresholds, structuredResponse = false): value is JudgeScore & EvalCacheValue {
