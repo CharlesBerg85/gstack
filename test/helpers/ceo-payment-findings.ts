@@ -278,7 +278,7 @@ function attributedBaselineDefect(q: NativePlanQuestionCall['questions'][number]
 /** Source requires Current/Proposed/Status/evidence and a cited row ID. It
  * does not require heading depth, column order, a Dn(ledger ID) title, or
  * native option wording. Pending is valid: the actual ACK precedes the next Edit. */
-export function ceoPaymentFinding(fp: AskUserQuestionFingerprint, seedPlan: string, savedPlan: string): Finding | null {
+export function ceoPaymentFinding(fp: AskUserQuestionFingerprint, seedPlan: string, savedPlan: string, trace?: string[]): Finding | null {
   const call = ownedAnswer(fp);
   if (!call) return null;
   const q = call.questions[0]!;
@@ -334,14 +334,22 @@ export function ceoPaymentFinding(fp: AskUserQuestionFingerprint, seedPlan: stri
           excludesCurrentTestTarget(cells[fields.current[0]!]!.text) && excludesCurrentTestTarget(defectExplanation);
         const pendingDefect = /^(?:unresolved|reopened)\b/i.test(status) &&
           current(read('proposed')) && spec.subject.test(read('proposed')) && spec.defect.test(defectValue('proposed'));
-        if (!spec.subject.test(seedPlan) || !spec.defect.test(seedPlan) || !spec.subject.test(row) ||
-          !(spec.defect.test(defectValue('current')) || pendingDefect || scopedTestAbsence) ||
-          !spec.subject.test(question) || !(spec.defect.test(defectExplanation) || scopedTestAbsence ||
+        const checks = {
+          seedPlan: spec.subject.test(seedPlan) && spec.defect.test(seedPlan),
+          rowSubject: spec.subject.test(row),
+          rowDefect: spec.defect.test(defectValue('current')) || pendingDefect || scopedTestAbsence,
+          questionSubject: spec.subject.test(question),
+          explanationDefect: spec.defect.test(defectExplanation) || scopedTestAbsence ||
             (pendingDefect && declaredSources.length <= 1 && declaredSources.every(source => source === 'PLAN.md') &&
-              currentDocumentContext(tokens, tokens.indexOf(table)) && attributedBaselineDefect(q, read('proposed'), explanation, spec)))) continue;
-        const operative = options.some(o => spec.remedy.test(o) && spec.subject.test(o));
+              currentDocumentContext(tokens, tokens.indexOf(table)) && attributedBaselineDefect(q, read('proposed'), explanation, spec)),
+          operativeOption: options.some(o => spec.remedy.test(o) && spec.subject.test(o)),
+          proposal: proposals.some(p => (!(scopedTestAbsence || pending) || p.active) && current(p.body) && spec.remedy.test(p.body) && spec.subject.test(p.body)),
+        };
+        if (trace && (checks.rowSubject || checks.questionSubject))
+          trace.push(`${spec.seed}@${id}: ${Object.entries(checks).map(([name, ok]) => `${name}=${ok ? 'yes' : 'no'}`).join(' ')}`);
+        if (!checks.seedPlan || !checks.rowSubject || !checks.rowDefect || !checks.questionSubject || !checks.explanationDefect) continue;
         const proposal = proposals.find(p => (!(scopedTestAbsence || pending) || p.active) && current(p.body) && spec.remedy.test(p.body) && spec.subject.test(p.body));
-        if (operative && proposal) matches.push({ seed: spec.seed, ledgerId: id, phase: proposal.phase, signature: fp.signature });
+        if (checks.operativeOption && proposal) matches.push({ seed: spec.seed, ledgerId: id, phase: proposal.phase, signature: fp.signature });
       }
     }
   }
@@ -961,7 +969,11 @@ export function createCeoPaymentFindingCounter(seedPlan: string, readPlan: () =>
       if (decision) { trace.push({ signature: fp.signature, kind: 'recorded-decision', ...decision }); return true; }
       if (todoDecision(fp)) { trace.push({ signature: fp.signature, kind: 'additional-current-decision' }); return true; }
       if (existingFinding(fp)) { trace.push({ signature: fp.signature, kind: 'existing-finding' }); return true; }
-      throw new Error(`Unsupported current CEO decision; cannot exclude it from the 4–7 count: ${fp.signature}`);
+      const q = fp.nativeCall!.questions[0]!, predicates: string[] = [];
+      ceoPaymentFinding(fp, seedPlan, plan, predicates);
+      throw new Error(`Unsupported current CEO decision; cannot exclude it from the 4–7 count: ${fp.signature}\n` +
+        `header: ${q.header}\nquestion: ${q.question.slice(0, 200)}\n` +
+        `obligation predicates: ${predicates.length ? predicates.join('; ') : 'no active PLAN.md-sourced ledger row named by the question shares an obligation subject'}`);
     },
   };
 }

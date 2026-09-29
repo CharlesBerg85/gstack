@@ -1,0 +1,96 @@
+{
+ "provenance": {
+  "run": "garrytan/gstack actions run 36385945043 (evals-periodic, 2026-09-28), slice 3, test/skill-e2e-plan-ceo-finding-count.test.ts, the two attempts that threw",
+  "qualification": "Each failing native call and its observed error are retained actual bytes from observation.json. The run did not upload the saved plan: ledger rows and the FAN-1 commitment grid are RECONSTRUCTED from the Edit/Write diffs rendered in terminal.visible.log (FAN-1 row added before the question rendered; ERR-1 row as last rendered; no currentDecision (ERR-1) payload appears in the rendered diffs). Seed plans are regenerated from the unchanged test source. Neither attempt receives verdict credit."
+ },
+ "attempts": [
+  {
+   "attemptDir": "shards/skill-e2e-plan-ceo-finding-count/pty-count/local-e9a41bfc-4e61-4779-90bf-ba4b3d2a5907/plan-ceo-review-1790577236907-wZBZ6W",
+   "observedError": "Unsupported current CEO decision; cannot exclude it from the 4–7 count: 1b8d3018-aaaf-48ff-a642-4b3d732cb071:toolu_01GR9ntLW4U3vpME6hDzARpz",
+   "seedPlanPath": "/home/runner/.cache/gstack-paid-shard-DAsxIf/tmp/gstack-e2e-plan-ceo-s9FbGu/gstack-test-plan-ceo.md",
+   "call": {
+    "sessionId": "1b8d3018-aaaf-48ff-a642-4b3d732cb071",
+    "toolUseId": "toolu_01GR9ntLW4U3vpME6hDzARpz",
+    "questions": [
+     {
+      "question": "D2 — FAN-1: What should the handler do when the inline receipt send raises after the user update?\nProject/branch/task: main; CEO review of the Payment Processing Integration plan (HOLD SCOPE).\nELI10: The handler marks the user paid, then emails a receipt. The email client already does the right thing on failure: it writes a durable \"retry this notification\" record and raises. The plan then lets that exception fly out of the handler, so the web layer answers 500 and Stripe re-sends the whole event for up to three days. Every re-send re-runs a payment that already committed and appends another failed-notification record, and the on-call alert reads \"webhook failed\" for what is really \"email failed\". If the email call happens to sit inside the database transaction, the failure also un-pays the user.\nStakes if we pick wrong: a paid customer who looks unpaid, a retry storm against your mail provider during its outage, and an alert that sends on-call down the wrong runbook.\nRecommendation: A because it maps to \"zero silent failures\" and \"name each error's class\": commit first, rescue only the mail client's named exceptions, log a structured warning with event/user/PaymentIntent ids, return success so dedup records completion, and leave notification retry to the runbook that already owns it.\nCompleteness: A=10/10, B=3/10, C=6/10\nNet: A keeps one retry path per concern (Stripe for payment, runbook for receipts); B leans on Stripe as an accidental mail retry loop and risks rolling back the payment; C fixes the common timeout case and leaves provider 5xx on the wrong path.",
+      "header": "FAN-1 mail leg",
+      "options": [
+       {
+        "label": "Commit, then rescue named mail errors, return 200 (recommended)",
+        "description": "Effort S, risk low, reuse high (mail client's durable attempt record + runbook), verification: unit tests for MailTimeout and a delivery error asserting user stays paid, handler returns success, warning logged with event/user/PI ids, and no exception escapes; plus one test that a DB error still propagates. ✅ Payment commit and receipt send become independent: a mail outage can never un-pay a user or trigger Stripe retries. ✅ On-call gets the existing mail failure-rate alert and the notification backlog, exactly what the runbook expects, with no false \"webhook failed\" page. ❌ Adds a small rescue block the implementer must keep in sync with the mail client's exception classes; a new exception type there would escape until named."
+       },
+       {
+        "label": "Keep as written: no error handling on the email leg",
+        "description": "Effort S (zero implementation work), risk high, reuse low, verification: none planned. ✅ Nothing to write; the plan text stands as is. ✅ Stripe's retries mean a transient mail blip eventually gets a receipt out without the runbook. ❌ Every mail failure becomes a webhook 500, a paged alert for the wrong cause, and repeated handler runs for an already-committed payment; if the send is inside the transaction, the payment rolls back."
+       },
+       {
+        "label": "Rescue MailTimeout only; other mail errors still propagate",
+        "description": "Effort S, risk medium, reuse high, verification: test for MailTimeout rescued and for a delivery error propagating. ✅ Covers the most frequent failure (the 1s deadline) with the smallest rescue. ✅ Keeps unfamiliar provider errors loud during rollout, which some teams prefer while learning the new path. ❌ Provider 5xx and network errors still take the wrong retry path, so the retry-storm and false-alert problems remain for exactly the outages that matter most."
+       }
+      ],
+      "multiSelect": false
+     }
+    ],
+    "answered": true,
+    "failed": false,
+    "answers": {
+     "D2 — FAN-1: What should the handler do when the inline receipt send raises after the user update?\nProject/branch/task: main; CEO review of the Payment Processing Integration plan (HOLD SCOPE).\nELI10: The handler marks the user paid, then emails a receipt. The email client already does the right thing on failure: it writes a durable \"retry this notification\" record and raises. The plan then lets that exception fly out of the handler, so the web layer answers 500 and Stripe re-sends the whole event for up to three days. Every re-send re-runs a payment that already committed and appends another failed-notification record, and the on-call alert reads \"webhook failed\" for what is really \"email failed\". If the email call happens to sit inside the database transaction, the failure also un-pays the user.\nStakes if we pick wrong: a paid customer who looks unpaid, a retry storm against your mail provider during its outage, and an alert that sends on-call down the wrong runbook.\nRecommendation: A because it maps to \"zero silent failures\" and \"name each error's class\": commit first, rescue only the mail client's named exceptions, log a structured warning with event/user/PaymentIntent ids, return success so dedup records completion, and leave notification retry to the runbook that already owns it.\nCompleteness: A=10/10, B=3/10, C=6/10\nNet: A keeps one retry path per concern (Stripe for payment, runbook for receipts); B leans on Stripe as an accidental mail retry loop and risks rolling back the payment; C fixes the common timeout case and leaves provider 5xx on the wrong path.": "Commit, then rescue named mail errors, return 200 (recommended)"
+    },
+    "unansweredQuestionIndices": [],
+    "answeredAt": "2026-09-28T06:40:44.000Z"
+   },
+   "reconstructedLedgerRow": "| FAN-1 (owner: Section 2, handler implementer) | PLAN.md 114-116 \"no error handling on the email leg\"; 52-53, 62-63, 96-97 mail client rethrows to handler; 88-89 client durably records failed attempt; 66-69 runbook retries notification only; 70-73 escaped exceptions -> 500 -> Stripe retry; 34-37, 72-73 completion marker only after clean commit. Mail-call position relative to DB transaction: **unknown**. | Mail exception escapes handler; webhook 500; Stripe retries committed payment | A) commit, rescue named mail errors, 200; B) keep as written; C) rescue MailTimeout only | unresolved | pending |",
+   "reconstructedGrid": [
+    "Commitment | Source/approval or pending | Current (plan) | A | B | C",
+    "---|---|---|---|---|---",
+    "Mail send happens after user update commits | pending (FAN-1) | unspecified | required | unspecified | required",
+    "Mail exceptions rescued in handler | pending (FAN-1) | none | MailTimeout + named delivery errors | none | MailTimeout only",
+    "DB exceptions propagate to wrapper (500 -> retry) | PLAN.md 70-73 retained | yes | yes (unchanged) | yes | yes",
+    "Failed send durably recorded by mail client | PLAN.md 88-89 retained | yes | yes (relied on) | yes | yes",
+    "Handler outcome after mail failure | pending (FAN-1) | 500, Stripe retries | 200, completion marked, structured warning w/ event+user+PI ids | 500, Stripe retries | 200 on timeout; 500 on other mail errors",
+    "Receipt retry path | PLAN.md 66-69 retained | runbook + Stripe retry | runbook only (single path) | both (duplicate paths) | mixed",
+    "Regression tests for this behavior | pending (TEST-1 owns method) | none | required with the change | n/a | required with the change",
+    "Other rows (DB-1, TEST-1, PERF-1) | pending | pending | pending | pending | pending"
+   ]
+  },
+  {
+   "attemptDir": "shards/skill-e2e-plan-ceo-finding-count/pty-count/local-1995133f-7dbe-4594-ba1d-5f835bfc38ec/plan-ceo-review-1790577677010-rYjF3v",
+   "observedError": "Unsupported current CEO decision; cannot exclude it from the 4–7 count: b9c36bcf-1992-4348-981e-d2f91f50e17f:toolu_012We34L2WH9RqcDKxEUsg4S",
+   "seedPlanPath": "/home/runner/.cache/gstack-paid-shard-DAsxIf/tmp/gstack-e2e-plan-ceo-sc4Hzf/gstack-test-plan-ceo.md",
+   "call": {
+    "sessionId": "b9c36bcf-1992-4348-981e-d2f91f50e17f",
+    "toolUseId": "toolu_012We34L2WH9RqcDKxEUsg4S",
+    "questions": [
+     {
+      "question": "D4 — ERR-1: What happens when the receipt email fails after the payment update?\nProject/branch/task: main — payment webhook handler, HOLD SCOPE, Section 2 error map.\nELI10: The handler does two things in a row: mark the user paid in the database, then ask the mail service to send a receipt. The plan does nothing if the mail service fails, so the error bubbles up and Stripe is told \"this whole webhook failed.\" Stripe then re-sends a payment that already went through, and on-call gets paged for a payment failure that is really a mail hiccup. The mail service already saves a retry record and raises its own alert when it fails, so the handler can safely say \"payment done, receipt pending.\"\nStakes if we pick wrong: a one-hour mail outage turns into hours of Stripe retries against committed payments, a noisy payment alert, and a runbook that has to explain the difference every time.\nRecommendation: B because the retained contracts (PLAN.md:66-69, 88-91) already promise \"never replay the payment\" and a durable notification retry record; rescuing only the two named mail exceptions after commit is the smallest change that honors both, with zero catch-alls (engineering preference: name each error's class, no silent failures).\nCompleteness: A=3/10, B=10/10, C=8/10\nPros / cons: see each option.\nNet: A keeps the plan text and makes Stripe your notification retry engine; B keeps payment and notification failures on separate rails using only existing machinery; C does the same but spends a shared-ingress edit to get there.",
+      "header": "ERR-1",
+      "options": [
+       {
+        "label": "Commit first, then rescue the two named mail exceptions and acknowledge (recommended)",
+        "description": "Effort S, risk low, reuse: mail client retry record, failure-rate and backlog alerts, notification retry runbook, DB/mail outcome traces. Pin the order: user update commits, then the mail call runs outside the transaction. Rescue only MailTimeout and the mail client's delivery-failure class (owner names it); emit one structured warn with event id, user id, PaymentIntent id, exception class, outcome=receipt_deferred; return success so the guard records completion and Stripe gets 200. DB exceptions still propagate to 500. Verification: unit spec \"mail raises MailTimeout after commit → user paid, retry record present, handler returns ok\"; unit spec \"DB raises during update → exception propagates, no mail call\"; unit spec \"mail raises unknown class → propagates\" (proves no catch-all). ✅ Payment and notification failures stay on their existing separate rails; no ingress change. ✅ Failure visibility is already wired: dashboard failure rate, backlog age alert, correlated traces. ❌ Relies on the mail client's \"durably records before rethrow\" contract; the owner must verify it before this rescue is safe."
+       },
+       {
+        "label": "Keep as written (no rescue; mail failure → HTTP 500)",
+        "description": "Effort S (zero implementation work), risk high, reuse: none. ✅ No new code in the handler; Stripe's backoff acts as a free retry when the completion marker is not recorded on exception. ✅ Nothing to get wrong in a rescue clause. ❌ A committed payment answers 500; the failed-webhook alert pages for mail outages and the runbook contract \"never replay the payment\" is broken by design. ❌ Behavior depends on an unverified guard detail (marker recorded or not after a post-commit raise)."
+       },
+       {
+        "label": "Rescue and re-raise as a handler-level NotificationFailed that ingress maps to 200",
+        "description": "Effort M, risk medium, reuse: same as B plus ingress wrapper. Same commit-then-send order and the same named rescues, but wrap into a new exception the ingress wrapper recognizes and converts to a 200 with outcome=notification_failed. Verification: B's specs plus an ingress spec for the mapping. ✅ Ingress logs carry an explicit notification-failed outcome without the handler swallowing anything. ✅ Same separation of payment vs notification failure as B. ❌ Touches the shared ingress wrapper other handlers depend on, adding a second policy location for one handler's need. ❌ More surface for the same user-visible result as B."
+       }
+      ],
+      "multiSelect": false
+     }
+    ],
+    "answered": true,
+    "failed": false,
+    "answers": {
+     "D4 — ERR-1: What happens when the receipt email fails after the payment update?\nProject/branch/task: main — payment webhook handler, HOLD SCOPE, Section 2 error map.\nELI10: The handler does two things in a row: mark the user paid in the database, then ask the mail service to send a receipt. The plan does nothing if the mail service fails, so the error bubbles up and Stripe is told \"this whole webhook failed.\" Stripe then re-sends a payment that already went through, and on-call gets paged for a payment failure that is really a mail hiccup. The mail service already saves a retry record and raises its own alert when it fails, so the handler can safely say \"payment done, receipt pending.\"\nStakes if we pick wrong: a one-hour mail outage turns into hours of Stripe retries against committed payments, a noisy payment alert, and a runbook that has to explain the difference every time.\nRecommendation: B because the retained contracts (PLAN.md:66-69, 88-91) already promise \"never replay the payment\" and a durable notification retry record; rescuing only the two named mail exceptions after commit is the smallest change that honors both, with zero catch-alls (engineering preference: name each error's class, no silent failures).\nCompleteness: A=3/10, B=10/10, C=8/10\nPros / cons: see each option.\nNet: A keeps the plan text and makes Stripe your notification retry engine; B keeps payment and notification failures on separate rails using only existing machinery; C does the same but spends a shared-ingress edit to get there.": "Commit first, then rescue the two named mail exceptions and acknowledge (recommended)"
+    },
+    "unansweredQuestionIndices": [],
+    "answeredAt": "2026-09-28T06:48:52.629Z"
+   },
+   "reconstructedLedgerRow": "| ERR-1 (Section 2) | PLAN.md:52-53, 60-63, 88-97, 114-116: mail client rethrows; plan has no error handling on email leg; DB exceptions → 500 → Stripe retry | Email exception propagates to ingress wrapper → HTTP 500 | pending (Section 2) | unresolved | pending |"
+  }
+ ]
+}
