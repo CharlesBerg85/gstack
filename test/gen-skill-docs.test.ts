@@ -588,7 +588,8 @@ describe('gen-skill-docs', () => {
     expect(qaOnlyTmpl).not.toContain('{{QA_METHODOLOGY}}');
     expect(qaOnlyTmpl).toContain('{{SECTION:exploratory}}');
     expect(qaOnlyTmpl).not.toContain('{{QA_METHOD_READS}}');
-    expect(qaOnlyTmpl).toContain("Follow the shared section's ordered preparation");
+    expect(qaOnlyTmpl).toContain('Load the shared preparation gate now');
+    expect(qaOnlyTmpl).toContain('Use the shared section already loaded above');
     for (const skill of ['qa', 'qa-only']) {
       expect(fs.readFileSync(path.join(ROOT, skill, 'sections/exploratory.md.tmpl'), 'utf8'))
         .toContain('{{QA_EXPLORATORY}}');

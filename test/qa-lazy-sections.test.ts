@@ -231,7 +231,7 @@ describe('QA-only cross-host lazy rendering', () => {
         const explorer = fs.readFileSync(path.join(rendered, dir, 'sections/exploratory.md'), 'utf8');
         const functionalRead = 'Read `sections/system-functional.md` in full.';
         expect(entry).not.toContain(functionalRead);
-        expect(entry).toContain("Follow the shared section's ordered preparation");
+        expect(entry).toContain(skill === 'qa' ? "Follow the shared section's ordered preparation" : 'Load the shared preparation gate now');
         expect(explorer).toContain(generateQAMethodReads(context(host.name, skill)));
         const stages = ['1. Read `sections/scope.md`', 'in full and select the surfaces', functionalRead,
           'Read `sections/qa-patterns.md` in full.', 'Write a **charter**', '1. First demonstrate success'];
@@ -250,9 +250,10 @@ describe('QA-only cross-host lazy rendering', () => {
           const selectedChecks = entry.indexOf('## Run the Selected Checks');
           expect(browserSetup).toBeGreaterThan(0);
           expect(selectedChecks).toBeGreaterThan(browserSetup);
-          expect(selectedChecks).toBeLessThan(entry.lastIndexOf(sectionPath(context(host.name, skill), skill, 'exploratory')));
+          expect(entry.lastIndexOf(sectionPath(context(host.name, skill), skill, 'exploratory'))).toBeLessThan(browserSetup);
           expect(entry.slice(browserSetup, selectedChecks)).not.toContain(functionalRead);
-          expect(entry).toContain('It loads the selected methods; the scope and browser setup Reads above need not repeat');
+          expect(entry).toContain('Use the shared section already loaded above; do not restart its preparation');
+          expect(entry).toContain('Defer charters, clocks and probes to');
           expect(explorer).toContain('Complete these Reads in order before writing charters or probing');
           expect(entry).toContain('For mixed Regression, the argument is the prior combined report');
           expect(entry).toContain('use separate browser and functional sections in this same report');
@@ -355,8 +356,8 @@ describe('QA-only cross-host lazy rendering', () => {
 describe('installed QA pointers', () => {
   test('QA-only reads methods and finalization before their dependent writes', () => {
     const source = fs.readFileSync(path.join(ROOT, 'qa-only/SKILL.md.tmpl'), 'utf8');
-    const stages = ['## Run the Selected Checks', '{{SECTION:exploratory}}',
-      "Follow the shared section's ordered preparation", 'After those Reads, Write the charters',
+    const stages = ['Load the shared preparation gate now', '{{SECTION:exploratory}}',
+      '## Prepare Report Artifacts', '## Run the Selected Checks', 'With its required Reads complete and report ownership resolved, Write the charters',
       '### Assemble the report', '{{SECTION:reporting}}', '### Write the checked report'];
     const positions = stages.map(stage => source.indexOf(stage));
     expect(positions.every(position => position >= 0)).toBe(true);
@@ -399,14 +400,14 @@ describe('installed QA pointers', () => {
   test('report-only scope, modes and output overrides precede browser setup', () => {
     const source = fs.readFileSync(path.join(ROOT, 'qa-only/SKILL.md.tmpl'), 'utf8');
     const stages = ['## Request Parameters', '## Test Plan Context', '{{LEARNINGS_SEARCH}}',
-      '## Select Surfaces and Isolation', '{{QA_RESOURCE:scope}}', '## Prepare Report Artifacts',
-      '## Browser Setup (conditional)', '{{QA_RESOURCE:browser-setup}}', '## Run the Selected Checks', '{{SECTION:exploratory}}'];
+      '## Select Surfaces and Isolation', '{{SECTION:exploratory}}', '## Prepare Report Artifacts',
+      '## Browser Setup (conditional)', '{{QA_RESOURCE:browser-setup}}', '## Run the Selected Checks'];
     const positions = stages.map(stage => source.indexOf(stage));
     for (const position of positions) expect(position).toBeGreaterThan(-1);
     expect(positions).toEqual([...positions].sort((a, b) => a - b));
     expect(source).not.toContain('{{SECTION:browser-setup}}');
     expect(source).not.toContain('{{QA_METHOD_READS}}');
-    expect(source).toContain("Follow the shared section's ordered preparation");
+    expect(source).toContain('Load the shared preparation gate now');
     expect(source).toContain('Parsing records the request; it does not start browser setup');
     expect(source).toContain('If both `--quick` and\n`--regression` are supplied, ask the user to choose one mode before setup or probes');
     expect(source).toContain("Each surface's method defines Full, Quick and Regression");
@@ -492,7 +493,7 @@ describe('installed QA pointers', () => {
       expect(directive).toContain('Missing/unreadable assets block required QA');
       expect(entry).not.toContain('## 1. Establish each finding once');
       const source = (entry + '\n' + reporting).replace(/\s+/g, ' ');
-      expect(source).toContain('After those Reads, Write the charters into the owned report and wait for the successful Write result before starting any probe clock or baseline');
+      expect(source).toContain('With its required Reads complete and report ownership resolved, Write the charters into the owned report and wait for the successful Write result before starting any probe clock or baseline');
       expect(source).toContain('A failed baseline contract stays failed');
       expect(source).toContain('distinguish the observed result, the expected contract and any untested causal hypothesis');
       expect(source).toContain('Link the supporting command/result or screenshot; unknown impact remains unknown');
@@ -609,7 +610,7 @@ describe('installed QA pointers', () => {
               }
               const explorer = fs.readFileSync(path.join(path.dirname(entry), 'sections/exploratory.md'), 'utf8');
               expect(body).not.toContain(generateQAMethodReads(context(host.name, skill)));
-              expect(body).toContain("Follow the shared section's ordered preparation");
+              expect(body).toContain(skill === 'qa' ? "Follow the shared section's ordered preparation" : 'Load the shared preparation gate now');
               expect(explorer).toContain(generateQAMethodReads(context(host.name, skill)));
               expect(explorer.indexOf('in full and select the surfaces')).toBeLessThan(explorer.indexOf('Read `sections/system-functional.md`'));
               expect(explorer.indexOf('Read `sections/system-functional.md`')).toBeLessThan(explorer.indexOf('Write a **charter**'));

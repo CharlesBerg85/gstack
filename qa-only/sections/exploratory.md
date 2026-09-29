@@ -6,7 +6,9 @@ The **caller** runs /qa, /qa-only, /review or /ship.
 The caller owns decisions, tests, edits, commits, publication and continuation. Discovery writes only
 reports/evidence and owned fixture state; never invoke workflows, install frameworks or publish.
 
-Complete these Reads in order before writing charters or probing. Do not repeat a Read already completed in this invocation.
+## 0. Preparation gate
+
+Complete these Reads in order before writing charters or probing:
 1. Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full and select the surfaces.
 2. Read the selected surface methods below in full.
 
@@ -18,6 +20,10 @@ Read `sections/system-functional.md` in full.
 **Browser surfaces only:**
 Read `sections/qa-patterns.md` in full.
 
+Await each successful Read result before continuing. A supplied target, isolation
+description, section index or remembered method is not a completed instruction Read.
+Do not repeat a Read already completed in this invocation; reuse only its acknowledged
+full contents. If either required Read is missing, complete it now before step 1.
 Missing or unreadable assets, prerequisites or permission block affected probes, not independent safe checks.
 Report QA setup blockers.
 
@@ -52,6 +58,12 @@ Do not batch probes across a checkpoint.
 1. First demonstrate success: output AND durable effects. Guard if bounded; await completion.
 2. **Decide whether another probe is needed.** If bounded, run `bun G status D`.
    If expired or no safe next probe remains, STOP exploration; write the report, not a checkpoint.
+   **Classify the last result before copying it.** For public or synthetic observations,
+   retain the entire result unchanged, including owned fixture paths, IDs, hashes and
+   existing credential placeholders. An absolute state path is not itself a secret.
+   For actual secrets/private payloads, withhold those values and disclose the redaction
+   and replay limits in the report. If no safe exact observation can be retained,
+   stop the affected probe chain; never invent a substitute path, identity or state.
    Otherwise **Write before probing.** Write a new `exploration-NNN.json` in the probe directory, beside its deadline if bounded, with exactly four top-level fields:
    observationCommand: last completed probe's full outer command, including guard.
    observed: its exact decoded child JSON (no wrapper/extra keys), or its full non-JSON text.
@@ -61,9 +73,10 @@ Do not batch probes across a checkpoint.
    For unguarded text, copy the complete result instead.
    If capture is incomplete, report that limit instead of reconstructing it.
    hypothesis: why nextCommand. nextCommand: exact command/request, guarded if bounded.
-   Preserve every safe program-JSON key/value and identity hash unchanged. Put tool metadata in the report, interpretations in hypothesis.
-   Redact secrets/private payloads; disclose limits.
-   Before Write, complete and check all fields against the result and next probe. No drafts/placeholders or invented safe-path redactions; corrections cannot repair published notes.
+   Compare every observed key/value with the completed result before Write; keep safe
+   values unchanged. Put tool metadata in the report, interpretations in hypothesis.
+   Complete and check all four fields against the result and next probe before Write.
+   No drafts/placeholders; corrections cannot repair published notes.
    Wait for the successful Write result before dispatch.
    Captions, private thinking and retrospective notes do not count. Never overwrite notes.
 3. Run that exact probe; G enforces the deadline when bounded.

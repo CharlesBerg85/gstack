@@ -57,6 +57,30 @@ function assertPlanExecution(text: string, shared = generateQAExploratory({ host
 }
 
 describe('QA probe entry and checkpoint gates', () => {
+  test('the native CI preparation excerpt lacks the required acknowledged-read gate', () => {
+    const captured = JSON.parse(fs.readFileSync(path.join(import.meta.dir, 'fixtures/qa-functional-ci-36505065023.json'), 'utf8'));
+    const output = captured.omittedReadEvents.flatMap(event => event.message.content)
+      .find(block => block.type === 'tool_result' && typeof block.content === 'string' && block.content.includes('# Shared exploratory QA')).content;
+    const old = output.replace(/^\s*\d+(?:→|\t)/gm, '');
+    expect(old).toContain('Read `sections/scope.md`');
+    expect(old).toContain('Read `sections/system-functional.md`');
+    const current = generateQAExploratory({ host: 'claude', skillName: 'qa-only', tmplPath: '', paths: HOST_PATHS.claude });
+    for (const clause of ['## 0. Preparation gate', 'Await each successful Read result before continuing',
+      'description, section index or remembered method is not a completed instruction Read',
+      'If either required Read is missing, complete it now before step 1']) {
+      expect(old).not.toContain(clause);
+      expect(current).toContain(clause);
+    }
+    assertPreparation(current);
+  });
+
+  test('the report template no longer asks agents to sanitize public state paths', () => {
+    const report = fs.readFileSync(path.join(import.meta.dir, '../qa/templates/functional-report-template.md'), 'utf8');
+    expect(report).toContain('EXACT SAFE OUTPUT AND STATE PATHS');
+    expect(report).toContain('REDACTION AND REPRODUCIBILITY LIMITS');
+    expect(report).not.toContain('SANITIZED OUTPUT/STATE PATHS');
+  });
+
   test('parent QA instructions resolve nested methods and reports from the same installed QA directory', () => {
     for (const host of ALL_HOST_CONFIGS) {
       for (const skillName of ['review', 'ship']) {
@@ -79,14 +103,25 @@ describe('QA probe entry and checkpoint gates', () => {
     for (const host of ALL_HOST_CONFIGS) {
       for (const skillName of ['qa', 'qa-only']) {
         const text = generateQAExploratory({ host: host.name, skillName, tmplPath: '', paths: HOST_PATHS[host.name] });
-        const stages = ['Before Write, complete and check all fields against the result and next probe',
+        const stages = [...(skillName === 'qa-only' ? ['Classify the last result before copying it',
+          'Complete and check all four fields against the result and next probe before Write']
+          : ['Before Write, complete and check all fields against the result and next probe']),
           'Wait for the successful Write result', '3. Run that exact probe'];
         const positions = stages.map(stage => text.indexOf(stage));
         expect(positions.every(position => position >= 0)).toBe(true);
         expect(positions).toEqual([...positions].sort((a, b) => a - b));
-        expect(text).toContain('No drafts/placeholders or invented safe-path redactions');
+        expect(text).toContain('No drafts/placeholders');
         expect(text).toContain('corrections cannot repair published notes');
-        expect(text).toContain('Redact secrets/private payloads; disclose limits');
+        if (skillName === 'qa-only') {
+          expect(text).toContain('never invent a substitute path, identity or state');
+          expect(text).toContain('For actual secrets/private payloads, withhold those values');
+          expect(text).toContain('and replay limits in the report');
+          expect(text).toContain('stop the affected probe chain');
+          expect(text).toContain('An absolute state path is not itself a secret');
+        } else {
+          expect(text).toContain('No drafts/placeholders or invented safe-path redactions');
+          expect(text).toContain('Redact secrets/private payloads; disclose limits');
+        }
         if (skillName === 'qa-only') expect(text).toContain('If capture is incomplete, report that limit instead of reconstructing it');
       }
     }
@@ -127,8 +162,13 @@ describe('QA probe entry and checkpoint gates', () => {
         expect(text.slice(decision, write)).toContain('write the report, not a checkpoint');
         expect(text.slice(decision, write)).toContain('If expired or no safe next probe remains');
         expect(text.slice(decision, write)).not.toContain('If done or blocked');
-        expect(text).toContain('Preserve every safe program-JSON key/value');
-        expect(text).toContain('Preserve every safe program-JSON key/value and identity hash unchanged');
+        if (skillName === 'qa-only') {
+          expect(text).toContain('Compare every observed key/value with the completed result before Write');
+          expect(text).toContain('retain the entire result unchanged, including owned fixture paths, IDs, hashes');
+        } else {
+          expect(text).toContain('Preserve every safe program-JSON key/value');
+          expect(text).toContain('Preserve every safe program-JSON key/value and identity hash unchanged');
+        }
         expect(text).toContain('Put tool metadata in the report');
       }
     }

@@ -421,7 +421,7 @@ Read sections in full when directed; do not work from memory.
 | running selected report-only baseline and exploratory probes without product or test writes | `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
 | finalizing the report after probing stops | `sections/reporting.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory |
 
-Start at Request Parameters, not the index; load shared QA methods before exploration.
+Start at Request Parameters, then follow the sections below in order.
 
 ## Request Parameters
 
@@ -464,7 +464,13 @@ the current behavior. Reading old notes never requires writing new ones.
 
 ## Select Surfaces and Isolation
 
-Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full. Find qa/gstack-qa beside this host's installed caller skill. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA. No product-directory or cross-host substitutes.
+Load the shared preparation gate now: complete its scope and selected-method Reads,
+await their results, and select the surfaces. Defer charters, clocks and probes to
+Run the Selected Checks, after report ownership and conditional browser setup below.
+
+> **STOP.** Before running selected report-only baseline and exploratory probes without product or test writes, Read `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory in full and follow it.
+> Use this host's installed path, never the product working directory or another host's assets.
+> If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
 Each surface's method defines Full, Quick and Regression. A mode flag applies to all
 selected surfaces unless the request names one surface; the others default to Full.
@@ -510,13 +516,9 @@ Read `sections/browser-setup.md` relative to the installed `qa`/`gstack-qa` SKIL
 
 ## Run the Selected Checks
 
-> **STOP.** Before running selected report-only baseline and exploratory probes without product or test writes, Read `sections/exploratory.md` relative to the installed `qa-only`/`gstack-qa-only` SKILL.md directory in full and follow it.
-> Use this host's installed path, never the product working directory or another host's assets.
-> If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
-
-Follow the shared section's ordered preparation, then its probe loop.
-It loads the selected methods; the scope and browser setup Reads above need not repeat.
-After those Reads, Write the charters into the owned report and wait for the successful
+Use the shared section already loaded above; do not restart its preparation.
+With its required Reads complete and report ownership resolved, Write the charters
+into the owned report and wait for the successful
 Write result before starting any probe clock or baseline. Use `REPORT_FILE`. State each expected result,
 risk, entrypoint, isolation and exit condition before probing; never invent the plan later.
 A failed baseline contract stays failed. Before browser probes, source/diff reads only

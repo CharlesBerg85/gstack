@@ -2,21 +2,77 @@ import { expect, test } from 'bun:test';
 import { qaFunctionalPrompt, QA_FUNCTIONAL_CASES } from './helpers/qa-functional-eval';
 import { qaCommandAllowed } from './helpers/qa-functional-observer';
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseNDJSON } from './helpers/session-runner';
-import { qaNativeProbes } from './helpers/qa-functional-evidence';
+import { qaFunctionalVerdict, qaNativeProbes } from './helpers/qa-functional-evidence';
+import { createQAFunctionalFixture } from './helpers/qa-functional-fixture';
 import { validateQACheckpoints } from './helpers/qa-checkpoint-evidence';
 import { computePaidCaseSelection } from '../scripts/test-paid-shards';
 
 test.each(['full', 'pr'] as const)('%s selection assigns the captured webhook regression to its native owner', profile => {
-  const result = computePaidCaseSelection({ profile, env: {},
-    changedFiles: ['test/fixtures/qa-webhook-r85-checkpoints.json'] });
-  expect(result.selection).toEqual({ e2e: ['qa-functional-webhook-report'], judges: [] });
-  if (profile === 'pr') {
-    expect(result.coverage?.mode).toBe('pr');
-    expect(result.coverage?.unknownFiles).toEqual([]);
+  for (const file of ['qa-webhook-r85-checkpoints.json', 'qa-functional-ci-36505065023.json']) {
+    const result = computePaidCaseSelection({ profile, env: {},
+      changedFiles: [`test/fixtures/${file}`] });
+    expect(result.selection).toEqual({ e2e: ['qa-functional-webhook-report'], judges: [] });
+    if (profile === 'pr') {
+      expect(result.coverage?.mode).toBe('pr');
+      expect(result.coverage?.unknownFiles).toEqual([]);
+    }
   }
+});
+
+test('CI native checkpoint keeps public fixture paths exact and requires the completed Write', () => {
+  const captured = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/qa-functional-ci-36505065023.json'), 'utf8'));
+  const reportRoot = realpathSync(mkdtempSync(join(tmpdir(), 'qa-ci-note-')));
+  try {
+    for (const variant of ['captured redaction', 'exact public JSON', 'omitted path', 'renamed identity', 'pending Write', 'late Write']) {
+      const originalRoot = dirname(captured.checkpointEvents[2].message.content[0].input.file_path);
+      const events = JSON.parse(JSON.stringify(captured.checkpointEvents).replaceAll(originalRoot, reportRoot));
+      const parsed = parseNDJSON(events.map(event => JSON.stringify(event)));
+      const probes = qaNativeProbes(parsed);
+      expect(probes.map(probe => probe.command)).toEqual(['bun run probe -- duplicate', 'bun run probe -- partial']);
+      const write = events[2].message.content[0].input;
+      const note = JSON.parse(write.content);
+      expect(note.observed.stateRoot).toContain('/qa-state-redacted/');
+      expect(probes[0].observed.stateRoot).toContain('/qaf-QXv0tB/.qa-state/');
+      if (variant !== 'captured redaction') note.observed = structuredClone(probes[0].observed);
+      if (variant === 'omitted path') delete note.observed.stateRoot;
+      if (variant === 'renamed identity') {
+        note.observed.fixture = note.observed.stateRoot;
+        delete note.observed.stateRoot;
+      }
+      write.content = JSON.stringify(note);
+      writeFileSync(write.file_path, write.content);
+      if (variant === 'pending Write') events.splice(3, 1);
+      if (variant === 'late Write') events.push(...events.splice(3, 1));
+      const errors = validateQACheckpoints({ transcript: events, reportRoot, probes,
+        requiredProbes: probes.slice(1), files: { 'exploration-002.json': write.content },
+        reportMarkdown: '[Checkpoint](exploration-002.json)' });
+      if (variant === 'exact public JSON') expect(errors).toEqual([]);
+      else expect(errors).toContain('QA checkpoint: Missing unique completed checkpoint before probe: bun run probe -- partial');
+    }
+  } finally { rmSync(reportRoot, { recursive: true, force: true }); }
+});
+
+test('CI native exploration Read does not stand in for completed method Reads', () => {
+  const captured = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/qa-functional-ci-36505065023.json'), 'utf8'));
+  const fixture = createQAFunctionalFixture('webhook');
+  try {
+    for (const variant of ['omitted methods', 'pending methods', 'completed methods']) {
+      const events = structuredClone(captured.omittedReadEvents);
+      if (variant !== 'omitted methods') events.push(...captured.completedMethodEvents.filter(event => variant === 'completed methods' || event.type === 'assistant'));
+      const parsed = parseNDJSON(events.map(event => JSON.stringify(event)));
+      expect(parsed.toolCalls.some(call => call.tool === 'Read' && call.input.file_path.endsWith('/qa-only/sections/exploratory.md') && call.output.includes('# Shared exploratory QA'))).toBe(true);
+      const errors = qaFunctionalVerdict(fixture, 'qa-only', {
+        ...parsed, output: '', exitReason: 'success', browseErrors: [], duration: 0,
+        firstResponseMs: 0, maxInterTurnMs: 0, model: 'native-event-replay',
+        costEstimate: { inputChars: 0, outputChars: 0, estimatedTokens: 0, estimatedCost: 0, turnsUsed: 0 },
+      }, { complete: true, failures: [], events: [], changed: [], before: {}, after: {}, limits: [] }, {},
+      { path: 'qa/sections/system-functional.md', content: readFileSync(join(import.meta.dir, '../qa/sections/system-functional.md'), 'utf8') });
+      expect(errors.includes('no completed functional instruction read')).toBe(variant !== 'completed methods');
+    }
+  } finally { fixture.cleanup(); }
 });
 
 test('the native launcher consumes the family-specific actor boundary', () => {
