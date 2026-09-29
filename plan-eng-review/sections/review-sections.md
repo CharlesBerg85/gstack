@@ -543,7 +543,7 @@ For shared-code changes, audit existing/missing shared-contract tests (behavior,
 errors, side effects, boundaries) and each migrated caller's integration/differences.
 Rejected extractions still need coverage for real duplicated-code defects.
 
-100% coverage is the goal. Identify the tests each planned codepath needs. Add required proof for an exact approved behavior without asking again; take new policies or optional verification depth through the decision gate before treating their tests as accepted work. Review the requirements here; do not build the proposed tests.
+Coverage goal: every changed behavior is protected by a test that would catch a real regression. Test count is not a goal. Identify the tests each planned codepath needs. Add required proof for an exact approved behavior without asking again; take new policies or optional verification depth through the decision gate before treating their tests as accepted work. Review the requirements here; do not build the proposed tests.
 
 #### Test Framework Detection
 
@@ -632,7 +632,25 @@ Go through your diagram branch by branch — both code paths AND user flows. For
 Quality scoring rubric:
 - ★★★  Tests behavior with edge cases AND error paths
 - ★★   Tests correct behavior, happy path only
-- ★    Smoke test / existence check / trivial assertion (e.g., "it renders", "it doesn't throw")
+- ★    Smoke test / existence check / trivial assertion (e.g., "it renders", "it doesn't throw"); weak, never counts as coverage
+
+**Test value bar.** Propose or write a test only with all four answers; otherwise extend an existing test or drop it:
+
+1. What observable behavior, invariant or independent contract does it protect?
+2. What credible regression makes it fail?
+3. Why does existing coverage not already catch that? Prefer adding a row to an existing table-driven test or shared fixture over a near-duplicate.
+4. Does it need a production seam (export, flag, wrapper, injection hook) that no production caller needs? If yes, test at the real boundary instead.
+
+A test that breaks under a behavior-preserving refactor asserts implementation: rewrite it at the owning boundary, unless exact output is the declared contract (goldens, prompt bytes, wire formats).
+
+Value card: `Value: protects=<...>; fails_when=<...>; why_new=<...>; seam=none` (seam: `none` or its name); each field at most 160 UTF-8 bytes here (clamp to 157 plus `...`; JSON keeps full values). One card per Critical Path and Edge Case in the Test Plan Artifact. A missing upstream card never blocks: derive it; ignore unknown fields.
+
+Example: Value: protects=refundPayment rejects an empty reason; fails_when=the reason guard is removed or inverted; why_new=billing.test.ts covers processPayment only; seam=none
+Rejected (covered_elsewhere): "checkout renders"; checkout.e2e.ts:15 covers it, so extend that test.
+
+Weak tests (★ smoke/existence/trivial, gate-failing or unrated) never count as coverage. X = paths with a ★★/★★★ test / total paths (value-weighted; the gate uses X); Y = paths with any test / total paths. /ship computes them; here every proposed test needs a card.
+
+Retention bar: keep a test that independently enforces a public API, protocol, config, migration, storage, security, platform, default, prompt-byte, generated-output (golden), package, release or architecture contract; static or slow is no reason to delete.
 
 #### E2E Test Decision Matrix
 
@@ -703,7 +721,10 @@ Collect the requirements for each GAP and the LLM/eval scope above. Carry forwar
 - What test file to create (match existing naming conventions)
 - What the test should assert (specific inputs → expected outputs/behavior)
 - Whether it's a unit test, E2E test, or eval (use the decision matrix)
+- Its value card (test value bar above)
 - For regression risks: flag as **CRITICAL** and name the behavior to protect
+
+A proposal that fails the value bar becomes "extend <existing test>" or is dropped with a one-line reason. Also list **Tests made obsolete by this plan** (proposal only; retiring one still needs a complete retirement card at implementation time, see /test-audit).
 
 Run the decision gate for this section's new or reopened choices. **STOP for each pending decision.** Wait for its answer before applying that remedy, moving to the next section or calling ExitPlanMode.
 
@@ -740,10 +761,16 @@ Repo: {owner/repo}
 
 ## Critical Paths
 - {end-to-end flow that must work}
+  Value: protects={...}; fails_when={...}; why_new={...}; seam=none
+
+## Tests to Retire
+- {existing test made obsolete by this plan and why, or none}
 
 ## Pending Decisions
 - {unapproved test requirement and its ledger row, or none}
 ```
+
+Give each Edge Case and Critical Path entry its value card line. `/test-audit` reads `## Tests to Retire` from the newest artifact for the branch as seed candidates.
 
 This file is consumed by `/qa` and `/qa-only` as primary test input. Include only the information that helps a QA tester know **what to test and where** — not implementation details.
 

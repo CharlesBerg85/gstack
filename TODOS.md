@@ -2,7 +2,7 @@
 
 ## NEXT PRIORITY
 
-### P1: paid-eval follow-ups from the v1.91.9.0 proof censuses (filed 2026-09-29)
+### P1: paid-eval follow-ups from the v1.91.10.0 proof censuses (filed 2026-09-29)
 
 - **Claude Code 2.1.284 bump** — it enables per-turn effort for the eval model:
   in gate census 36626737820, 66 of 84 sessions ran longer than on 2.1.251
@@ -162,7 +162,7 @@ wave"). Each was explicitly deferred with rationale, not dropped:
 - **#2443 AskUserQuestion numbering redesign** — real mismatch (brief letters
   vs host-rendered numbers), but a prompt-behavior redesign that shifts eval
   baselines; needs its own PR with baseline refresh. Effort S.
-- ~~**#2447 typecheck infra**~~ — superseded: the audit fix wave (v1.91.9.0)
+- ~~**#2447 typecheck infra**~~ — superseded: the audit fix wave (v1.91.10.0)
   added `tsconfig.json`, `bun run typecheck` (zero product errors) and the
   `typecheck:test` ratchet inside the required `free-tests` check, reusing
   #2447's fixes where they still applied.

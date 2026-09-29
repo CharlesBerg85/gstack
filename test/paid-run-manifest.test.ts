@@ -21,6 +21,7 @@ import {
   buildPaidShardArgs,
   buildRunManifest,
   loadPaidTestDurations,
+  recordedShardMs,
   mergePaidTestDurations,
   packBySliceBudget,
   estimatedSliceMs,
@@ -145,10 +146,12 @@ describe('recorded-duration slice packing', () => {
         const bound = (files: string[]) => paidShardWallUpperBoundMs([...files].sort(), jobs);
         expect(Math.max(...packed.map(bound))).toBeLessThanOrEqual(Math.max(...baseline.map(bound)));
       }
-      // Same estimate the planner packs by: recorded time, else the 75th percentile of recorded files.
-      const known = baseline.flat().map(file => recorded[file]).filter(ms => ms !== undefined).sort((x, y) => x - y);
-      const fallback = known[Math.min(known.length - 1, Math.floor(known.length * 0.75))];
-      const load = (files: string[]) => files.reduce((sum, file) => sum + (recorded[file] ?? fallback), 0);
+      // Same estimate the planner packs by: this tier's recorded time (a trial uses its case's),
+      // else the 75th percentile of recorded files.
+      const tierRecorded = loadPaidTestDurations(undefined, plan.tier);
+      const known = baseline.flat().map(file => recordedShardMs(tierRecorded, file)).filter((ms): ms is number => ms !== undefined).sort((x, y) => x - y);
+      const fallback = known[Math.min(known.length - 1, Math.floor(known.length * 0.75))]!;
+      const load = (files: string[]) => files.reduce((sum, file) => sum + (recordedShardMs(tierRecorded, file) ?? fallback), 0);
       expect(Math.max(...packed.map(load))).toBeLessThanOrEqual(Math.max(...baseline.map(load)));
     });
   }

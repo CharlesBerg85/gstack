@@ -530,7 +530,7 @@ its source and policy identifier. Custom drivers must resolve each job instead
 of passing their ordinary 1800-second default as an explicit cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
 The paid census counts are printed by `--list` for each tier.
-`eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps, above their recomputed floors (PR fallback 72,755 s, periodic 33,821 s including the trial shards); the PR
+`eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps, above their recomputed floors (PR fallback 78,425 s, periodic 33,821 s including the trial shards); the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
 wrapper reserves 49320 seconds (floor 21,725 s), and release reserves 116700 seconds for both
 tiers; free tests recompute each floor from the live shard census, case shards

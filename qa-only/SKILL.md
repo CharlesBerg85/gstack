@@ -552,6 +552,18 @@ Preserve the initial charters under **Charters** after that metadata, before fin
 - **Functional:** `templates/functional-report-template.md`: native tools/runtime,
   fixture ownership, contracts, findings, discoveries/proposed tests and cleanup.
 
+Each proposed test carries a value card; propose it only when it passes this bar:
+
+**Test value bar.** Before writing the test (the reproduced bug answers what it protects and what makes it fail):
+
+3. Why does existing coverage not already catch that? Prefer adding a row to an existing table-driven test or shared fixture over a near-duplicate.
+4. Does it need a production seam (export, flag, wrapper, injection hook) that no production caller needs? If yes, test at the real boundary instead.
+
+Value card: `Value: protects=<...>; fails_when=<...>; why_new=<...>; seam=none` (seam: `none` or its name); each field at most 160 UTF-8 bytes here (clamp to 157 plus `...`; JSON keeps full values). Put it in the 8e.5 record (/qa) or under each proposed test (/qa-only). A missing upstream card never blocks: derive it; ignore unknown fields.
+
+Example: Value: protects=refundPayment rejects an empty reason; fails_when=the reason guard is removed or inverted; why_new=billing.test.ts covers processPayment only; seam=none
+Rejected (covered_elsewhere): "checkout renders"; checkout.e2e.ts:15 covers it, so extend that test.
+
 Nest remaining headings per surface, without duplicating the shared title or metadata.
 Preserve surface-specific scope, timing and coverage limits.
 Browser scores apply only to browser coverage; never combine them with functional

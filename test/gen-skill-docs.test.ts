@@ -1133,7 +1133,7 @@ describe('TEST_COVERAGE_AUDIT placeholders', () => {
   // Regression guard: ship output contains key phrases from before the refactor
   test('ship SKILL.md regression guard — key phrases preserved', () => {
     const regressionPhrases = [
-      '100% coverage is the goal',
+      'Coverage goal: every changed behavior is protected by a test that would catch a real regression.',
       'ASCII coverage diagram',
       'processPayment',
       'refundPayment',

@@ -351,7 +351,7 @@ describe('QA caller authority in pure host renders', () => {
       expect(body.match(/If A and allowance remains:/g)).toHaveLength(2);
       expect(body).toContain('At the cap, offer only B/C or stop');
       expect(body).toContain('At the cap, offer only B or stop');
-      expect(body).toContain('At the cap, omit A and recommend stopping');
+      expect(body).toContain('At the cap, omit A\'s generation pass and recommend stopping');
       expect(body).toContain('Minimum = 60%, Target = 80%');
       expect(body).not.toContain('Maximum 2 passes total');
     });

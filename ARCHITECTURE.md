@@ -347,6 +347,8 @@ Templates contain the workflows, tips, and examples that require human judgment.
 | `{{DESIGN_METHODOLOGY}}` | `gen-skill-docs.ts` | Shared design audit methodology for /plan-design-review and /design-review |
 | `{{SHARED_LIBS_RUBRIC}}` | `resolvers/shared-libs.ts` | Shared-code criteria for /deslop-shared-libs, /plan-eng-review, and /review: verified callers, existing helpers, compatibility, tests, and total savings |
 | `{{REVIEW_DASHBOARD}}` | `gen-skill-docs.ts` | Review Readiness Dashboard for /ship pre-flight |
+| `{{TEST_VALUE_BAR:<mode>}}` | `resolvers/test-value.ts` | Shared test value bar (authoring gate, value card, X/Y coverage, red-first proof, low-value catalog) for /qa and /qa-only (`qa`) and /test-audit (`audit`); /plan-eng-review and /ship embed it through the coverage audit |
+| `{{TEST_VALUE_MESSAGE:<key>}}` | `resolvers/test-value.ts` | One degraded-mode message (problem, consequence, fix, docs anchor) from the shared constants |
 | `{{TEST_BOOTSTRAP}}` | `resolvers/testing.ts` | Test framework detection, bootstrap, CI/CD setup for /ship and /design-review |
 | `{{CODEX_PLAN_REVIEW}}` | `resolvers/review.ts` | Optional outside plan review for /plan-ceo-review and /plan-eng-review: Claude Code on Codex, Codex on other supported harnesses, with the caller's native subagent fallback |
 | `{{DESIGN_SETUP}}` | `resolvers/design.ts` | Discovery pattern for `$D` design binary, mirrors `{{BROWSE_SETUP}}` |

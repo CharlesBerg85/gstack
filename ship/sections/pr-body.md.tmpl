@@ -34,6 +34,11 @@ theme, excluding VERSION/CHANGELOG bookkeeping. Do not paste the commit list.>
 ## Test Coverage
 <coverage diagram from Step 7, or "All new code paths have test coverage.">
 <If Step 7 ran: "Tests: {before} → {after} (+{delta} new)">
+<If Step 7 ran: "Coverage: {X}% value-weighted ({Y}% including {W} weakly covered paths)">
+<If Step 7 ran: "Test value: {K} tests written, {R} rejected by the authoring gate, {E} existing tests extended, {W} paths weakly covered (weak = ★, gate-failing or unrated)." Use the singular noun for a count of 1 ("1 test written", "1 existing test extended", "1 path weakly covered").>
+<Weak paths and leftover gaps as proposed tests with value cards; each regression test's
+"Regression proof — fails at HEAD · passes at base · passes after fix" line; Test value
+details for cards whose file type has no known comment syntax.>
 
 ## Pre-Landing Review
 <findings from Step 9 code review, or "No issues found.">
