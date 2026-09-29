@@ -6,7 +6,7 @@ import { basename, dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseNDJSON } from './helpers/session-runner';
 import { qaFunctionalVerdict, qaNativeProbes } from './helpers/qa-functional-evidence';
-import { createQAFunctionalFixture } from './helpers/qa-functional-fixture';
+import { createQAFunctionalFixture, ownedPath } from './helpers/qa-functional-fixture';
 import { validateQACheckpoints } from './helpers/qa-checkpoint-evidence';
 import { computePaidCaseSelection } from '../scripts/test-paid-shards';
 
@@ -18,6 +18,77 @@ test.each(['full', 'pr'] as const)('%s selection assigns the captured webhook re
     if (profile === 'pr') {
       expect(result.coverage?.mode).toBe('pr');
       expect(result.coverage?.unknownFiles).toEqual([]);
+    }
+  }
+});
+
+test.each(['full', 'pr'] as const)('%s selection assigns the captured CLI learning regression to its native owner', profile => {
+  const result = computePaidCaseSelection({ profile, env: {},
+    changedFiles: ['test/fixtures/qa-functional-cli-learning-ci-36516246523.json'] });
+  expect(result.selection).toEqual({ e2e: ['qa-functional-cli-report'], judges: [] });
+});
+
+test('CI CLI replay summaries fail only the distinct-probe metric despite valid native exploration', () => {
+  const captures = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/qa-functional-cli-learning-ci-36516246523.json'), 'utf8'));
+  expect(captures.attempts).toHaveLength(2);
+  for (const original of captures.attempts) {
+    const fixture = createQAFunctionalFixture('cli');
+    try {
+      const captured = JSON.parse(JSON.stringify(original).replaceAll(original.fixtureRoot, fixture.root));
+      fixture.revision = captured.report.revision;
+      captured.report.runtime = `bun ${Bun.version}`;
+      for (const [name, content] of Object.entries(captured.reports)) writeFileSync(ownedPath(fixture.root, `qa-reports/${name}`), content as string);
+      const parsed = parseNDJSON(captured.publicEvents.map(event => JSON.stringify(event)));
+      const result = { ...parsed, output: '', exitReason: captured.exitReason, browseErrors: [], duration: 0,
+        firstResponseMs: 0, maxInterTurnMs: 0, model: 'native-event-replay',
+        costEstimate: { inputChars: 0, outputChars: 0, estimatedTokens: 0, estimatedCost: 0, turnsUsed: 0 } };
+      const read = parsed.toolCalls.find(call => call.tool === 'Read' && call.input.file_path.endsWith('/qa/sections/system-functional.md'))!;
+      const section = { path: 'qa/sections/system-functional.md', content: read.output.replace(/^\s*\d+(?:→|\t)/gm, '').trim() };
+      const verdict = (report = captured.report, transcript = captured.publicEvents, observation = captured.observation) =>
+        qaFunctionalVerdict(fixture, 'qa-only', { ...result, transcript }, observation, report, section, captured.reports['report.md']);
+      expect(verdict()).toEqual(['missing observation-to-next-hypothesis evidence']);
+      expect(captured.report.learning[0].observationCommand).toBe(captured.report.learning[0].nextCommand);
+      const noteCall = parsed.toolCalls.find(call => call.tool === 'Write' && basename(call.input.file_path).startsWith('exploration-')
+        && JSON.parse(call.input.content).observationCommand !== JSON.parse(call.input.content).nextCommand)!;
+      const { observationCommand, nextCommand, hypothesis } = JSON.parse(noteCall.input.content);
+      const learning = { observationCommand, nextCommand, hypothesis };
+      const report = { ...captured.report, learning: [learning] };
+      expect(verdict(report)).toEqual([]);
+      for (const invalid of [[], [{ ...learning, nextCommand: observationCommand }],
+        [{ ...learning, nextCommand: 'bun run probe -- apply uncaptured 11' }],
+        [{ ...learning, nextCommand: 'bun test' }],
+        [{ ...learning, nextCommand: `${observationCommand}; ${nextCommand}` }],
+        [{ ...learning, observationCommand: nextCommand, nextCommand: observationCommand }],
+        [{ ...learning, hypothesis: 'Try another probe.' }]]) {
+        expect(verdict({ ...report, learning: invalid })).toContain('missing observation-to-next-hypothesis evidence');
+      }
+      const noteId = captured.publicEvents.flatMap(event => event.message.content)
+        .find(block => block.type === 'tool_use' && block.name === 'Write' && block.input.file_path === noteCall.input.file_path).id;
+      const pending = captured.publicEvents.filter(event => !event.message.content.some(block => block.type === 'tool_result' && block.tool_use_id === noteId));
+      expect(pending.length).toBeLessThan(captured.publicEvents.length);
+      expect(verdict(report, pending).some(failure => failure.includes('checkpoint'))).toBe(true);
+      expect(verdict(report, captured.publicEvents, { ...captured.observation, complete: false })).toContain('incomplete write observation');
+      const noteFile = join(fixture.root, 'qa-reports', basename(noteCall.input.file_path));
+      const note = JSON.parse(readFileSync(noteFile, 'utf8'));
+      note.observed.stdout = 'invented output';
+      writeFileSync(noteFile, JSON.stringify(note));
+      expect(verdict(report).some(failure => failure.includes('checkpoint'))).toBe(true);
+    } finally { fixture.cleanup(); }
+  }
+});
+
+test('functional driver discloses its learning, CLI coverage and repair acceptance requirements', () => {
+  for (const entry of QA_FUNCTIONAL_CASES) {
+    const prompt = qaFunctionalPrompt(entry);
+    expect(prompt).toContain('different later command');
+    expect(prompt).toContain('not the required same-command replay');
+    expect(prompt).toContain('Copy that checkpoint');
+    expect(prompt).toContain('English, more than 20 characters');
+    if (entry.family === 'cli') expect(prompt).toContain('a successful apply; balance alone is not enough');
+    if (entry.mode === 'qa') {
+      expect(prompt).toContain(`repair only src/${entry.family === 'cli' ? 'cli' : 'worker'}.ts`);
+      expect(prompt).toContain('existing tests remain read-only');
+      expect(prompt).toContain('Freeze all test files after red');
     }
   }
 });
@@ -123,13 +194,15 @@ test('artifact completion preserves exact evidence before concise linked reporti
     expect(prompt).toContain('using the functional report structure');
     expect(prompt).toContain('Link the evidence and checkpoint files rather than repeating full probe payloads in Markdown');
     expect(prompt).toContain('Both artifacts are required before completion');
-    expect(prompt).toContain('include one representative observation-to-next-probe hypothesis, not a duplicate of the complete checkpoint ledger');
+    expect(prompt).toContain('The learning array is a summary: choose one completed checkpoint');
+    expect(prompt).toContain('not another probe or a duplicate of the complete checkpoint ledger');
+    expect(prompt).toContain('both commands must name exact captured probes and must differ');
     expect(prompt).toContain('Preserve every checkpoint and link every checkpoint in Markdown');
     expect(prompt).toContain('keep every executed probe and its complete JSON in evidence');
     expect(prompt).toContain('Evidence rows contain ONLY complete JSON actually emitted by native probes, including failures and repeats');
     expect(prompt).toContain('retain pre-repair results alongside green results');
     expect(prompt).toContain('Never synthesize JSON');
-    expect(prompt).toContain('one causal sentence per checkpoint hypothesis and compact JSON formatting, preserving every field and value');
+    expect(prompt).toContain('one causal sentence per checkpoint hypothesis (English, more than 20 characters) and compact JSON formatting, preserving every field and value');
     expect(prompt).toContain('retain its headings and required fields');
     expect(prompt).toContain('link to evidence.json and checkpoints for details already recorded there');
     expect(prompt).toContain('After saving both artifacts, return only their paths and the actual completion status');
@@ -158,7 +231,7 @@ test('fix completion budgets for required repair and avoids duplicating preserve
       expect(prompt).toContain('A green test suite does not substitute for these native probes');
       expect(prompt).toContain('not a signal to stop stage 2');
       expect(prompt).toContain('report incomplete; do not call it complete with a caveat');
-      expect(prompt).toContain('one causal sentence per checkpoint hypothesis and compact JSON formatting, preserving every field and value');
+      expect(prompt).toContain('one causal sentence per checkpoint hypothesis (English, more than 20 characters) and compact JSON formatting, preserving every field and value');
     } else {
       expect(prompt).not.toContain('This is a fix run');
       expect(prompt).toContain('Include the diagnosis, proposed test stubs and coverage limits');
