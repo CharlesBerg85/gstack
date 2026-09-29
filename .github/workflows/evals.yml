@@ -491,7 +491,7 @@ jobs:
           HEADLINE='(no verified report headline)'
           FAILURES=""
           if [ -n "$VERIFIED" ]; then
-            while IFS=$'\t' read -r f T P F M FL EX RE _ATTEMPTS C TIER SHARD; do
+            while IFS=$'\t' read -r _FILE T P F M _FLAKY EX RE _ATTEMPTS C TIER SHARD; do
               [ "$T" -eq 0 ] && continue
               TOTAL=$((TOTAL + T)); PASSED=$((PASSED + P)); FAILED=$((FAILED + F))
               MANUAL=$((MANUAL + M))
