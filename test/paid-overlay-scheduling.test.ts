@@ -22,17 +22,18 @@ const fakeEnv = {
 
 describe('overlay file policy', () => {
   test('grouped planning isolates every overlay and preserves ordinary retries', () => {
-    const workflow = 'test/skill-e2e-workflow.test.ts';
-    const files = [...overlayFiles, normalFile, workflow];
+    // Two short-case files keep their one retry (timeout-is-a-verdict rule).
+    const workflow = 'test/skill-e2e-review.test.ts';
+    const files = [...overlayFiles, 'test/skill-e2e-triage.test.ts', workflow];
     for (const maxFilesPerShard of [2, 3, 10]) {
       const shards = planPaidShards(files, { maxFilesPerShard });
       expect(shards.flat().sort()).toEqual([...files].sort());
       for (const file of overlayFiles) expect(shards).toContainEqual([file]);
       const workflowShard = shards.find(shard => shard.includes(workflow))!;
       expect(workflowShard.some(isOverlayTestFile)).toBe(false);
-      expect(retriesForFiles(workflowShard)).toBe(2);
+      expect(retriesForFiles(workflowShard)).toBe(1);
       const args = buildPaidShardArgs(workflowShard, resolvePaidShardTimeoutMs(workflowShard), 2, retriesForFiles(workflowShard));
-      expect(args[args.indexOf('--retry') + 1]).toBe('2');
+      expect(args[args.indexOf('--retry') + 1]).toBe('1');
       expect(planPaidShards(files.map(file => file.replaceAll('/', '\\')), { maxFilesPerShard })).toEqual(shards);
     }
   });
@@ -65,8 +66,10 @@ describe('overlay file policy', () => {
     for (const file of [normalFile, 'test/skill-e2e-overlay-harness.test.ts', 'test/model-overlays.test.ts']) {
       expect(isOverlayTestFile(file)).toBe(false);
       expect(resolvePaidShardTimeoutMs([file])).toBe(DEFAULT_SHARD_TIMEOUT_MS);
-      expect(retriesForFiles([file])).toBe(1);
+      // Not overlays; unlisted files run once because their case budget is unknown.
+      expect(retriesForFiles([file])).toBe(0);
     }
+    expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(1);
     expect(resolvePaidShardTimeoutMs([normalFile], 1234)).toBe(1234);
     expect(resolvePaidShardTimeoutMs([overlayFiles[0]], 1_900_000)).toBe(1_900_000);
     expect(() => resolvePaidShardTimeoutMs([overlayFiles[0]], 1_800_000)).toThrow('explicit wall');
@@ -157,8 +160,8 @@ describe('overlay manifest affinity and CI capacity', () => {
       const workflow = Bun.YAML.parse(fs.readFileSync(path.join(ROOT, '.github/workflows/evals-periodic.yml'), 'utf8')) as {
         jobs: Record<string, {
           steps: Array<{ run?: string; env?: NodeJS.ProcessEnv }>;
-          strategy: { matrix: { slice: number[] } };
-          'timeout-minutes': number;
+          strategy: { matrix: { slice: string } };
+          'timeout-minutes': string;
         }>;
       };
       const job = workflow.jobs['eval-slices'];
@@ -166,13 +169,20 @@ describe('overlay manifest affinity and CI capacity', () => {
       const jobs = parseCliOptions([], step.env).jobs;
       expect(jobs).toBe(2);
       expect(parseCliOptions([], step.env).withinShardConcurrency).toBe(2);
-      expect(job.strategy.matrix.slice).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      expect(job.strategy.matrix.slice).toBe('${{ fromJSON(needs.plan-slices.outputs.periodic_slices) }}');
+      expect(job['timeout-minutes']).toBe('${{ fromJSON(needs.plan-slices.outputs.periodic_timeout_minutes) }}');
       const normalMinutes = Math.ceil(18 / jobs) * resolvePaidShardTimeoutMs([normalFiles[0]]) / 60_000;
       const overlayMinutes = Math.ceil(overlayFiles.length / OVERLAY_MAX_ACTIVE_SHARDS)
         * Math.max(...overlayFiles.map(file => resolvePaidShardTimeoutMs([file]))) / 60_000;
       expect(normalMinutes).toBe(270);
       expect(overlayMinutes).toBe(122);
-      expect(job['timeout-minutes']).toBeGreaterThanOrEqual(Math.max(normalMinutes, overlayMinutes) + 20);
+      // The CI budget plan (what the workflow runs) keeps the four overlays
+      // in one final one-at-a-time slice and its job cap covers them.
+      const budget = buildRunManifest({ ...opts, sliceCount: undefined, sliceBudgetMs: 540_000, jobs });
+      const lastSlice = budget.entries.filter(e => e.slice === budget.sliceCount).map(e => e.file).sort();
+      expect(lastSlice).toEqual([...overlayFiles].sort());
+      expect(budget.plan!.ciTimeoutMinutes).toBeGreaterThanOrEqual(overlayMinutes + 20);
+      expect(budget.plan!.ciTimeoutMinutes).toBe(Math.ceil(overlayMinutes) + 20);
 
       // Gate selection keeps its original periodic exclusion and all six
       // ordinary slices; reservation does not spend an empty slot in gate.

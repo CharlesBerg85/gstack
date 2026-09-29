@@ -13,6 +13,7 @@ import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { E2E_TIERS, E2E_TOUCHFILES } from './helpers/touchfiles';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 import {
@@ -31,7 +32,21 @@ import {
   summarize,
   summaryExitCode,
   tierSkipReason,
+  marathonSkipReason,
+  CASE_SHARDED_FILES,
+  CASE_TEST_NAMES,
+  caseTestNamePattern,
+  expandCaseShards,
+  fileCaseRegistration,
+  resolvePaidShardBudget,
+  retriesForFiles,
+  shardCaseId,
+  shardFile,
+  shardSlug,
+  verifySliceResults,
+  selectPaidTestFiles,
   buildRunManifest,
+  parseRunManifest,
   type ShardOutcome,
 } from '../scripts/test-paid-shards';
 
@@ -117,7 +132,105 @@ describe('tier lane skip (B5)', () => {
     }
     const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/evals-periodic.yml'), 'utf8');
     expect(workflow.match(/--skip-judges/g)).toHaveLength(1);
-    expect(workflow).toMatch(/--tier gate --emit-plan \/tmp\/gate-census-plan\/manifest\.json --slices 7 --skip-judges/);
+    expect(workflow).toMatch(/--tier gate --emit-plan \/tmp\/gate-census-plan\/manifest\.json --slice-budget 540 --jobs 2 --skip-judges/);
+  });
+});
+
+describe('marathon tier lane', () => {
+  const file = 'test/skill-e2e-sample.test.ts';
+  const reg = { 'sample-gate': [file], 'sample-long': [file] } as Record<string, string[]>;
+  const tiers = { 'sample-gate': 'gate', 'sample-long': 'marathon' };
+
+  test('a marathon-declared file never enters the gate or periodic lane', () => {
+    const source = "const describeE2E = describeE2ETier('marathon');";
+    expect(classifyPaidTestFile(source, 'marathon')).toEqual({ included: true, reason: "declares tier 'marathon'" });
+    for (const tier of ['gate', 'periodic'] as const) {
+      expect(classifyPaidTestFile(source, tier)).toEqual({ included: false, reason: "declares tier 'marathon' only" });
+    }
+    expect(marathonSkipReason(file, source, {}, {})).toBeNull();
+  });
+
+  test('marathon selects positively: only declared files or files registering a marathon case', () => {
+    expect(marathonSkipReason(file, "testIfSelected('sample-long', async () => {});", reg, tiers)).toBeNull();
+    expect(marathonSkipReason(file, "testIfSelected(name, async () => {});", reg, tiers)).toBeNull();
+    const gateOnly = { 'sample-gate': [file] };
+    for (const source of ["testIfSelected('sample-gate', async () => {});", "testIfSelected(name, async () => {});", ''])
+      expect(marathonSkipReason(file, source, gateOnly, tiers)).toBe('skipped: declares no marathon tier and registers no marathon case');
+    const periodic = "const describeE2E = describeE2ETier('periodic');";
+    expect(classifyPaidTestFile(periodic, 'marathon')).toEqual({ included: false, reason: "declares tier 'periodic' only" });
+  });
+
+  test('a registered marathon case keeps its gate sibling scheduled in the gate lane', () => {
+    const source = "testIfSelected('sample-gate', async () => {}); testIfSelected('sample-long', async () => {});";
+    expect(tierSkipReason(file, source, 'gate', reg, tiers)).toBeNull();
+    expect(tierSkipReason(file, source, 'periodic', reg, tiers)).toBe('skipped: no E2E_TIERS id has tier periodic');
+  });
+
+  test('the live marathon lane only plans files that carry marathon work, never the LLM judges', () => {
+    const { selected, excluded } = selectPaidTestFiles(collectPaidTestFiles(), 'marathon');
+    expect(selected).not.toContain('test/skill-llm-eval.test.ts');
+    for (const file of selected) {
+      const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
+      expect(marathonSkipReason(file, source), file).toBeNull();
+    }
+    expect(selected.length + excluded.length).toBe(collectPaidTestFiles().length);
+  });
+});
+
+describe('case-sharded files', () => {
+  // Paid cases only: `if (!evalsEnabled) test(...)` blocks are free checks.
+  const caseNames = (source: string) => [...source.matchAll(
+    /(?<![.\w])(?<!if \(!evalsEnabled\) )(?:testConcurrentIfSelected|testIfSelected|test(?:\.serial|\.concurrent)?)\(\s*(['"])(.+?)\1/g,
+  )].map(match => match[2]!);
+
+  for (const file of CASE_SHARDED_FILES) {
+    test(`${file}: every Bun case is a registered E2E case, so every case gets a shard`, () => {
+      const source = fs.readFileSync(path.join(ROOT, file), 'utf8');
+      const { registered, known } = fileCaseRegistration(file, source);
+      expect(known).toBe(true);
+      expect(caseNames(source).sort()).toEqual(registered.map(id => CASE_TEST_NAMES[id] ?? id).sort());
+      const keys = (['gate', 'periodic', 'marathon'] as const).flatMap(tier => expandCaseShards([file], tier));
+      expect(keys.map(key => shardCaseId(key)).sort()).toEqual([...registered].sort());
+      for (const key of keys) expect(shardFile(key)).toBe(file);
+    });
+  }
+
+  test('a case key runs exactly its case: exact name pattern, own eval slug, per-case supervision', () => {
+    const pattern = new RegExp(caseTestNamePattern(['design-review-detector-shim']));
+    expect(pattern.test('Design review detector shim E2E design-review-detector-shim')).toBe(true);
+    expect(pattern.test('Design review detector shim E2E design-review-detector-shim-dom')).toBe(false);
+    expect(new RegExp(caseTestNamePattern(['plan-review-report'])).test('Plan Review Report E2E /plan-eng-review writes GSTACK REVIEW REPORT to plan file')).toBe(true);
+    const key = 'test/skill-e2e-plan.test.ts#plan-ceo-review';
+    expect(shardSlug([key])).toBe('skill-e2e-plan--plan-ceo-review');
+    expect(shardSlug([key])).not.toBe(shardSlug(['test/skill-e2e-plan.test.ts#plan-eng-review']));
+    expect(retriesForFiles([key])).toBe(retriesForFiles(['test/skill-e2e-plan.test.ts']));
+    const whole = resolvePaidShardBudget(['test/skill-e2e-plan.test.ts']);
+    const one = resolvePaidShardBudget([key]);
+    expect(one.policyId).toBe(whole.policyId);
+    expect(one.timeoutMs).toBeLessThan(whole.timeoutMs);
+    expect(planPaidShards([key, 'test/skill-e2e-plan.test.ts#plan-eng-review', 'test/a.test.ts'], { maxFilesPerShard: 3 }))
+      .toEqual([['test/a.test.ts'], [key], ['test/skill-e2e-plan.test.ts#plan-eng-review']]);
+  });
+
+  test('manifests plan each case once and results must execute exactly that case', () => {
+    const manifest = buildRunManifest({ tier: 'gate', sliceBudgetMs: 540_000, jobs: 2, evalsAll: true, env: { EVALS_ALL: '1' } });
+    const planned = manifest.entries.filter(entry => entry.status === 'planned');
+    for (const file of CASE_SHARDED_FILES) {
+      expect(planned.some(entry => entry.file === file)).toBe(false);
+      const gateIds = Object.keys(E2E_TOUCHFILES).filter(id => E2E_TOUCHFILES[id]!.includes(file) && E2E_TIERS[id] === 'gate');
+      expect(planned.filter(entry => shardFile(entry.file) === file).map(entry => shardCaseId(entry.file)).sort()).toEqual(gateIds.sort());
+    }
+    const results = Array.from({ length: manifest.sliceCount }, (_, i) => ({ version: 1 as const, tier: 'gate' as const, sliceIndex: i + 1, sliceCount: manifest.sliceCount,
+      outcomes: planned.filter(entry => entry.slice === i + 1).map(entry => ({ files: [entry.file], status: 'passed' as const, exitCode: 0, elapsedMs: 1,
+        executedTests: shardCaseId(entry.file) ? 3 : 1, skippedTests: shardCaseId(entry.file) ? 2 : 0, ...(entry.budget ? { budget: entry.budget } : {}) })) }));
+    expect(verifySliceResults(manifest, results).problems.filter(problem => problem.includes('Case shard'))).toEqual([]);
+    const empty = structuredClone(results);
+    const victim = empty.flatMap(result => result.outcomes).find(outcome => shardCaseId(outcome.files[0]!))!;
+    victim.skippedTests = victim.executedTests;
+    expect(verifySliceResults(manifest, empty).problems).toContain(`Case shard must execute exactly its one case: ${victim.files[0]}`);
+    const whole: any = structuredClone(manifest);
+    whole.entries.push({ file: CASE_SHARDED_FILES[0], slice: 1, status: 'planned', estimatedMs: 1 });
+    expect(() => parseRunManifest(JSON.stringify(whole))).toThrow('one registered case per shard');
   });
 });
 

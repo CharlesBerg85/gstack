@@ -6,8 +6,9 @@
  *  - per-slice selector divergence → ONE planner manifest, executors consume
  *  - hollow lanes → a slice with no artifact is a FAILURE, not an absence
  *  - hollow shards → EVALS_ALL + exit 0 + zero executed tests ≠ pass
- *  - retry parity → the old matrix rows' earned `retries: 2` survive as a
- *    literals map, not folklore
+ *  - retry policy → a timed-out attempt is a verdict; only short-case files retry
+ *  - budget packing → recorded work packs into ~9-minute executors whose count
+ *    and CI job timeout come from the plan
  */
 import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
@@ -21,13 +22,18 @@ import {
   buildRunManifest,
   loadPaidTestDurations,
   mergePaidTestDurations,
+  packBySliceBudget,
+  estimatedSliceMs,
+  sliceExecutionOrder,
+  sliceSupervisedWallMs,
+  writePaidTestDurations,
+  CI_SETUP_ALLOWANCE_MINUTES,
   paidShardWallUpperBoundMs,
   parseCliOptions,
   parseRunManifest,
   resolvePaidShardBudget,
   SUPERVISED_WORKER_COUNTS,
   retriesForFiles,
-  RETRY_OVERRIDES,
   summarize,
   summaryExitCode,
   verifySliceResults,
@@ -46,6 +52,7 @@ const outcome = (over: Partial<ShardOutcome>): ShardOutcome => ({
   elapsedMs: 1000,
   groupPid: null,
   executedTests: 3,
+  skippedTests: null,
   ...over,
 });
 
@@ -142,7 +149,8 @@ describe('recorded-duration slice packing', () => {
 
   test('the PR-profile file set spreads recorded time instead of stacking it', () => {
     const env = { EVALS_ALL: '1' };
-    const discovered = Object.keys(recorded);
+    // Seed files only: case-shard keys (`<file>#<case>`) come from expansion.
+    const discovered = Object.keys(recorded).filter(key => !key.includes('#'));
     const load = (files: string[]) => files.reduce((sum, file) => sum + recorded[file], 0);
     const packed = lanes(buildRunManifest({ tier: 'gate', sliceCount: 6, evalsAll: true, env, discovered })).map(load);
     const baseline = lanes(buildRunManifest({ tier: 'gate', sliceCount: 6, evalsAll: true, env, discovered, durations: {} })).map(load);
@@ -171,6 +179,88 @@ describe('recorded-duration slice packing', () => {
   });
 });
 
+describe('budget slice packing', () => {
+  const s = (seconds: number) => seconds * 1000;
+
+  test('best-fit packs recorded work under the budget; unknown and over-budget work gets its own runner', () => {
+    const recorded = { 'test/a.test.ts': s(500), 'test/b.test.ts': s(300), 'test/c.test.ts': s(240), 'test/d.test.ts': s(100), 'test/long.test.ts': s(900) };
+    const files = [...Object.keys(recorded), 'test/unknown.test.ts'];
+    const plan = packBySliceBudget(files, s(540), 2, recorded);
+    expect(plan.slices.flat().sort()).toEqual([...files].sort());
+    expect(plan.estimates['test/unknown.test.ts']).toBe(s(540));
+    for (const [index, slice] of plan.slices.entries()) {
+      expect(plan.estimatedSliceMs[index]).toBe(estimatedSliceMs(slice, file => plan.estimates[file]!, 2));
+      if (slice.length > 1) expect(plan.estimatedSliceMs[index]).toBeLessThanOrEqual(s(540));
+    }
+    expect(plan.slices).toContainEqual(['test/long.test.ts']);
+    expect(plan.slices.find(slice => slice.includes('test/unknown.test.ts'))!.length).toBeLessThanOrEqual(2);
+    // Deterministic regardless of discovery order.
+    expect(packBySliceBudget([...files].reverse(), s(540), 2, recorded)).toEqual(plan);
+    const worst = Math.max(...plan.slices.map(slice => sliceSupervisedWallMs(slice, 2)));
+    expect(plan.ciTimeoutMinutes).toBe(Math.ceil(worst / 60_000) + CI_SETUP_ALLOWANCE_MINUTES);
+    expect(packBySliceBudget([], s(540), 2, recorded)).toMatchObject({ slices: [[]], ciTimeoutMinutes: CI_SETUP_ALLOWANCE_MINUTES });
+  });
+
+  test('overlays keep one final slice at their one-at-a-time admission', () => {
+    const overlays = ['test/skill-e2e-overlay-harness-a.test.ts', 'test/skill-e2e-overlay-harness-b.test.ts'];
+    const plan = packBySliceBudget(['test/a.test.ts', ...overlays], s(540), 2, { [overlays[0]!]: s(100), [overlays[1]!]: s(200), 'test/a.test.ts': s(10) });
+    expect(plan.slices.at(-1)).toEqual([overlays[1], overlays[0]]);
+    expect(plan.estimatedSliceMs.at(-1)).toBe(s(300));
+  });
+
+  test('live census plans: multi-file slices stay within the budget and the executor runs longest first', () => {
+    for (const tier of ['gate', 'periodic'] as const) {
+      const manifest = buildRunManifest({ tier, sliceBudgetMs: s(540), jobs: 2, evalsAll: true, env: { EVALS_ALL: '1' } });
+      expect(parseRunManifest(JSON.stringify(manifest))).toEqual(manifest);
+      for (let slice = 1; slice <= manifest.sliceCount; slice++) {
+        const entries = sliceExecutionOrder(manifest.entries.filter(entry => entry.status === 'planned' && entry.slice === slice));
+        const estimate = manifest.plan!.estimatedSliceMs[slice - 1]!;
+        if (entries.length > 1 && !entries.some(entry => entry.file.includes('overlay-harness'))) expect(estimate, `${tier} slice ${slice}`).toBeLessThanOrEqual(s(540));
+        expect(entries.map(entry => entry.estimatedMs)).toEqual([...entries.map(entry => entry.estimatedMs!)].sort((a, b) => b - a));
+      }
+    }
+  });
+
+  test('plans fail closed on malformed metadata, mixed modes, and a worker count the plan did not supervise', () => {
+    const manifest = buildRunManifest({ tier: 'gate', sliceBudgetMs: s(540), jobs: 2, evalsAll: true, env: { EVALS_ALL: '1' } });
+    for (const broken of [
+      { ...manifest, plan: { ...manifest.plan!, estimatedSliceMs: [] } },
+      { ...manifest, plan: { ...manifest.plan!, jobs: 0 } },
+      { ...manifest, entries: manifest.entries.map(entry => ({ ...entry, estimatedMs: undefined })) },
+    ]) expect(() => parseRunManifest(JSON.stringify(broken))).toThrow('slice plan malformed');
+    expect(() => buildRunManifest({ tier: 'gate', sliceCount: 2, sliceBudgetMs: s(540), jobs: 2, evalsAll: true })).toThrow('exactly one');
+    expect(() => buildRunManifest({ tier: 'gate', sliceBudgetMs: s(540), evalsAll: true })).toThrow('explicit positive --jobs');
+    expect(() => parseCliOptions(['--emit-plan', 'x', '--slice-budget', '540'], {})).toThrow('explicit --jobs');
+    expect(() => parseCliOptions(['--emit-plan', 'x', '--slice-budget', '540', '--jobs', '2', '--slices', '3'], {})).toThrow('exactly one');
+    expect(parseCliOptions(['--emit-plan', 'x', '--slice-budget', '540'], { EVALS_JOBS: '2' }).sliceBudgetMs).toBe(s(540));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'paid-plan-jobs-'));
+    try {
+      const planPath = path.join(dir, 'manifest.json');
+      fs.writeFileSync(planPath, JSON.stringify(manifest));
+      const result = spawnSync(process.execPath, [path.join(ROOT, 'scripts/test-paid-shards.ts'), '--plan', planPath, '--slice', '1', '--list', '--jobs', '1'],
+        { cwd: ROOT, encoding: 'utf8', timeout: 10_000, env: { PATH: path.dirname(process.execPath), HOME: dir, EVALS_TIER: 'gate' } });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('manifest was packed for 2 worker(s) per slice');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('the duration seed is per tier and a report rewrite keeps the other tiers', () => {
+    const gate = loadPaidTestDurations(ROOT, 'gate');
+    const periodic = loadPaidTestDurations(ROOT, 'periodic');
+    expect(gate['test/skill-e2e-plan.test.ts']).not.toBe(periodic['test/skill-e2e-plan.test.ts']);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'paid-durations-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'scripts'));
+      writePaidTestDurations('periodic', { 'test/p.test.ts': 2_000 }, dir);
+      writePaidTestDurations('gate', { 'test/g.test.ts': 3_000 }, dir);
+      expect(loadPaidTestDurations(dir, 'gate')).toEqual({ 'test/g.test.ts': 3_000 });
+      expect(loadPaidTestDurations(dir, 'periodic')).toEqual({ 'test/p.test.ts': 2_000 });
+      fs.writeFileSync(path.join(dir, 'scripts/paid-test-durations.json'), JSON.stringify({ version: 1, durations: { 'test/g.test.ts': 1 } }));
+      expect(loadPaidTestDurations(dir, 'gate')).toEqual({});
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe('manifest executor scope', () => {
   test('list-only validates and prints the selected manifest slice without launching tests or writing results', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'paid-manifest-list-'));
@@ -184,8 +274,8 @@ test('local launch sentinel', () => writeFileSync(${JSON.stringify(receipt)}, 't
         version: 1, tier: 'gate', evalsAll: true, sliceCount: 3, selectionReason: 'local list-only fixture',
         entries: [
           { file, slice: 1, status: 'planned' },
-          { file: 'test/skill-e2e-plan.test.ts', slice: 2, status: 'planned',
-            budget: resolvePaidShardBudget(['test/skill-e2e-plan.test.ts']) },
+          { file: 'test/skill-e2e-plan.test.ts#plan-ceo-review', slice: 2, status: 'planned',
+            budget: resolvePaidShardBudget(['test/skill-e2e-plan.test.ts#plan-ceo-review']) },
         ],
       };
       const manifestPath = path.join(dir, 'manifest.json');
@@ -327,7 +417,7 @@ describe('slice-result reconciliation (report)', () => {
     tier: 'gate',
     sliceIndex: index,
     sliceCount: 2,
-    outcomes: files.map((f) => ({ files: [f], status, exitCode: 0, elapsedMs: 5, executedTests: 2 })),
+    outcomes: files.map((f) => ({ files: [f], status, exitCode: 0, elapsedMs: 5, executedTests: 2, skippedTests: 0 })),
   });
 
   test('all slices present and passing → ok', () => {
@@ -397,25 +487,24 @@ describe('hollow-shard guard', () => {
 });
 
 describe('retry parity', () => {
-  test('registered native workflows preserve main retry policy while overlay attempts stay isolated', () => {
+  test('registered native workflows follow the retry rule while overlay attempts stay isolated', () => {
+    // A 25-minute case is past RETRY_MAX_CASE_MS: its timed-out attempt is the verdict.
     const native = 'test/skill-e2e-plan-ceo-split-overflow.test.ts';
-    expect(retriesForFiles([native])).toBe(1);
-    expect(retriesForFiles([native.replaceAll('/', '\\')])).toBe(1);
-    expect(buildPaidShardArgs([native], 1_800_000, 2, retriesForFiles([native])).join(' ')).toContain('--retry 1');
+    expect(retriesForFiles([native])).toBe(0);
+    expect(retriesForFiles([native.replaceAll('/', '\\')])).toBe(0);
+    expect(buildPaidShardArgs([native], 1_800_000, 2, retriesForFiles([native])).join(' ')).toContain('--retry 0');
     const overlay = 'test/skill-e2e-overlay-harness-claude-dedicated-tools-vs-bash.test.ts';
     expect(retriesForFiles([overlay])).toBe(0);
   });
-  test('overrides exist only for the files whose matrix rows earned them, and each names a real file', () => {
-    expect(Object.keys(RETRY_OVERRIDES).sort()).toEqual([
-      'test/skill-e2e-office-hours-auto-mode.test.ts',
-      'test/skill-e2e-plan-mode-no-op.test.ts',
-      'test/skill-e2e-workflow.test.ts',
-    ]);
-    for (const file of Object.keys(RETRY_OVERRIDES)) {
-      expect(fs.existsSync(path.join(ROOT, file)), `stale RETRY_OVERRIDES entry: ${file}`).toBe(true);
+  test('the matrix-era earned retries now follow the timeout-is-a-verdict rule, and each names a real file', () => {
+    // These three old matrix rows earned `retries: 2`; every one has a
+    // CAPTURE_LONG case, so a timed-out attempt is now their verdict.
+    for (const file of ['test/skill-e2e-office-hours-auto-mode.test.ts', 'test/skill-e2e-plan-mode-no-op.test.ts', 'test/skill-e2e-workflow.test.ts']) {
+      expect(fs.existsSync(path.join(ROOT, file)), `stale retry parity entry: ${file}`).toBe(true);
+      expect(retriesForFiles([file])).toBe(0);
     }
-    expect(retriesForFiles(['test/skill-e2e-workflow.test.ts'])).toBe(2);
-    expect(retriesForFiles(['test/skill-e2e-retro.test.ts'])).toBe(1);
+    expect(retriesForFiles(['test/skill-e2e-retro.test.ts'])).toBe(0);
+    expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(1);
     expect(buildPaidShardArgs(['x'], 1000, 4, 2)).toContain('2');
     expect(buildPaidShardArgs(['x'], 1000, 4).join(' ')).toContain('--retry 1');
   });

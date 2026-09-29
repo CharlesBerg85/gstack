@@ -184,8 +184,8 @@ describe('E2E tier alignment (touchfiles declaration vs test self-gate)', () => 
       // Both self-gate shapes count: the raw predicate and the consolidated
       // helper (test/helpers/e2e-gate.ts documents this file as a consumer
       // that must recognize describeE2ETier/e2eTierEnabled).
-      const selfGated = /EVALS_TIER\s*===\s*['"](gate|periodic)['"]/.test(content)
-        || /\b(?:describeE2ETier|e2eTierEnabled)\(\s*['"](gate|periodic)['"]/.test(content);
+      const selfGated = /EVALS_TIER\s*===\s*['"](gate|periodic|marathon)['"]/.test(content)
+        || /\b(?:describeE2ETier|e2eTierEnabled)\(\s*['"](gate|periodic|marathon)['"]/.test(content);
       if (!usesNameSelection && selfGated) continue; // fail-open-safe standalone
 
       invisible.push(

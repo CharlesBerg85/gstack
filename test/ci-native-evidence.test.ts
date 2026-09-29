@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { runPaidShard, shardSlug } from '../scripts/test-paid-shards';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-const workflows = ['evals.yml', 'evals-periodic.yml'].map(name => ({
+const workflows = ['evals.yml', 'evals-periodic.yml', 'evals-marathon.yml'].map(name => ({
   name,
   value: Bun.YAML.parse(fs.readFileSync(path.join(ROOT, '.github/workflows', name), 'utf8')) as any,
 }));
@@ -23,7 +23,7 @@ function render(template: string, fields: Record<string, string>): string {
 
 test('every direct CI paid executor binds a safe unique run/attempt/job/slice identity', () => {
   expect(executors.map(({ name, jobName }) => `${name}:${jobName}`)).toEqual([
-    'evals.yml:eval-slices', 'evals-periodic.yml:eval-slices', 'evals-periodic.yml:gate-census',
+    'evals.yml:eval-slices', 'evals-periodic.yml:eval-slices', 'evals-periodic.yml:gate-census', 'evals-marathon.yml:eval-slices',
   ]);
   const ids = new Set<string>();
   for (const [workflowIndex, { job, step }] of executors.entries()) {
@@ -32,9 +32,11 @@ test('every direct CI paid executor binds a safe unique run/attempt/job/slice id
     expect(env.EVALS_RUN_ID).toBeString();
     for (const run of ['36302678692', '36302678693']) {
       for (const attempt of ['1', '2']) {
-        for (const slice of job.strategy.matrix.slice) {
+        // The planner sizes the matrix; cover more slices than any live plan.
+        expect(job.strategy.matrix.slice).toMatch(/^\$\{\{ fromJSON\(needs\.plan-slices\.outputs\.(?:[a-z]+_)?slices\) \}\}$/);
+        for (let slice = 1; slice <= 64; slice++) {
           const id = render(env.EVALS_RUN_ID, {
-            'github.run_id': `${run}${workflowIndex === 0 ? '0' : '1'}`,
+            'github.run_id': `${run}${workflowIndex}`,
             'github.run_attempt': attempt, 'matrix.slice': String(slice),
           });
           expect(id).toMatch(/^[A-Za-z0-9_-]+$/);

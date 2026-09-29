@@ -150,7 +150,8 @@ describe('PR profile paid-runner integration', () => {
     expect(() => parseRunManifest(JSON.stringify(injected))).toThrow('outside its PR case selection');
     for (const action of ['remove', 'skip', 'duplicate'] as const) {
       const missing = structuredClone(manifest);
-      const file = 'test/skill-e2e-plan.test.ts';
+      // plan.test is case-sharded: its PR case runs as `<file>#<case id>`.
+      const file = manifest.entries.find(entry => entry.status === 'planned' && entry.file.startsWith('test/skill-e2e-plan.test.ts#'))!.file;
       if (action === 'remove') missing.entries = missing.entries.filter(entry => entry.file !== file);
       if (action === 'skip') missing.entries.find(entry => entry.file === file)!.status = 'skipped-by-diff';
       if (action === 'duplicate') missing.entries.push({ ...missing.entries.find(entry => entry.file === file)! });

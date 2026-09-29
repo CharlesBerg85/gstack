@@ -30,8 +30,10 @@ test('the actual CI cookie repair planner executes only eight dependent cases wi
   expect(manifest.evalsAll).toBe(false);
   expect(manifest.selection).toEqual({ e2e: ['browse-basic', 'browse-snapshot', 'qa-quick', 'qa-only-no-fix', 'design-review-detector-shim-dom', 'diagram-triplet', 'canary-workflow', 'benchmark-workflow'], judges: [] });
   expect(manifest.entries.filter(entry => entry.status === 'planned').map(entry => entry.file).sort()).toEqual([
-    'test/skill-e2e-bws.test.ts', 'test/skill-e2e-deploy.test.ts', 'test/skill-e2e-design.test.ts', 'test/skill-e2e-diagram.test.ts', 'test/skill-e2e-qa-workflow.test.ts',
+    'test/skill-e2e-bws.test.ts', 'test/skill-e2e-deploy.test.ts', 'test/skill-e2e-design.test.ts#design-review-detector-shim-dom', 'test/skill-e2e-diagram.test.ts', 'test/skill-e2e-qa-workflow.test.ts',
   ]);
+  // The case-sharded design file runs only its one selected cookie case.
+  expect(manifest.entries.filter(entry => entry.file.startsWith('test/skill-e2e-design.test.ts#') && entry.status === 'skipped-by-diff').length).toBeGreaterThan(0);
 });
 
 test('the existing quality and behavior phases retain their complete separate shard census', () => {
@@ -42,7 +44,10 @@ test('the existing quality and behavior phases retain their complete separate sh
   expect(quality.evalsAll).toBe(true);
   expect(behavior.evalsAll).toBe(true);
   expect(qualityFiles).toHaveLength(1);
-  expect(behaviorFiles).toHaveLength(45);
+  // 44 files (first-task-scaffold registers no gate case, so the gate lane
+  // skips it); the five case-sharded files contribute one shard per gate case.
+  expect(new Set(behaviorFiles.map(file => file.split('#')[0])).size).toBe(44);
+  expect(behaviorFiles).toHaveLength(62);
   expect(behaviorFiles).toEqual(expect.arrayContaining([
     'test/skill-e2e-qa-callers.test.ts',
     'test/skill-e2e-qa-functional-fix.test.ts',

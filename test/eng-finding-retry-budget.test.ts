@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { resolvePaidShardBudget, retriesForFiles, planPaidShards, parseRunManifest, verifySliceResults, runPaidShard, buildRunManifest, paidShardWallUpperBoundMs, collectPaidTestFiles, selectPaidTestFiles, isOverlayTestFile, OVERLAY_MAX_ACTIVE_SHARDS, DEFAULT_SHARD_TIMEOUT_MS, DEFAULT_JOBS } from '../scripts/test-paid-shards';
+import { resolvePaidShardBudget, retriesForFiles, planPaidShards, parseRunManifest, verifySliceResults, runPaidShard, buildRunManifest, paidShardWallUpperBoundMs, collectPaidTestFiles, selectPaidTestFiles, isOverlayTestFile, DEFAULT_SHARD_TIMEOUT_MS, DEFAULT_JOBS, parseCliOptions, expandCaseShards, shardFile, sliceExecutionOrder, sliceSupervisedWallMs } from '../scripts/test-paid-shards';
 import { FINDING_RETRY_BUDGETS, ALL_TIERS, SHARD_RESERVE_MS } from './helpers/eval-budgets';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -8,7 +8,8 @@ import path from 'node:path';
 for (const budget of FINDING_RETRY_BUDGETS) {
   test(`${budget.file}: supervision preserves every existing attempt and retry`, () => {
     expect(budget.testMs).toBe(1_500_000);
-    expect(budget.retries).toBe(1);
+    // A 25-minute case is past RETRY_MAX_CASE_MS: a timed-out attempt is its verdict.
+    expect(budget.retries).toBe(0);
     expect(retriesForFiles([budget.file])).toBe(budget.retries);
     expect(budget.shardReserveMs).toBe(SHARD_RESERVE_MS);
     expect(budget.shardMs).toBe(budget.cases * budget.testMs * (budget.retries + 1) + budget.shardReserveMs);
@@ -24,9 +25,8 @@ for (const budget of FINDING_RETRY_BUDGETS) {
       expect([...source.matchAll(/timeoutMs:\s*1_500_000\b/g)]).toHaveLength(budget.cases);
     }
     expect([...source.matchAll(/1_500_000\s*\/\* physical ceiling:/g)]).toHaveLength(budget.cases);
-    // Current periodic CI already supports this supervision wall.
-    const workflow = Bun.YAML.parse(fs.readFileSync(path.join(import.meta.dir, '../.github/workflows/evals-periodic.yml'), 'utf8')) as any;
-    expect(budget.shardMs).toBeLessThan(workflow.jobs['eval-slices']['timeout-minutes'] * 60_000);
+    // The planned periodic CI job cap supports this supervision wall.
+    expect(budget.shardMs).toBeLessThan(livePlan().plan!.ciTimeoutMinutes * 60_000);
   });
 
   test(`${budget.file}: own-shard allocation leaves ordinary and explicit limits intact`, () => {
@@ -104,31 +104,36 @@ test('actual shard launcher honors the explicit saved planner limit without a pr
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }, 10000);
 
-const periodicWorkflow = Bun.YAML.parse(fs.readFileSync(path.join(import.meta.dir, '../.github/workflows/evals-periodic.yml'), 'utf8')) as any;
-const periodicJob = periodicWorkflow.jobs['eval-slices'];
-const periodicPlanStep = periodicWorkflow.jobs['plan-slices'].steps.find((step: any) => step.run?.includes('--tier periodic --emit-plan'));
-const periodicSliceCount = Number(periodicPlanStep.run.match(/--slices\s+(\d+)/)?.[1]);
-const periodicRunStep = periodicJob.steps.find((step: any) => step.run?.includes('--plan /tmp/paid-plan/manifest.json'));
-const periodicWorkers = Number(periodicRunStep.env.EVALS_JOBS);
-const livePlan = (discovered?: string[]) => buildRunManifest({ tier: 'periodic', sliceCount: periodicSliceCount,
-  evalsAll: true, env: { EVALS_ALL: '1' }, discovered });
+function periodicLane() {
+  const workflow = Bun.YAML.parse(fs.readFileSync(path.join(import.meta.dir, '../.github/workflows/evals-periodic.yml'), 'utf8')) as any;
+  const job = workflow.jobs['eval-slices'];
+  const planStep = workflow.jobs['plan-slices'].steps.find((step: any) => step.run?.includes('--tier periodic --emit-plan'));
+  const planned = parseCliOptions(planStep.run.slice(planStep.run.indexOf('scripts/test-paid-shards.ts') + 'scripts/test-paid-shards.ts'.length).trim().split(/\s+/), {});
+  const runStep = job.steps.find((step: any) => step.run?.includes('--plan /tmp/paid-plan/manifest.json'));
+  return { job, planStep, planned, workers: Number(runStep.env.EVALS_JOBS) };
+}
+function livePlan(discovered?: string[]) {
+  const { planned } = periodicLane();
+  return buildRunManifest({ tier: 'periodic', sliceBudgetMs: planned.sliceBudgetMs!, jobs: planned.jobs,
+    evalsAll: true, env: { EVALS_ALL: '1' }, discovered });
+}
 
 test('live periodic census fits the declared CI wall including setup', () => {
+  const { job, planStep, planned, workers } = periodicLane();
   const m = livePlan();
-  expect(periodicPlanStep.run).not.toContain('--autoplan-slice');
-  expect(periodicJob.strategy.matrix.slice).toEqual(Array.from({ length: periodicSliceCount }, (_, index) => index + 1));
-  expect(periodicWorkers).toBe(2);
-  const walls = Array.from({ length: periodicSliceCount }, (_, index) => {
-    const files = m.entries.filter(e => e.status === 'planned' && e.slice === index + 1).map(e => e.file);
-    const workers = files.some(isOverlayTestFile) ? Math.min(periodicWorkers, OVERLAY_MAX_ACTIVE_SHARDS) : periodicWorkers;
-    return paidShardWallUpperBoundMs(files, workers);
-  });
-  expect(Math.max(...walls)).toBe(14_680_000);
-  expect(periodicJob['timeout-minutes']).toBe(360);
-  expect(periodicJob.strategy['max-parallel']).toBe(8);
-  expect(Math.max(...walls) + 20 * 60_000).toBeLessThanOrEqual(periodicJob['timeout-minutes'] * 60_000);
-  expect(m.entries.filter(e => e.status === 'planned')).toHaveLength(70);
-  const overlays = m.entries.filter(e => e.status === 'planned' && e.slice === periodicSliceCount);
+  expect(planStep.run).not.toContain('--autoplan-slice');
+  expect(job.strategy.matrix.slice).toBe('${{ fromJSON(needs.plan-slices.outputs.periodic_slices) }}');
+  expect(job['timeout-minutes']).toBe('${{ fromJSON(needs.plan-slices.outputs.periodic_timeout_minutes) }}');
+  expect(workers).toBe(2);
+  expect(planned.jobs).toBe(workers);
+  const walls = Array.from({ length: m.sliceCount }, (_, index) => sliceSupervisedWallMs(sliceExecutionOrder(
+    m.entries.filter(e => e.status === 'planned' && e.slice === index + 1)).map(e => e.file), workers));
+  expect(Math.max(...walls) + 20 * 60_000).toBeLessThanOrEqual(m.plan!.ciTimeoutMinutes * 60_000);
+  expect(m.plan!.ciTimeoutMinutes).toBeLessThanOrEqual(360);
+  expect(m.sliceCount).toBeLessThanOrEqual(job.strategy['max-parallel']);
+  const plannedFiles = new Set(m.entries.filter(e => e.status === 'planned').map(e => shardFile(e.file)));
+  expect(plannedFiles).toEqual(new Set(selectPaidTestFiles(collectPaidTestFiles(), 'periodic').selected));
+  const overlays = m.entries.filter(e => e.status === 'planned' && e.slice === m.sliceCount);
   expect(overlays).toHaveLength(4);
   expect(overlays.every(e => isOverlayTestFile(e.file))).toBe(true);
 });
@@ -139,8 +144,8 @@ test('registered allocation is deterministic and preserves every discovered file
   expect(files).toContain('test/skill-e2e-ship-skip.test.ts');
   const m = livePlan(files);
   expect(livePlan([...files].reverse())).toEqual(m);
-  expect(m.entries.map(e => e.file).sort()).toEqual([...files].sort());
-  expect(new Set(m.entries.map(e => e.file)).size).toBe(files.length);
+  expect([...new Set(m.entries.map(e => shardFile(e.file)))].sort()).toEqual([...files].sort());
+  expect(new Set(m.entries.map(e => e.file)).size).toBe(m.entries.length);
 });
 
 test('ordinary-only manifests retain round-robin allocation', () => {
@@ -171,17 +176,18 @@ test('single-slice manifest retains all registered files with one allocation', (
 
 test('current detach supervision covers the live-census floor', () => {
   const floorFor = (tier: 'gate' | 'periodic') => {
-    const files = selectPaidTestFiles(collectPaidTestFiles(), tier).selected;
+    // Case-sharded files contribute one shard per case, exactly as the runner plans.
+    const files = expandCaseShards(selectPaidTestFiles(collectPaidTestFiles(), tier).selected, tier);
     const excess = files.reduce((n, file) => n + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - DEFAULT_SHARD_TIMEOUT_MS), 0);
     return Math.ceil((Math.ceil(files.length / DEFAULT_JOBS) * DEFAULT_SHARD_TIMEOUT_MS + excess) / 1000 * 1.05);
   };
   const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '../package.json'), 'utf8'));
   const periodicTimeout = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
   const gateTimeout = Number(pkg.scripts['eval:bg:gate'].match(/--timeout\s+(\d+)/)[1]);
-  expect(floorFor('gate')).toBe(42_851);
+  expect(floorFor('gate')).toBe(26_597);
   expect(gateTimeout).toBe(49_320);
   expect(gateTimeout).toBeGreaterThanOrEqual(floorFor('gate'));
-  expect(floorFor('periodic')).toBe(37_727);
+  expect(floorFor('periodic')).toBe(30_797);
 });
 
 for (const jobs of [1, 2, 3]) test(`FIFO bound covers partial durations with ${jobs} workers`, () => {

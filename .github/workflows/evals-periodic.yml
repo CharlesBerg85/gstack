@@ -4,8 +4,13 @@ name: Periodic Evals
 # tests can't rot invisibly — the class where the autoplan-dual-voice E2E was
 # silently broken for months until a lucky local diff selected it. Engine:
 # scripts/test-paid-shards.ts (the same runner local eval:bg:periodic uses):
-# one planner manifest, 6 ordinary slices plus an overlay slice, and a FAIL-CLOSED report — a slice
-# whose artifact never landed is a failure, not an absence. The gate-census
+# one planner manifest packed by recorded durations into as many ~9-minute
+# executors as the work needs (one file, or a tightly packed group, per
+# runner; overlays share one final slice), and a FAIL-CLOSED report — a slice
+# whose artifact never landed is a failure, not an absence. The matrix size
+# and job timeout come from the plan, so they cannot drift from the census.
+# Full end-to-end flows run in the non-blocking marathon lane
+# (evals-marathon.yml), never here. The gate-census
 # job is the weekly EVALS_ALL backstop for the gate tier (PR lanes are
 # diff-billed, so without it the full gate census might never execute
 # anywhere); the hollow-shard guard (exit 0 + zero executed tests under
@@ -84,6 +89,11 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      periodic_slices: ${{ steps.periodic-matrix.outputs.slices }}
+      periodic_timeout_minutes: ${{ steps.periodic-matrix.outputs.timeout_minutes }}
+      gate_slices: ${{ steps.gate-matrix.outputs.slices }}
+      gate_timeout_minutes: ${{ steps.gate-matrix.outputs.timeout_minutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -96,7 +106,13 @@ jobs:
       - name: Emit run manifest (ALL periodic tests minus reasoned excludes)
         env:
           EVALS_ALL: "1"
-        run: EVALS_TIER=periodic bun --no-install run scripts/test-paid-shards.ts --tier periodic --emit-plan /tmp/paid-plan/manifest.json --slices 7
+        run: EVALS_TIER=periodic bun --no-install run scripts/test-paid-shards.ts --tier periodic --emit-plan /tmp/paid-plan/manifest.json --slice-budget 540 --jobs 2
+
+      - name: Derive the periodic executor matrix from the plan
+        id: periodic-matrix
+        run: |
+          echo "slices=$(jq -c '[range(1; .sliceCount + 1)]' /tmp/paid-plan/manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "timeout_minutes=$(jq -e '.plan.ciTimeoutMinutes' /tmp/paid-plan/manifest.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -107,7 +123,13 @@ jobs:
       - name: Emit gate census manifest (ALL gate tests)
         env:
           EVALS_ALL: "1"
-        run: EVALS_TIER=gate bun run scripts/test-paid-shards.ts --tier gate --emit-plan /tmp/gate-census-plan/manifest.json --slices 7 --skip-judges
+        run: EVALS_TIER=gate bun run scripts/test-paid-shards.ts --tier gate --emit-plan /tmp/gate-census-plan/manifest.json --slice-budget 540 --jobs 2 --skip-judges
+
+      - name: Derive the gate census executor matrix from the plan
+        id: gate-matrix
+        run: |
+          echo "slices=$(jq -c '[range(1; .sliceCount + 1)]' /tmp/gate-census-plan/manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "timeout_minutes=$(jq -e '.plan.ciTimeoutMinutes' /tmp/gate-census-plan/manifest.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -120,9 +142,10 @@ jobs:
     needs: [build-image, plan-slices]
     env:
       EVALS_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-eval-slices-${{ matrix.slice }}
-    # Seven slices retain every registered case and retry. The complete
-    # census needs at most 244m40s per slice, plus 20 minutes setup/upload.
-    timeout-minutes: 360
+    # The planner packs ~9 minutes of recorded work per slice; the job timeout
+    # is its supervised worst case (every shard at its wall) plus 20 minutes
+    # setup/upload, computed from the same manifest the slices execute.
+    timeout-minutes: ${{ fromJSON(needs.plan-slices.outputs.periodic_timeout_minutes) }}
     permissions:
       contents: read
       packages: read
@@ -134,9 +157,11 @@ jobs:
       options: --user runner
     strategy:
       fail-fast: false
-      max-parallel: 8
+      # Every planned slice starts at once; test/evals-workflow-wiring.test.ts
+      # fails when the live plan outgrows this cap.
+      max-parallel: 24
       matrix:
-        slice: [1, 2, 3, 4, 5, 6, 7]
+        slice: ${{ fromJSON(needs.plan-slices.outputs.periodic_slices) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -174,7 +199,7 @@ jobs:
           name: paid-plan
           path: /tmp/paid-plan
 
-      - name: Run slice ${{ matrix.slice }}/7
+      - name: Run periodic slice ${{ matrix.slice }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -231,8 +256,8 @@ jobs:
     needs: [build-image, plan-slices]
     env:
       EVALS_RUN_ID: ci-${{ github.run_id }}-${{ github.run_attempt }}-gate-census-${{ matrix.slice }}
-    # Seven slices need at most 272m each, plus 20 minutes setup/upload.
-    timeout-minutes: 352
+    # Supervised worst case of the packed plan plus 20 minutes setup/upload.
+    timeout-minutes: ${{ fromJSON(needs.plan-slices.outputs.gate_timeout_minutes) }}
     permissions:
       contents: read
       packages: read
@@ -243,11 +268,11 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
       options: --user runner
     strategy:
-      # Four file workers total, each retaining two in-file case workers.
+      # Two file workers per slice, each retaining two in-file case workers.
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 16
       matrix:
-        slice: [1, 2, 3, 4, 5, 6, 7]
+        slice: ${{ fromJSON(needs.plan-slices.outputs.gate_slices) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -272,13 +297,13 @@ jobs:
           name: gate-census-plan
           path: /tmp/gate-census-plan
 
-      - name: Run gate census slice ${{ matrix.slice }}/7
+      - name: Run gate census slice ${{ matrix.slice }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           PLAYWRIGHT_BROWSERS_PATH: /opt/playwright-browsers
-          EVALS_JOBS: "1"
+          EVALS_JOBS: "2"
           EVALS_CONCURRENCY: "2"
           GSTACK_EVAL_DIR: /tmp/gate-census-results
         run: EVALS_TIER=gate bun run scripts/test-paid-shards.ts --tier gate --plan /tmp/gate-census-plan/manifest.json --slice ${{ matrix.slice }}

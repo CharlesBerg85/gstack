@@ -125,6 +125,9 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+    outputs:
+      slices: ${{ steps.matrix.outputs.slices }}
+      timeout_minutes: ${{ steps.matrix.outputs.timeout_minutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -141,7 +144,7 @@ jobs:
         if: github.event_name != 'workflow_dispatch' || inputs.validation_phase == 'all'
         env:
           EVALS_ALL: ${{ (github.event_name == 'workflow_dispatch' && inputs.evals_all) && '1' || '' }}
-        run: EVALS_TIER=gate bun --no-install run scripts/test-paid-shards.ts --tier gate --emit-plan /tmp/paid-plan/manifest.json --slices 7
+        run: EVALS_TIER=gate bun --no-install run scripts/test-paid-shards.ts --tier gate --emit-plan /tmp/paid-plan/manifest.json --slice-budget 540 --jobs 2
 
       - name: Emit validation-phase manifest
         if: github.event_name == 'workflow_dispatch' && inputs.validation_phase != 'all'
@@ -152,22 +155,29 @@ jobs:
         run: |
           bun --no-install -e '
           import { mkdirSync, writeFileSync } from "node:fs";
-          import { buildRunManifest, collectPaidTestFiles } from "./scripts/test-paid-shards.ts";
+          import { buildRunManifest, collectPaidTestFiles, restrictManifestSelection } from "./scripts/test-paid-shards.ts";
           const phase = process.env.VALIDATION_PHASE;
           if (!["quality", "cookie-quality", "behavior", "cookie-behavior"].includes(phase)) throw new Error("Invalid validation phase");
           const cookieBehavior = phase === "cookie-behavior";
           const discovered = phase === "cookie-quality" ? ["test/skill-llm-eval.test.ts"]
             : cookieBehavior ? ["test/skill-e2e-bws.test.ts", "test/skill-e2e-qa-workflow.test.ts", "test/skill-e2e-design.test.ts", "test/skill-e2e-diagram.test.ts", "test/skill-e2e-deploy.test.ts"]
             : collectPaidTestFiles().filter(file => file.startsWith("test/skill-llm-eval") === (phase === "quality"));
-          const manifest = buildRunManifest({ tier: "gate", profile: "full", sliceCount: 6, evalsAll: !cookieBehavior && process.env.EVALS_ALL === "1", discovered,
+          const manifest = buildRunManifest({ tier: "gate", profile: "full", sliceBudgetMs: 540000, jobs: 2, evalsAll: !cookieBehavior && process.env.EVALS_ALL === "1", discovered,
             ...(cookieBehavior ? { changedFiles: ["browse/src/cookie-picker-routes.ts", "browse/src/cookie-import-browser.ts", "browse/src/bun-polyfill.cjs"], env: { ...process.env, EVALS_ALL: "" } } : {}) });
-          if (phase === "cookie-quality") manifest.selection = { e2e: [], judges: ["setup-browser-cookies/SKILL.md workflow"] };
-          if (cookieBehavior) manifest.selection = { e2e: ["browse-basic", "browse-snapshot", "qa-quick", "qa-only-no-fix", "design-review-detector-shim-dom", "diagram-triplet", "canary-workflow", "benchmark-workflow"], judges: [] };
-          manifest.selectionReason = phase + " validation subset; " + manifest.selectionReason;
+          const subset = phase === "cookie-quality" ? { e2e: [], judges: ["setup-browser-cookies/SKILL.md workflow"] }
+            : cookieBehavior ? { e2e: ["browse-basic", "browse-snapshot", "qa-quick", "qa-only-no-fix", "design-review-detector-shim-dom", "diagram-triplet", "canary-workflow", "benchmark-workflow"], judges: [] } : null;
+          const restricted = subset ? restrictManifestSelection(manifest, subset, "outside the " + phase + " validation subset") : manifest;
+          restricted.selectionReason = phase + " validation subset; " + manifest.selectionReason;
           mkdirSync("/tmp/paid-plan", { recursive: true });
-          writeFileSync("/tmp/paid-plan/manifest.json", JSON.stringify(manifest, null, 2) + "\n");
-          console.log(phase + ": " + manifest.entries.filter(entry => entry.status === "planned").length + " planned shards");
+          writeFileSync("/tmp/paid-plan/manifest.json", JSON.stringify(restricted, null, 2) + "\n");
+          console.log(phase + ": " + restricted.entries.filter(entry => entry.status === "planned").length + " planned shards");
           '
+
+      - name: Derive the executor matrix from the plan
+        id: matrix
+        run: |
+          echo "slices=$(jq -c '[range(1; .sliceCount + 1)]' /tmp/paid-plan/manifest.json)" >> "$GITHUB_OUTPUT"
+          echo "timeout_minutes=$(jq -e '.plan.ciTimeoutMinutes' /tmp/paid-plan/manifest.json)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
@@ -184,14 +194,11 @@ jobs:
     # (image already published), but a newer push's cancel-in-progress stops
     # it instead of letting a superseded run finish its paid slices first.
     if: ${{ !cancelled() && needs.build-image.result == 'success' && needs.plan-slices.result == 'success' }}
-    # Aggregate spawn-concurrency budget: 6 slices x EVALS_JOBS=2 x
-    # EVALS_CONCURRENCY=2 = 24 concurrent tests lane-wide (the old matrix's
-    # 40-way per row queued claude session STARTUP behind 39 siblings and ate
-    # per-test budgets — the documented timeout-flake family). Tune with
-    # parity data before raising.
-    # The complete gate census needs at most 242 minutes per slice; keep
-    # 20 minutes for setup/upload without preempting configured retries.
-    timeout-minutes: 265
+    # The planner packs ~9 minutes of recorded work per slice (EVALS_JOBS=2 x
+    # EVALS_CONCURRENCY=2 per runner, never the old 40-way per-row fan-out
+    # that queued claude session STARTUP behind 39 siblings). The job timeout
+    # is the plan's supervised worst case plus 20 minutes setup/upload.
+    timeout-minutes: ${{ fromJSON(needs.plan-slices.outputs.timeout_minutes) }}
     permissions:
       contents: read
       packages: read
@@ -203,9 +210,9 @@ jobs:
       options: --user runner
     strategy:
       fail-fast: false
-      max-parallel: 6
+      max-parallel: 16
       matrix:
-        slice: [1, 2, 3, 4, 5, 6, 7]
+        slice: ${{ fromJSON(needs.plan-slices.outputs.slices) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -246,7 +253,7 @@ jobs:
 
       # Only this PR's receipts are eligible. No base-branch or cross-PR restore
       # prefix; every receipt also verifies exact inputs and its original age.
-      - name: Restore this PR's verified judge results
+      - name: Restore this PR's verified judge and E2E results
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -254,7 +261,7 @@ jobs:
           key: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.slice }}
           restore-keys: eval-input-v1-${{ github.repository_id }}-pr-${{ github.event.pull_request.number }}-
 
-      - name: Run slice ${{ matrix.slice }}/7
+      - name: Run slice ${{ matrix.slice }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -285,7 +292,7 @@ jobs:
 
       # An unrelated failing case does not discard already verified passes.
       # Failed/retried/partial attempts never become receipts in the first place.
-      - name: Save verified judge results for this PR
+      - name: Save verified judge and E2E results for this PR
         if: ${{ !cancelled() && steps.receipts.outputs.present == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
@@ -531,7 +538,7 @@ jobs:
           </details>
 
           ---
-          *Sliced lane: declared PR profile or broad fallback via scripts/test-paid-shards.ts (planner → 6 executors → fail-closed report). Reused scores retain their original provenance and expiry.*"
+          *Sliced lane: declared PR profile or broad fallback via scripts/test-paid-shards.ts (planner → duration-packed executors → fail-closed report). Reused results retain their original provenance and expiry.*"
 
           if [ "$FAILED" -gt 0 ]; then
             FAILURES=""
