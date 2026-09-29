@@ -238,6 +238,15 @@ changes do not select paid work; mapped dependencies take precedence, and unknow
 dependencies retain the broad fallback. See the
 [coverage boundaries](docs/TEST_PORTFOLIO.md#repeated-work-removed).
 
+When a paid eval fails, fix the product or the harness and add the captured case as one row in
+the detector's owner test (the detector → owner table is in
+[TEST_PORTFOLIO.md](docs/TEST_PORTFOLIO.md#detector-owner-tests)); never add a new per-incident file.
+A row is one `describe` block or table entry next to the others, for example a new
+`describe('eng-cache-writes-at', …)` in `test/eng-first-review.test.ts` that loads its fixture and asserts
+`engFirstReviewAUQ` on the captured call. Run `bun test <owner-test>`, then
+`bun test test/test-of-test-ratchet.test.ts`: the ratchet fails on any new test file that imports only
+`test/` code and names the owner test to use instead.
+
 Follow [Validation discipline in AGENTS.md](AGENTS.md#validation-discipline):
 reproduce known failures with focused checks, verify adjacent source and
 generation contracts, then run the affected and remaining required selected

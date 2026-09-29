@@ -825,6 +825,30 @@ audit trail lives in Aside.
 
 ## Test infrastructure
 
+### Automatic exclusion policy for chronically red periodic files (P3)
+
+**What:** A weekly periodic file that stays red for several consecutive runs keeps burning slice minutes
+until someone triages it by hand (the five finding-count evals were red eight runs straight before the
+2026-09 audit retired them). Add a report step that, after N consecutive reds, opens a PR adding the file
+to `PERIODIC_CI_EXCLUDE` with its failing run links, a tracking entry and a re-entry condition.
+
+**Re-entry / done when:** the periodic report proposes the exclusion automatically and a human approves it.
+
+### P3: Collapse the native-completion negative table
+
+**What:** After the 2026-09 audit the 14-mutation "native completion and menu ownership" table survives
+only in `test/eng-first-review.test.ts` (14 per-incident copies), `test/plan-count-completion.test.ts`
+and `test/dx-selected-navigation-ap.test.ts`. One shared table run once against a canonical call is sound
+only after `engFirstReviewAUQ` checks native completion once at entry; today each branch gates it
+separately, so the change alters a paid verdict and needs its own paid run.
+
+### P3: Retire the unused CEO payment seeder
+
+**What:** `seedCeoPaymentProject` and `pickSuppliedCeoPlanStart` in `test/helpers/ceo-finding-fixture.ts`
+and `test/fixtures/ceo-existing-payment/` lost their only paid consumer when the CEO finding-count eval
+was retired; the fixture tests in `test/ceo-finding-fixture.test.ts` still exercise them. Delete the
+seeder, its fixture and those tests together.
+
 ### P3: No paid eval runs the full /autoplan chain
 
 **What:** `skill-e2e-autoplan-chain` was retired (it never reached a product
@@ -977,11 +1001,12 @@ coverage fill. Remaining, in rough priority order:
   CLI reads a local `eval <file>` itself and sends the code as `js` (
   semantics-preserving; keep the daemon path for remote callers), plus a
   namespace hint appended to read-commands.ts:313's error. Effort S.
-- **P2 — PTY boot-readiness wait.** The PTY tests' Bun.sleep(8000) preludes
-  are blind waits; a real readiness
-  waitFor needs empirical CLI 2.1.x ready-marker probing in a working
-  terminal environment (this sandbox's PTY probe wedged). Effort S, needs a
-  dev machine.
+- **P2 — PTY boot-readiness wait (paid runner).** Free fake-CLI tests now pass
+  `startupReadyMarker` (plan-count-history since the 2026-09 audit). The paid
+  runner's real-CLI path (`runPlanSkillCounting` without a marker) and
+  `test/pty-screen-session.test.ts` still pay the blind 8 s wait; a real
+  readiness waitFor needs empirical CLI 2.1.x ready-marker probing in a working
+  terminal environment. Effort S, needs a dev machine.
 - **P2 — single typed test registry.** Paid globs, tiers, touchfiles keys,
   and exclusions are still separate literal authorities synced by tripwires;
   derive them from one registry and the drift class dies structurally
@@ -3855,7 +3880,7 @@ the browse files with no "Ran N tests" summary. Receipts:
 ### Pre-existing test failures surfaced during v1.12.0.0 ship — RESOLVED
 
 - `test/brain-sync.test.ts` GSTACK_HOME isolation fixed on main in v1.13.0.0.
-- `test/model-overlay-opus-4-7.test.ts` updated on main to match the new overlay content (the v1.10.1.0 removal of "Fan out explicitly" was correct — measured −60pp fanout vs baseline).
+- The Opus 4.7 overlay test (now a block in `test/model-overlays.test.ts`) updated on main to match the new overlay content (the v1.10.1.0 removal of "Fan out explicitly" was correct — measured −60pp fanout vs baseline).
 
 **Completed:** v1.13.0.0 (2026-04-25, on main)
 
@@ -3874,7 +3899,7 @@ the browse files with no "Ran N tests" summary. Receipts:
 
 - **Fixed the `bearer-token-json` regression in `bin/gstack-brain-sync`** — the value charset `[A-Za-z0-9_./+=-]{16,}` didn't permit spaces, so auth headers with the standard `Bearer <token>` form (literal space after the scheme name) slipped past the scanner. Added an optional `(Bearer |Basic |Token )?` prefix to the pattern. Validated against 5 positive cases (including the regression fixture) + 3 negative cases (short tokens, non-secret keys, random JSON). The 7-pattern secret scanner now passes all fixtures including bearer-json.
 - **Added `test/gstack-brain-init-gh-mock.test.ts`** — 8 tests exercising the `gh` CLI auto-create path that previously had zero coverage. Stubs `gh` on PATH to record every call, asserts `gh repo create --private --description "..." --source <GSTACK_HOME>` fires with the computed `gstack-brain-<user>` default name. Covers: happy path, fall-through-to-`gh repo view` when create hits already-exists, user-provided-URL-bypasses-gh, gh-not-on-path prompts for URL, gh-not-authed prompts for URL, idempotent `--remote` re-runs, conflicting-remote rejection.
-- **Added `test/skill-e2e-brain-privacy-gate.test.ts`** — periodic-tier E2E (~$0.30-$0.50/run). Stages a fake `gbrain` on PATH + `gbrain_sync_mode_prompted=false` in config, runs a real skill via `runAgentSdkTest`, intercepts tool-use via `canUseTool`, and asserts the preamble fires the 3-option privacy AskUserQuestion with canonical prose ("publish session memory" / "artifact" / "decline"). Second test asserts the gate is silent when `prompted=true` (idempotency-within-session).
+- **Added the brain privacy-gate E2E** (retired as never green in the 2026-09 test audit; `test/gstack-skill-start.test.ts` now pins consent before egress) — periodic-tier E2E (~$0.30-$0.50/run). Stages a fake `gbrain` on PATH + `gbrain_sync_mode_prompted=false` in config, runs a real skill via `runAgentSdkTest`, intercepts tool-use via `canUseTool`, and asserts the preamble fires the 3-option privacy AskUserQuestion with canonical prose ("publish session memory" / "artifact" / "decline"). Second test asserts the gate is silent when `prompted=true` (idempotency-within-session).
 - **Registered `brain-privacy-gate` in `test/helpers/touchfiles.ts`** (periodic tier) with dependency tracking on `scripts/resolvers/preamble/generate-brain-sync-block.ts`, `bin/gstack-brain-sync`, `bin/gstack-brain-init`, `bin/gstack-config`, and the Agent SDK runner. Diff-based selection will re-run the E2E whenever any of those change.
 
 **Completed:** v1.12.0.0 (2026-04-24)

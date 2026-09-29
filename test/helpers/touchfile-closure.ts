@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { matchGlob } from './test-selection';
+import { resolveRepoLiteral, resolveRepoSpecifier } from './resolve-repo-path';
 
 export interface ClosureEntry {
   /** Repo-relative dependency path. */
@@ -18,15 +19,6 @@ export interface ClosureEntry {
 
 const LITERAL = /test\/(?:helpers|fixtures)\/[A-Za-z0-9_.\-/]+[A-Za-z0-9_]/g;
 const scanner = new Bun.Transpiler({ loader: 'tsx' });
-
-function resolveImport(root: string, from: string, specifier: string): string | null {
-  if (!specifier.startsWith('.')) return null;
-  const base = path.resolve(path.dirname(path.join(root, from)), specifier);
-  for (const candidate of [base, `${base}.ts`, base.replace(/\.js$/, '.ts'), path.join(base, 'index.ts')]) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return path.relative(root, candidate).split(path.sep).join('/');
-  }
-  return null;
-}
 
 /** Selection itself is diffed by map (diffTouchfileMaps), and test files are never dependencies. */
 const SELECTION_MODULES = new Set(['test/helpers/touchfiles-data.ts', 'test/helpers/touchfiles.ts', 'test/helpers/test-selection.ts']);
@@ -47,15 +39,15 @@ export function paidTestClosure(root: string, testFile: string, boundary: Readon
     let imports: Array<{ path: string }> = [];
     try { imports = scanner.scanImports(source); } catch { imports = []; }
     for (const { path: specifier } of imports) {
-      const target = resolveImport(root, file, specifier);
+      const target = resolveRepoSpecifier(root, file, specifier);
       if (!target || !inScope(target) || seen.has(target)) continue;
       seen.set(target, [...chain, target]);
       queue.push({ file: target, chain: [...chain, target] });
     }
     for (const match of source.match(LITERAL) ?? []) {
-      const absolute = path.join(root, match);
-      if (!inScope(match) || !fs.existsSync(absolute)) continue;
-      const literal = fs.statSync(absolute).isDirectory() ? `${match.replace(/\/$/, '')}/**` : match;
+      const found = inScope(match) ? resolveRepoLiteral(root, match) : null;
+      if (!found) continue;
+      const literal = fs.statSync(path.join(root, found)).isDirectory() ? `${found}/**` : found;
       if (seen.has(literal)) continue;
       seen.set(literal, [...chain, `"${match}"`]);
       if (!literal.endsWith('/**')) queue.push({ file: literal, chain: [...chain, `"${match}"`] });
