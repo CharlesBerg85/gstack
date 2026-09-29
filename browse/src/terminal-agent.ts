@@ -516,8 +516,13 @@ function maybeSpawnPty(ws: any, session: PtySession): boolean {
   return true;
 }
 
+interface TerminalAgentWsData {
+  cookie: string;
+  sessionId: string | null;
+}
+
 function buildServer(port: number) {
-  return Bun.serve({
+  return Bun.serve<TerminalAgentWsData>({
     hostname: '127.0.0.1',
     // #2314: allocated from the SAME fixed 10000-60000 scan range the main
     // server uses (port-allocator.ts, decision 8) — never `port: 0`. Binding
@@ -695,8 +700,8 @@ function buildServer(port: number) {
        * after `spawned: true` is a no-op.
        */
       open(ws) {
-        const sessionId = (ws.data as any)?.sessionId ?? null;
-        const cookie = (ws.data as any)?.cookie || '';
+        const sessionId = ws.data?.sessionId ?? null;
+        const cookie = ws.data?.cookie || '';
 
         // Commit 3 re-attach: if this sessionId already has a detached
         // PtySession in sessionsById, REPLACE its liveWs ref and replay
@@ -770,9 +775,9 @@ function buildServer(port: number) {
             proc: null,
             cols: 80,
             rows: 24,
-            cookie: (ws.data as any)?.cookie || '',
+            cookie: ws.data?.cookie || '',
             liveWs: ws,
-            sessionId: (ws.data as any)?.sessionId ?? null,
+            sessionId: ws.data?.sessionId ?? null,
             spawned: false,
             pingInterval: null,
             ringBuffer: [],
@@ -850,7 +855,7 @@ function buildServer(port: number) {
         // Always drop the WS-keyed map entry and the per-attach
         // attachToken — the attach grant was single-use.
         sessions.delete(ws);
-        const cookie = (ws.data as any)?.cookie;
+        const cookie = ws.data?.cookie;
         if (cookie) validTokens.delete(cookie);
         // A reattach can replace liveWs before the old socket's close arrives.
         // That stale callback must not retire the new socket, grant or child.

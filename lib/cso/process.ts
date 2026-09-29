@@ -6,6 +6,7 @@ import {
   existsSync,
   fstatSync,
   lstatSync,
+  type Stats,
   openSync,
   readSync,
   realpathSync,
@@ -233,10 +234,7 @@ interface BoundedMetadataFile {
   ctimeMs: number;
   content: string;
 }
-function sameMetadataFile(
-  left: BoundedMetadataFile | ReturnType<typeof lstatSync>,
-  right: BoundedMetadataFile | ReturnType<typeof lstatSync>,
-): boolean {
+function sameMetadataFile(left: BoundedMetadataFile | Stats, right: BoundedMetadataFile | Stats): boolean {
   return (
     left.dev === right.dev &&
     left.ino === right.ino &&
@@ -253,7 +251,7 @@ function boundedMetadataFile(
   label: string,
   optional = false,
 ): BoundedMetadataFile | undefined {
-  let before: ReturnType<typeof lstatSync>;
+  let before: Stats;
   try {
     before = lstatSync(path);
   } catch (error: any) {

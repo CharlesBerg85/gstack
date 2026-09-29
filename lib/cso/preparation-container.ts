@@ -802,9 +802,10 @@ async function extractNpmArchive(
         fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL,
         0o600,
       );
-      current = { remaining: size, padding: (512 - (size % 512)) % 512, fd, mode: safeMode || 0o600 };
+      const mode = safeMode || 0o600;
+      current = { remaining: size, padding: (512 - (size % 512)) % 512, fd, mode };
       if (!size) {
-        fs.fchmodSync(fd, current.mode);
+        fs.fchmodSync(fd, mode);
         fs.closeSync(fd);
         current.fd = undefined;
         if (!current.padding) current = undefined;

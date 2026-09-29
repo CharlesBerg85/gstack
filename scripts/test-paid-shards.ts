@@ -1638,13 +1638,14 @@ async function main(): Promise<number> {
 
   // ── Report mode: reconcile slice artifacts against the manifest. Fail-closed:
   // a slice whose artifact never landed is a FAILURE, not an absence.
-  if (options.reportDir) {
-    const summaryPath = path.join(options.reportDir, 'collector-outcomes.json');
+  const reportDir = options.reportDir;
+  if (reportDir) {
+    const summaryPath = path.join(reportDir, 'collector-outcomes.json');
     fs.rmSync(summaryPath, { force: true });
-    const manifest = parseRunManifest(fs.readFileSync(path.join(options.reportDir, 'manifest.json'), 'utf-8'));
-    const results: SliceResult[] = fs.readdirSync(options.reportDir)
+    const manifest = parseRunManifest(fs.readFileSync(path.join(reportDir, 'manifest.json'), 'utf-8'));
+    const results: SliceResult[] = fs.readdirSync(reportDir)
       .filter((name) => /^slice-\d+\.json$/.test(name))
-      .map((name) => JSON.parse(fs.readFileSync(path.join(options.reportDir, name), 'utf-8')) as SliceResult);
+      .map((name) => JSON.parse(fs.readFileSync(path.join(reportDir, name), 'utf-8')) as SliceResult);
     const verdict = verifySliceResults(manifest, results);
     const planned = manifest.entries.filter((e) => e.status === 'planned').length;
     console.log(`[test:paid] report: ${results.length}/${manifest.sliceCount} slices, ${planned} planned shards, tier=${manifest.tier}`);
@@ -1673,10 +1674,10 @@ async function main(): Promise<number> {
       failed: number; manual_accepted: number; attempts: number }> = [];
     const manualProblems: string[] = [];
     const manualClaims = new Map<string, string>();
-    for (const name of fs.readdirSync(options.reportDir, { recursive: true }) as string[]) {
+    for (const name of fs.readdirSync(reportDir, { recursive: true }) as string[]) {
       if (!isFinalizedEvalResultFile(name)) continue;
       try {
-        const parsed = JSON.parse(fs.readFileSync(path.join(options.reportDir, name), 'utf-8'));
+        const parsed = JSON.parse(fs.readFileSync(path.join(reportDir, name), 'utf-8'));
         if (!Array.isArray(parsed.tests)) {
           if (Object.hasOwn(parsed, 'tests') || parsed.total_tests !== undefined || parsed.manual_review !== undefined) {
             manualProblems.push(`${name}: malformed collector tests[]`);

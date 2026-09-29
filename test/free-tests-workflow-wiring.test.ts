@@ -56,6 +56,12 @@ describe('free-tests workflow wiring', () => {
     expect(aggregate.if).toBe('always()');
     expect(aggregate.needs).toContain('free-suite');
     expect(aggregate.steps.some((step: any) => step.run?.includes('--ci-verify'))).toBe(true);
+    expect(aggregate.needs).toContain('typecheck');
+    const gate = aggregate.steps.find((step: any) => step.env?.TYPECHECK_RESULT);
+    expect(gate.env.TYPECHECK_RESULT).toBe('${{ needs.typecheck.result }}');
+    expect(gate.run).toContain('test "$TYPECHECK_RESULT" = success');
+    const typecheck = workflow.jobs.typecheck.steps.map((step: any) => step.run).filter(Boolean);
+    expect(typecheck).toEqual(expect.arrayContaining(['bun run typecheck', 'bun run typecheck:test', 'bun run format:cso:check']));
     expect(source).not.toContain('--quick');
   });
 

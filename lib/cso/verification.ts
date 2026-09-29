@@ -2166,5 +2166,5 @@ export async function verifyRepair(params: {
     validateRepairBundle(persistable, certified.bundle.id, snapshot, params.manifest);
     writeJsonExclusive(join(params.runDir, 'bundles', `${certified.bundle.id}.json`), persistable);
   }
-  return certified;
+  return { manifest: certified.manifest, bundle: certified.bundle };
 }

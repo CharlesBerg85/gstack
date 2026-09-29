@@ -16,6 +16,22 @@ bin/dev-setup                  # activate dev mode
 
 > **Full clone vs shallow.** The README's user-facing install uses `--depth 1` for speed. As a contributor, use a full clone (no `--depth` flag) — you'll need history for `git log`, `git blame`, `git bisect`, and reviewing PRs against earlier versions. If you already have a `--depth 1` clone from following the README, promote it to a full clone with `git fetch --unshallow`.
 
+### First free check (no API key, no browser)
+
+```bash
+bun install --frozen-lockfile
+bun run typecheck        # expect no output and exit 0 (about a second)
+bun run typecheck:test   # expect "test typecheck ratchet: N known diagnostics, none new."
+```
+
+`typecheck` covers product code (`browse/src`, `lib`, `scripts`, `bin`, `hosts`, and the other
+entries in `tsconfig.json`) and must stay at zero errors. `typecheck:test` holds test code to the
+committed `scripts/typecheck-test-baseline.json`: a new or repeated diagnostic fails and names
+the file, TS code and message; fixing diagnostics also fails until you lock the smaller allowance
+in with `bun run typecheck:test --write-baseline`. Editing `lib/cso/*.ts`? Run
+`bun run format:cso` before committing; CI runs `format:cso:check`. All three run in the required
+`free-tests` check.
+
 Now edit any `SKILL.md`, invoke it in Claude Code (e.g. `/review`), and see your changes live. When you're done developing:
 
 ```bash

@@ -281,8 +281,9 @@ export function validateRuntimeCatalog(value: unknown): asserts value is Runtime
   } else if (catalog.promotion) throw new Error('INVALID_RUNTIME_PROMOTION');
 }
 
-export const RUNTIME_CATALOG = committedCatalog as RuntimeCatalog;
-validateRuntimeCatalog(RUNTIME_CATALOG);
+const committed: unknown = committedCatalog;
+validateRuntimeCatalog(committed);
+export const RUNTIME_CATALOG: RuntimeCatalog = committed;
 
 export function assertRuntimeCompatible(plan: PreparationPlan, runtime: QualifiedRuntime): void {
   if (plan.schemaVersion !== 1 || plan.status !== 'ready' || runtime.stack !== plan.stack)
