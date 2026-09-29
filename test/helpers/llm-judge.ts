@@ -512,9 +512,6 @@ export interface ArmJudgeScore {
  */
 export const ARM_JUDGE_MODEL = CLAUDE_FRONTIER_EVAL_MODEL;
 
-/** Bounded retry-on-malformed loop: total attempts, not extra retries. */
-export const ARM_JUDGE_ATTEMPTS = 2;
-
 /**
  * Build the over-engineering rubric prompt. Exported (pure) so the free
  * selftest can verify prompt construction without any API call.
@@ -587,10 +584,10 @@ export function parseArmJudgeResponse(raw: unknown): ArmJudgeScore {
  *
  * - Zero-diff arms are VALID scored cells: the agent built nothing, so the
  *   score is deterministically 0/"none" — no API call.
- * - Bounded retry-on-malformed: ARM_JUDGE_ATTEMPTS total attempts. callJudge
- *   already retries 429s internally; this loop covers malformed/refused JSON.
+ * - One sample, never re-asked: a malformed or refused verdict is a failed
+ *   sample. callJudge's transport-level 429 backoff is not a verdict retry.
  * - `opts.call` is an injection seam so the free selftest can exercise the
- *   retry bound without spending API money. Defaults to the real callJudge.
+ *   malformed path without spending API money. Defaults to the real callJudge.
  */
 export async function armJudge(
   task: string,
@@ -605,18 +602,10 @@ export async function armJudge(
     };
   }
   const call = opts?.call ?? callJudge;
-  const prompt = buildArmJudgePrompt(task, diff);
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= ARM_JUDGE_ATTEMPTS; attempt++) {
-    try {
-      const raw = await call<Record<string, unknown>>(prompt, ARM_JUDGE_MODEL);
-      return parseArmJudgeResponse(raw);
-    } catch (err) {
-      lastError = err;
-    }
+  const raw = await call<Record<string, unknown>>(buildArmJudgePrompt(task, diff), ARM_JUDGE_MODEL);
+  try {
+    return parseArmJudgeResponse(raw);
+  } catch (err) {
+    throw new Error(`armJudge: malformed verdict (never resampled) — ${err instanceof Error ? err.message : String(err)}`);
   }
-  throw new Error(
-    `armJudge: no well-formed verdict after ${ARM_JUDGE_ATTEMPTS} attempts — `
-    + (lastError instanceof Error ? lastError.message : String(lastError)),
-  );
 }
