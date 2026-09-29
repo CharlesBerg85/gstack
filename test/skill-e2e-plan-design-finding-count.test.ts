@@ -10,7 +10,7 @@
 
 import { test } from 'bun:test';
 import { describeE2ETier } from './helpers/e2e-gate';
-import { isDesignCountFirstReview, isDesignCountSetup, isDesignCompletionHandoff, pickDesignCountQuestion } from './helpers/design-count-review';
+import { isDesignCountReviewStart, isDesignCountStructuralSetup, isDesignTodoProposal, isDesignCompletionHandoff, pickDesignCountQuestion } from './helpers/design-count-review';
 import { isDesignArtifactGeneration } from './helpers/design-artifact-question';
 import { designCountExistingInteractionStates as existingInteractionStates } from './helpers/design-count-fixture';
 import * as fs from 'node:fs';
@@ -215,10 +215,14 @@ describeE2E('/plan-design-review per-finding AskUserQuestion count (periodic)', 
           followUpPrompt: planDesign5Findings(planPath),
           expectedPlanPath: planPath,
           isLastStep0AUQ: designStep0Boundary,
-          isFirstReviewAUQ: isDesignCountFirstReview,
-          isSetupAUQ: isDesignCountSetup,
+          // Structural boundary: after setup, the first answered native decision
+          // that is not setup, a handoff, artifact rendering or a TODO proposal
+          // starts review. TODO proposals are extra decisions, never findings.
+          isFirstReviewAUQ: isDesignCountReviewStart,
+          isSetupAUQ: isDesignCountStructuralSetup,
           isCompletionHandoffAUQ: isDesignCompletionHandoff,
           isArtifactGenerationAUQ: isDesignArtifactGeneration,
+          isTodoProposalAUQ: isDesignTodoProposal,
           fixtureFiles: { 'DESIGN.md': designSystem },
           // Design's explicit opt-in is separate from codex_reviews. Keep
           // this native-cadence fixture within its declared review scope.

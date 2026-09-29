@@ -2,6 +2,11 @@ import { designFirstReviewAUQ, designReviewSetupAUQ } from './claude-pty-runner'
 import type { AskUserQuestionFingerprint } from './claude-pty-runner';
 import { pickDesignCountOutsideVoices } from './design-count-outside';
 
+// Native header / question-ID vocabulary this review assigns only to setup and navigation.
+const DESIGN_SETUP_HEADER = /^(?:focus|scope|learnings|routing|next steps?|outside(?: design)? voices)$/i;
+const DESIGN_SETUP_ID = /(?:^|-)(?:focus|scope|setup|routing|learnings|onboarding|next-steps?|posture|mockups?|target)(?:-|$)/i;
+const questionId = (question: string) => /<gstack-qid:\s*([a-z0-9-]+)\s*>/i.exec(question)?.[1] ?? '';
+
 /** Choosing reviewer participation is setup, even when numbered or asked late. */
 export function isDesignCountSetup(fp: AskUserQuestionFingerprint): boolean {
   if (designReviewSetupAUQ(fp)) return true;
@@ -767,9 +772,9 @@ export function isDesignCountFirstReview(fp: AskUserQuestionFingerprint): boolea
   if (designFirstReviewAUQ(fp)) return true;
   return call.questions.some(q => {
     if (!call.answers?.[q.question] || q.options.length < 2) return false;
-    if (/^(?:focus|scope|learnings|routing|next steps?|outside(?: design)? voices)$/i.test(q.header.trim())) return false;
-    const id = /<gstack-qid:\s*([a-z0-9-]+)\s*>/i.exec(q.question)?.[1] ?? '';
-    if (/(?:^|-)(?:focus|scope|setup|routing|learnings|onboarding|next-steps?|posture|mockups?|target)(?:-|$)/i.test(id)) return false;
+    if (DESIGN_SETUP_HEADER.test(q.header.trim())) return false;
+    const id = questionId(q.question);
+    if (DESIGN_SETUP_ID.test(id)) return false;
     // Native fingerprints prepend the menu header. Inspect the actual question
     // for an explicit finding that offers a plan amendment and deferral.
     if (call.answered === true && call.failed === false && /^Pass\s*[1-7]\s*\([^)]*\)\s*[—–:]\s*Finding\s*[1-9]\d*:\s+\S/i.test(q.question.trim()) &&
@@ -812,6 +817,35 @@ export function isDesignCountFirstReview(fp: AskUserQuestionFingerprint): boolea
     return /^Pass\s*[1-7]\s+(?:surfaces|(?:also\s+)?(?:found|flagged))\b/i.test(q.question.trim()) &&
       /\?/.test(q.question);
   });
+}
+
+/** Setup by structure: the recognized setup packet, or a native call whose every
+ * question carries a setup header or setup question ID. */
+export function isDesignCountStructuralSetup(fp: AskUserQuestionFingerprint): boolean {
+  if (isDesignCountSetup(fp)) return true;
+  const call = fp.nativeCall;
+  return !!call && call.questions.length > 0 && call.questions.every(q =>
+    DESIGN_SETUP_HEADER.test(q.header.trim()) || DESIGN_SETUP_ID.test(questionId(q.question)));
+}
+
+/** The review's TODO contract offers exactly A) Add to TODOS.md, B) Skip, C) Build it now. */
+export function isDesignTodoProposal(fp: AskUserQuestionFingerprint): boolean {
+  const call = fp.nativeCall;
+  if (!call?.answered || call.failed || call.questions.length !== 1) return false;
+  const labels = call.questions[0]!.options.map(option => option.label.trim()
+    .replace(/^\d*[A-C][).:]?\s+/, '').replace(/\s*\(recommended\)\s*$/i, ''));
+  return labels.length === 3 && /^Add to TODOS\.md\b/i.test(labels[0]!) && /^Skip\b/i.test(labels[1]!) &&
+    /^Build it now\b/i.test(labels[2]!);
+}
+
+/** After setup, the first answered native decision that is not setup, a TODO
+ * proposal, a completion handoff or artifact rendering starts review. Handoff and
+ * artifact calls are classified before this predicate runs. */
+export function isDesignCountReviewStart(fp: AskUserQuestionFingerprint): boolean {
+  const call = fp.nativeCall;
+  return !!call && call.answered === true && call.failed === false && fp.signature === `${call.sessionId}:${call.toolUseId}` &&
+    call.questions.length > 0 && call.questions.every(q => Boolean(call.answers?.[q.question])) &&
+    !isDesignCountStructuralSetup(fp) && !isDesignTodoProposal(fp);
 }
 
 /** A closed recap may explain why Eng is next; it cannot request another fix. */
