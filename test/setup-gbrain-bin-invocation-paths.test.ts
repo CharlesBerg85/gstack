@@ -15,9 +15,7 @@
 //     token cost. Same rationale as test/setup-gbrain-path4-structure.test.ts.
 //   - The correct invocation form and the stale one differ only by
 //     `bun run ` + `.ts`, right next to each other in the same files —
-//     exactly the kind of drift a cheap structural check exists to catch,
-//     matching this repo's convention (e.g. test/memory-ingest-no-put_page.test.ts
-//     pinning fix #1346).
+//     exactly the kind of drift a cheap structural check exists to catch.
 
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';

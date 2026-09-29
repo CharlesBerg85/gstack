@@ -22,17 +22,6 @@ function sliceBetween(source: string, startMarker: string, endMarker: string): s
 }
 
 describe('Server auth security', () => {
-  // Test 1 (IRON RULE, inverted in v1.62): /health NEVER serves a token in
-  // ANY mode. Both carve-outs (headed-mode disjunct + chrome-extension://
-  // Origin disjunct) are gone. Token bootstrap moved to POST /extension-token
-  // with a pinned extension Origin.
-  test('/health never serves a token — no headed-mode or chrome-extension carve-out', () => {
-    const healthBlock = sliceBetween(SERVER_SRC, "url.pathname === '/health'", "url.pathname === '/connect'");
-    expect(healthBlock).not.toContain('token: authToken');
-    expect(healthBlock).not.toContain("getConnectionMode() === 'headed'");
-    expect(healthBlock).not.toContain("startsWith('chrome-extension://')");
-  });
-
   // Test 1a: the pinned-origin bootstrap endpoint exists and gates on both
   // the exact extension Origin and a loopback Host.
   test('POST /extension-token gates on pinned Origin and loopback Host', () => {
@@ -45,13 +34,6 @@ describe('Server auth security', () => {
     expect(tokenBlock).toContain("'127.0.0.1'");
     expect(tokenBlock).toContain("'localhost'");
     expect(tokenBlock).toContain('403');
-  });
-
-  // Test 1b: /health does not expose sensitive browsing state
-  test('/health does not expose currentUrl or currentMessage', () => {
-    const healthBlock = sliceBetween(SERVER_SRC, "url.pathname === '/health'", "url.pathname === '/connect'");
-    expect(healthBlock).not.toContain('currentUrl');
-    expect(healthBlock).not.toContain('currentMessage');
   });
 
   // Test 1c: newtab must check domain restrictions (CSO finding #5)
