@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureGit, fixtureWrite, installSourceShims,
   readRequests, seedOpportunitySources, sharedReadOnlyViolations, shellQuote, snapshotFixture, type SharedLibsFixture,
-  SharedCaptureAccumulator, type SharedCaptureAttempt, isInternalClaudeGitRequest,
+  SharedCaptureAccumulator, type SharedCaptureAttempt, isInternalClaudeGitRequest, SHARED_LIBS_OLDER_OPEN_PRS,
 } from './helpers/shared-libs-eval-fixture';
 import { EvalCollector, type EvalTestEntry } from './helpers/eval-store';
 import { collectorOutcomeCounts } from '../scripts/test-paid-shards';
@@ -954,6 +954,143 @@ function pinnedSource(f: SharedLibsFixture, revision: string, file: string) {
   expect(Buffer.from(body.content, 'base64')).toEqual(bytes);
   return bytes;
 }
+
+function ghCli(f: SharedLibsFixture, args: string[]) {
+  return spawnSync(path.join(f.bin, 'gh'), args, {
+    cwd: f.repo, env: { ...process.env, ...f.env }, encoding: 'utf8', timeout: 10_000,
+  });
+}
+
+describe('shared-code PR coverage world', () => {
+  const numbers = (stdout: string) => (JSON.parse(stdout) as Array<{ number: number }>).map(pr => pr.number);
+  const pulls = (query: string) => `repos/fixture/shared-libs/pulls?${query}`;
+
+  test('gh pr list, pulls?state= and search/issues page one finite table in the same order', () => {
+    const f = createSharedLibsFixture('pr-world');
+    cleanup.push(f.root);
+    seedOpportunitySources(f);
+    installSourceShims(f, { prCoverage: true });
+    const scan = (state: string) => {
+      const rows: number[] = [];
+      for (let page = 1; page < 20; page++) {
+        const endpoint = pulls(`state=${state}&sort=updated&direction=desc&per_page=100&page=${page}`);
+        const response = gh(f, endpoint);
+        expect(response.status, response.stderr).toBe(0);
+        const batch = numbers(response.stdout);
+        // PR 7's activity timestamp is the request time; compare the table rows.
+        expect(numbers(curl(f, ['-sS', `https://api.github.com/${endpoint}`]).stdout)).toEqual(batch);
+        rows.push(...batch);
+        if (batch.length < 100) return { rows, pages: page };
+      }
+      throw new Error(`state=${state} listing never produced a short last page`);
+    };
+    const open = scan('open'), closed = scan('closed'), all = scan('all');
+    const olderOpen = SHARED_LIBS_OLDER_OPEN_PRS;
+    expect(open.rows).toHaveLength(olderOpen + 2);
+    expect(new Set(open.rows).size).toBe(open.rows.length);
+    expect(open.rows[0]).toBe(7);
+    expect(open.rows.at(-1)).toBe(42);
+    expect(closed.rows).toEqual([5, 4, 3]);
+    expect(all.rows).toEqual([...open.rows, ...closed.rows]);
+    expect(open.pages).toBe(Math.floor((olderOpen + 2) / 100) + 1);
+    expect(numbers(gh(f, pulls('page=1')).stdout)).toEqual(open.rows.slice(0, 30));
+    expect(numbers(gh(f, pulls('state=open&direction=asc&per_page=100&page=1')).stdout)).toEqual(open.rows.slice().reverse().slice(0, 100));
+
+    for (const [state, rows] of [['open', open.rows], ['closed', closed.rows], ['all', all.rows]] as const) {
+      const listed = ghCli(f, ['pr', 'list', '--state', state, '--limit', '10000']);
+      expect(listed.status, listed.stderr).toBe(0);
+      expect(numbers(listed.stdout)).toEqual([...rows]);
+    }
+    expect(numbers(ghCli(f, ['pr', 'list']).stdout)).toEqual(open.rows.slice(0, 30));
+    expect(numbers(ghCli(f, ['pr', 'list', '-L', '5']).stdout)).toEqual(open.rows.slice(0, 5));
+
+    const searched: number[] = [];
+    for (let page = 1; ; page++) {
+      const response = gh(f, `search/issues?q=${encodeURIComponent('repo:fixture/shared-libs is:pr is:open')}&per_page=100&page=${page}`);
+      expect(response.status, response.stderr).toBe(0);
+      const result = JSON.parse(response.stdout);
+      expect(result.total_count).toBe(open.rows.length);
+      searched.push(...result.items.map((item: { number: number }) => item.number));
+      if (result.items.length < 100) break;
+    }
+    expect(searched).toEqual(open.rows);
+    const since = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
+    const recent = JSON.parse(gh(f, `search/issues?q=${encodeURIComponent(`repo:fixture/shared-libs is:pr updated:>=${since}`)}`).stdout);
+    expect(recent.items.map((item: { number: number }) => item.number)).toEqual([7]);
+    expect(recent.total_count).toBe(1);
+  });
+
+  test('the maximum authorized open-metadata scan still leaves older open PRs unchecked', () => {
+    const periodic = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-shared-libs-periodic.test.ts'), 'utf8');
+    expect(periodic).toContain('expect(openPages.length).toBeLessThanOrEqual(5);');
+    const f = createSharedLibsFixture('pr-world-budget');
+    cleanup.push(f.root);
+    seedOpportunitySources(f);
+    installSourceShims(f, { prCoverage: true });
+    const scanned: number[] = [];
+    for (let page = 1; page <= 5; page++) {
+      const batch = numbers(gh(f, pulls(`state=open&sort=updated&direction=desc&per_page=100&page=${page}`)).stdout);
+      expect(batch).toHaveLength(100);
+      scanned.push(...batch);
+    }
+    const everyOpen = numbers(ghCli(f, ['pr', 'list', '--state', 'open', '--limit', '10000']).stdout);
+    const unchecked = everyOpen.filter(number => !scanned.includes(number));
+    expect(unchecked.length).toBeGreaterThan(0);
+    expect(unchecked).toContain(42);
+    // The linked PR stays reachable directly, outside the metadata budget.
+    const direct = gh(f, 'repos/fixture/shared-libs/pulls/42');
+    expect(JSON.parse(direct.stdout)).toMatchObject({ number: 42, state: 'open', updated_at: '2020-01-01T00:00:00Z' });
+    expect(JSON.parse(gh(f, 'repos/fixture/shared-libs/pulls/7').stdout).number).toBe(7);
+  });
+
+  test('pinned contents agree across gh and curl for files and directories; unknown endpoints 404', () => {
+    const f = createSharedLibsFixture('pr-world-contents');
+    cleanup.push(f.root);
+    seedOpportunitySources(f);
+    installSourceShims(f, { prCoverage: true });
+    const root = gh(f, `repos/fixture/shared-libs/contents/?ref=${f.tip}`);
+    expect(root.status, root.stderr).toBe(0);
+    expect(JSON.parse(root.stdout)).toContainEqual({ type: 'dir', name: 'src', path: 'src' });
+    expect(gh(f, `repos/fixture/shared-libs/contents?ref=${f.tip}`).stdout).toBe(root.stdout);
+    for (const entry of ['src', 'src/retry-route.ts']) {
+      const endpoint = `repos/fixture/shared-libs/contents/${entry}?ref=${f.tip}`;
+      const viaGh = gh(f, endpoint), viaCurl = curl(f, ['-sS', `https://api.github.com/${endpoint}`]);
+      expect(viaGh.status, viaGh.stderr).toBe(0);
+      expect(viaCurl.status, viaCurl.stderr).toBe(0);
+      expect(viaCurl.stdout).toBe(viaGh.stdout);
+    }
+    const listing = JSON.parse(gh(f, `repos/fixture/shared-libs/contents/src?ref=${f.tip}`).stdout);
+    const file = listing.find((entry: { name: string }) => entry.name === 'retry-route.ts');
+    expect(file).toMatchObject({ type: 'file', path: 'src/retry-route.ts' });
+    expect(JSON.parse(gh(f, `repos/fixture/shared-libs/contents/src/retry-route.ts?ref=${f.tip}`).stdout).sha).toBe(file.sha);
+    expect(gh(f, 'repos/fixture/shared-libs/contents/src?ref=main').stderr).toContain('unsupported or unpinned');
+
+    for (const endpoint of [`repos/fixture/shared-libs/git/blobs/${'0'.repeat(40)}`,
+      `repos/fixture/shared-libs/git/trees/${f.tip}?recursive=1`, 'repos/fixture/shared-libs/pulls/999999', 'rate_limit']) {
+      const response = gh(f, endpoint);
+      expect(response.status, endpoint).not.toBe(0);
+      expect(response.stderr).toContain('HTTP 404');
+      expect(response.stdout).toBe('');
+    }
+    const missingPr = curl(f, ['-fsS', 'https://api.github.com/repos/fixture/shared-libs/pulls/999999']);
+    expect(missingPr.status).toBe(22);
+    expect(JSON.parse(gh(f, 'repos/fixture/shared-libs').stdout).default_branch).toBe('main');
+    // The read-only detector still rejects a raw-host fallback.
+    const raw = curl(f, ['-sS', `https://raw.githubusercontent.com/fixture/shared-libs/${f.tip}/src/retry-route.ts`]);
+    expect(raw.status).toBe(2);
+    expect(sharedReadOnlyViolations([], readRequests(f))).toEqual(['curl: unsupported curl URL: fixture GitHub GET endpoints only']);
+  });
+
+  test('without PR coverage every listing view is the same successful empty world', () => {
+    const f = createSharedLibsFixture('pr-world-empty');
+    cleanup.push(f.root);
+    installSourceShims(f);
+    expect(JSON.parse(ghCli(f, ['pr', 'list', '--state', 'all']).stdout)).toEqual([]);
+    expect(JSON.parse(gh(f, pulls('state=all&per_page=100&page=1')).stdout)).toEqual([]);
+    expect(JSON.parse(gh(f, 'search/issues?q=repo:fixture/shared-libs+is:pr').stdout))
+      .toEqual({ total_count: 0, incomplete_results: false, items: [] });
+  });
+});
 
 describe('shared-code Contents API revision fidelity', () => {
   test('default, branch and PR SHAs return their own exact committed bytes, excluding raw overlays', () => {

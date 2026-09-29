@@ -335,3 +335,16 @@ test.each(['missing-native','foreign-outside-result','changed-prompt','changed-o
   expect(f.read().codexAttempted,kind).toBe(false);
  }
 });
+test('outside-voice failure reasons name the probe identity, mode and canonical match',()=>{
+ const withoutOutside=()=>{const f=fixture();f.events.splice(6);return f;};
+ const probeReason=(f:ReturnType<typeof fixture>)=>f.read().reasons.find(reason=>reason.startsWith('probeToolUseId='));
+ let f=withoutOutside();
+ expect(probeReason(f)).toBe('probeToolUseId=probe probeMode=ready canonicalMatch=yes (mode recorded; 0 non-canonical Bash call(s) mention CODEX_MODE)');
+ f=withoutOutside();f.events[0]!.message.content[0].input.command='echo probing\n'+f.options.commands.probe;
+ expect(probeReason(f)).toBe('probeToolUseId=none probeMode=none canonicalMatch=no (no Bash call matched the canonical probe block; 1 non-canonical Bash call(s) mention CODEX_MODE)');
+ f=withoutOutside();f.events[1]=ack('probe','CODEX_MODE: not_installed\nextra trailing output');
+ expect(probeReason(f)).toBe('probeToolUseId=probe probeMode=none canonicalMatch=yes (probe output has 1 CODEX_MODE line(s) and does not end with it; 0 non-canonical Bash call(s) mention CODEX_MODE)');
+ f=withoutOutside();f.events[1]=ack('probe','CODEX_MODE: not_installed',true);
+ expect(probeReason(f)).toContain('canonicalMatch=yes (probe result is an error;');
+ expect(fixture().read().reasons).toEqual([]);
+});

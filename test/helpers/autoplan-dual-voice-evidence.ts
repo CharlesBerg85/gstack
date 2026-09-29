@@ -160,13 +160,22 @@ export function autoplanDualVoiceEvidence(transcript: unknown[], options: Autopl
     }
     return seen.size > 0;
   };
+  let probeResult = 'no Bash call matched the canonical probe block';
+  let nonCanonicalProbes = 0;
   for (const call of calls.values()) {
-    if (call.name !== 'Bash' || typeof call.input.command !== 'string' || !canonical(call.input.command, options.commands.probe)) continue;
+    if (call.name !== 'Bash' || typeof call.input.command !== 'string') continue;
+    if (!canonical(call.input.command, options.commands.probe)) {
+      if (call.input.command.includes('CODEX_MODE')) nonCanonicalProbes++;
+      continue;
+    }
     result.probeToolUseId = call.id; delete result.probeMode;
-    if (!call.result || call.result.error) continue;
+    if (!call.result || call.result.error) { probeResult = call.result ? 'probe result is an error' : 'probe has no result'; continue; }
     const modes = [...call.result.content.matchAll(/^CODEX_MODE: ([a-z_]+)\r?$/gm)];
-    if (modes.length !== 1 || !call.result.content.trimEnd().endsWith(modes[0]![0])) continue;
-    result.probeToolUseId = call.id; result.probeMode = modes[0]![1];
+    if (modes.length !== 1 || !call.result.content.trimEnd().endsWith(modes[0]![0])) {
+      probeResult = `probe output has ${modes.length} CODEX_MODE line(s) and ${modes.length === 1 ? 'does not end with it' : 'needs exactly one'}`;
+      continue;
+    }
+    result.probeToolUseId = call.id; result.probeMode = modes[0]![1]; probeResult = 'mode recorded';
   }
   const native: Array<{ call: Call; snapshot: any; content: string }> = [];
   for (const call of calls.values()) {
@@ -226,6 +235,10 @@ export function autoplanDualVoiceEvidence(transcript: unknown[], options: Autopl
   }
   result.codexUnavailable ||= result.claudeVoiceFired && ['not_installed', 'not_authed', 'broken_install', 'model_unusable'].includes(result.probeMode ?? '');
   if (!result.claudeVoiceFired) result.reasons.push('No acknowledged current CEO phase dispatch');
-  if (!result.codexVoiceFired && !result.codexUnavailable) result.reasons.push('No acknowledged outside execution or actual unavailable probe result');
+  if (!result.codexVoiceFired && !result.codexUnavailable) {
+    result.reasons.push('No acknowledged outside execution or actual unavailable probe result');
+    result.reasons.push(`probeToolUseId=${result.probeToolUseId ?? 'none'} probeMode=${result.probeMode ?? 'none'} ` +
+      `canonicalMatch=${result.probeToolUseId ? 'yes' : 'no'} (${probeResult}; ${nonCanonicalProbes} non-canonical Bash call(s) mention CODEX_MODE)`);
+  }
   return result;
 }

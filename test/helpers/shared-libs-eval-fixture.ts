@@ -477,6 +477,81 @@ export function isInternalClaudeGitRequest(request: SourceRequest, commands: str
     !commands.some(command => command.includes('core.safecrlf=false') || command.includes('protocol.ext.allow=never'));
 }
 
+/** Older open PRs outside the 14-day window: more than the skill's five 100-item open-metadata pages. */
+export const SHARED_LIBS_OLDER_OPEN_PRS = 600;
+
+/** One finite PR world, newest update first. Self-contained so the fixture executable uses this exact table. */
+function sharedPullRequestTable(now: string, olderOpen: number) {
+  const hour = 3_600_000, newestOlder = Date.UTC(2025, 0, 1);
+  return [
+    { number: 7, state: 'open', updated: now },
+    ...Array.from({ length: olderOpen }, (_, i) => ({ number: 100 + olderOpen - 1 - i, state: 'open',
+      updated: new Date(newestOlder - i * hour).toISOString() })),
+    { number: 42, state: 'open', updated: '2020-01-01T00:00:00Z' },
+    ...[5, 4, 3].map((number, i) => ({ number, state: 'closed', updated: new Date(Date.UTC(2019, 5, 1) - i * hour).toISOString() })),
+  ];
+}
+
+/** gh pr list, pulls?state= and search/issues as views of the same table; null for any other request. */
+function sharedPullRequestView(table: Array<{ number: number; state: string; updated: string; title: string; body: string }>,
+  args: string[], endpoint: string) {
+  const [route, search = ''] = endpoint.replace(/^\//, '').split('?');
+  const params = new URLSearchParams(search);
+  const flag = (names: string[]) => {
+    for (let i = 0; i < args.length; i++) {
+      if (names.includes(args[i]!)) return args[i + 1];
+      const joined = names.find(name => name.startsWith('--') && args[i]!.startsWith(name + '='));
+      if (joined) return args[i]!.slice(joined.length + 1);
+    }
+    return undefined;
+  };
+  const matches = (query: string) => {
+    let state = '', rest = query;
+    const dates: Array<(pr: { updated: string }) => boolean> = [];
+    const words: string[] = [];
+    for (const term of rest.split(/\s+/).filter(Boolean)) {
+      const qualifier = /^(is|state|type|updated|created|repo):(.+)$/i.exec(term);
+      if (!qualifier) { words.push(term.replace(/^"|"$/g, '').toLowerCase()); continue; }
+      const [, key, value] = qualifier as unknown as [string, string, string];
+      if (/^(?:is|state)$/i.test(key) && /^(?:open|closed|merged)$/i.test(value)) state = value.toLowerCase();
+      else if (/^(?:is|type)$/i.test(key) && /^issue$/i.test(value)) return () => false;
+      else if (/^repo$/i.test(key) && value.toLowerCase() !== 'fixture/shared-libs') return () => false;
+      else if (/^(?:updated|created)$/i.test(key)) {
+        const range = /^(.+)\.\.(.+)$/.exec(value), op = /^(>=|<=|>|<)?(.+)$/.exec(value)!;
+        const at = (text: string) => Date.parse(text);
+        if (range) dates.push(pr => at(pr.updated) >= at(range[1]!) && at(pr.updated) <= at(range[2]!) + 86_399_999);
+        else dates.push(pr => { const t = at(pr.updated), v = at(op[2]!);
+          return op[1] === '>=' ? t >= v : op[1] === '>' ? t > v : op[1] === '<=' ? t <= v + 86_399_999 : op[1] === '<' ? t < v : t >= v && t <= v + 86_399_999; });
+      }
+    }
+    return (pr: { state: string; updated: string; title: string; body: string }) =>
+      (!state || pr.state === state) && dates.every(check => check(pr)) &&
+      words.every(word => (pr.title + ' ' + pr.body).toLowerCase().includes(word));
+  };
+  const page = (rows: typeof table, perPage: number, number: number) => {
+    const size = Math.min(100, Math.max(1, perPage || 30));
+    return rows.slice((Math.max(1, number || 1) - 1) * size, Math.max(1, number || 1) * size);
+  };
+  if (args[0] === 'pr' && args[1] === 'list') {
+    const state = (flag(['--state', '-s']) || 'open').toLowerCase();
+    const rows = table.filter(pr => state === 'all' || pr.state === state).filter(matches(flag(['--search', '-S']) || ''));
+    return rows.slice(0, Math.max(1, Number(flag(['--limit', '-L']) || 30)));
+  }
+  if (/^repos\/fixture\/shared-libs\/pulls$/.test(route!)) {
+    const state = (params.get('state') || 'open').toLowerCase();
+    const rows = table.filter(pr => state === 'all' || pr.state === state);
+    if (params.get('direction') === 'asc') rows.reverse();
+    return page(rows, Number(params.get('per_page')), Number(params.get('page')));
+  }
+  if (route === 'search/issues') {
+    const rows = table.filter(matches(params.get('q') || ''));
+    if (params.get('order') === 'asc') rows.reverse();
+    return { total_count: rows.length, incomplete_results: false,
+      items: page(rows, Number(params.get('per_page')), Number(params.get('page'))) };
+  }
+  return null;
+}
+
 export function installSourceShims(f: SharedLibsFixture, opts: {
   unsupportedGit?: boolean; unavailableApi?: boolean; prCoverage?: boolean;
 } = {}): void {
@@ -567,24 +642,25 @@ const sources=${JSON.stringify(sources)};
 const base={name:'main',sha:${JSON.stringify(f.tip)}};
 const pr=(number,date,extra={})=>({number,state:'open',title:number===42?'Extract retry parsing into existing helper':'Routine documentation '+number,body:number===7?'Coordination: https://github.com/fixture/shared-libs/pull/42':'',created_at:date,updated_at:date,merged_at:null,createdAt:date,updatedAt:date,mergedAt:null,url:'https://github.com/fixture/shared-libs/pull/'+number,html_url:'https://github.com/fixture/shared-libs/pull/'+number,head:{sha:number===42?prHead:${JSON.stringify(f.tip)},ref:'feature-'+number},base:{sha:${JSON.stringify(f.tip)},ref:'main'},...extra});
 const page=Number((endpoint.match(/[?&]page=(\\d+)/)||[])[1]||a[a.indexOf('-F')+1]?.match(/^page=(\\d+)/)?.[1]||1);
-let out;
+const view=${sharedPullRequestView.toString()};
+const prTable=${!!opts.prCoverage}?(${sharedPullRequestTable.toString()})(now,${SHARED_LIBS_OLDER_OPEN_PRS}).map(row=>({...row,title:pr(row.number,row.updated).title,body:pr(row.number,row.updated).body})):[];
+const toPr=row=>pr(row.number,row.updated,row.state==='closed'?{state:'closed',closed_at:row.updated}:{});
+let out,listing;
 if(a[0]==='auth')process.exit(0);
 else if(a[0]==='repo') out={nameWithOwner:'fixture/shared-libs',defaultBranchRef:base,url:'https://github.com/fixture/shared-libs'};
-else if(a[0]==='pr'&&a[1]==='list')out=${!!opts.prCoverage}?[pr(7,now),pr(42,old)]:[];
+else if((listing=view(prTable,a,endpoint))!==null)out=Array.isArray(listing)?listing.map(toPr):{...listing,items:listing.items.map(row=>({...toPr(row),pull_request:{url:'https://api.github.com/repos/fixture/shared-libs/pulls/'+row.number}}))};
 else if(a[0]==='pr'&&a[1]==='view')out=pr(Number(a[2])||42,Number(a[2])===7?now:old,{files:[{path:Number(a[2])===7?'docs/unrelated.md':'src/retry-worker.ts'}]});
-else if(endpoint.includes('search/issues'))out={total_count:${opts.prCoverage ? 1 : 0},incomplete_results:false,items:${!!opts.prCoverage}?[pr(7,now)]:[]};
-else if(endpoint.includes('/contents/')) { const p=decodeURIComponent(endpoint.split('/contents/')[1].split('?')[0]); const ref=decodeURIComponent((endpoint.match(/[?&]ref=([^&]+)/)||[])[1]||'');if(!Object.hasOwn(sources,ref))apiError(404,'unsupported or unpinned fixture revision');const source=sources[ref];if(!Object.hasOwn(source.files,p))apiError(404,'source unavailable');out={path:p,encoding:'base64',content:source.files[p],sha:source.blobs[p]}; }
+else if(/\\/contents(?:\\/|\\?|$)/.test(endpoint)) { const p=decodeURIComponent(endpoint.split(/\\/contents/)[1].split('?')[0]).replace(/^\\/+|\\/+$/g,''); const ref=decodeURIComponent((endpoint.match(/[?&]ref=([^&]+)/)||[])[1]||'');if(!Object.hasOwn(sources,ref))apiError(404,'unsupported or unpinned fixture revision');const source=sources[ref];
+ if(Object.hasOwn(source.files,p))out={type:'file',name:p.split('/').pop(),path:p,encoding:'base64',content:source.files[p],sha:source.blobs[p]};
+ else { const prefix=p?p+'/':'';const names=[...new Set(Object.keys(source.files).filter(file=>file.startsWith(prefix)).map(file=>file.slice(prefix.length).split('/')[0]))].sort();if(!names.length)apiError(404,'source unavailable');out=names.map(name=>{const file=prefix+name;return Object.hasOwn(source.files,file)?{type:'file',name,path:file,sha:source.blobs[file]}:{type:'dir',name,path:file};}); } }
 else if(/\\/pulls\\/42\\/files/.test(endpoint))out=page===1?Array.from({length:100},(_,i)=>({filename:'docs/coordination-'+i+'.md',status:'added',patch:'@@ -0,0 +1 @@\\n+Documentation coordination '+i+'.'})):page===2?[{filename:'src/retry-worker.ts',status:'modified',patch:${JSON.stringify(prPatch)}}]:[];
 else if(/\\/pulls\\/\\d+\\/files/.test(endpoint))out=page===1?[{filename:'docs/unrelated.md',status:'modified',patch:'@@ -1 +1 @@\\n-old\\n+new'}]:[];
 else if(/\\/pulls\\/42(?:\\?|$)/.test(endpoint))out=pr(42,old);
-else if(endpoint.includes('/pulls')) {
- if(!${!!opts.prCoverage})out=[];
- else if(endpoint.includes('state=open'))out=Array.from({length:100},(_,i)=>pr((page-1)*100+i+40,old));
- else out=page===1?[pr(7,now),pr(42,old)]:[];
-}
+else if(/\\/pulls\\/\\d+(?:\\?|$)/.test(endpoint)){const row=prTable.find(row=>row.number===Number(endpoint.match(/\\/pulls\\/(\\d+)/)[1]));if(!row)apiError(404,'Not Found');out=toPr(row);}
 else if(endpoint.includes('/commits')){const isPrCommit=prHead!==${JSON.stringify(f.tip)}&&endpoint.includes(prHead);out=endpoint.includes('/commits/')?{sha:isPrCommit?prHead:${JSON.stringify(f.tip)},commit:{committer:{date:isPrCommit?old:now},message:'Fixture work'},files:Object.keys(isPrCommit?prFiles:files).map(filename=>({filename,status:'modified'}))}:[{sha:${JSON.stringify(f.tip)},commit:{committer:{date:now},message:'Fixture work'}}];}
 else if(endpoint.includes('/branches/'))out={name:'main',commit:{sha:${JSON.stringify(f.tip)}}};
-else out={default_branch:'main',full_name:'fixture/shared-libs',html_url:'https://github.com/fixture/shared-libs'};
+else if(/^\\/?repos\\/fixture\\/shared-libs\\/?(?:\\?|$)/.test(endpoint))out={default_branch:'main',full_name:'fixture/shared-libs',html_url:'https://github.com/fixture/shared-libs'};
+else apiError(404,'Not Found');
 if(curl)curlResponse(out);
 const qi=a.findIndex(x=>x==='--jq'||x==='-q');
 if(qi>=0) {const r=cp.spawnSync('jq',['-r',a[qi+1]],{input:JSON.stringify(out),encoding:'utf8',timeout:30_000});process.stdout.write(r.stdout||'');process.stderr.write(r.stderr||'');process.exit(r.status??1);}
