@@ -149,10 +149,20 @@ function withoutAttributedPriorRecordData(output: string, priorRecord?: Record<s
     const start = Math.max(output.lastIndexOf('\n', index - 1), ...['. ', '! ', '? ', '; '].map(end => output.lastIndexOf(end, index - 1) + 1)) + 1;
     const ends = ['\n', '. ', '! ', '? ', '; '].map(end => output.indexOf(end, index + length)).filter(at => at >= 0);
     const sentence = (output.slice(start, index) + ' ' + output.slice(index + length, ends.length ? Math.min(...ends) : output.length))
-      .replace(/[*`]/g, '').replace(/\b(?:predates|before)\s+(?:this|my)\s+(?:run|session|workflow)(?:\s+(?:started|began))?\b/gi, 'beforehand');
-    const priorTime = typeof priorRecord.timestamp === 'string' ? new Date(Date.parse(priorRecord.timestamp)).toISOString() : '';
-    const stamps = [...sentence.matchAll(/\btimestamp(?:ed)?\s+([0-9T:.Z-]+)/gi)].map(stamp => stamp[1]!);
-    if (stamps.some(stamp => stamp !== priorRecord.timestamp && !(priorTime && [priorTime.slice(11, 19), priorTime.slice(11, 19) + 'Z'].includes(stamp)))) return false;
+      .replace(/[*`]/g, '').replace(/\b(?:predates|before)\s+(?:this|my)\s+(?:run|session|workflow)(?:\s+(?:started|began))?\b/gi, 'beforehand')
+      .replace(/\b(?:I|we)\s+(?:did\s+not|didn't|never)\s+(?:write|create|produce|record)\b/gi, 'unauthored');
+    // A named record timestamp must denote the retained record's instant at the precision written.
+    const priorMs = typeof priorRecord.timestamp === 'string' ? Date.parse(priorRecord.timestamp) : NaN;
+    const sameInstant = (stamp: string): boolean => {
+      if (!Number.isFinite(priorMs)) return false;
+      const iso = priorMs ? new Date(priorMs).toISOString() : '';
+      const clock = /^(\d{2}:\d{2}(?::\d{2})?)Z?$/.exec(stamp);
+      if (clock) return iso.slice(11, 11 + clock[1]!.length) === clock[1];
+      const at = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?Z$/.test(stamp) ? Date.parse(stamp) : NaN;
+      return Number.isFinite(at) && iso.slice(0, stamp.includes('.') ? 23 : stamp.length - 1) === new Date(at).toISOString().slice(0, stamp.includes('.') ? 23 : stamp.length - 1);
+    };
+    const stamps = [...sentence.matchAll(/\btimestamp(?:ed)?\s+([0-9T:.Z-]+)/gi)].map(stamp => stamp[1]!.replace(/[.,;:]+$/, ''));
+    if (stamps.some(stamp => !sameInstant(stamp))) return false;
     return !/\b(?:after|another|other|if|unless)\b/i.test(sentence)
       && /\b(?:earlier|prior|previous|historical|old(?:er)?|pre[- ]existing|stale)\s+(?:(?:review[- ]log|review|log)\s+)?(?:entry|record|line|row)\b/i.test(sentence)
       && !/\b(?:now|currently|current|today|new|updat\w*|append\w*|chang\w*|mark\w*|set|write|wrote|reports?|conclud\w*)\b|\bthis\s+(?:run|session|workflow)\b|\boutside_status\b|\bboth reviewers agree\b/i.test(sentence);

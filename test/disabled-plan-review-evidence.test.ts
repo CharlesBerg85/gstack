@@ -434,3 +434,22 @@ describe('36597762183 pre-existing record quoted around its owner', () => {
     expect(evaluate(mutate(captured.output)).falseCompletion).toBe(true);
   });
 });
+
+describe('repair rerun: ISO record timestamp at second precision', () => {
+  const captured = require('./fixtures/disabled-plan-attribution-local-rerun.json');
+  const prior = captured.reviewRecords[0];
+  const evaluate = (output: string) => {
+    const result = completed(); result.output = output; result.transcript.at(-1).result = output;
+    return disabledPlanReviewEvidence(result, '', captured.reviewRecords.map((record: any) => JSON.stringify(record)).join('\n'), prior);
+  };
+  test('the same instant written without milliseconds binds the retained record', () => {
+    expect(captured.provenance.originalVerdict).toMatchObject({ passed: false, falseCompletion: true });
+    expect(evaluate(captured.output)).toMatchObject({ passed: true, falseCompletion: false });
+  });
+  test('an authored record is not pre-existing history', () => {
+    expect(evaluate(captured.output.replace('entry I did not write', 'entry I wrote')).falseCompletion).toBe(true);
+  });
+  test.each(['2026-09-29T16:58:53Z', '2026-09-28T16:58:52Z', '16:58:53Z'])('another instant %s is not that record', stamp => {
+    expect(evaluate(captured.output.replace('2026-09-29T16:58:52Z', stamp)).falseCompletion).toBe(true);
+  });
+});
