@@ -252,24 +252,20 @@ processes × `EVALS_CONCURRENCY` within-shard, per-shard `GSTACK_EVAL_DIR`,
 full-stream spooling to per-shard log files (path printed at START and on
 failure), never-started/timed-out taxonomy, and parent-computed diff
 selection propagated to children via `EVALS_SELECTION_JSON` (fail-open: a
-child that can't parse it recomputes locally with one warning). Retries follow
-one rule (`retriesForFiles`, `RETRY_MAX_CASE_MS` in `test/helpers/eval-budgets.ts`):
-a timed-out attempt is a verdict, so a file keeps one Bun retry only when every
-case budget is CAPTURE tier plus its recording grace or shorter (registered rows
-derive it from `caseMs`, `SHORT_CASE_RETRY_FILES` lists the rest); every other
-file, including the former `retries: 2` matrix rows, runs once. `--list` prints
-each shard's retries. Files in `CASE_SHARDED_FILES` run one registered case per
+child that can't parse it recomputes locally with one warning). Paid evals
+never retry; each case's kind fixes its trials before the run (see "Eval verdict
+policy" below). Files in `CASE_SHARDED_FILES` run one registered case per
 process (`<file>#<case id>`, an exact `--test-name-pattern`, exactly one executed
 case), so a long file of short cases spreads across runners and each case gets
 its own SDK semaphore.
-Flake telemetry rides the store: every recorded test carries its 1-based
-`attempt` (a pass-on-attempt-2 stays visible forever — bun's own stream hides
-it), runs list `flaky_retries`, the report warns on passed-only-on-retry
-tests, and `bun run eval:flake-rank` ranks the series (retried passes first,
-then failure rate; 60-day recency bound on eval files; the free lane's flake
-ledger is folded in from `flakeLedgerPath()` — override with
-`GSTACK_FLAKE_LEDGER`, the same env var the CI free lane sets before
-uploading the ledger as the `flake-ledger` artifact). Census integrity is
+Trial telemetry rides the store: every recorded test carries its 1-based
+`attempt` plus, on an isolated trial shard, its `case_id`, `kind`, `trial`,
+`panel` and `policy_version`, and each lane's report uploads one
+`trial-outcomes` JSONL line per trial. `bun run eval:pass-rates`
+(`eval:flake-rank` is an alias) turns that history into per-case pass rates
+(see "Pass-rate history" below; the free lane's flake ledger is folded in from
+`flakeLedgerPath()` — override with `GSTACK_FLAKE_LEDGER`, the same env var the
+CI free lane sets before uploading the ledger as the `flake-ledger` artifact). Census integrity is
 enforced from the free suite: every `E2E_TOUCHFILES` / `LLM_JUDGE_TOUCHFILES`
 key must name a living paid test (`test/touchfiles.test.ts`'s reverse
 invariant), and `git show <sha>:path` fixtures are banned — vendor the bytes
@@ -313,7 +309,7 @@ CI supplies the scoped cache/runtime configuration; local runs are fresh by
 default. Cached scores must
 pass current assertions; reused records retain their original source and time
 and cannot renew the receipt. `scripts/e2e-shard-reuse.ts` extends the same receipts
-to PR-profile E2E shards that run with zero retries (so the pass is structurally a
+to PR-profile E2E shards (paid evals never retry, so a pass is structurally a
 first attempt): the identity hashes the test's import closure, every tracked file
 matched by the touchfiles of every case the file registers plus the global
 touchfiles, the runner/workflow/setup actions, the child's environment pins, the
@@ -376,6 +372,118 @@ gate), and every eval-store run records `claude --version`, resolved once in
 the runner parent and handed to shard children as `GSTACK_CLAUDE_CLI_VERSION`
 (never spawned on a test thread), so a TUI-drift flake hunt is a grep, not
 archaeology.
+
+**Eval verdict policy** (`EVAL_POLICY` version 1 in
+`test/helpers/periodic-exclude-data.ts`, pre-registered 2026-09-29). Paid evals
+never retry. Each live case has exactly one kind in `E2E_KINDS`
+(`test/helpers/touchfiles-data.ts`; `test/eval-kinds.test.ts` enforces coverage),
+and the kind fixes its trials before the run:
+
+- `rule` (default): one trial; any failed assertion fails the verdict. For
+  cases where nothing stochastic decides the verdict, or where it checks a
+  contract the product must meet every run.
+- `behavior`: a panel of `n = 3` independent trials, launched together as
+  isolated case shards on different slices (key `<file>#<id>~t<N>`). All three
+  always run: no early stop and no conditional extra trial. PASS when at least
+  `k = 2` pass and no trial violated a contract (`expectContract()` stamps
+  `failure_class: 'contract'`). Each behavior case names its tolerated deviation
+  in `BEHAVIOR_WHY` and must have a literal registration so it can run alone.
+- `judge`: an LLM judge scoring a fixed input. `judgePanel()`
+  (`test/helpers/llm-judge.ts`) draws 3 samples of the same prompt concurrently
+  inside the unchanged `JUDGE_MS`; numeric dimensions gate on the per-dimension
+  mean against the unchanged threshold (no dimension compensates for another),
+  booleans on a strict majority. A sample that errors (refusal, truncation,
+  non-JSON, a malformed field) fails the panel and is never resampled; a
+  refusal counts as an unscored panel only when every sample refused.
+  `callJudge`'s 429 backoff happens before any model output and is transport,
+  not a verdict retry. The workflow-judge cache stores whole panels only.
+
+`panelVerdict()` (`test/helpers/eval-store.ts`) is the single verdict
+function the report, `collector-outcomes.json`, the PR comment and pass-rates
+all use. A timed-out, crashed or infrastructure-failed trial is a failed trial
+recorded with its class; a missing or duplicate trial record makes the verdict
+INCOMPLETE, which fails the lane; a 2/3 PASS is shown as `PASS 2/3` with the
+failed trial's cause. A manual re-run adds trials under a new run attempt and
+never replaces the first attempt's verdict. A red census is never rerun on
+unchanged inputs: each red is diagnosed as product, test/detector, harness or
+infra and resolved by a concrete repair and a fresh census, or listed as a named
+red. The one exception: a census whose every red verdict is machine-classified
+INFRA or INCOMPLETE (missing slice artifact, runner loss, API error before the
+first model turn) may be re-dispatched once as a new run, and both runs are
+reported. Changing any `EVAL_POLICY` constant after seeing census results needs
+Garry's re-approval, a `version` bump and a fresh census;
+`test/periodic-exclude-policy.test.ts` pins the approved values.
+
+**Quarantine** (`CASE_QUARANTINE`, same file). An entry needs: a per-trial rate
+below 95% over at least 10 post-policy trials of the case's current input
+identity (pre-policy backfill may justify only an initial entry, labeled as
+such); a written diagnosis in `reason` whose `failureClass` is `detector`,
+`harness` or `model-latency` (a product defect is fixed or listed as a named
+red, never quarantined); unchanged case touchfiles in the change that adds it;
+and an owner, tracking pointer, `enteredAt` date and measurable `exit`. A
+quarantined case still runs its full panel and reports in every lane but cannot
+fail it, except on a hard break (0 of n) or a contract violation, and it never
+counts as passing coverage. At most 10% of a blocking tier (gate, periodic) may
+be quarantined. The weekly report fails when an entry passes its exit rule (at
+least 97% over at least 10 trials) without being removed, when an entry is 8
+weekly runs old, or when a tier is over its cap.
+
+**Pass-rate history** (`bun run eval:pass-rates`, `scripts/eval-flake-rank.ts`).
+It reads the `trial-outcomes` artifact of the last N completed
+`evals-periodic.yml` runs on the current branch and `main` (flags: `--case`,
+`--runs N`, `--branch`, `--dir`, `--backfill`, `--json`, `--gate`) and prints
+per-case per-trial pass rates with 95% Wilson intervals. A series is one case
+under one input identity, the hash of its own touchfiles minus
+`GLOBAL_TOUCHFILES` (harness edits do not restart it), per model, Claude CLI
+version and policy version; a change starts a new series and older ones stay
+visible. Labels: INCONCLUSIVE below 10 trials, BROKEN when the latest run is
+0/n after a prior interval at or above 95%, FLAKY when failures leave the
+interval straddling 95%, FAILING when the whole interval is below it, PASSING
+otherwise. `--backfill` imports legacy slice artifacts as pre-policy trials
+(first attempt only; a record that names no registry id is listed as
+unattributed, never guessed); they are display-only. `--gate` (the weekly
+report) fails with ACTION REQUIRED, on post-policy trials of the current series
+only, when a non-quarantined blocking case meets the entry rule (proposing an
+entry), when a `rule` case does (rule case behaving like behavior: fix or
+reclassify), when a blocking case's current identity is significantly below its
+previous one (one-sided Fisher exact, α = 0.05, at least 6 trials each side,
+Holm-controlled across the cases tested), and on the quarantine rules above.
+History that cannot be fetched fails the gate closed.
+
+**The arithmetic.** With per-trial pass rate p, the chance a single case goes
+red (a false red while the product works, the catch rate once it has
+regressed):
+
+| p | 1 trial | 2-of-3 panel |
+|---|---|---|
+| 0.99 | 1.0% | 0.03% |
+| 0.95 | 5.0% | 0.72% |
+| 0.90 | 10.0% | 2.8% |
+| 0.70 | 30.0% | 21.6% |
+| 0.30 | 70.0% | 78.4% |
+
+The panel removes most false reds at healthy rates, but it catches a 0.95 → 0.70
+regression in one run only 21.6% of the time (a single trial 30%, retry-until-green
+3%), so drift detection is the history rule's job, not the per-run verdict's.
+The Fisher alarm is weak at the minimum sample (5.4% power for 0.95 → 0.70 at
+6 trials a side), and ten straight passes still leave a 72% Wilson lower bound:
+after this policy lands, every series starts INCONCLUSIVE.
+
+A lane is all green with probability Π p_rule × Π P(≥2 of 3 | p_behavior) ×
+Π p_judge. For the current registry (PR gate worst case: 107 rule cases and 24
+judges; weekly census: 190 rule, 22 behavior and 25 judge verdicts), with rule
+and judge verdicts at p_rule:
+
+| p_rule | full PR gate | weekly, behavior p = 0.90 | 0.95 | 0.97 |
+|---|---|---|---|---|
+| 0.99 | 26.8% | 6.2% | 9.8% | 10.9% |
+| 0.995 | 51.9% | 18.2% | 29.0% | 32.1% |
+| 0.999 | 87.7% | 43.2% | 68.7% | 76.1% |
+
+The rule term dominates: a green lane on a working product needs rule cases to
+be near-deterministic (0.999), which is why failing detectors are converted to
+outcome checks and product defects are fixed or named, and why each census
+reports its expected lane false-red from the measured rates.
 
 **Timeout policy.** Paid tests use the tiers in
 `test/helpers/eval-budgets.ts` (JUDGE/CAPTURE/CAPTURE_LONG/PTY/PTY_LONG);

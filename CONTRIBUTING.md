@@ -239,10 +239,29 @@ Complete start-to-finish flows belong to the `marathon` tier
 (`describeE2ETier('marathon')`), which runs only in the non-blocking
 `evals-marathon.yml` lane (weekly and on dispatch) and never gates a merge.
 
-Retries: a timed-out attempt is a verdict. Only files whose every case budget is
-CAPTURE tier or shorter (`RETRY_MAX_CASE_MS` in `test/helpers/eval-budgets.ts`)
-keep one automatic retry for fast-failing flakes; every other paid file runs once.
-Case budgets themselves never change with this rule.
+Verdicts: paid evals never retry. Each case's kind in `E2E_KINDS`
+(`test/helpers/touchfiles-data.ts`) fixes its trials before the run, from the
+constants in `EVAL_POLICY` (`test/helpers/periodic-exclude-data.ts`):
+
+- `rule` (the default): one trial; any failed assertion fails the case. Use it
+  when nothing stochastic decides the verdict, or when the verdict checks a
+  contract the product must meet every run (no writes in plan mode, a question
+  before a decision, a skill-mandated step, no leaked secret).
+- `behavior`: a panel of 3 independent trials run as parallel case shards,
+  PASS at 2 or more with no contract violation (`expectContract()`). Use it only
+  when a live model choice decides the verdict and an occasional deviation is
+  acceptable product behavior; the one-line reason goes in `BEHAVIOR_WHY`.
+- `judge`: an LLM judge scoring a fixed input; 3 samples of the same prompt,
+  gated on the per-dimension mean (booleans on a majority) against the
+  unchanged threshold. An erroring sample fails the panel and is never resampled.
+
+A timed-out, crashed or infrastructure-failed trial counts as a failed trial and
+is reported with its class; a missing trial makes the case INCOMPLETE, which
+fails the lane. A 2-of-3 pass is reported as `PASS 2/3` with the failed trial's
+cause, never as a clean pass. Case budgets and thresholds never change with
+this policy. Quarantine (`CASE_QUARANTINE`) and history are described in
+`docs/TESTING_INTERNALS.md`; `bun run eval:pass-rates --case <id>` shows a
+case's per-trial pass rate with its Wilson interval.
 
 CI enables verified first-attempt reuse for 16 workflow quality judges for
 24 hours within the same PR. The cookie workflow's custom input and the other 11
@@ -415,7 +434,7 @@ When E2E tests run, they produce machine-readable artifacts in `~/.gstack-dev/`:
 bun run eval:list            # list all eval runs (turns, duration, cost per run)
 bun run eval:compare         # compare two runs — shows per-test deltas + Takeaway commentary
 bun run eval:summary         # aggregate stats + per-test efficiency averages across runs
-bun run eval:flake-rank      # rank tests by flake signal: retried passes first, then failure rate (--json, --dir, --since-days)
+bun run eval:pass-rates      # per-case trial pass rates + Wilson intervals from recent weekly runs (--case, --runs, --dir, --backfill, --json, --gate); eval:flake-rank is an alias
 ```
 
 **Detached runs for agents and long suites.** When an agent (or you, for a run
@@ -463,7 +482,9 @@ Override the judge model per run with `GSTACK_EVAL_MODEL_JUDGE`:
 - **Completeness** — Are all commands, flags, and usage patterns documented?
 - **Actionability** — Can the agent execute tasks using only the information in the doc?
 
-Each dimension is scored 1-5. Threshold: every dimension must score **≥ 4**. There's also a regression test that compares generated docs against the hand-maintained baseline from `origin/main` — generated must score equal or higher.
+Each dimension is scored 1-5 by a panel of 3 samples of the same prompt, drawn
+concurrently; each dimension's panel mean must meet that judge's threshold (≥ 4
+for most dimensions; see each case). An erroring sample fails the panel. There's also a regression test that compares generated docs against the hand-maintained baseline from `origin/main` — generated must score equal or higher.
 
 ```bash
 # Needs ANTHROPIC_API_KEY in .env — included in bun run test:evals
@@ -482,6 +503,24 @@ paths it names in string literals, and fails when that closure is not covered by
 fails, add the named path to the named key and check selection with
 `bun run scripts/test-paid-shards.ts --tier gate --profile pr --list`. The rule is a lower bound: a fixture
 path the test builds at runtime is not visible to it, so add such paths to the key by hand.
+
+### Add a paid eval
+
+1. **Test file.** Write the case in a paid test file, registered with a literal
+   name (`testIfSelected('<case-id>', ...)`), grading the outcome (files, git
+   state, native questions, exit status) rather than wording, unless the step
+   itself is the contract. Wrap contract assertions in `expectContract()`.
+2. **Touchfiles.** Add `'<case-id>': [...]` to `E2E_TOUCHFILES`; `bun test
+   test/touchfiles.test.ts` names any missing closure path.
+3. **Tier.** Add it to `E2E_TIERS`: `gate` for cheap contracts every PR needs,
+   `periodic` for long or model-quality cases, `marathon` for complete flows.
+4. **Kind.** Add it to `E2E_KINDS` (`rule` unless a live model choice may
+   acceptably deviate; then `behavior` plus a `BEHAVIOR_WHY` line).
+   `bun test test/eval-kinds.test.ts` prints the literal to add.
+5. **PR profile.** If a PR should run it, add it to `scripts/test-pr-profile.ts`
+   and check `bun run scripts/test-paid-shards.ts --tier gate --profile pr --list`.
+6. **Try the panel locally.** `bun run scripts/test-paid-shards.ts --tier <tier>
+   --case <case-id> --trials 3` runs the same panel CI runs, before you push.
 
 ### CI
 
