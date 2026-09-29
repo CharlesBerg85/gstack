@@ -89,7 +89,7 @@ async function exercise(mode: 'success' | 'max-turns' | 'first-timeout' | 'secon
       expect(opts.signal.aborted).toBe(false);
       // Bind the complete actual compact-delivery prompt, not selected snippets.
       expect(new Bun.CryptoHasher('sha256').update(opts.prompt).digest('hex'))
-        .toBe('7f2dbb6b2671588e7fbc83cfecc2869c59c388b45b627ac9d481c4d917d1e76f');
+        .toBe('2fa957ab9d56850a1629a845d6fe0ee5a1cb7c0843ab6555b621971d270604cb');
       expect(opts.testName).toBe(id); expect(opts.maxTurns).toBe(15); expect(opts.timeout).toBe(CAPTURE_MS);
       for (const key of ['model', 'tools', 'allowedTools', 'appendSystemPrompt', 'env']) expect(opts).not.toHaveProperty(key);
       expect(opts.prompt).toContain('Review the plan in ./plan.md');
@@ -98,8 +98,7 @@ async function exercise(mode: 'success' | 'max-turns' | 'first-timeout' | 'secon
       expect(opts.prompt).toContain('preserve the unresolved-decisions pass');
       expect(opts.prompt).toContain('interaction state table, empty states, responsive behavior');
       expect(opts.prompt).toContain('full required review report');
-      expect(opts.prompt).toContain('(or one Write) before publishing a completed walkthrough');
-      expect(opts.prompt).toContain('Save as you go in three Edits: after passes 1-3, apply their decisions to plan.md');
+      expect(opts.prompt).toContain('Write before publishing a completed walkthrough');
       expect(opts.prompt).toContain('Read plan.md back to verify the saved changes');
       expect(opts.prompt).toContain('Then return a brief, concrete summary');
       expect(opts.prompt).toContain('execute every required pass and lazy-section Read');
@@ -110,7 +109,7 @@ async function exercise(mode: 'success' | 'max-turns' | 'first-timeout' | 'secon
       expect(opts.prompt).toContain('concise score rationales and 10/10 explanations');
       const ordered = ['Read every lazy section', 'Review all 7 design passes',
         'EDIT plan.md', 'Keep the saved review compact',
-        'Persist that complete plan and review with those Edits', 'Read plan.md back',
+        'Persist that complete plan and review with Write', 'Read plan.md back',
         'Then return a brief, concrete summary'].map(text => opts.prompt.indexOf(text));
       expect(ordered.every(index => index >= 0)).toBe(true);
       expect(ordered).toEqual([...ordered].sort((a, b) => a - b));
