@@ -402,6 +402,8 @@ export interface TrialOutcomeRecord {
   sha?: string;
   lane?: string;
   recorded_at?: string;
+  /** History series key: a hash of the case's own touchfiles (GLOBAL_TOUCHFILES excluded), stamped by the report job. */
+  series_identity?: string;
 }
 
 /** First line of free text, stripped of @-mentions and control characters, capped. */
@@ -434,6 +436,7 @@ function trialRecordProblems(r: any): string[] {
   if (r.execution !== 'executed' && r.execution !== 'reused') problems.push('execution invalid');
   if (!['shard', 'junit', 'backfill'].includes(r.source)) problems.push('source invalid');
   if (r.error !== undefined && (typeof r.error !== 'string' || r.error.length > TRIAL_ERROR_MAX)) problems.push('error invalid');
+  if (r.series_identity !== undefined && (typeof r.series_identity !== 'string' || !/^[\w.-]{1,64}$/.test(r.series_identity))) problems.push('series_identity invalid');
   return problems;
 }
 

@@ -11,6 +11,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { parseRunManifest, type PaidRunManifest, type SliceResult } from '../scripts/test-paid-shards';
+import { stampTrialSeries } from '../scripts/eval-trial-series';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 const RULE_A = 'test/skill-e2e-fail-open-alpha.test.ts';
@@ -148,8 +149,12 @@ describe('behavior and quarantined panels through --report', () => {
     const summary = JSON.parse(fs.readFileSync(path.join(r.dir, 'collector-outcomes.json'), 'utf8'));
     expect(summary.version).toBe(2);
     expect(summary.panels[0]).toMatchObject({ case: ID, status: 'PASS', split: true, failsLane: false });
-    const history = fs.readFileSync(path.join(r.dir, 'trial-outcomes.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
-    expect(history.map(h => [h.trial, h.outcome])).toEqual([[1, 'passed'], [2, 'failed'], [3, 'passed']]);
+    const outcomesFile = path.join(r.dir, 'trial-outcomes.jsonl');
+    const history = () => fs.readFileSync(outcomesFile, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    expect(history().map(h => [h.trial, h.outcome])).toEqual([[1, 'passed'], [2, 'failed'], [3, 'passed']]);
+    expect(stampTrialSeries(outcomesFile)).toBe(3);
+    expect(new Set(history().map(h => h.series_identity)).size).toBe(1);
+    expect(history()[0].series_identity).toMatch(/^[0-9a-f]{16}$/);
   });
 
   test('behavior 1/3: red', () => {

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { buildRunManifest, collectPaidTestFiles, type PaidRunManifest, type SliceResult } from '../scripts/test-paid-shards';
+import { buildRunManifest, collectPaidTestFiles, shardCaseId, shardTrial, type PaidRunManifest, type SliceResult } from '../scripts/test-paid-shards';
 import { STRICT_RETRY_CASE_BUDGETS } from './helpers/eval-budgets';
 import { approvedCookieWorkflowSource, manualReviewFixture } from './helpers/manual-judge-review-fixture';
 
@@ -16,6 +16,11 @@ type Job = {
   permissions: Record<string, string>;
   steps: Step[];
 };
+/** A passing trial record for an isolated trial shard (the executor's current result schema). */
+const trialRecord = (entry: PaidRunManifest['entries'][number]) => entry.trial ? { trial: {
+  case: shardCaseId(entry.file)!, trial: shardTrial(entry.file)!, ...entry.trial, outcome: 'passed' as const, cost_usd: 0, duration_ms: 1,
+} } : {};
+
 const workflows = ['evals.yml', 'evals-periodic.yml'].map(name => ({
   name,
   jobs: (Bun.YAML.parse(fs.readFileSync(path.join(ROOT, '.github/workflows', name), 'utf8')) as {
@@ -217,6 +222,7 @@ describe('dependency-free CI planner and report execution', () => {
             executedTests: STRICT_RETRY_CASE_BUDGETS.find(budget => budget.file === entry.file)?.cases ?? 1,
             skippedTests: 0,
             ...(entry.budget ? { budget: entry.budget } : {}),
+            ...trialRecord(entry),
           })),
         };
         fs.writeFileSync(path.join(reportDir, `slice-${sliceIndex}.json`), JSON.stringify(result));
@@ -275,7 +281,7 @@ describe('dependency-free CI planner and report execution', () => {
       outcomes: manifest.entries.filter(entry => entry.status === 'planned').map(entry => ({
         files: [entry.file], status: 'passed', exitCode: 0, elapsedMs: 1,
         executedTests: STRICT_RETRY_CASE_BUDGETS.find(budget => budget.file === entry.file)?.cases ?? 1,
-        skippedTests: 0, ...(entry.budget ? { budget: entry.budget } : {}),
+        skippedTests: 0, ...(entry.budget ? { budget: entry.budget } : {}), ...trialRecord(entry),
       })),
     };
     const slicePath = path.join(reportDir, 'slice-1.json');

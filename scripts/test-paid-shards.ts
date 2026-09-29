@@ -1739,11 +1739,18 @@ export function buildRunManifest(opts: {
       ordinary.filter(files => !registeredFiles.has(files[0])))) {
       const lanes = registeredFiles.has(files[0]) ? longLanes : ordinarySlices;
       const laneKeys = (index: number) => [...allocations].filter(([, lane]) => lane === index + 1).map(([key]) => key);
-      let lane = -1;
-      for (let index = 0; index < lanes; index++) {
-        if (sharesPanel(laneKeys(index), files[0]!)) continue;
-        if (lane < 0 || loads[index] < loads[lane]) lane = index;
-      }
+      // A trial whose siblings already hold every long lane may use any
+      // ordinary lane: independent runners outrank long-lane ownership.
+      const pick = (limit: number) => {
+        let best = -1;
+        for (let index = 0; index < limit; index++) {
+          if (sharesPanel(laneKeys(index), files[0]!)) continue;
+          if (best < 0 || loads[index] < loads[best]) best = index;
+        }
+        return best;
+      };
+      let lane = pick(lanes);
+      if (lane < 0) lane = pick(ordinarySlices);
       if (lane < 0) lane = loads.slice(0, lanes).indexOf(Math.min(...loads.slice(0, lanes)));
       allocations.set(files[0], lane + 1);
       loads[lane] += resolvePaidShardTimeoutMs(files, opts.timeoutMs);
@@ -2500,21 +2507,7 @@ export function runPaidReport(reportDir: string, options: { writeDurations?: boo
   const laterPanels = attempts.slice(1).flatMap(attempt => panelReports(manifest, artifacts.map(a => a.result), attempt)
     .filter(panel => panel.trials.length > 0));
 
-  // Quarantine policy checks on census runs: the per-tier cap and entry expiry.
-  if (manifest.evalsAll) {
-    const tierIds = Object.keys(E2E_TIERS).filter(id => E2E_TIERS[id] === manifest.tier);
-    const quarantined = Object.keys(CASE_QUARANTINE).filter(id => E2E_TIERS[id] === manifest.tier);
-    if (quarantined.length > EVAL_POLICY.quarantine.capFraction * tierIds.length) {
-      verdict.problems.push(`QUARANTINE over cap: ${quarantined.length} of ${tierIds.length} ${manifest.tier} cases (cap ${Math.round(EVAL_POLICY.quarantine.capFraction * 100)}%)`);
-    }
-    const expiryMs = EVAL_POLICY.quarantine.expiryWeeklyRuns * 7 * 24 * 60 * 60 * 1000;
-    for (const id of quarantined) {
-      const entered = Date.parse(CASE_QUARANTINE[id]!.enteredAt);
-      if (!Number.isFinite(entered) || Date.now() - entered > expiryMs) {
-        verdict.problems.push(`QUARANTINE expired: ${id} (entered ${CASE_QUARANTINE[id]!.enteredAt}; entries expire after ${EVAL_POLICY.quarantine.expiryWeeklyRuns} weekly runs)`);
-      }
-    }
-  }
+  // Quarantine cap and expiry are the weekly pass-rates gate's (eval-flake-rank --gate).
 
   // History: one trial-outcomes line per isolated trial and per JUnit rule/judge case.
   const runId = env.GITHUB_RUN_ID;
@@ -2567,6 +2560,7 @@ export function runPaidReport(reportDir: string, options: { writeDurations?: boo
       }
     }
   }
+  // series_identity is stamped afterwards by scripts/eval-trial-series.ts (the report job's next step).
   fs.writeFileSync(trialOutcomesPath, formatTrialOutcomes(history));
 
   // Headline and failure block (A4): one formatter for the log, the PR comment and the weekly issue.

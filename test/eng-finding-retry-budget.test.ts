@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { resolvePaidShardBudget, retriesForFiles, planPaidShards, parseRunManifest, verifySliceResults, runPaidShard, buildRunManifest, paidShardWallUpperBoundMs, collectPaidTestFiles, selectPaidTestFiles, isOverlayTestFile, DEFAULT_SHARD_TIMEOUT_MS, DEFAULT_JOBS, parseCliOptions, expandCaseShards, shardFile, sliceExecutionOrder, sliceSupervisedWallMs } from '../scripts/test-paid-shards';
+import { resolvePaidShardBudget, retriesForFiles, planPaidShards, parseRunManifest, verifySliceResults, runPaidShard, buildRunManifest, paidShardWallUpperBoundMs, collectPaidTestFiles, selectPaidTestFiles, isOverlayTestFile, DEFAULT_SHARD_TIMEOUT_MS, DEFAULT_JOBS, parseCliOptions, expandCaseShards, expandTrialShards, shardFile, sliceExecutionOrder, sliceSupervisedWallMs } from '../scripts/test-paid-shards';
 import { FINDING_RETRY_BUDGETS, ALL_TIERS, SHARD_RESERVE_MS } from './helpers/eval-budgets';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -175,8 +175,9 @@ test('single-slice manifest retains all registered files with one allocation', (
 
 test('current detach supervision covers the live-census floor', () => {
   const floorFor = (tier: 'gate' | 'periodic') => {
-    // Case-sharded files contribute one shard per case, exactly as the runner plans.
-    const files = expandCaseShards(selectPaidTestFiles(collectPaidTestFiles(), tier).selected, tier);
+    // Case-sharded files contribute one shard per case and isolated cases one
+    // shard per trial, exactly as the runner plans.
+    const files = expandTrialShards(expandCaseShards(selectPaidTestFiles(collectPaidTestFiles(), tier).selected, tier), tier).keys;
     const excess = files.reduce((n, file) => n + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - DEFAULT_SHARD_TIMEOUT_MS), 0);
     return Math.ceil((Math.ceil(files.length / DEFAULT_JOBS) * DEFAULT_SHARD_TIMEOUT_MS + excess) / 1000 * 1.05);
   };
@@ -186,7 +187,8 @@ test('current detach supervision covers the live-census floor', () => {
   expect(floorFor('gate')).toBe(21_725);
   expect(gateTimeout).toBe(49_320);
   expect(gateTimeout).toBeGreaterThanOrEqual(floorFor('gate'));
-  expect(floorFor('periodic')).toBe(22_481);
+  expect(floorFor('periodic')).toBe(33_821);
+  expect(periodicTimeout).toBeGreaterThanOrEqual(floorFor('periodic'));
 });
 
 for (const jobs of [1, 2, 3]) test(`FIFO bound covers partial durations with ${jobs} workers`, () => {
