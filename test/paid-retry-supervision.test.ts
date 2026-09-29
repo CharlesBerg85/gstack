@@ -156,8 +156,8 @@ test('fixed AUQ count remains strict while mixed-tier files keep ordinary case h
     [AUQ_CONSISTENCY_RETRY_BUDGET.file, 0, false],
     [AUQ_CONSISTENCY_RETRY_BUDGET.file, 1, true],
     [AUQ_CONSISTENCY_RETRY_BUDGET.file, 2, false],
-    ['test/skill-e2e-qa-callers.test.ts', 3, true],
-    ['test/skill-e2e-qa-callers.test.ts', 5, true],
+    ['test/skill-e2e-plan-format.test.ts', 2, true],
+    ['test/skill-e2e-plan-format.test.ts', 4, true],
     // A case shard of a case-sharded registered file executes exactly its case.
     [plannedKey('test/skill-e2e-plan.test.ts'), 1, true],
     [plannedKey('test/skill-e2e-plan.test.ts'), 2, false],
@@ -211,7 +211,7 @@ test('detached PR fallback and release commands cover their actual default worke
   const prFloor = Math.ceil((Math.ceil(fullGateFiles.length / prWorkers) * 1_800_000 + fullGateFiles.reduce(
     (total, file) => total + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - 1_800_000), 0,
   )) / 1000 * 1.05);
-  expect(prFloor).toBe(72_755);
+  expect(prFloor).toBe(76_535);
   expect(prWall).toBe(92_820_000);
   expect(prWall).toBeGreaterThanOrEqual(paidShardWallUpperBoundMs(files, prWorkers) + 120_000);
 

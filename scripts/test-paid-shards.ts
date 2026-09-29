@@ -142,6 +142,7 @@ export const CASE_SHARDED_FILES: readonly string[] = [
   'test/skill-e2e-shared-libs-paths.test.ts',
   'test/skill-e2e-shared-libs.test.ts',
   'test/skill-e2e-ship-docsync.test.ts',
+  'test/skill-e2e-qa-callers.test.ts',
 ];
 
 /** Bun test names that differ from their E2E id. */
@@ -2268,6 +2269,11 @@ export async function runCaseDiagnosis(id: string, options: {
   const rootDir = options.rootDir ?? ROOT;
   const log = options.log ?? ((line: string) => console.log(line));
   const file = options.file ?? caseFile(id, rootDir);
+  const testName = CASE_TEST_NAMES[id] ?? id;
+  if (!options.commandFor && !fs.readFileSync(path.join(rootDir, file), 'utf8').includes(testName)) {
+    throw new Error(`--case ${id}: ${file} has no literal Bun test named "${testName}", so a trial could not select it. `
+      + 'Run the whole file (bun test <file> with EVALS=1) or add its literal name to CASE_TEST_NAMES.');
+  }
   const policy = caseTrialPlan(id);
   const n = options.trials ?? policy.panel.n;
   const plan: CaseTrialPlan = { ...policy, panel: { n, k: policy.panel.k === policy.panel.n ? n : Math.min(policy.panel.k, n) } };
@@ -2924,6 +2930,14 @@ async function main(): Promise<number> {
   // a slice whose artifact never landed is a FAILURE, not an absence.
   if (options.reportDir) return runPaidReport(options.reportDir, { writeDurations: options.writeDurations });
 
+  if (options.caseId && options.listOnly) {
+    const file = caseFile(options.caseId);
+    const plan = caseTrialPlan(options.caseId);
+    const n = options.trials ?? plan.panel.n;
+    console.log(`[test:paid] --case ${options.caseId}: ${n} trial(s) of ${file} (kind ${plan.kind}), list only`);
+    for (let trial = 1; trial <= n; trial++) console.log(`  ${trialShardKey(file, options.caseId, trial)}`);
+    return 0;
+  }
   if (options.caseId) {
     preflightAnthropicApi(process.env);
     const verdict = await runCaseDiagnosis(options.caseId, { trials: options.trials ?? undefined, jobs: options.jobs,
