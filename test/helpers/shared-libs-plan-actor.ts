@@ -3,7 +3,7 @@ import type { SharedQuestionSelector } from './shared-libs-eval-fixture';
 /** Separate explicit exclusions from proposals; do not erase a following "but" clause. */
 function affirmativeCommitments(text: string): string {
   return text.split(/\n|;|(?<=[.!?])\s+|\s+but\s+|\s+however,?\s+/i).map(raw => {
-    let clause = raw.replace(/^[✅❌\s]+/, '').trim();
+    let clause = raw.replace(/^[✅❌\s]+/, '').replace(/\s*\((?:no|not|without|never)\b[^()]*\)/gi, '').trim();
     if (/^(?:do not|don't|never|no\b|without\b)/i.test(clause)) return '';
     if (/\b(?:is|are|remains?)\s+(?:outside\b|out of scope\b|excluded\b|not part\b)/i.test(clause)) return '';
     clause = clause.replace(/\b(?:without|do not|don't|never)\b.*$/i, '');

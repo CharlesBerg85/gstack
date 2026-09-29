@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createSharedPlanReuseSelector } from './helpers/shared-libs-plan-actor';
 import { createSharedInteractiveToolHandler } from './helpers/shared-libs-eval-fixture';
+import capturedNoHardening from './fixtures/shared-libs-plan-callers-no-hardening-36633323521.json';
 
 // Exact native R1 from the September 22 timeout. R2 was saved in an Edit, but
 // never sent as a native AUQ; its public draft fields are reconstructed below.
@@ -285,6 +286,29 @@ describe('bounded shared-code planning actor', () => {
     input.questions[0].options[0].label = label;
     input.questions[0].options[0].description += '\n✅ Both planned callers use lib/retry-after.ts with unchanged scheduler semantics.';
     expect(await actor().callback('AskUserQuestion', input)).toMatchObject({ behavior: 'allow' });
+  });
+
+  // Census 36633323521 refused this exact public question on "(no hardening)".
+  test('actual native parenthetical exclusion keeps unchanged-helper reuse answerable', async () => {
+    const run = actor();
+    expect(await run.callback('AskUserQuestion', capturedNoHardening)).toEqual({ behavior: 'allow', updatedInput: {
+      ...capturedNoHardening, answers: { [capturedNoHardening.questions[0].question]: capturedNoHardening.questions[0].options[0].label },
+    } });
+    expect(run.refusals).toEqual([]);
+  });
+
+  test.each([
+    ['(no hardening)', '(hardening included)'],
+    ['(no hardening)', '(with hardening)'],
+    ['(no hardening)', '(no migration); harden helper parsing'],
+    ['(no hardening)', '(not migrated) and tighten helper validation'],
+  ] as const)('parenthetical exclusions do not hide a behavioral change: %s -> %s', async (from, to) => {
+    const input = structuredClone(capturedNoHardening);
+    input.questions[0].options[0].description = input.questions[0].options[0].description.replace(from, to);
+    const run = actor();
+    await expect(run.callback('AskUserQuestion', input)).rejects.toThrow('question expands');
+    expect(run.answers).toEqual([]);
+    expect(run.controller.signal.aborted).toBe(true);
   });
 
   const expansions = [

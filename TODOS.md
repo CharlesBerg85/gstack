@@ -12,9 +12,14 @@
   (one ~250 s thinking block before its single write; times out at 300 s on
   2.1.251 in every recent run), `review-army-perf-n-plus-one` (290-300 s on a
   12-line diff; web search plus a conditional red-team pass), the HOLD SCOPE
-  routing case (no rigor decision within its 240 s window after the skill's own
-  defer/keep questions), and the `document-release` workflow judge (below its
-  floor in two of three censuses). Effort M each.
+  routing case when its next brief happens not to name the mode (see the
+  handoff item below). Effort M each.
+- **`/plan-ceo-review` skips its Step 0E mode handoff** — in 4 of 4 asked-mode
+  samples (census 36633323521 plus three local runs) the model went straight
+  to tools after the mode answer without the required `Mode: <mode>; approved
+  decisions: …` chat. The routing case still passes on other posture text; a
+  wording change moving the handoff ahead of the question log did not change
+  the behavior in two paid runs, so it was not shipped. Effort M.
 - **Let pass-rate history decide the rest** — every census on this branch had
   a different handful of single-trial reds. Once `eval:pass-rates` has 10 weekly
   trials per case, apply the CASE_QUARANTINE entry rule instead of chasing one
