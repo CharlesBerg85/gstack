@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createPlanCountSnapshotWriter, persistPlanCountSnapshot } from './helpers/plan-count-artifacts';
+import { copyPlanCountEvidence, createPlanCountSnapshotWriter, persistPlanCountSnapshot } from './helpers/plan-count-artifacts';
 
 const input = {
   skillName: 'plan-design-review', observation: { outcome: 'timeout', reviewCount: 3 },
@@ -104,6 +104,55 @@ describe('plan-count diagnostic artifacts', () => {
       expect(result.artifactError).toBeDefined();
       expect(input.observation).toEqual({ outcome: 'timeout', reviewCount: 3 });
       expect(fs.readFileSync(file, 'utf8')).toBe('unchanged');
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+  test('copies the plan and review-log rows so they survive fixture cleanup', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-count-artifacts-'));
+    const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-count-fixture-'));
+    try {
+      const planPath = path.join(fixture, 'plan.md');
+      const logs = path.join(fixture, 'state', 'projects', 'slug');
+      fs.mkdirSync(logs, { recursive: true });
+      fs.writeFileSync(planPath, '# plan\n## GSTACK REVIEW REPORT\n');
+      fs.writeFileSync(path.join(logs, 'main-reviews.jsonl'), '{"skill":"plan-design-review","status":"clean"}\n');
+      fs.writeFileSync(path.join(logs, 'unrelated.json'), '{}');
+      const result = persistPlanCountSnapshot(input, { EVALS_RUN_ID: 'run', GSTACK_EVAL_DIR: root });
+      copyPlanCountEvidence(result.artifactDir, { planPath, reviewLogDirectory: logs });
+      fs.rmSync(fixture, { recursive: true, force: true });
+      expect(result.artifactError).toBeUndefined();
+      expect(fs.readFileSync(path.join(result.artifactDir!, 'evidence', 'plan', 'plan.md'), 'utf8')).toBe('# plan\n## GSTACK REVIEW REPORT\n');
+      expect(fs.readFileSync(path.join(result.artifactDir!, 'evidence', 'review-log', 'main-reviews.jsonl'), 'utf8'))
+        .toBe('{"skill":"plan-design-review","status":"clean"}\n');
+      expect(fs.existsSync(path.join(result.artifactDir!, 'evidence', 'review-log', 'unrelated.json'))).toBe(false);
+      expect(JSON.parse(fs.readFileSync(path.join(result.artifactDir!, 'evidence-copy.json'), 'utf8'))).toEqual({
+        plan: `copied: ${planPath}`, 'reviewLog:main-reviews.jsonl': `copied: ${path.join(logs, 'main-reviews.jsonl')}`,
+      });
+      expect(JSON.parse(fs.readFileSync(path.join(result.artifactDir!, 'observation.json'), 'utf8')).outcome).toBe('timeout');
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  test('a missing plan or unreadable log is recorded and never replaces the observation', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-count-artifacts-'));
+    try {
+      const planPath = path.join(root, 'never-written.md');
+      const notDirectory = path.join(root, 'not-a-directory');
+      fs.writeFileSync(notDirectory, 'file');
+      const result = persistPlanCountSnapshot(input, { EVALS_RUN_ID: 'run', GSTACK_EVAL_DIR: path.join(root, 'evals') });
+      expect(() => copyPlanCountEvidence(result.artifactDir, { planPath, reviewLogDirectory: notDirectory })).not.toThrow();
+      expect(result.artifactError).toBeUndefined();
+      const copy = JSON.parse(fs.readFileSync(path.join(result.artifactDir!, 'evidence-copy.json'), 'utf8'));
+      expect(copy.plan).toBe(`missing: ${planPath}`);
+      expect(copy.reviewLog).toStartWith('error: ');
+      expect(JSON.parse(fs.readFileSync(path.join(result.artifactDir!, 'observation.json'), 'utf8')))
+        .toMatchObject({ outcome: 'timeout', reviewCount: 3 });
+      const bare = persistPlanCountSnapshot(input, { EVALS_RUN_ID: 'run', GSTACK_EVAL_DIR: path.join(root, 'evals') });
+      copyPlanCountEvidence(bare.artifactDir, {});
+      expect(() => copyPlanCountEvidence(undefined, { planPath })).not.toThrow();
+      expect(JSON.parse(fs.readFileSync(path.join(bare.artifactDir!, 'evidence-copy.json'), 'utf8'))).toEqual({
+        plan: 'missing: no expected plan path', reviewLog: 'missing: no fixture-owned review log binding' });
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 });

@@ -40,7 +40,8 @@ export interface NativePublicToolEvent {
 export interface PlanCountTranscript {
   status: 'missing' | 'ready' | 'error';
   calls: NativePlanQuestionCall[];
-  assistantMessages: Array<{ sessionId: string; text: string; timestamp: string }>;
+  /** stopReason is the native record's stop_reason when it carries one (e.g. end_turn). */
+  assistantMessages: Array<{ sessionId: string; text: string; timestamp: string; stopReason?: string }>;
   /** Actual native plan-mode approval requests; pending is the UI gate, never an AUQ. */
   planReadyRequests?: Array<{ sessionId: string; toolUseId: string; timestamp: string; failed: boolean; source?: 'pre_tool_use' }>;
   error?: string;
@@ -348,7 +349,8 @@ export function readPlanCountTranscript(configDir: string, cwd: string,
               const text = block.type === 'text' && typeof block.text === 'string' && block.text.trim()
                 ? block.text : publicNarrationText(block);
               if (text) {
-                assistantMessages.push({ sessionId: record.sessionId, text, timestamp: record.timestamp });
+                assistantMessages.push({ sessionId: record.sessionId, text, timestamp: record.timestamp,
+                  ...(typeof record.message.stop_reason === 'string' ? { stopReason: record.message.stop_reason } : {}) });
                 ordered({ kind: 'message', sessionId: record.sessionId, text, timestamp: record.timestamp });
               }
             }

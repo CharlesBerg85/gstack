@@ -29,7 +29,7 @@ import { stripVTControlCharacters, isDeepStrictEqual } from 'node:util';
 import { hermeticChildEnv, hermeticSkillsConfigDir, isHermeticEnabled } from './hermetic-env';
 import { withHermeticSkillRuntime } from './hermetic-skill-runtime';
 import { createPlanCountFixture, ownedNativeReviewStateRoot, type NativeReviewState } from './plan-count-fixture';
-import { createPlanCountSnapshotWriter } from './plan-count-artifacts';
+import { createPlanCountSnapshotWriter, copyPlanCountEvidence } from './plan-count-artifacts';
 import { nativeSeededPlanSelection } from './plan-scope-selection';
 import { readPlanFloorTarget, type PlanFloorTargetDelivery } from './plan-floor-target';
 import { judgePlanFloorReview, pickPlanFloorMode, pickPlanFloorProductType, type PlanFloorReview, type PlanFloorAssessment } from './plan-floor-review';
@@ -1208,7 +1208,7 @@ export interface AskUserQuestionFingerprint {
   /** True for setup classification; administrative calls are false plus their marker. */
   preReview: boolean;
   /** An administrative call is preserved but adds neither setup nor finding coverage. */
-  administrative?: 'completion-handoff' | 'artifact-generation';
+  administrative?: 'completion-handoff' | 'artifact-generation' | 'todo-proposal';
   /** Lossless source metadata for observed calls; UI-only fingerprints omit it. */
   nativeCall?: NativePlanQuestionCall;
   /** Active tab for UI answering; completed coverage still counts the whole call once. */
@@ -1252,11 +1252,14 @@ export function planCountQuestionPhase(
   isSetupAUQ?: Step0BoundaryPredicate,
   isCompletionHandoffAUQ?: Step0BoundaryPredicate,
   isArtifactGenerationAUQ?: Step0BoundaryPredicate,
-): { preReview: boolean; reviewStarted: boolean; administrative?: 'completion-handoff' | 'artifact-generation' } {
+  isTodoProposalAUQ?: Step0BoundaryPredicate,
+): { preReview: boolean; reviewStarted: boolean; administrative?: 'completion-handoff' | 'artifact-generation' | 'todo-proposal' } {
   // A completion menu cannot start review or satisfy a finding floor, even
   // if its summary mentions defects that a first-finding predicate recognizes.
   if (isCompletionHandoffAUQ?.(fp)) return { preReview: false, reviewStarted, administrative: 'completion-handoff' };
   if (isArtifactGenerationAUQ?.(fp)) return { preReview: false, reviewStarted, administrative: 'artifact-generation' };
+  // A deferred TODO proposal is an additional decision, never a finding or the review start.
+  if (isTodoProposalAUQ?.(fp)) return { preReview: false, reviewStarted, administrative: 'todo-proposal' };
   const inReview = reviewStarted || Boolean(isFirstReviewAUQ?.(fp));
   return { preReview: Boolean(isSetupAUQ?.(fp)) || !inReview, reviewStarted: inReview || isLastStep0AUQ(fp) };
 }
@@ -2164,6 +2167,143 @@ export async function evaluateOwnedNativePlanTerminal(transcript: PlanCountTrans
   } finally { clearTimeout(timer); }
 }
 
+export interface NativePlanTerminalPreconditions {
+  answered: NativePlanQuestionCall[];
+  latestAnswer: number;
+  modifyingAnswers: number[];
+  latestReady?: NonNullable<PlanCountTranscript['planReadyRequests']>[number];
+}
+
+/** Structural prefix shared by every native completion route: one ready
+ * session, every call answered or resolved, and a complete caller-owned report
+ * written after the last plan-modifying answer. No completion wording is read. */
+export function nativePlanTerminalPreconditions(
+  transcript: PlanCountTranscript,
+  expectedPlanPath: string,
+  startedAt: number,
+  administrativeCalls: ReadonlySet<string> = new Set(),
+): NativePlanTerminalPreconditions | { rejected: string } {
+  if (transcript.status !== 'ready' || !transcript.calls.length) return { rejected: 'native transcript has no ready question calls' };
+  if (transcript.calls.some(c => (!c.answered && !c.failed) || (c.answered && c.failed)) ||
+      unresolvedPlanQuestionCalls(transcript.calls).length) return { rejected: 'a native question is pending or unresolved' };
+  const sessions = new Set([...transcript.calls.map(c => c.sessionId),
+    ...transcript.assistantMessages.map(m => m.sessionId),
+    ...(transcript.planReadyRequests ?? []).map(r => r.sessionId)]);
+  if (sessions.size !== 1) return { rejected: 'native transcript spans more than one session' };
+  const answered = transcript.calls.filter(c => c.answered);
+  if (!answered.length) return { rejected: 'no answered native question' };
+  const answerTimes = answered.map(c => Date.parse(c.answeredAt ?? ''));
+  if (!answerTimes.every(Number.isFinite)) return { rejected: 'a native answer has no timestamp' };
+  const latestAnswer = Math.max(...answerTimes);
+  const latestReady = [...(transcript.planReadyRequests ?? [])]
+    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)).at(-1);
+  if (latestReady?.failed) return { rejected: 'latest ExitPlanMode request failed' };
+  const modifyingAnswers = answered.filter(c =>
+    !administrativeCalls.has(`${c.sessionId}:${c.toolUseId}`) && !isCompletedDxHandoff(c))
+    .map(c => Date.parse(c.answeredAt!));
+  if (!modifyingAnswers.length) return { rejected: 'no plan-modifying native answer' };
+  if (!hasCompletePlanReport(expectedPlanPath, Math.max(startedAt, ...modifyingAnswers), Date.now()))
+    return { rejected: 'no complete caller-owned report written after the last plan-modifying answer' };
+  return { answered, latestAnswer, modifyingAnswers, latestReady };
+}
+
+/** Fixture-owned review log for one attempt: the logger's own project directory,
+ * the rows already present when the attempt started, and the fixture commit. */
+export interface PlanReviewLogBinding {
+  directory: string;
+  skill: string;
+  commitFull: string;
+  baseline: Readonly<Record<string, number>>;
+  attemptStartedAt: number;
+}
+
+function reviewLogRows(directory: string): Array<{ file: string; index: number; row: unknown }> {
+  let names: string[];
+  try { names = fs.readdirSync(directory).filter(name => name.endsWith('-reviews.jsonl')).sort(); } catch { return []; }
+  return names.flatMap(name => {
+    let text: string;
+    try { text = fs.readFileSync(path.join(directory, name), 'utf8'); } catch { return []; }
+    return text.split('\n').flatMap((line, index) => {
+      if (!line.trim()) return [];
+      try { return [{ file: name, index, row: JSON.parse(line) as unknown }]; } catch { return [{ file: name, index, row: null }]; }
+    });
+  });
+}
+
+/** Rows each review-log file already holds; later rows are this attempt's appends. */
+export function planReviewLogBaseline(directory: string): Record<string, number> {
+  const baseline: Record<string, number> = {};
+  for (const { file, index } of reviewLogRows(directory)) baseline[file] = Math.max(baseline[file] ?? 0, index + 1);
+  return baseline;
+}
+
+/** Resolve the review log exactly as bin/gstack-review-log does for the child's
+ * GSTACK_HOME and fixture cwd; any resolution failure leaves no binding (fail closed). */
+export function planCountReviewLogBinding(cwd: string, gstackHome: string | undefined, skill: string,
+  attemptStartedAt: number): PlanReviewLogBinding | undefined {
+  if (!gstackHome || !path.isAbsolute(gstackHome)) return undefined;
+  const run = (file: string, args: string[]) => nodeSpawnSync(file, args, { cwd, encoding: 'utf8', timeout: 10_000,
+    env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', GSTACK_HOME: gstackHome } });
+  const slug = run(path.resolve(import.meta.dir, '..', '..', 'bin', 'gstack-slug'), []);
+  const commit = run('git', ['rev-parse', 'HEAD']);
+  const name = /^SLUG=(.+)$/m.exec(slug.stdout ?? '')?.[1]?.trim();
+  const commitFull = commit.stdout?.trim();
+  if (slug.status !== 0 || commit.status !== 0 || !name || /[\\/]|^\.\.?$/.test(name) || !/^[0-9a-f]{40}$/.test(commitFull ?? ''))
+    return undefined;
+  const directory = path.join(gstackHome, 'projects', name);
+  return { directory, skill, commitFull: commitFull!, baseline: planReviewLogBaseline(directory), attemptStartedAt };
+}
+
+/**
+ * Completion without completion wording: the structural native preconditions,
+ * a complete report (Design report binding for Design), a completed review-log
+ * row appended by this attempt for the expected skill and fixture commit, a
+ * final native turn that ended (`end_turn`) after that row and the report, and
+ * no visible question or permission prompt. Negative prose vetoes still apply.
+ */
+export function structuredPlanCompletion(
+  transcript: PlanCountTranscript,
+  expectedPlanPath: string,
+  startedAt: number,
+  visible: string,
+  reviewLog: PlanReviewLogBinding | undefined,
+  administrativeCalls: ReadonlySet<string> = new Set(),
+  now = Date.now(),
+): { ok: true } | { ok: false; reason: string; stage: 'preconditions' | 'evidence' } {
+  const reject = (reason: string) => ({ ok: false as const, reason, stage: 'evidence' as const });
+  const pre = nativePlanTerminalPreconditions(transcript, expectedPlanPath, startedAt, administrativeCalls);
+  if ('rejected' in pre) return { ok: false, reason: pre.rejected, stage: 'preconditions' };
+  if (isNumberedOptionListVisible(visible) || isPermissionDialogVisible(visible) || isProseAUQVisible(visible))
+    return reject('a question or permission prompt is visible');
+  if (pre.latestReady) return reject('ExitPlanMode was requested; the approval gate owns completion');
+  const final = [...transcript.assistantMessages].sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)).at(-1);
+  const finishedAt = Date.parse(final?.timestamp ?? '');
+  if (!final || !Number.isFinite(finishedAt) || finishedAt <= pre.latestAnswer || finishedAt > now)
+    return reject('no final native message after the last answer');
+  if (final.stopReason !== 'end_turn') return reject(`final native message stop_reason is ${final.stopReason ?? 'missing'}, not end_turn`);
+  const text = final.text.trim();
+  if (/\b(?:cannot|can't|unable to)\s+(?:complete|finish)|\b(?:awaiting|waiting for|please (?:choose|answer|confirm))\b/i.test(text) ||
+      text.endsWith('?')) return reject('final native message asks for input or reports it cannot finish');
+  const design = reviewLog?.skill === 'plan-design-review' ? 'Design' as const : undefined;
+  if (!hasCompletePlanReport(expectedPlanPath, Math.max(startedAt, ...pre.modifyingAnswers), finishedAt, false, design))
+    return reject(`report is not complete${design ? ' for the Design binding' : ''} or changed after the final native message`);
+  if (!reviewLog) return reject('no fixture-owned review log binding');
+  const second = (ms: number) => Math.floor(ms / 1000) * 1000;
+  const reportAt = fs.lstatSync(expectedPlanPath).mtimeMs;
+  const floor = Math.max(second(pre.latestAnswer), second(reportAt), second(reviewLog.attemptStartedAt));
+  const rows = reviewLogRows(reviewLog.directory).filter(({ file, index }) => index >= (reviewLog.baseline[file] ?? 0));
+  if (!rows.length) return reject(`no review-log row appended during this attempt in ${reviewLog.directory}`);
+  const eligible = rows.filter(({ row }) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+    const r = row as Record<string, unknown>;
+    const at = typeof r.timestamp === 'string' ? Date.parse(r.timestamp) : NaN;
+    return r.skill === reviewLog.skill && (r.status === 'clean' || r.status === 'issues_open') && r.completed !== false &&
+      r.commit_full === reviewLog.commitFull && Number.isFinite(at) && at >= floor && at <= now && at <= finishedAt;
+  });
+  if (!eligible.length) return reject(`no completed ${reviewLog.skill} review-log row for this fixture commit between the report/last answer and the final native message`);
+  return { ok: true };
+}
+
 /** Native report completion is independent of the terminal's streamed headings. */
 export function hasNativePlanTerminal(
   transcript: PlanCountTranscript,
@@ -2172,26 +2312,9 @@ export function hasNativePlanTerminal(
   frame: 'completion_summary' | 'plan_ready',
   administrativeCalls: ReadonlySet<string> = new Set(),
 ): boolean {
-  if (transcript.status !== 'ready' || !transcript.calls.length ||
-      transcript.calls.some(c => (!c.answered && !c.failed) || (c.answered && c.failed)) ||
-      unresolvedPlanQuestionCalls(transcript.calls).length) return false;
-  const sessions = new Set([...transcript.calls.map(c => c.sessionId),
-    ...transcript.assistantMessages.map(m => m.sessionId),
-    ...(transcript.planReadyRequests ?? []).map(r => r.sessionId)]);
-  if (sessions.size !== 1) return false;
-  const answered = transcript.calls.filter(c => c.answered);
-  if (!answered.length) return false;
-  const answerTimes = answered.map(c => Date.parse(c.answeredAt ?? ''));
-  if (!answerTimes.every(Number.isFinite)) return false;
-  const latestAnswer = Math.max(...answerTimes);
-  const latestReady = [...(transcript.planReadyRequests ?? [])]
-    .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)).at(-1);
-  if (latestReady?.failed) return false;
-  const modifyingAnswers = answered.filter(c =>
-    !administrativeCalls.has(`${c.sessionId}:${c.toolUseId}`) && !isCompletedDxHandoff(c))
-    .map(c => Date.parse(c.answeredAt!));
-  if (!modifyingAnswers.length || !hasCompletePlanReport(expectedPlanPath,
-      Math.max(startedAt, ...modifyingAnswers), Date.now())) return false;
+  const pre = nativePlanTerminalPreconditions(transcript, expectedPlanPath, startedAt, administrativeCalls);
+  if ('rejected' in pre) return false;
+  const { answered, latestAnswer, modifyingAnswers, latestReady } = pre;
 
   if (frame === 'plan_ready') {
     // A real pending ExitPlanMode call is the approval gate. Do not answer
@@ -4895,7 +5018,7 @@ export interface PlanSkillCountObservation {
   step0Count: number;
   /** Review questions; administrative calls are excluded. */
   reviewCount: number;
-  /** Answered administrative handoffs and artifact rendering, preserved separately. */
+  /** Answered administrative handoffs, artifact rendering and TODO proposals, preserved separately. */
   administrativeCount: number;
 }
 
@@ -4974,6 +5097,8 @@ export async function runPlanSkillCounting(opts: {
   evaluateTerminal?: NativePlanTerminalEvaluator;
   /** Accepted artifact rendering is not a finding; its answer still requires a fresh report. */
   isArtifactGenerationAUQ?: Step0BoundaryPredicate;
+  /** A deferred TODO proposal is an additional decision, not a finding; its answer still requires a fresh report. */
+  isTodoProposalAUQ?: Step0BoundaryPredicate;
   /** Optional issue classifier across phases; receives full native call metadata. */
   isReviewAUQ?: (fp: AskUserQuestionFingerprint, priorCalls?: readonly NativePlanQuestionCall[]) => boolean;
   /** Stop a collection-only fixture once its acknowledged inputs are complete.
@@ -5062,6 +5187,8 @@ export async function runPlanSkillCounting(opts: {
   const fixture = createPlanCountFixture(opts.followUpPrompt, { nativeReviewOnly: true,
     files: opts.fixtureFiles, preconfiguredReviewActor: opts.preconfiguredReviewActor });
   const pickerContext = Object.freeze({cwd: fixture.cwd, deadlineAt: startedAt + timeoutMs - cleanupReserveMs});
+  const reviewLog = opts.expectedPlanPath
+    ? planCountReviewLogBinding(fixture.cwd, fixture.env.GSTACK_HOME, opts.skillName, startedAt) : undefined;
   const permissionPaths = [
     ...(opts.expectedPlanPath ? [opts.expectedPlanPath, path.join(fixture.cwd, 'PLAN.md')] : []),
     ...(opts.permissionPlanPath ? [opts.permissionPlanPath] : []),
@@ -5111,6 +5238,8 @@ export async function runPlanSkillCounting(opts: {
   const saveSnapshot = createPlanCountSnapshotWriter();
   let lastCheckpointAt = Date.now();
   let viewport = '';
+  let lastOutputAt = Date.now();
+  let lastTerminalCandidate: string | undefined;
 
   const capture = (observation: object) => {
     const publicTools: NativePublicToolEvent[] = [];
@@ -5126,6 +5255,9 @@ export async function runPlanSkillCounting(opts: {
       cwd: fixture.cwd, claudeConfigDir: session.hermeticConfigDir,
     });
   };
+  // Terminal and throw captures also retain the plan and review-log rows.
+  const retainEvidence = (artifactDir: string | undefined) => copyPlanCountEvidence(artifactDir,
+    { planPath: opts.expectedPlanPath, reviewLogDirectory: reviewLog?.directory });
 
   function snapshot(
     outcome: PlanSkillCountObservation['outcome'],
@@ -5150,6 +5282,7 @@ export async function runPlanSkillCounting(opts: {
       administrativeCount,
     };
     const artifacts = capture(observation);
+    retainEvidence(artifacts.artifactDir);
     Object.assign(observation, artifacts);
     if (artifacts.artifactDir) observation.evidence += `\nFull PTY artifacts: ${artifacts.artifactDir}`;
     if (artifacts.artifactError) observation.evidence += `\nPTY artifact write failed: ${artifacts.artifactError}`;
@@ -5179,6 +5312,7 @@ export async function runPlanSkillCounting(opts: {
     while (remainingWork() > 0) {
       await session.waitForOutput(observedOutput, Math.min(2000, remainingWork()));
       if (remainingWork() <= 0) break;
+      if (session.rawOutput().length > observedOutput) lastOutputAt = Date.now();
       const coalesceMs = session.rawOutput().length > observedOutput
         ? 250 : 250 - (performance.now() - lastObservationAt);
       if (coalesceMs > 0 && !await waitForWork(coalesceMs)) break;
@@ -5216,7 +5350,7 @@ export async function runPlanSkillCounting(opts: {
         const signature = `${call.sessionId}:${call.toolUseId}`;
         if (!call.answered || countedCalls.has(signature)) continue;
         const fp = nativePlanCallFingerprint(call, Date.now() - startedAt, !boundaryFired);
-        const phase = planCountQuestionPhase(fp, boundaryFired, opts.isLastStep0AUQ, opts.isFirstReviewAUQ, opts.isSetupAUQ, opts.isCompletionHandoffAUQ, opts.isArtifactGenerationAUQ);
+        const phase = planCountQuestionPhase(fp, boundaryFired, opts.isLastStep0AUQ, opts.isFirstReviewAUQ, opts.isSetupAUQ, opts.isCompletionHandoffAUQ, opts.isArtifactGenerationAUQ, opts.isTodoProposalAUQ);
         if (phase.administrative) {
           fp.preReview = false;
           fp.administrative = phase.administrative;
@@ -5304,13 +5438,26 @@ export async function runPlanSkillCounting(opts: {
       // With no active input UI, retain the existing native/report validator;
       // neither display text nor a missing heading supplies completion evidence.
       const nativeCompletion = opts.expectedPlanPath && hasNativePlanCompletion(transcript, opts.expectedPlanPath, startedAt);
+      // Structured evidence (native preconditions, report, review-log row,
+      // end_turn, no visible prompt) completes a summary whatever its wording.
+      const structured = opts.expectedPlanPath && renderedFrame !== 'plan_ready' && !nativeCompletion
+        ? structuredPlanCompletion(transcript, opts.expectedPlanPath, startedAt, visible, reviewLog, administrative) : undefined;
+      const structuredSummary = !nativeCompletion && renderedFrame === null && structured?.ok === true;
       const nativeSummary = !nativeCompletion && renderedFrame === null && opts.expectedPlanPath &&
         !isNumberedOptionListVisible(visible) && !isPermissionDialogVisible(visible) && !isProseAUQVisible(visible) &&
         hasNativePlanTerminal(transcript, opts.expectedPlanPath, startedAt, 'completion_summary', administrative);
-      const terminalFrame = nativeSummary ? 'completion_summary' : renderedFrame;
+      const terminalFrame = nativeSummary || structuredSummary ? 'completion_summary' : renderedFrame;
       const isTerminalHint = terminalFrame === 'completion_summary' || terminalFrame === 'plan_ready';
-      const verifiedTerminal = nativeSummary || (opts.expectedPlanPath && isTerminalHint &&
-        hasNativePlanTerminal(transcript, opts.expectedPlanPath, startedAt, terminalFrame, administrative));
+      const verifiedTerminal = nativeSummary || structuredSummary || (opts.expectedPlanPath && isTerminalHint &&
+        (hasNativePlanTerminal(transcript, opts.expectedPlanPath, startedAt, terminalFrame, administrative) ||
+          (terminalFrame === 'completion_summary' && structured?.ok === true)));
+      // Timeout diagnostics: the latest ending that looked terminal and why it was not accepted.
+      if (opts.expectedPlanPath && !verifiedTerminal && !nativeCompletion && structured && !structured.ok &&
+          (isTerminalHint || structured.stage === 'evidence')) {
+        lastTerminalCandidate = `${renderedFrame ?? 'native_summary'}: ${structured.reason}`;
+      } else if (opts.expectedPlanPath && isTerminalHint && !verifiedTerminal) {
+        lastTerminalCandidate = `${terminalFrame}: native terminal evidence not verified`;
+      }
       if (reviewCount === 0 && fingerprints.some(fp => fp.administrative === 'artifact-generation') &&
           (nativeCompletion || verifiedTerminal)) {
         return snapshot('no_review_questions', 'Completed artifact generation supplied no review finding decisions', visible);
@@ -5459,7 +5606,8 @@ export async function runPlanSkillCounting(opts: {
 
     return snapshot(
       'timeout',
-      `no terminal outcome within ${timeoutMs}ms total budget (including startup and ${cleanupReserveMs}ms cleanup reserve; step0=${step0Count}, review=${reviewCount})`,
+      `no terminal outcome within ${timeoutMs}ms total budget (including startup and ${cleanupReserveMs}ms cleanup reserve; step0=${step0Count}, review=${reviewCount}); ` +
+        `idleFor=${Date.now() - lastOutputAt}ms lastTerminalCandidate=${lastTerminalCandidate ?? 'none'}`,
       viewport,
     );
   } catch (error) {
@@ -5474,6 +5622,7 @@ export async function runPlanSkillCounting(opts: {
         elapsedMs: Date.now() - startedAt, fingerprints, step0Count, reviewCount, administrativeCount, transcript,
         pendingQuestion: readPendingQuestion(session.pendingQuestionFile, fixture.cwd,
           session.hermeticConfigDir, startedAt, transcript) });
+      retainEvidence(saved.artifactDir);
       if (saved.artifactDir) console.error(`Full PTY artifacts: ${saved.artifactDir}`);
       if (saved.artifactError) console.error(`PTY artifact write failed: ${saved.artifactError}`);
     } catch (captureError) { console.error(`PTY failure capture failed: ${String(captureError)}`); }

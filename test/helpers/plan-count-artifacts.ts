@@ -13,6 +13,37 @@ interface PlanCountSnapshot {
   claudeConfigDir: string | null;
 }
 
+/** Copy the caller-owned plan and review-log rows into an attempt's artifact
+ * directory before fixture cleanup removes them. Best-effort: each result
+ * (copied, missing or its error) is recorded in evidence-copy.json and never
+ * replaces the observation or its outcome. */
+export function copyPlanCountEvidence(artifactDir: string | undefined,
+  evidence: { planPath?: string; reviewLogDirectory?: string }): void {
+  if (!artifactDir) return;
+  const results: Record<string, string> = {};
+  const copy = (label: string, source: string, target: string) => {
+    try {
+      if (!fs.existsSync(source)) { results[label] = `missing: ${source}`; return; }
+      fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o700 });
+      fs.copyFileSync(source, target);
+      fs.chmodSync(target, 0o600);
+      results[label] = `copied: ${source}`;
+    } catch (error) { results[label] = `error: ${String(error)}`; }
+  };
+  if (evidence.planPath) copy('plan', evidence.planPath, path.join(artifactDir, 'evidence', 'plan', path.basename(evidence.planPath)));
+  else results.plan = 'missing: no expected plan path';
+  if (evidence.reviewLogDirectory) {
+    let names: string[] = [];
+    try { names = fs.readdirSync(evidence.reviewLogDirectory).filter(name => name.endsWith('-reviews.jsonl')); }
+    catch (error) { results.reviewLog = fs.existsSync(evidence.reviewLogDirectory) ? `error: ${String(error)}` : `missing: ${evidence.reviewLogDirectory}`; }
+    if (!names.length && !results.reviewLog) results.reviewLog = `missing: no *-reviews.jsonl in ${evidence.reviewLogDirectory}`;
+    for (const name of names) copy(`reviewLog:${name}`, path.join(evidence.reviewLogDirectory, name), path.join(artifactDir, 'evidence', 'review-log', name));
+  } else results.reviewLog = 'missing: no fixture-owned review log binding';
+  try {
+    fs.writeFileSync(path.join(artifactDir, 'evidence-copy.json'), JSON.stringify(results, null, 2) + '\n', { mode: 0o600 });
+  } catch { /* the observation and its outcome stay authoritative */ }
+}
+
 /** One owned directory per count attempt; periodic captures replace files atomically. */
 export function createPlanCountSnapshotWriter(env: NodeJS.ProcessEnv = process.env):
   (input: PlanCountSnapshot) => { artifactDir?: string; artifactError?: string } {
