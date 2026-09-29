@@ -39,6 +39,7 @@ import { generateAsideSetup, generateAsideCookbook, generateAsideResearch, gener
 import { generateCommandReference, generateSnapshotFlags, generateBrowseSetup, generateBrowseFallback } from './browse';
 import { generateDesignDocDiscovery } from './design-doc-discovery';
 import { generateSharedLibsRubric } from './shared-libs';
+import { generateTestValueBar, generateTestValueMessage } from './test-value';
 import { generateQAScope, generateQAExploratory, generateQAFunctional, generateQAResource, generateQAReview, generateQAReviewPreflight, generateQAMethodReads } from './qa';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
@@ -100,6 +101,8 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   TEST_COVERAGE_AUDIT_PLAN: generateTestCoverageAuditPlan,
   TEST_COVERAGE_AUDIT_SHIP: generateTestCoverageAuditShip,
   TEST_COVERAGE_GATE_SHIP: generateTestCoverageGateShip,
+  TEST_VALUE_BAR: generateTestValueBar,
+  TEST_VALUE_MESSAGE: generateTestValueMessage,
   TEST_FAILURE_TRIAGE: generateTestFailureTriage,
   SPEC_REVIEW_LOOP: generateSpecReviewLoop,
   DESIGN_SKETCH: generateDesignSketch,

@@ -184,7 +184,7 @@ test('detached PR fallback and release commands cover their actual default worke
   const prFloor = Math.ceil((Math.ceil(fullGateFiles.length / prWorkers) * 1_800_000 + fullGateFiles.reduce(
     (total, file) => total + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - 1_800_000), 0,
   )) / 1000 * 1.05);
-  expect(prFloor).toBe(74_981);
+  expect(prFloor).toBe(76_871);
   expect(prWall).toBe(92_820_000);
   expect(prWall).toBeGreaterThanOrEqual(paidShardWallUpperBoundMs(files, prWorkers) + 120_000);
 
@@ -236,9 +236,9 @@ test('both gate executors cover the complete census without increasing aggregate
     expect(executor.strategy.matrix.slice).toEqual(Array.from({ length: slices }, (_, i) => i + 1));
     expect(planned.slices).toBe(slices);
     const manifest = buildRunManifest({ tier: 'gate', sliceCount: planned.slices, evalsAll: true, env: { EVALS_ALL: '1' } });
-    expect(manifest.entries.filter(row => row.status === 'planned')).toHaveLength(46);
+    expect(manifest.entries.filter(row => row.status === 'planned')).toHaveLength(47);
     const files = manifest.entries.filter(row => row.status === 'planned').map(row => row.file);
-    expect(new Set(files).size).toBe(46);
+    expect(new Set(files).size).toBe(47);
     expect(files).toContain('test/skill-e2e-ship-skip.test.ts');
     expect(files.sort()).toEqual(selectPaidTestFiles(collectPaidTestFiles(), 'gate').selected.sort());
     const walls = executor.strategy.matrix.slice.map((slice: number) => paidShardWallUpperBoundMs(
@@ -246,7 +246,7 @@ test('both gate executors cover the complete census without increasing aggregate
     ));
     expect(executor['timeout-minutes'] * 60_000).toBeGreaterThanOrEqual(Math.max(...walls) + 20 * 60_000);
     if (jobName === 'gate-census') {
-      expect(Math.max(...walls)).toBe(16_440_000);
+      expect(Math.max(...walls)).toBe(17_020_000);
       expect(executor['timeout-minutes']).toBe(352);
       expect(emit[0].env.EVALS_ALL).toBe('1');
       expect(executor.strategy['max-parallel']).toBe(4);
@@ -280,7 +280,7 @@ test('the periodic executor supervises every actual case and retry within its CI
   const manifest = buildRunManifest({ tier: 'periodic', sliceCount: planned.slices,
     evalsAll: true, env: { EVALS_ALL: '1' } });
   const census = manifest.entries.filter(row => row.status === 'planned');
-  expect(census).toHaveLength(70);
+  expect(census).toHaveLength(71);
   expect(census.find(row => row.file === 'test/skill-llm-eval.test.ts')?.budget?.timeoutMs).toBe(6_220_000);
   const walls = executor.strategy.matrix.slice.map((slice: number) => paidShardWallUpperBoundMs(
     census.filter(row => row.slice === slice).map(row => row.file), active.jobs,

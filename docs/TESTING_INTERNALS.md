@@ -389,7 +389,7 @@ Planner entries and execution results record the effective wall,
 its source and policy identifier. Custom drivers must resolve each job instead
 of passing their ordinary 1800-second default as an explicit cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
-The current paid census has 104 files: 46 gate-tier and 70 periodic-tier.
+The current paid census has 105 files: 47 gate-tier and 71 periodic-tier.
 `eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps; the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
 wrapper reserves 49320 seconds, and release reserves 116700 seconds for both

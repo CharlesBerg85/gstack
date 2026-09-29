@@ -25,6 +25,7 @@ export const PR_PROFILE_CASE_IDS = [
   'skillify-provenance-refusal', 'diagram-triplet', 'learnings-show',
   'gstack-upgrade-happy-path',
   'investigate-owned-completion', 'investigate-owned-abort', 'investigate-owned-ending-error',
+  'ship-coverage-value', 'review-test-value', 'test-audit-report-only',
 ] as const;
 
 /** Audited ownership: unknown/direct-describe files remain broad coverage. */
@@ -39,6 +40,7 @@ export const PR_PROFILE_FILES: Record<string, readonly string[]> = {
   'test/skill-e2e-qa-callers.test.ts': ['review-exploratory-small-cli', 'ship-exploratory-small-cli', 'ship-exploratory-unavailable', 'ship-exploratory-plan-checks', 'ship-exploratory-late-input'],
   'test/skill-e2e-review.test.ts': ['review-sql-injection'],
   'test/skill-e2e-coverage-audit.test.ts': ['review-coverage-audit', 'plan-eng-coverage-audit'],
+  'test/skill-e2e-test-value.test.ts': ['ship-coverage-value', 'review-test-value', 'test-audit-report-only'],
   'test/skill-e2e-plan.test.ts': ['plan-ceo-review-benefits', 'plan-review-report', 'office-hours-spec-review'],
   'test/skill-e2e-ask-user-question-format-compliance.test.ts': ['auq-format-gate'],
   'test/skill-e2e-design.test.ts': ['plan-design-review-no-ui-scope'],
@@ -113,6 +115,11 @@ function matches(file: string, patterns: readonly string[]): boolean {
 export const FREE_ONLY_PR_FILES = [
   'scripts/test-free-shards.ts',
   'test/helpers/auq-parallel-worker.ts',
+  // Read only by free tests (context-budget ratchet, host-config goldens), never by a paid case.
+  'test/fixtures/context-budget.json',
+  'test/fixtures/golden/claude-ship-SKILL.md',
+  'test/fixtures/golden/codex-ship-SKILL.md',
+  'test/fixtures/golden/factory-ship-SKILL.md',
 ] as const;
 
 const FULL_GATE_PR_FILES = [

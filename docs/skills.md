@@ -39,6 +39,7 @@ Detailed guides for every gstack skill — philosophy, workflow, and examples.
 | [`/context-restore`](#context-restore) | **Restore State** | Resume from a saved context, even across Conductor workspace handoffs. |
 | [`/health`](#health) | **Code Quality Dashboard** | Wraps type checker, linter, tests, dead code detection. Computes a weighted 0-10 score; tracks trends over time. |
 | [`/deslop-shared-libs`](#deslop-shared-libs) | **Shared Code Reviewer** | Find worthwhile shared-code extractions in recent work. Recommendations only. |
+| [`/test-audit`](#test-audit) | **Test Auditor** | Sweep existing tests for low-value, implementation-coupled or duplicate tests. Report-only unless you approve a batch. |
 | [`/landing-report`](#landing-report) | **Ship Queue Dashboard** | Read-only snapshot of the workspace-aware ship queue. Which version slots are claimed, which sibling workspaces have WIP. |
 | [`/benchmark-models`](#benchmark-models) | **Model Benchmark** | Side-by-side cross-model benchmark for skills (Claude vs GPT vs Gemini). Latency, tokens, cost, optional LLM-judged quality. |
 | | | |
@@ -781,6 +782,28 @@ code, runs project tests, saves a report, or creates issues or PRs.
 checks do not run the history audit. Optional extractions are advisory and require
 approval; they do not block a clean review or reduce its score. Actual defects
 keep their normal fix handling.
+
+## `/test-audit`
+
+Find existing tests that cost more than they protect. `/review`, `/ship`, `/qa` and
+`/plan-eng-review` apply the same [test value bar](test-value-bar.md) to tests in a
+diff; `/test-audit` sweeps the tests that already exist.
+
+```text
+You: /test-audit
+You: /test-audit test/ --max-candidates 5
+You: /test-audit --since origin/main
+```
+
+A mechanical pre-filter shortlists assertion-free probes, source greps, export-list
+copies and near-duplicate files before any model reading. Each candidate gets a
+retirement card (what it detects, non-test callers with the search command, the
+stronger remaining proof, history, what retiring it unlocks, and the validation
+command). Contract tests such as SKILL.md goldens and prompt-byte checks are
+retained. The report and a JSON sidecar land in `~/.gstack/projects/<slug>/`.
+Nothing is edited unless you approve a batch; spawned sessions stay report-only.
+Tests marked `gstack:test-value keep reason="..."` are skipped and listed in the
+report's appendix.
 
 ## `/benchmark`
 

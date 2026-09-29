@@ -1152,11 +1152,14 @@ Log metrics for `/retro` through `gstack-review-log`; it handles project/branch 
 JSON validation, storage and sync. It takes **no path argument**; do not build one.
 
 ```bash
-~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"ship","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","coverage_pct":COVERAGE_PCT,"plan_items_total":PLAN_TOTAL,"plan_items_done":PLAN_DONE,"verification_result":"VERIFY_RESULT","version":"VERSION","branch":"'"$(git rev-parse --abbrev-ref HEAD)"'"}'
+~/.claude/skills/gstack/bin/gstack-review-log '{"skill":"ship","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","coverage_pct":COVERAGE_PCT,"coverage_schema":2,"coverage_pct_value":COVERAGE_PCT_VALUE,"weak_gaps":WEAK_GAPS,"tests_extended":TESTS_EXTENDED,"tests_rejected":TESTS_REJECTED,"regression_proof":REGRESSION_PROOF,"plan_items_total":PLAN_TOTAL,"plan_items_done":PLAN_DONE,"verification_result":"VERIFY_RESULT","version":"VERSION","branch":"'"$(git rev-parse --abbrev-ref HEAD)"'"}'
 ```
 
 Substitute from earlier steps:
 - **COVERAGE_PCT**: Step 7 diagram's integer percentage; encode null/undetermined as -1
+- **COVERAGE_PCT_VALUE**: Step 7's `coverage_pct_value` (the gate's X) as an integer, or `null` when missing or ignored
+- **WEAK_GAPS**, **TESTS_EXTENDED**, **TESTS_REJECTED**: counts of Step 7's `weak_gaps`, `tests_extended` and `tests_rejected` (0 when the key is missing or ignored)
+- **REGRESSION_PROOF**: `{"red_at_head":N,"base_green":N,"base_unavailable":N}` from Step 7, or `null` when missing
 - **PLAN_TOTAL**: total plan items extracted in Step 8 (0 if no plan file)
 - **PLAN_DONE**: count of DONE + CHANGED items from Step 8 (0 if no plan file)
 - **VERIFY_RESULT**: "pass", "fail", or "skipped", set after Step 9 executes Step 8.1's verification list

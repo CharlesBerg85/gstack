@@ -1321,9 +1321,9 @@ describe('Step 3.4 test coverage audit', () => {
     expect(content).toContain('Never commit failing tests');
   });
 
-  test('Step 3.4 includes vibe coding philosophy', () => {
+  test('Step 3.4 states the value-based coverage goal', () => {
     const content = readShipUnion();
-    expect(content).toContain('vibe coding becomes yolo coding');
+    expect(content).toContain('Coverage goal: every changed behavior is protected by a test that would catch a real regression. Test count is not a goal.');
   });
 
   test('Step 3.4 traces actual codepaths, not just syntax', () => {

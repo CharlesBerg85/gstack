@@ -457,7 +457,7 @@ decision/report content. The system handles context limits; do not preemptively 
 
 ## My engineering preferences (use these to guide your recommendations):
 * **Shared code:** require common behavior and improved reliability or net savings; similar-looking code alone is insufficient.
-* **Tests:** non-negotiable; prefer too many to too few.
+* **Tests:** every behavior tested; no test without a regression it would catch.
 * **Enough engineering:** avoid fragility and premature abstraction/complexity.
 * **Edge cases:** thorough handling over speed.
 * **Explicit over clever.**

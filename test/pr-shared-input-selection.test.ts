@@ -13,7 +13,10 @@ const periodicIds = Object.keys(E2E_TOUCHFILES).filter(id => E2E_TIERS[id] === '
 const judgeIds = Object.keys(LLM_JUDGE_TOUCHFILES).sort();
 
 test.each(sharedInputs)('%s retains the full gate after native dependency registration', file => {
-  const result = computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles: [file] });
+  // An unresolvable base keeps this independent of the checkout: a local
+  // package.json identical to its merge-base would otherwise count as a
+  // version-only change and be dropped before the shared-input rule.
+  const result = computePaidCaseSelection({ profile: 'pr', env: { EVALS_BASE: 'refs/heads/no-such-base' }, changedFiles: [file] });
   expect(result.coverage?.mode).toBe('full-fallback');
   expect(result.selection.e2e).toEqual(gateIds);
   expect(result.selection.judges).toEqual(judgeIds);

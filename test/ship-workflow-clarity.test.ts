@@ -275,7 +275,7 @@ test('ship template consolidation: initial, failed and inline generation attempt
   expect(allowance).toContain('Re-entry never resets it');
   expect(allowance).toContain('Two passes already used means no further generation');
   expect(allowance).toContain('read-only reassessment uses no pass');
-  expect(allowance).toContain('30-path/20-test/2-minute per-test caps');
+  expect(allowance).toContain('30-path/5-tests-per-pass/2-minute per-test caps');
   expect(allowance).toContain('missing permission is not approval');
   expect(coverageTemplate).toContain("confirm it stopped before running the same audit inline");
 });

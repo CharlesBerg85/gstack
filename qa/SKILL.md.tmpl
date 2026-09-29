@@ -175,7 +175,10 @@ and unclear contracts never authorize repair.
 
 ### 8a.5. Regression test before repair
 
-Match 2-3 nearby tests' naming, imports, assertions and fixtures. Reproduce the failure
+{{TEST_VALUE_BAR:qa}}
+
+Extend an existing table or fixture when one covers the boundary; never add a production
+seam for the test. Match 2-3 nearby tests' naming, imports, assertions and fixtures. Reproduce the failure
 in a new native test. Run its detected command before repair; prove the defect caused its
 failure, not a bad fixture, import or service. Attribute it in the language's comment syntax:
 
@@ -227,7 +230,7 @@ repairs and valid red regressions/evidence uncommitted; tell the user what remai
 ### 8e.5. Regression Test record
 
 Record the test created before repair in 8a.5 and its re-test result from 8c:
-file, command, attribution, tested boundary and red/green evidence, or why it is deferred.
+file, command, attribution, tested boundary, value card and red/green evidence, or why it is deferred.
 This step records results; it does not create another test.
 Healthy-contract commits use `test(qa): regression test for {contract}`.
 **WTF-likelihood exclusion:** test-only commits do not count toward the heuristic.

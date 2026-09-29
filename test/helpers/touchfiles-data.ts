@@ -783,6 +783,10 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
      "test/fixtures/coverage-diagram-legend-as.json",
     'test/helpers/coverage-audit.ts', 'test/helpers/office-hours-attempt.ts' 
   ],
+  // Test value bar behavior (weak paths, low-value findings, report-only sweep)
+  'ship-coverage-value': ['ship/**', 'scripts/resolvers/testing.ts', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-test-value.test.ts', 'test/helpers/test-value-fixture.ts', 'scripts/resolvers/test-value.ts', 'test/helpers/office-hours-attempt.ts', 'lib/eval-model.ts'],
+  'review-test-value': ['review/**', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-test-value.test.ts', 'test/helpers/test-value-fixture.ts', 'scripts/resolvers/test-value.ts', 'test/helpers/office-hours-attempt.ts', 'lib/eval-model.ts'],
+  'test-audit-report-only': ['test-audit/**', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-test-value.test.ts', 'test/helpers/test-value-fixture.ts', 'scripts/resolvers/test-value.ts', 'test/helpers/office-hours-attempt.ts', 'lib/eval-model.ts'],
   'plan-eng-coverage-audit': [
     'scripts/resolvers/learnings.ts',
     'test/fixtures/coverage-audit-ci-diagrams.json',
@@ -1231,6 +1235,9 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'plan-eng-review': 'periodic',
   'plan-eng-review-artifact': 'periodic',
   'plan-eng-coverage-audit': 'gate',
+  'ship-coverage-value': 'gate',
+  'review-test-value': 'gate',
+  'test-audit-report-only': 'gate',
   'plan-review-report': 'gate',
 
   // Plan-mode handshake. plan-ceo/plan-devex ask-first reliably (gate-tier);

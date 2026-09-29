@@ -127,7 +127,7 @@ test('live periodic census fits the declared CI wall including setup', () => {
   expect(periodicJob['timeout-minutes']).toBe(360);
   expect(periodicJob.strategy['max-parallel']).toBe(8);
   expect(Math.max(...walls) + 20 * 60_000).toBeLessThanOrEqual(periodicJob['timeout-minutes'] * 60_000);
-  expect(m.entries.filter(e => e.status === 'planned')).toHaveLength(70);
+  expect(m.entries.filter(e => e.status === 'planned')).toHaveLength(71);
   const overlays = m.entries.filter(e => e.status === 'planned' && e.slice === periodicSliceCount);
   expect(overlays).toHaveLength(4);
   expect(overlays.every(e => isOverlayTestFile(e.file))).toBe(true);
@@ -135,7 +135,7 @@ test('live periodic census fits the declared CI wall including setup', () => {
 
 test('registered allocation is deterministic and preserves every discovered file', () => {
   const files = collectPaidTestFiles();
-  expect(files).toHaveLength(104);
+  expect(files).toHaveLength(105);
   expect(files).toContain('test/skill-e2e-ship-skip.test.ts');
   const m = livePlan(files);
   expect(livePlan([...files].reverse())).toEqual(m);

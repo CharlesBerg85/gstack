@@ -42,7 +42,7 @@ test('the existing quality and behavior phases retain their complete separate sh
   expect(quality.evalsAll).toBe(true);
   expect(behavior.evalsAll).toBe(true);
   expect(qualityFiles).toHaveLength(1);
-  expect(behaviorFiles).toHaveLength(45);
+  expect(behaviorFiles).toHaveLength(46);
   expect(behaviorFiles).toEqual(expect.arrayContaining([
     'test/skill-e2e-qa-callers.test.ts',
     'test/skill-e2e-qa-functional-fix.test.ts',

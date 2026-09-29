@@ -117,6 +117,14 @@ resolves (`browserAvailable()` — Aside, or the browse binary CI builds with
 `bun run build:gates`) and skip only when neither exists; the fallback
 engine's own tests run everywhere.
 
+New or changed tests follow the [test value bar](docs/test-value-bar.md): each one
+protects behavior a real regression would break, and contract tests (SKILL.md
+goldens, prompt bytes) stay. The bar's source is `scripts/resolvers/test-value.ts`.
+Projects tune `/ship`'s coverage gate with optional CLAUDE.md `## Test Coverage`
+keys, all absent by default: `Minimum:`, `Target:`, `Generation cap:` (default 5),
+`Base control:` (`auto` or `off`), `Base control budget:` (seconds, default 90) and
+`Star rating:` (`auto` or `off`).
+
 ## Project structure
 
 Full annotated tree: [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md).

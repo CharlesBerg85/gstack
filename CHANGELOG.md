@@ -1,5 +1,42 @@
 # Changelog
 
+## [1.91.9.0] - 2026-09-29
+
+Every gstack workflow that proposes, writes, reviews or ships tests now applies one test value bar: a test earns its place by protecting behavior a real regression would break, and test count is not a goal. `/ship`'s coverage gate counts only tests that clear that bar, and the new `/test-audit` sweeps existing tests for ones that cost more than they protect.
+
+`/ship`'s coverage number can drop for unchanged code, because a path covered only by a smoke test (★) no longer counts. The gate shows both numbers, for example:
+
+```
+Before: Coverage gate: 81%
+After:  Coverage: 58% value-weighted (81% including 4 weakly covered paths)
+```
+
+No action required; the gate still only asks.
+
+### Added
+
+- `/test-audit [path ...] [--since <ref>] [--max-candidates N]` finds low-value, implementation-coupled and duplicate tests and the test-only exports they keep alive. A mechanical pre-filter runs before any model reading, every candidate carries a complete retirement card (what it detects, non-test callers with the search command, stronger remaining proof, history, what retiring it unlocks, validation), and SKILL.md goldens and other contract tests are retained. The report and a JSON sidecar land in `~/.gstack/projects/<slug>/`. Nothing is edited unless you approve a batch; spawned and headless sessions stay report-only.
+- `docs/test-value-bar.md` explains the authoring gate, value and retirement cards, weak paths, the value-weighted (X) and any-test (Y) coverage numbers, base control, the overrides and every degraded-mode message.
+- Optional CLAUDE.md `## Test Coverage` keys: `Generation cap:` (default 5), `Base control:` (`auto` or `off`), `Base control budget:` (seconds, default 90) and `Star rating:` (`auto` or `off`). A `gstack:test-value keep reason="..."` comment makes `/review` and `/test-audit` skip a deliberate test and report the reason.
+
+### Changed
+
+- `/ship` Step 7 extends existing tests before writing new ones and writes at most 5 tests per generation pass (was 20). Each generated test carries a value card header. The parent rejects and removes tests with an incomplete card, a duplicate `protects` or a seam with no non-test caller, and a separate read-only pass rates the tests written in the run. The gate reads the value-weighted `coverage_pct_value`, falls back to `coverage_pct` with an upgrade note when an older skill omits it, and never substitutes 0. In spawned sessions it generates only for true gaps and lists weak paths as proposals.
+- `/ship` regression tests must fail at HEAD before the repair and pass at the base branch in a temporary worktree (Node/Bun), within 90 seconds per test and 3 minutes per run. Other ecosystems record "base control unavailable" with a four-command manual check.
+- The PR body adds `Test value: K tests written, R rejected by the authoring gate, E existing tests extended, W paths weakly covered`, and Step 20 metrics record `coverage_schema: 2`, `coverage_pct_value`, the weak, extended and rejected counts, and regression-proof counts.
+- `/plan-eng-review` and `/plan-ceo-review` state one rule: every behavior tested, no test without a regression it would catch. Test plans carry a value card per critical path and edge case, plus a `## Tests to Retire` section that `/test-audit` reads as seeds.
+- `/review`'s testing specialist reports source-grep tests, test-only exports and other low-value tests in the diff as INFORMATIONAL findings with caller-search evidence, never as auto-deletes, and flags regression tests without red proof. A gap closed only by a low-value test stays a coverage gap at its existing severity.
+- `/qa` and `/qa-only` apply the bar's last two questions before writing or proposing a regression test and record its value card.
+
+### For contributors
+
+- `scripts/resolvers/test-value.ts` owns the shared constants, the `{{TEST_VALUE_BAR:<mode>}}` and `{{TEST_VALUE_MESSAGE:<key>}}` placeholders and per-mode byte ceilings (measured renders plus 15%: plan 1,897, ship 2,742, qa 1,036, audit 3,712 bytes). Adapted from openclaw/openclaw@a214e76 `.agents/skills/test-audit`. The unreachable `review` branch of the coverage audit is deleted.
+- `test/test-value-bar.test.ts` checks each mode's contract text and ceiling, the ship gate's decision rows, the rejected-file removal script in a Git fixture, the static review specialist's sync with the constants, docs anchors and skill registration. Three gate evals in `test/skill-e2e-test-value.test.ts` cover a weak path in `weak_gaps`, low-value review findings with a retained golden, and a report-only `/test-audit`.
+- Budgets moved for the new skill and the embedded bar, each at its measured value with the derivation recorded: catalog 1,171 → 1,194 token-equivalents (`/test-audit` adds 92 bytes), always-on context 6,465 → 6,873 tokens, a new `test-audit` eager ceiling of 10,439 tokens, and carve-guard union ratios for ship (1.322 → 1.397; the lazy Step 7 section grows about 13.6KB), plan-eng-review (1.151 → 1.169) and qa (1.08 → 1.095). The paid census pins count the new gate file.
+- The context-budget and ship golden fixtures are audited free-only PR inputs, so editing them no longer restores every paid gate case.
+- `test/pr-shared-input-selection.test.ts` no longer depends on whether the local `package.json` differs from its merge-base.
+- The catalog estimate in `test/skill-size-budget.test.ts` lists skills from `HEAD`, the same tree it reads, so a staged but uncommitted skill no longer breaks it.
+
 ## [1.91.8.0] - 2026-09-29
 
 The test suite is smaller and every remaining test maps to a product contract: 227 fewer test files, about 90,000 fewer lines of tests, helpers and fixtures, and the weekly paid lane drops the five evals that were red eight runs straight. Free tests that only replayed one captured failure are folded into their detector's owner test, and paid eval selection is derived from each eval's own imports instead of hand-copied lists.
