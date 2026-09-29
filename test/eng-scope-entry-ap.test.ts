@@ -6,7 +6,6 @@ import {HOST_PATHS, type TemplateContext} from '../scripts/resolvers/types';
 import {generatePreamble} from '../scripts/resolvers/preamble';
 import {generateAskUserFormat} from '../scripts/resolvers/preamble/generate-ask-user-format';
 import {generateGBrainContextLoad} from '../scripts/resolvers/gbrain';
-import {E2E_TOUCHFILES, LLM_JUDGE_TOUCHFILES, selectTests} from './helpers/touchfiles';
 import {readWorkflowJudgeInput} from './helpers/workflow-judge-input';
 
 const template = fs.readFileSync(path.join(import.meta.dir, '../plan-eng-review/SKILL.md.tmpl'), 'utf8');
@@ -108,18 +107,6 @@ test('Eng alone defers canonical question rules until scope and keeps one counte
     }
   }
 });
-
-test('the regression selects the same paid owners as the Eng template', () => {
-  for (const map of [E2E_TOUCHFILES, LLM_JUDGE_TOUCHFILES]) {
-    expect(selectTests(['test/eng-scope-entry-ap.test.ts'], map, []).selected)
-      .toEqual(selectTests(['plan-eng-review/SKILL.md.tmpl'], map, []).selected);
-    for (const paths of Object.values(map)) for (let i = 0; i < paths.length; i++) {
-      expect(Object.hasOwn(paths, i)).toBe(true);
-      expect(typeof paths[i]).toBe('string');
-    }
-  }
-});
-
 test('the full evaluated bundle routes startup into ordered preparation before scope analysis', () => {
   const input = readWorkflowJudgeInput({root:path.join(import.meta.dir, '..'), skillPath:'plan-eng-review/SKILL.md',
     startMarker:'# Plan Review Mode', endMarker:null});

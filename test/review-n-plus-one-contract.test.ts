@@ -3,16 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {E2E_TOUCHFILES, selectTests} from './helpers/touchfiles';
-
 const ROOT = path.resolve(import.meta.dir, '..');
-
-test('N+1 native dispatch regressions select their paid case', () => {
-  for (const file of ['test/review-n-plus-one-contract.test.ts', 'test/fixtures/review-n-plus-one-dispatch.json']) {
-    expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['review-army-perf-n-plus-one']);
-  }
-});
-
 test.each(['complete-control', 'captured-omission', 'claimed-only', 'background', 'missing-report', 'unrelated-report', 'captured-timeout'])
   ('N+1 registered completion contract: %s', scenario => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'n1-contract-'));

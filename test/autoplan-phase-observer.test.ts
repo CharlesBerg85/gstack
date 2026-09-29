@@ -5,7 +5,6 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { autoplanPhaseCompletions } from './helpers/autoplan-phase-observer';
 import type { PlanCountTranscript } from './helpers/plan-count-transcript';
-import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import fixture_autoplan_phase_dash_ao from './fixtures/autoplan-phase-dash-ao.json';
 import actual_autoplan_with_result_au from './fixtures/autoplan-with-result-au.json';
 
@@ -204,13 +203,6 @@ describe('native autoplan phase observation', () => {
       .toEqual([{ phase: 3, ts: START + 1 }, { phase: 1, ts: START + 2 }]);
     expect(autoplanPhaseCompletions(transcript([1, 'Phase 2 skipped — no UI scope.']), START)).toEqual([]);
   });
-
-  test('phase observer changes select the autoplan eval', () => {
-    for (const file of ['test/helpers/autoplan-phase-observer.ts', 'test/autoplan-phase-observer.test.ts']) {
-      expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual([]);
-    }
-  });
-
   test.skipIf(process.platform === 'win32')('ANSI-rendered completions use native evidence while displayed Read/source markers do not', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'autoplan-phase-replay-'));
     const fake = path.join(dir, 'fake-claude');

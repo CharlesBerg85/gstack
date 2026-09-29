@@ -8,8 +8,6 @@ import { fakePlanSeedPrelude } from './helpers/fake-plan-seed';
 import fixture from './fixtures/eng-seeded-completion-ai.json';
 import { classifyVisible, extractPlanFilePath } from './helpers/claude-pty-runner';
 import * as predicates from './helpers/claude-pty-runner';
-import { selectTests, E2E_TOUCHFILES } from './helpers/touchfiles';
-
 const gate = '─────\nClaude has written up a plan and is ready to execute. Would you like to proceed?\n❯ 1. Yes, and use auto mode\n2. Yes, manually approve edits\n3. Tell Claude what to change';
 const compactGate = 'Exit plan mode?\nClaude wants to exit plan mode\n❯ 1. Yes, and switch to default (ask each time) for this session\n2. No';
 const question = 'Which runner should the plan use?\nA) Use the built-in runner\nB) Build a custom runner\nRecommendation: A because it avoids duplicate scheduling logic.\nReply with A or B.';
@@ -180,12 +178,4 @@ test('rejected completion does not erase a genuine earlier question or change un
   expect(obs.waitingEverObserved).toBe(false);
   const unseeded = await mockedObservation([gate.replace('❯ ', '')], 'waiting', false);
   expect(unseeded.obs.outcome).toBe('plan_ready'); expect(unseeded.judged).toBe(0);
-});
-
-test('completion evidence dependencies select exactly the seeded observation owners', () => {
-  const owners = ['plan-ceo-review-plan-mode', 'plan-eng-review-plan-mode', 'plan-design-review-plan-mode',
-    'plan-devex-review-plan-mode', 'plan-mode-no-op', 'auto-decide-preserved'].sort();
-  for (const file of ['test/eng-seeded-completion-ai.test.ts', 'test/fixtures/eng-seeded-completion-ai.json']) {
-    expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual(owners);
-  }
 });

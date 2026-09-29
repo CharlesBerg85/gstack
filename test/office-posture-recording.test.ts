@@ -2,7 +2,6 @@ import { expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
-import { E2E_TOUCHFILES } from './helpers/touchfiles';
 import { OFFICE_HOURS_BUN_GRACE_MS, runRecordedOfficeHoursAttempt } from './helpers/office-hours-attempt';
 
 const source = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-office-hours.test.ts'), 'utf8');
@@ -113,8 +112,4 @@ test('posture consecutive failed and passing callbacks retain separate final ver
     expect(x.records.map(r => r.passed)).toEqual([false, true]); expect(x.records.map(r => r.attempt)).toEqual([0, 1]);
     expect(x.records[0].judge_scores).toEqual({ axis_a: 4, axis_b: 3 }); expect(x.records[1].judge_scores).toEqual({ axis_a: 4, axis_b: 4 });
   }
-});
-
-test('posture recorder controls select exactly the two existing paid owners', () => {
-  expect(Object.entries(E2E_TOUCHFILES).filter(([, paths]) => paths.includes('test/office-posture-recording.test.ts')).map(([name]) => name)).toEqual([...owners]);
 });

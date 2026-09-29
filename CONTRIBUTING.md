@@ -393,6 +393,16 @@ Each dimension is scored 1-5. Threshold: every dimension must score **≥ 4**. T
 - Tests live in `test/skill-llm-eval.test.ts`
 - Calls the Anthropic API directly (not `claude -p`), so it works from anywhere including inside Claude Code
 
+### Paid-test touchfiles
+
+`test/helpers/touchfiles-data.ts` maps each paid case to the files whose edits select it. Free
+`*.test.ts` files are never listed: editing a free test does not run paid evals. `test/touchfiles.test.ts`
+derives each paid file's static `test/helpers` / `test/fixtures` import closure, plus the fixture and helper
+paths it names in string literals, and fails when that closure is not covered by the case's key. When it
+fails, add the named path to the named key and check selection with
+`bun run scripts/test-paid-shards.ts --tier gate --profile pr --list`. The rule is a lower bound: a fixture
+path the test builds at runtime is not visible to it, so add such paths to the key by hand.
+
 ### CI
 
 A GitHub Action (`.github/workflows/skill-docs.yml`) generates all hosts on pushes to main and on PRs, then rejects tracked differences and nonignored untracked output. Generation errors also fail the job. Optional ignored host caches are not compared against Git.

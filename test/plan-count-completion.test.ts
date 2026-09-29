@@ -20,9 +20,6 @@ import os_ceo_handoff_y from 'node:os';
 import path_ceo_handoff_y from 'node:path';
 import fixture_ceo_handoff_y from './fixtures/ceo-handoff-y-call.json';
 import captured_dx_manual_handoff_ao from './fixtures/dx-manual-handoff-ao.json';
-import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
-import { LLM_JUDGE_TOUCHFILES } from './helpers/touchfiles-data';
-import { GLOBAL_TOUCHFILES } from './helpers/touchfiles-data';
 import fixture_plan_count_dx_handoff_o from './fixtures/devex-handoff-o-call.json';
 import actual_eng_next_handoff_ah from './fixtures/eng-next-handoff-ah.json';
 import { isCurrentPlanApprovalScreen } from './helpers/plan-count-pending-exit';
@@ -1148,11 +1145,6 @@ function change(call:NativePlanQuestionCall,from:string,to:string){
  const selected=call.answers![q.question];q.question=q.question.replace(from,to);call.answers={[q.question]:selected!};
 }
 describe('AO completed manual DX handoff preserves report freshness',()=>{
- test('shared completion callers register the regression with dense literal paths',()=>{
-  const arrays=[...Object.values(E2E_TOUCHFILES),...Object.values(LLM_JUDGE_TOUCHFILES),GLOBAL_TOUCHFILES];
-  expect(arrays).toHaveLength(216);
-  for(const values of arrays)for(let i=0;i<values.length;i++)expect(typeof values[i]).toBe('string');
- });
  test('exact owned report precedes navigation only, with the current Exit gate recognized',()=>{
   expect(captured.calls).toHaveLength(2);expect(captured.events).toHaveLength(4);
   expect(Date.parse(captured.calls[0]!.answeredAt!)).toBeLessThan(captured.provenance.reportMtimeMs);

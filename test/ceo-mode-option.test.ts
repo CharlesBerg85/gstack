@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { findCeoModeOption, hasPostAnswerCeoPosture, hasNativePostAnswerCeoPosture, nativeCeoModeAnswer, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
 import { parseNumberedOptions, stripAnsi, planCountQuestionInput, nativePlanCallFingerprint } from './helpers/claude-pty-runner';
-import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import type { PlanCountTranscript } from './helpers/plan-count-transcript';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -89,15 +88,6 @@ describe('CEO mode option matching', () => {
       { index: 1, label: 'Review HOLD SCOPE examples' },
       { index: 2, label: 'Choose a plan │ SCOPE EXPANSION' },
     ], 'HOLD SCOPE')).toBeNull();
-  });
-
-  test('the shared parser selects all callers while mode-specific regressions stay scoped', () => {
-    expect(selectTests(['test/helpers/ceo-mode-option.ts'], E2E_TOUCHFILES).selected)
-      .toEqual(['plan-ceo-mode-routing', 'plan-ceo-split-overflow']);
-    expect(selectTests(['test/ceo-mode-option.test.ts'], E2E_TOUCHFILES).selected)
-      .toEqual(['plan-ceo-mode-routing', 'plan-ceo-split-overflow']);
-    expect(selectTests(['test/pty-option-selection.test.ts'], E2E_TOUCHFILES).selected)
-      .toEqual(['plan-ceo-mode-routing']);
   });
 });
 

@@ -193,7 +193,6 @@ describe('autoplan reads installed host methodology', () => {
 
   test('the new discovery contract selects the affected live autoplan workflows', () => {
     for (const name of ['autoplan-dual-voice', 'carve-section-loading']) {
-      expect(E2E_TOUCHFILES[name]).toContain('test/autoplan-review-discovery.test.ts');
       expect(E2E_TOUCHFILES[name]).toContain('scripts/resolvers/composition.ts');
     }
   });

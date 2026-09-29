@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as evidence from './helpers/coverage-audit-evidence';
 import { JUDGE_MS, CAPTURE_MS } from './helpers/eval-budgets';
-import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
 import fixture from './fixtures/ship-coverage-audit-af.json';
 import { randomUUID } from 'node:crypto';
 import { validateCoverageAudit } from './helpers/coverage-audit';
@@ -91,10 +90,6 @@ test('AF ship caller records missing or foreign read evidence false exactly once
 
 test('AF ship actual read helper accepts only literal owned delivery before read-only neighbors',()=>{
   for(const row of fixture.rows.slice(0,2))expect((evidence as any).coverageAuditReadEvidence(row.result.transcript,{cwd:row.cwd,source:{path:row.cwd+'/src/billing.ts',content:fixture.files.source},tests:{path:row.cwd+'/test/billing.test.ts',content:fixture.files.tests}})).toEqual({sourceRead:true,testsRead:true});
-});
-
-test('AF ship controls and fixture select the one existing owner',()=>{
-  for(const name of ['test/ship-coverage-audit-af.test.ts','test/fixtures/ship-coverage-audit-af.json'])expect(Object.entries(E2E_TOUCHFILES).filter(([,files])=>files.includes(name)).map(([owner])=>owner)).toEqual(['ship-coverage-audit']);
 });
 
 function commandReads(command:string) {

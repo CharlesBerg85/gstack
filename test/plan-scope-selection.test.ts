@@ -10,7 +10,6 @@ import { fakePlanSeedPrelude } from './helpers/fake-plan-seed';
 import { nativeSeededPlanSelection } from './helpers/plan-scope-selection';
 import { isScopeGateQuestionVisible } from './helpers/claude-pty-runner';
 import { readPlanCountTranscript, type NativePublicToolEvent, type PlanCountTranscript } from './helpers/plan-count-transcript';
-import { selectTests, E2E_TOUCHFILES } from './helpers/touchfiles';
 import captured_design_scope_announcement_ao from './fixtures/design-scope-announcement-ao.json';
 import fixture_design_scope_declaration_ak from './fixtures/design-scope-declaration-ak.json';
 import fs_design_scope_entry_aq from 'node:fs';
@@ -163,14 +162,6 @@ test('design scope question still requires the actual branch option', () => {
   expect(isScopeGateQuestionVisible('What should I design-review?')).toBe(false);
   expect(isScopeGateQuestionVisible('I should design-review the current branch diff.')).toBe(false);
 });
-
-test('seeded plan selection dependencies select the existing design and Eng mode checks', () => {
-  for (const file of ['test/helpers/plan-scope-selection.ts', 'test/plan-scope-selection.test.ts']) {
-    const selection = selectTests([file], E2E_TOUCHFILES);
-    expect(selection.selected).toContain('plan-design-review-plan-mode'); expect(selection.selected).toContain('plan-eng-review-plan-mode');
-  }
-});
-
 test('real PTY observation binds its explicit session and retains public diagnostics before cleanup', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scope-pty-'));
   const cli = createFakeBunCli(path.join(dir, 'fake-claude'), fakePlanSeedPrelude() + `
@@ -274,13 +265,6 @@ test('AG completed selection still requires this parent and a successful prior s
   expect(verdict(fixture(text), { ...opts, sessionId: '' })).toBe(false);
   expect(verdict(fixture(text), { ...opts, seed: opts.seed + '\n# Another plan' })).toBe(false);
 });
-
-test('AG actual scope fixture has exactly the existing two plan-mode owners', () => {
-  const selected = selectTests(['test/fixtures/design-plan-scope-ag.json'], E2E_TOUCHFILES).selected;
-  expect([...selected].sort()).toEqual(['plan-design-review-plan-mode', 'plan-eng-review-plan-mode']);
-});
-
-
 test('AG audit continuation cannot withdraw or relabel the current selection', () => {
   const text = `I've selected reviewing the pasted "Marketing landing page" draft plan since we're in plan mode.`;
   for (const tail of [
@@ -400,12 +384,6 @@ test('later current corrections defeat the draft selection while quoted history 
     expect(awCheck(p), text).toBe(true);
   }
 });
-
-test('the AW public fixture selects the existing scope helper owners without a new paid test', () => {
-  expect(selectTests(['test/fixtures/plan-scope-target-aw.json'], E2E_TOUCHFILES, []).selected)
-    .toEqual(selectTests(['test/helpers/plan-scope-selection.ts'], E2E_TOUCHFILES, []).selected);
-});
-
 // Exact public AZ intros; identities and timestamps use the existing synthetic fixture.
 const spokenEngIntros = [
   "I'll run the eng review skill against your draft plan.",
@@ -862,16 +840,6 @@ test('foreign, historical and literal corrections do not retract a current named
 test('a later explicit reselection follows the existing currentness rule', () => {
   const p = input(), m = declaration(p); p.transcript.assistantMessages.push({ ...m, timestamp: new Date(Date.parse(m.timestamp) + 1000).toISOString(), text: 'This selection is withdrawn.' }); expect(verdict(p)).toBe(false);
   p.transcript.assistantMessages.push({ ...m, timestamp: new Date(Date.parse(m.timestamp) + 2000).toISOString() }); expect(verdict(p)).toBe(true);
-});
-for (const owner of [
-  'plan-ceo-review-plan-mode', 'plan-eng-review-plan-mode',
-  'plan-design-review-plan-mode', 'plan-devex-review-plan-mode', 'plan-mode-no-op',
-]) test(`scope dependency registration is dense for ${owner}`, () => {
-  const paths = E2E_TOUCHFILES[owner]!;
-  for (let index = 0; index < paths.length; index++) {
-    expect(Object.hasOwn(paths, index)).toBe(true);
-    expect(typeof paths[index]).toBe('string');
-  }
 });
 });
 

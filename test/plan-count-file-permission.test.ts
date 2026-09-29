@@ -219,11 +219,6 @@ import capturedAh_plan_count_permission_ac from './fixtures/plan-count-permissio
 import { currentFilePermissionBinding } from './helpers/plan-count-file-permission';
 import exact_plan_count_quoted_frame_ak from './fixtures/plan-count-quoted-frame-ak.json';
 import owned_plan_count_quoted_frame_ak from './fixtures/plan-count-owned-permission-v.json';
-test('AD v2 cropped target fixture selects all existing file-permission consumers',()=>{
- expect(selectTests(['test/fixtures/plan-count-permission-target-ad-v2.json'],E2E_TOUCHFILES,[]).selected)
-  .toEqual(selectTests(['test/plan-count-file-permission.test.ts'],E2E_TOUCHFILES,[]).selected);
-});
-
 describe('batching-permission-at', () => {
 const fs = fs_batching_permission_at;
 const os = os_batching_permission_at;
@@ -723,13 +718,7 @@ for (const c of cases) {
     }
   });
 }
-
-test('AD crop fixture selects the exact existing permission regression callers', () => {
-  expect(selectTests(['test/fixtures/plan-count-permission-ad.json'], E2E_TOUCHFILES).selected.sort()).toEqual(
-    selectTests(['test/fixtures/plan-count-permission-ac.json'], E2E_TOUCHFILES).selected.sort());
-});
-
-test('AE crop admits one native divider only and preserves its exact existing caller selection', () => {
+test('AE crop admits one native divider only', () => {
   const c = cases.find(item => item.p.pid === capturedAe.pid)!;
   const firstLine = c.screen.slice(0, c.screen.indexOf('\n') + 1);
   for (const screen of [firstLine + c.screen, 'unrelated prose\n' + c.screen,
@@ -738,8 +727,6 @@ test('AE crop admits one native divider only and preserves its exact existing ca
     expect(adEpoch(c, screen)).toBeNull();
     expect(createPlanCountPermissionGuard()(screen, '', adEpoch(c, screen))).not.toBe('grant');
   }
-  expect(selectTests(['test/fixtures/plan-count-permission-ae.json'], E2E_TOUCHFILES).selected.sort()).toEqual(
-    selectTests(['test/fixtures/plan-count-permission-ad.json'], E2E_TOUCHFILES).selected.sort());
 });
 
 test('AH wrapped crop admits four or five spaces with the same owned native epoch', () => {

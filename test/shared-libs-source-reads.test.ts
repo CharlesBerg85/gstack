@@ -3,8 +3,6 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import native from './fixtures/shared-libs-resolved-reads-public.json';
-import { E2E_TOUCHFILES, GLOBAL_TOUCHFILES, selectTests } from './helpers/touchfiles';
-
 const source = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-shared-libs-paths.test.ts'), 'utf8');
 const detectorStart = source.indexOf('function sourceReadTrace(');
 const callbackStart = source.indexOf('async function exerciseEligibility(');
@@ -122,13 +120,6 @@ test.each(['Read', 'Bash'])('direct alias reads retain the existing %s contract'
   const result = { toolCalls: [{ tool, input: tool === 'Read' ? { file_path: aliases[0] } : { command: `cat ${aliases[0]}` } }] };
   expect(detect(result, f, aliases)).toContain(aliases[0]);
 });
-
-test.each(['test/shared-libs-source-reads.test.ts', 'test/fixtures/shared-libs-resolved-reads-public.json'])('%s selects every owning path callback without a global fallback', file => {
-  expect(selectTests([file], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected.sort()).toEqual([
-    'shared-libs-review-index-flags', 'shared-libs-review-path-eligibility', 'shared-libs-review-prior-coverage',
-  ]);
-});
-
 test.each([false, true])('the actual eligibility callback consumes the read detector result (missing output=%s)', async missingOutput => {
   const f = fixture();
   const result: any = capture();

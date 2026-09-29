@@ -4,7 +4,6 @@ import fixture from './fixtures/autoplan-edit-digests-al.json';
 import {createAutoplanArtifactRecorder,recordAutoplanArtifact,readPendingAutoplanArtifact,autoplanArtifactRecorderStatus} from './helpers/autoplan-artifact-recorder';
 import {createAutoplanEditDigest,validAutoplanEditDigest} from './helpers/autoplan-artifact-digest';
 import type {NativePublicToolEvent} from './helpers/plan-count-transcript';
-import {E2E_TOUCHFILES,selectTests} from './helpers/touchfiles';
 const cleanups:Array<()=>void>=[];afterEach(()=>{for(const cleanup of cleanups.splice(0))cleanup()});
 function replay(record=true) {
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'ap-digest-')),cwd=path.join(root,path.basename(fixture.cwd)),ownedStateRoot=path.join(root,'home','.gstack'),config=path.join(root,'config');
@@ -36,9 +35,6 @@ test('unavailable or oversized before/request data yields no new digest authorit
  const r=replay();expect(createAutoplanEditDigest(r.file,'missing original','new')).toBeUndefined();expect(createAutoplanEditDigest(r.file,'Owner: the user.\n','x\n'.repeat(513))).toBeUndefined();
  const link=path.join(r.root,'linked');fs.symlinkSync(r.file,link);expect(createAutoplanEditDigest(link,r.event.tool_input.old_string,r.event.tool_input.new_string)).toBeUndefined();
  fs.writeFileSync(r.file,'x'.repeat(1024*1024+1));expect(createAutoplanEditDigest(r.file,'x','new')).toBeUndefined();fs.unlinkSync(r.file);expect(createAutoplanEditDigest(r.file,'old','new')).toBeUndefined();
-});
-test('Eng and Autoplan share the digest helper and regression evidence',()=>{
- for(const file of ['test/helpers/autoplan-artifact-digest.ts','test/autoplan-edit-digests-al.test.ts','test/fixtures/autoplan-edit-digests-al.json'])expect(selectTests([file],E2E_TOUCHFILES,[]).selected.sort()).toEqual([]);
 });
 test('identical pending hook replay cannot refresh digest or timestamp',()=>{
  const r=replay(),before=fs.readFileSync(r.recorder.file,'utf8');recordAutoplanArtifact(JSON.stringify(r.event),r.recorder.file,r.context.cwd,r.config,r.context.ownedStateRoot);expect(fs.readFileSync(r.recorder.file,'utf8')).toBe(before);

@@ -4,8 +4,6 @@ import fixture from './fixtures/coverage-audit-ae.json';
 import ciDiagrams from './fixtures/coverage-audit-ci-diagrams.json';
 import { coverageAuditVerdict } from './helpers/coverage-audit-evidence';
 import { recordE2E } from './helpers/e2e-helpers';
-import { E2E_TOUCHFILES, LLM_JUDGE_TOUCHFILES, GLOBAL_TOUCHFILES } from './helpers/touchfiles';
-import { selectTests } from './helpers/test-selection';
 import fixture_coverage_audit_af from './fixtures/coverage-audit-af.json';
 import { posix } from 'node:path';
 import { win32 } from 'node:path';
@@ -448,12 +446,6 @@ Guard clauses tested: 0 / 4
       const v=verdict(s),entries:any[]=[];
       recordE2E({addTest:(entry:any)=>entries.push(entry)} as any,'coverage','fixture',s.result,{passed:v.passed,error:v.failures.length?v.failures.join('; '):undefined});
       expect(entries).toHaveLength(1);expect(entries[0].passed).toBe(valid);expect(entries[0].error).toBe(valid?undefined:v.failures.join('; '));
-    }
-  });
-  test('coverage evidence files select their exact registered consumers',()=>{
-    for(const file of ['test/helpers/coverage-audit-evidence.ts','test/coverage-audit-evidence.test.ts','test/fixtures/coverage-audit-ae.json','test/fixtures/coverage-audit-ci-diagrams.json']){
-      expect(selectTests([file],E2E_TOUCHFILES,GLOBAL_TOUCHFILES).selected.sort()).toEqual(file === 'test/helpers/coverage-audit-evidence.ts' || file === 'test/coverage-audit-evidence.test.ts' ? ['plan-eng-coverage-audit','review-coverage-audit','ship-coverage-audit'] : ['plan-eng-coverage-audit','review-coverage-audit']);
-      expect(selectTests([file],LLM_JUDGE_TOUCHFILES,GLOBAL_TOUCHFILES).selected).toEqual([]);
     }
   });
 });

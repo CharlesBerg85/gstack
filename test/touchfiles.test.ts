@@ -18,6 +18,7 @@ import {
   GLOBAL_TOUCHFILES,
 } from './helpers/touchfiles';
 
+import { paidTestClosure, isCovered } from './helpers/touchfile-closure';
 import { readWorkflowExcerpt } from './helpers/workflow-excerpt';
 import { sharedLibsPlanExcerpt } from './helpers/shared-libs-plan-excerpt';
 
@@ -115,7 +116,7 @@ describe('selectTests', () => {
     },
   );
 
-  test.each(['lib/cso/cli.ts', 'lib/cso/state.ts', 'test/cso-cli.test.ts', 'test/cso-snapshot-state.test.ts'])(
+  test.each(['lib/cso/cli.ts', 'lib/cso/state.ts'])(
     'CSO runtime and report regressions select all three audit cases: %s', (file) => {
       const result = selectTests([file], E2E_TOUCHFILES);
       expect(result.reason).toBe('diff');
@@ -132,14 +133,6 @@ describe('selectTests', () => {
       for (const id of ['cso-diff-mode', 'cso-full-audit', 'cso-infra-scope']) {
         expect(result.selected).toContain(id);
       }
-    },
-  );
-
-  test.each(['test/helpers/coverage-audit.ts', 'test/coverage-audit.test.ts'])(
-    'coverage-audit validation changes select all three gate cases: %s', (file) => {
-      const result = selectTests([file], E2E_TOUCHFILES);
-      expect(result.selected.sort()).toEqual(['plan-eng-coverage-audit', 'review-coverage-audit', 'ship-coverage-audit']);
-      expect(result.selected.every(id => E2E_TIERS[id] === 'gate')).toBe(true);
     },
   );
 
@@ -243,33 +236,6 @@ describe('selectTests', () => {
       expect(result.selected).toContain('plan-design-review/SKILL.md passes');
     });
 
-  test('the shared recording lifecycle selects every bounded attempt', () => {
-    const result = selectTests(['test/helpers/office-hours-attempt.ts'], E2E_TOUCHFILES);
-    const expected = {
-      'office-hours-forcing-energy': 'periodic',
-      'office-hours-builder-wildness': 'periodic',
-      'office-hours-brain-writeback': 'periodic',
-      'plan-design-review-plan-mode': 'periodic',
-      'plan-ceo-review-format-mode': 'periodic',
-      'plan-ceo-review-format-approach': 'periodic',
-      'plan-eng-review-format-coverage': 'periodic',
-      'plan-eng-review-format-kind': 'periodic',
-      'plan-ceo-review-prosons-cadence': 'periodic',
-      'plan-review-prosons-format': 'periodic',
-      'plan-review-prosons-hardstop-neg': 'periodic',
-      'plan-review-prosons-neutral-neg': 'periodic',
-      'setup-gbrain-bad-token': 'periodic',
-      'setup-gbrain-path4-local-pglite': 'periodic',
-      'setup-gbrain-remote': 'periodic',
-      'review-army-red-team': 'periodic',
-      'review-coverage-audit': 'gate',
-      'plan-eng-coverage-audit': 'gate',
-      'ship-coverage-audit': 'gate',
-      'plan-review-report': 'gate',
-    };
-    expect(result.selected.sort()).toEqual(Object.keys(expected).sort());
-    for (const [id, tier] of Object.entries(expected)) expect(E2E_TIERS[id]).toBe(tier);
-  });
 
   test('browse/src change selects browse and qa tests', () => {
     const result = selectTests(['browse/src/commands.ts'], E2E_TOUCHFILES);
@@ -299,33 +265,14 @@ describe('selectTests', () => {
 
   test('mode-question capture dependencies select its native gate', () => {
     for (const file of [
-      'test/auq-mode-capture.test.ts', 'test/skill-ceo-section-ordering.test.ts',
       'test/helpers/agent-sdk-runner.ts', 'test/helpers/auq-native-capture.ts',
       'test/helpers/hermetic-env.ts', 'test/helpers/eval-store.ts',
-      'lib/claude-bin.ts', 'test/workflow-excerpt.test.ts',
+      'lib/claude-bin.ts',
     ]) {
       expect(selectTests([file], E2E_TOUCHFILES).selected).toContain('auq-format-gate');
     }
   });
 
-  test('shared-code evidence regressions select their consuming evaluations', () => {
-    expect(selectTests(['test/fixtures/shared-libs-readonly-substitution-ci16358.json'], E2E_TOUCHFILES).selected.sort())
-      .toEqual(['shared-libs-codex-read-only', 'shared-libs-opportunity-judgment', 'shared-libs-pr-coverage',
-        'shared-libs-read-only', 'shared-libs-unsupported-git'].sort());
-    for (const file of ['test/helpers/shared-libs-review-start-evidence.ts', 'test/shared-libs-review-start-evidence.test.ts',
-      'test/fixtures/shared-libs-review-start-public.json',
-      'test/fixtures/shared-libs-revalidation-max-turns-public.json']) {
-      expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['shared-libs-review-revalidation']);
-    }
-    const pathCases = ['shared-libs-review-path-eligibility', 'shared-libs-review-index-flags',
-      'shared-libs-review-prior-coverage'];
-    expect(selectTests(['test/shared-libs-revalidation-prompt.test.ts'], E2E_TOUCHFILES).selected.sort())
-      .toEqual([...pathCases, 'shared-libs-review-revalidation'].sort());
-    expect(selectTests(['test/fixtures/shared-libs-index-flags-skip-question.json'], E2E_TOUCHFILES).selected.sort())
-      .toEqual([...pathCases, 'shared-libs-review-revalidation', 'shared-libs-review-lifecycle'].sort());
-    expect(selectTests(['test/fixtures/shared-libs-paths-max-turns-public.json'], E2E_TOUCHFILES).selected)
-      .toEqual(['shared-libs-review-index-flags']);
-  });
 
   test('skill-specific change selects only that skill and related tests', () => {
     const result = selectTests(['plan-ceo-review/SKILL.md'], E2E_TOUCHFILES);
@@ -376,7 +323,6 @@ describe('selectTests', () => {
 
   test.each([
     'test/helpers/hermetic-skill-runtime.ts',
-    'test/hermetic-skill-runtime.test.ts',
     'lib/fs-atomic.ts',
   ])('live runtime dependency selects PTY consumers: %s', (file) => {
     const result = selectTests([file], E2E_TOUCHFILES);
@@ -385,13 +331,6 @@ describe('selectTests', () => {
     expect(result.selected).not.toContain('retro');
   });
 
-  test('session tool isolation regression selects its capture workflows', () => {
-    const result = selectTests(['test/session-runner-tools.test.ts'], E2E_TOUCHFILES);
-    expect(result.selected.sort()).toEqual([
-      'auq-format-gate', 'carve-section-loading', 'plan-ceo-section-loading', 'plan-design-review-plan-mode', 'ship-section-loading',
-    ]);
-    expect(result.reason).toBe('diff');
-  });
 
   test('gen-skill-docs.ts is a scoped touchfile, not global', () => {
     const result = selectTests(['scripts/gen-skill-docs.ts'], E2E_TOUCHFILES);
@@ -408,7 +347,7 @@ describe('selectTests', () => {
     expect(result.selected).not.toContain('cso-full-audit');
   });
 
-  test.each(['test/helpers/ceo-finding-fixture.ts', 'test/ceo-finding-fixture.test.ts', 'test/ceo-mode-routing-fixture.test.ts'])('mode input dependency selects its periodic eval: %s', file => {
+  test.each(['test/helpers/ceo-finding-fixture.ts'])('mode input dependency selects its periodic eval: %s', file => {
     const result = selectTests([file], E2E_TOUCHFILES);
     expect(result.selected).toContain('plan-ceo-mode-routing');
     expect(result.reason).toBe('diff');
@@ -729,5 +668,52 @@ describe('reverse invariant — keys must name living paid tests', () => {
     const stale = Object.entries(CONSTRUCTED_NAME_EXCEPTIONS)
       .filter(([, file]) => !fs.existsSync(path.join(ROOT, file)));
     expect(stale.map(([k]) => k), 'exception points at a deleted file — remove the entry').toEqual([]);
+  });
+});
+
+describe('derived touchfile closure', () => {
+  const { isPaidTestFile } = require('./helpers/paid-test-set') as typeof import('./helpers/paid-test-set');
+  const paid = fs.readdirSync(path.join(ROOT, 'test')).map(name => `test/${name}`).filter(isPaidTestFile).sort();
+  const source = Object.fromEntries(paid.map(file => [file, fs.readFileSync(path.join(ROOT, file), 'utf8')]));
+  const quotes = (file: string, key: string) =>
+    source[file]!.includes(`'${key}'`) || source[file]!.includes(`"${key}"`) || source[file]!.includes('`' + key + '`');
+  /** A key belongs to the paid files in its own list, else to the paid files that quote it. */
+  const owners = (key: string, deps: readonly string[]) => {
+    const listed = deps.filter(dep => paid.includes(dep));
+    return listed.length ? listed : paid.filter(file => quotes(file, key));
+  };
+  const maps = [['E2E_TOUCHFILES', E2E_TOUCHFILES], ['LLM_JUDGE_TOUCHFILES', LLM_JUDGE_TOUCHFILES]] as const;
+  /** Paid files no key selects; they run only by tier or census. */
+  const KEYLESS_PAID: Record<string, string> = {
+    'test/codex-e2e-recommendation-substance.test.ts': 'census-only Codex case; PERIODIC_CI_EXCLUDE (no codex CLI in CI)',
+    'test/skill-e2e-auq-consistency.test.ts': 'periodic tier gate only (describeE2ETier), never diff-selected',
+    'test/skill-e2e-auq-verbose-vs-carved-ab.test.ts': 'periodic tier gate only (describeE2ETier), never diff-selected',
+  };
+
+  test('no free test file is a touchfile', () => {
+    const listed = maps.flatMap(([name, map]) => Object.entries(map).flatMap(([key, deps]) =>
+      deps.filter(dep => dep.endsWith('.test.ts') && !isPaidTestFile(dep)).map(dep => `${name}['${key}']: ${dep}`)));
+    expect(listed, 'Editing a free test must not select paid evals; remove these entries').toEqual([]);
+  });
+
+  test('every key covers the static helper/fixture closure and literal fixture paths of its paid files', () => {
+    const boundary = new Set(GLOBAL_TOUCHFILES);
+    const failures: string[] = [];
+    for (const [name, map] of maps) for (const [key, deps] of Object.entries(map)) {
+      for (const owner of owners(key, deps)) for (const entry of paidTestClosure(ROOT, owner, boundary)) {
+        if (isCovered(entry.file, deps, GLOBAL_TOUCHFILES)) continue;
+        failures.push(`paid test ${owner} depends on ${entry.file}\n    via ${entry.chain.join(' -> ')}\n` +
+          `    add '${entry.file}' to ${name}['${key}']`);
+      }
+    }
+    expect(failures.length, failures.length ? `${failures.join('\n')}\n` +
+      'Verify with: bun run scripts/test-paid-shards.ts --tier gate --profile pr --list\n' +
+      'See CONTRIBUTING.md#paid-test-touchfiles. This rule is a lower bound: fixture paths built at runtime ' +
+      'are not visible to it, so declare them in the key by hand.' : '').toBe(0);
+  });
+
+  test('keyless paid files are exactly the declared exemptions', () => {
+    const keyed = (file: string) => maps.some(([, map]) => Object.entries(map).some(([key, deps]) => deps.includes(file) || quotes(file, key)));
+    expect(paid.filter(file => !keyed(file))).toEqual(Object.keys(KEYLESS_PAID).sort());
   });
 });

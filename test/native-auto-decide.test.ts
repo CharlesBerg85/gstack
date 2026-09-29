@@ -5,7 +5,6 @@ import * as path from 'node:path';
 import { findNativeAutoDecision } from './helpers/native-auto-decide';
 import { classifyVisible } from './helpers/claude-pty-runner';
 import { readPlanCountTranscript, type NativePublicToolEvent } from './helpers/plan-count-transcript';
-import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import capture_auto_decide_current_declaration from './fixtures/auto-decide-current-declaration-6aef.json';
 import capture_auto_decide_explanatory_mode from './fixtures/auto-decide-explanatory-mode-043a.json';
 import captured749_auto_decide_explanatory_mode from './fixtures/auto-decide-explanatory-mode-749df.json';
@@ -109,15 +108,6 @@ test('the native reader cannot promote foreign cwd, child, user or tool-result t
     }
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
-
-test('new native annotation dependencies retain all existing observation caller owners',()=>{
-  const expected=['plan-ceo-review-plan-mode','plan-eng-review-plan-mode','plan-design-review-plan-mode','plan-devex-review-plan-mode','plan-mode-no-op','office-hours-auto-mode','auto-decide-preserved'];
-  for(const file of ['test/helpers/native-auto-decide.ts','test/native-auto-decide.test.ts','test/native-auto-decide-pty.test.ts','test/fixtures/native-auto-decide-ag.json']){
-    const owners=Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(file)).map(([name])=>name);expect(owners).toEqual(expected);
-    expect(selectTests([file],E2E_TOUCHFILES).selected).toContain('auto-decide-preserved');
-  }
-});
-
 describe('auto-decide-current-declaration', () => {
 const capture = capture_auto_decide_current_declaration;
 const clone = () => structuredClone(capture.retry) as any;

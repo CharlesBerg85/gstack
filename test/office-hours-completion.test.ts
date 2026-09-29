@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { validateOfficeHoursCompletion, validateOfficeHoursReviewerHandoffs, validateOfficeHoursReviewArtifacts, validateOfficeHoursReviewPreservation, validateOfficeHoursSpecSummary, type OfficeHoursCompletionEvidence } from './helpers/office-hours-completion';
-import { E2E_TOUCHFILES, E2E_TIERS } from './helpers/touchfiles-data';
+import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
 import { selectTests } from './helpers/test-selection';
 
 const designPath = '/tmp/office-hours-fixture/docs/designs/roster-check.md';
@@ -696,14 +696,6 @@ describe('office-hours completion eval selection', () => {
     const { selected } = selectTests(['office-hours/sections/design-and-handoff.md.tmpl'], E2E_TOUCHFILES);
     expect(selected).toContain('office-hours-section-loading');
     expect(selected).not.toContain('carve-section-loading');
-  });
-
-  test('completion helper changes select its gate and dedicated periodic workflow', () => {
-    const { selected } = selectTests(['test/helpers/office-hours-completion.ts'], E2E_TOUCHFILES);
-    expect(selected).toEqual(['office-hours-spec-review', 'office-hours-section-loading']);
-    expect(selected.filter(name => E2E_TIERS[name] === 'periodic')).toEqual(['office-hours-section-loading']);
-    expect(E2E_TIERS['office-hours-spec-review']).toBe('gate');
-    expect(E2E_TOUCHFILES['office-hours-section-loading']).toContain('test/skill-e2e-office-hours-section-loading.test.ts');
   });
 });
 

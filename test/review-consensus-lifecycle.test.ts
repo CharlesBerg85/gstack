@@ -3,8 +3,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { JUDGE_MS, CAPTURE_MS } from './helpers/eval-budgets';
 import { SESSION_DRAIN_GRACE_MS } from './helpers/session-runner';
-import { E2E_TOUCHFILES } from './helpers/touchfiles';
-
 const source=fs.readFileSync(path.join(import.meta.dir,'skill-e2e-review-army.test.ts'),'utf8');
 async function exercise(scenarios: Array<'success'|'timeout'|'wrong-report'|'browse-error'>, fixturePath = path) {
   const setups:any[]=[],done:any[]=[],callbacks:any[]=[],rows:any[]=[],calls:any[]=[];
@@ -60,8 +58,4 @@ test('Consensus caller fixture preserves success and semantic failure under eith
     expect(x.errors[0]).toBeUndefined(); expect(x.errors[1]).toBeDefined();
     expect(x.rows.map(r=>r.passed)).toEqual([true,false]);
   }
-});
-
-test('Consensus lifecycle controls select the existing consensus owner only',()=>{
-  expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes('test/review-consensus-lifecycle.test.ts')).map(([name])=>name)).toEqual(['review-army-consensus']);
 });
