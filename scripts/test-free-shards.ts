@@ -930,23 +930,6 @@ function formatShardSummary(shards: string[][]): string[] {
   });
 }
 
-/**
- * True when a shard's output shows the run ended WITHOUT bun's final summary
- * ("Ran N tests across ..."). A process.exit() fired mid-suite skips the
- * summary AND hands back whatever code the caller passed — historically 0,
- * which made a truncated shard indistinguishable from a green one. Exit code
- * alone is therefore not evidence of completion; the summary line is.
- *
- * The runner itself now enforces this (and more) through
- * scripts/test-strict-output.ts inside runFreeShard; this predicate remains
- * the minimal documented primitive that test/exit-propagation.test.ts drives
- * with genuine truncated and genuine complete bun runs.
- */
-export function shardRunLooksTruncated(status: number | null, output: string): boolean {
-  if (status !== 0) return false; // already failing — not the silent case
-  return !/Ran \d+ tests? across \d+ files?/.test(output);
-}
-
 // ---------------------------------------------------------------------------
 // Output contract: console filtering + per-file failure attribution.
 //
