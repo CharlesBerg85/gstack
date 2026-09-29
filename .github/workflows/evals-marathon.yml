@@ -23,12 +23,6 @@ env:
   EVALS_CACHE_PURPOSE: marathon
 
 jobs:
-  IMAGE: ghcr.io/${{ github.repository }}/ci
-  EVALS_PROFILE: full
-  EVALS_FRESH: "1"
-  EVALS_CACHE_PURPOSE: periodic
-
-jobs:
   build-image:
     runs-on: ubicloud-standard-8
     timeout-minutes: 15
