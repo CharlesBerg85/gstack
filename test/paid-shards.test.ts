@@ -54,6 +54,9 @@ import {
   caseIdForTestName,
   shardTrial,
   excludedCasesNamePattern,
+  runCaseDiagnosis,
+  caseFile,
+  parseCliOptions,
   type CaseTrialPlan,
   type ShardOutcome,
 } from '../scripts/test-paid-shards';
@@ -673,5 +676,27 @@ console.log("Ran 1 tests across 1 files. [1ms]"); process.exit(${fail ? 1 : 0});
     expect(caseIdForTestName('review-sql-injection')).toBe('review-sql-injection');
     expect(caseIdForTestName(CASE_TEST_NAMES['plan-review-report']!)).toBe('plan-review-report');
     expect(caseIdForTestName('plain helper')).toBeNull();
+  });
+
+  test('--case/--trials: local diagnosis flags are validated and never combine with CI modes', () => {
+    expect(parseCliOptions(['--case', 'review-sql-injection', '--trials', '5'], {})).toMatchObject({ caseId: 'review-sql-injection', trials: 5 });
+    expect(() => parseCliOptions(['--trials', '3'], {})).toThrow('--trials requires --case');
+    expect(() => parseCliOptions(['--case', 'no-such-case'], {})).toThrow('live E2E case id');
+    expect(() => parseCliOptions(['--case', 'review-sql-injection', '--report', '/tmp/r'], {})).toThrow('local diagnosis');
+    expect(caseFile('review-sql-injection')).toBe('test/skill-e2e-review.test.ts');
+  });
+
+  test('--case runs the CI panel runner and prints its panelVerdict', async () => {
+    const evalDirBase = fs.mkdtempSync(path.join(os.tmpdir(), 'case-diagnosis-'));
+    const lines: string[] = [];
+    try {
+      const verdict = await runCaseDiagnosis('review-sql-injection', { trials: 3, evalDirBase, log: line => lines.push(line), jobs: 3,
+        commandFor: files => ({ command: process.execPath, args: ['-e',
+          `console.log("Ran 1 tests across 1 files. [1ms]"); process.exit(${files[0]!.endsWith('~t3') ? 1 : 0});`] }) });
+      // A rule case keeps its meaning locally: every trial must pass.
+      expect(verdict).toMatchObject({ case: 'review-sql-injection', kind: 'rule', panel: { n: 3, k: 3 }, passed: 2, status: 'FAIL' });
+      expect(lines.join('\n')).toContain('--case review-sql-injection: 3 trial(s) of test/skill-e2e-review.test.ts');
+      expect(lines.join('\n')).toContain('FAIL 2/3 (✓✓✗)');
+    } finally { fs.rmSync(evalDirBase, { recursive: true, force: true }); }
   });
 });
