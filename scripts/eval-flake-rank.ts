@@ -578,13 +578,15 @@ function gh(args: string[]): Buffer {
   return result.stdout;
 }
 
-const jsonLines = <T>(buffer: Buffer): T[] => buffer.toString('utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as T);
+function jsonLines<T>(buffer: Buffer): T[] {
+  return buffer.toString('utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as T);
+}
 
 export const GH_HISTORY: HistoryFetcher = {
-  listRuns: (repo, workflow, branch, limit) => jsonLines<WeeklyRun>(gh(['api',
+  listRuns: (repo, workflow, branch, limit): WeeklyRun[] => jsonLines(gh(['api',
     `repos/${repo}/actions/workflows/${workflow}/runs?branch=${encodeURIComponent(branch)}&status=completed&per_page=${limit}`,
     '--jq', '.workflow_runs[] | {id, attempt: .run_attempt, sha: .head_sha, branch: .head_branch, createdAt: .created_at}'])),
-  listArtifacts: (repo, runId) => jsonLines<RunArtifact>(gh(['api', `repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`,
+  listArtifacts: (repo, runId): RunArtifact[] => jsonLines(gh(['api', `repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`,
     '--paginate', '--jq', '.artifacts[] | select(.expired | not) | {id, name, size: .size_in_bytes}'])),
   downloadZip: (repo, artifactId, destination) => fs.writeFileSync(destination, gh(['api', `repos/${repo}/actions/artifacts/${artifactId}/zip`])),
 };
@@ -674,7 +676,7 @@ if (import.meta.main) {
       weeklyRuns = runs.map(run => run.createdAt);
       const cacheDir = path.join(os.homedir(), '.gstack', 'eval-pass-rates-cache', repo.replace('/', '-'));
       const match = backfill
-        ? (name: string) => name.startsWith('trial-outcomes') || /^(paid-slice-\d+|gate-census-\d+)$/.test(name)
+        ? (name: string) => name.startsWith('trial-outcomes') || /^(paid-slice-\d+|gate-census-\d+)(-a\d+)?$/.test(name)
         : (name: string) => name.startsWith('trial-outcomes');
       for (const run of runs) {
         const dirsForRun = downloadRunArtifacts({ repo, run, match, cacheDir, maxBytes: backfill ? 64 * 1024 * 1024 : undefined });

@@ -270,8 +270,8 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // Covers ceo (preamble misfire) + eng/design (scope-gate bypass must not
   // fire outside plan mode) + the named-target exception case. 4 PTY runs;
   // in CI these run CONCURRENT with the rest of the pty-plan-smoke suite
-  // (--max-concurrency + --retry 1), so worst-case cost is ~2x a single
-  // pass of each, sharing the API budget with sibling tests — not the
+  // (--max-concurrency, no retries), so worst-case cost is one pass of
+  // each, sharing the API budget with sibling tests — not the
   // sequential ~+10min a local read suggests.
   'plan-mode-no-op':              [
     

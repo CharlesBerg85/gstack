@@ -492,22 +492,23 @@ minus overhead and ratchets raw literals. Budget above the wall is fiction.
 No paid test may exceed the ordinary tiers.
 
 `FINDING_RETRY_BUDGETS` also registers the CEO split-overflow and Eng
-multi-finding batching files. Each retains its 25-minute case deadline and, as a
-case past the retry cap, runs once in a 27-minute shard wall including two
-minutes for cleanup. No per-case budget grows. Overlay wrappers
+multi-finding batching files. Each retains its 25-minute case deadline and runs
+once (paid evals never retry) in a 27-minute shard wall including two minutes for
+cleanup. No per-case budget grows. Overlay wrappers
 have a 1,830-second minimum shard wall and run without Bun retries; see the
 [overlay contract](OVERLAY_BENCHMARK_CONTRACT.md) for their unchanged work budget.
 
-The quality file reserves its whole-file wall for every case and its one retry
-(judge cases are under the retry cap), plus cleanup. Each still has 120 seconds of model work. Its 17 workflow
+The quality file reserves its whole-file wall (3,170 seconds) for every case run
+once, plus cleanup. Each still has 120 seconds of model work. Its 17 workflow
 judges own their deadline and abort signal, with five seconds for terminal
 recording inside a ten-second Bun grace; the other 11 retain their existing
 120-second Bun timeout. Late responses cannot create records or cache passes.
 
-The ship documentation file reserves 5,520 seconds for five 600-second cases and
-eight 300-second fault cases, run once (a 600-second case is past the retry cap), plus cleanup. The standalone
+The ship documentation file reserves 4,920 seconds for four 600-second cases and
+eight 300-second fault cases, run once, plus cleanup; in CI each case runs as its
+own shard. The standalone
 documentation child retains its 600-second case. The five review/ship explorer
-cases reserve 3,270 seconds including their existing retry and finalization grace.
+cases reserve 1,695 seconds, run once, including finalization grace.
 These are whole-file supervision limits, not additional model work per case.
 
 The shared-library path file reserves 1,920 seconds for its three serial
@@ -521,7 +522,7 @@ records fail reconciliation. Case deadlines and model budgets do not grow.
 `resolvePaidShardBudget(files, overrideMs?)` is the canonical per-job resolver.
 Each registered finding file and each overlay wrapper requires its
 own shard, even with `--files-per-shard` above one. Mixed or multi-file overlay
-jobs are rejected so ordinary files retain their configured retries. An explicit
+jobs are rejected. An explicit
 CLI `--timeout`, `EVALS_SHARD_TIMEOUT_MS`, or API `timeoutMs` still wins for these
 policies, including a lower cap; overlay overrides below their minimum are rejected.
 Planner entries and execution results record the effective wall,
@@ -529,13 +530,13 @@ its source and policy identifier. Custom drivers must resolve each job instead
 of passing their ordinary 1800-second default as an explicit cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
 The paid census counts are printed by `--list` for each tier.
-`eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps; the PR
+`eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps, above their recomputed floors (PR fallback 72,755 s, periodic 33,821 s including the trial shards); the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
-wrapper reserves 49320 seconds, and release reserves 116700 seconds for both
+wrapper reserves 49320 seconds (floor 21,725 s), and release reserves 116700 seconds for both
 tiers; free tests recompute each floor from the live shard census, case shards
 included. Legacy monolithic
-`eval:bg`/`eval:bg:all` retain their shorter 5400/7200-second caps and do not
-promise every registered retry; use the sharded periodic path for this policy.
+`eval:bg`/`eval:bg:all` retain their shorter 5400/7200-second caps; use the
+sharded periodic path for complete coverage.
 
 CI plans with `--slice-budget 540 --jobs 2` for the PR gate, the periodic census
 and the weekly gate census (the gate census also `--skip-judges`), and
