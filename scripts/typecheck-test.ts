@@ -21,8 +21,12 @@ const ROOT = path.resolve(import.meta.dir, '..');
 export type DiagnosticCounts = Record<string, number>;
 
 /** Parse `tsc --pretty false` output into identity → count. Continuation lines belong to the preceding diagnostic. */
-export function parseDiagnostics(output: string): DiagnosticCounts {
+export function parseDiagnostics(output: string, root = ROOT): DiagnosticCounts {
   const counts: DiagnosticCounts = {};
+  // Messages can embed absolute import paths; strip the checkout root so the
+  // identity is the same in every clone and CI workspace.
+  const roots = [root, root.replaceAll('\\', '/')].filter(Boolean);
+  const portable = (text: string) => roots.reduce((value, prefix) => value.split(prefix + '/').join('').split(prefix).join('.'), text);
   let current: string | null = null;
   const flush = () => {
     if (current !== null) counts[current] = (counts[current] ?? 0) + 1;
@@ -32,9 +36,9 @@ export function parseDiagnostics(output: string): DiagnosticCounts {
     const match = /^(.+?)\(\d+,\d+\): error (TS\d+): (.*)$/.exec(line);
     if (match) {
       flush();
-      current = `${match[1]!.replaceAll('\\', '/')}\t${match[2]}\t${match[3]!.trim()}`;
+      current = `${portable(match[1]!).replaceAll('\\', '/')}\t${match[2]}\t${portable(match[3]!.trim())}`;
     } else if (current !== null && /^\s+\S/.test(line)) {
-      current += ` ${line.trim()}`;
+      current += ` ${portable(line.trim())}`;
     } else {
       flush();
     }

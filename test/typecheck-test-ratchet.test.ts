@@ -20,6 +20,14 @@ describe('test typecheck ratchet', () => {
     });
   });
 
+  test('strips the checkout root from messages so every clone shares one identity', () => {
+    const line = "test/d.test.ts(1,1): error TS2322: Type 'import(\"/tmp/clone-a/lib/x\").A' is not assignable to type 'B'.";
+    const a = parseDiagnostics(line, '/tmp/clone-a');
+    const b = parseDiagnostics(line.replace('/tmp/clone-a', '/home/ci/work/gstack'), '/home/ci/work/gstack');
+    expect(Object.keys(a)).toEqual(Object.keys(b));
+    expect(Object.keys(a)[0]).toContain('import(\"lib/x\")');
+  });
+
   test('ignores line and column so moving code does not churn the baseline', () => {
     const moved = output.replace('(3,5)', '(30,7)').replace('(9,5)', '(90,1)');
     expect(parseDiagnostics(moved)).toEqual(parseDiagnostics(output));
