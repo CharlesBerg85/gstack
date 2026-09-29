@@ -693,7 +693,7 @@ _aside_exec "Search the web for {framework} {version} {pattern} current best pra
 ```
 
 Without Aside `READY`, use WebSearch if available; with neither, disclose the gap
-and use existing knowledge.
+and use existing knowledge. Don't wait on research: run it alongside independent work, such as specialist dispatch.
 
 ### Shared-code opportunities (core pass)
 

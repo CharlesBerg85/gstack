@@ -13,7 +13,7 @@ import { spawnSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { installFakeImpeccable } from './helpers/fake-impeccable';
+import { carriesDetectorRows, installFakeImpeccable } from './helpers/fake-impeccable';
 
 const evalCollector = createEvalCollector('e2e-review');
 // Capture cleanup and recording must finish before Bun starts its retry.
@@ -287,8 +287,9 @@ Important: The design checklist should catch issues like blacklisted fonts, smal
       if (review.includes('welcome to') || review.includes('all-in-one') || review.includes('generic') || review.includes('hero copy') || review.includes('ai slop')) detected++;
       // Issue 7: 3-column feature grid — LOW
       if (review.includes('3-column') || review.includes('three-column') || review.includes('feature grid') || review.includes('icon') || review.includes('circle')) detected++;
-      // Signal 8: the mechanical pass (fake impeccable engine via IMPECCABLE_BIN) surfaced a detector row
-      const detectorSeen = review.includes('detector') || review.includes('[ai-color-palette]') || review.includes('[low-contrast]') || review.includes('impeccable');
+      // Signal 8: the mechanical pass (fake impeccable engine via IMPECCABLE_BIN) surfaced a detector row.
+      // Only rule ids the checklist never names count; claiming the detector is absent is not a row.
+      const detectorSeen = carriesDetectorRows(review, fs.readFileSync(path.join(designDir, 'review-design-checklist.md'), 'utf-8'));
 
       console.log(`Design review detected ${detected}/7 planted checklist signals; detector rows surfaced: ${detectorSeen}`);
       expect(detected).toBeGreaterThanOrEqual(4); // the LLM-checklist bar, unchanged by the detector

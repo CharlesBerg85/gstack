@@ -118,6 +118,29 @@ describe('caller native-event observer controls', () => {
     expect(validateCallerEvidence(observed)).toContain('review completion preceded handoff freshness decision');
   });
 
+  test('captured gate-census-5 review record: bun-wrapped helper and receipt status are outside the interface', () => {
+    // ci-36629958451-1-gate-census-5 review-exploratory-small-cli, native events 68 and 70 (fixture paths shortened).
+    const record = (status: string) => `/runtime/bin/gstack-review-log '{"skill":"review","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","commit":"'"$(git rev-parse --short HEAD)"'","branch":"caller-change","status":"${status}","completed":false,"converged":false,"critical":1,"informational":0,"findings":[{"path":"scale.ts","line":3,"category":"functional-contract","severity":"CRITICAL","fingerprint":"scale.ts:3:functional-contract","action":"ask-pending"}]}' --finish d45404cf-ba19-4bc6-a505-9801e9322f54`;
+    const errorsFor = (command: string, caller: 'review' | 'ship' = 'review') => {
+      const observed = { ...evidence(), caller };
+      observed.result.transcript.push(...nativeCall('record', 'Bash', { command }, 'Saved'));
+      return validateCallerEvidence(observed);
+    };
+    expect(errorsFor(`bun ${record('blocked')}`)).toContain('command outside declared caller observation interface');
+    expect(errorsFor(record('blocked'))).toEqual(['review record status outside the review vocabulary: blocked']);
+    expect(errorsFor(record('issues_found'))).toEqual([]);
+    expect(errorsFor(record('unavailable'))).toEqual(['review record status outside the review vocabulary: unavailable']);
+    expect(errorsFor(record('unavailable'), 'ship').filter(error => error.includes('vocabulary'))).toEqual([]);
+    expect(errorsFor(generatedReviewRecord('/runtime/bin/gstack-review-log', 'native-token').replace('"status":"clean"', '"status":"blocked"'))).toEqual([]);
+    const prompt = (id: 'review-exploratory-small-cli' | 'ship-exploratory-small-cli') => {
+      const fixture = createQaCallerFixture(id, { installRuntime: false });
+      try { return qaCallerSessionOptions(fixture, 'free-control').prompt; } finally { fs.rmSync(fixture.root, { recursive: true, force: true }); }
+    };
+    expect(prompt('review-exploratory-small-cli')).toContain("/bin/gstack-review-log '<JSON>' --finish <token>`, never through bun");
+    expect(prompt('review-exploratory-small-cli')).toContain('otherwise issues_found; a review stopped at a gate records completed:false');
+    expect(prompt('ship-exploratory-small-cli')).toContain('otherwise issues_found (unavailable for missing dispatched reviewer output)');
+  });
+
   test('a later unchanged handoff reread does not invalidate an already completed freshness decision', () => {
     const observed = evidence();
     observed.result.transcript.push(
