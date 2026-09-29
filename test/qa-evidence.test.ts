@@ -11,7 +11,12 @@ afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(ROOT, 'case-'));
-  const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { cwd: root, encoding: 'utf8', timeout: 10_000 });
+  const run = (...args: string[]) => {
+    expect(JSON.stringify([process.execPath, CLI, ...args]).length, 'Fixture argv must stay short for Windows process launch').toBeLessThan(8192);
+    const result = spawnSync(process.execPath, [CLI, ...args], { cwd: root, encoding: 'utf8', timeout: 10_000 });
+    expect(result.error, result.error?.message).toBeUndefined();
+    return result;
+  };
   const json = (name: string, value: unknown) => fs.writeFileSync(path.join(root, name), JSON.stringify(value), { mode: 0o600 });
   const capture = (id: string, program: string, timeout = '4000') => run('capture', root, id, '--timeout-ms', timeout, '--', process.execPath, '-e', program);
   return { root, run, json, capture };
@@ -25,13 +30,15 @@ function receipt(text: string) {
 test('native capture executes once, preserves exact JSON and stderr, and materializes without transcription', () => {
   const f = fixture();
   const observed = { stateRoot: '/home/runner/.cache/owned', windows: 'C:\\owned\\a.json', text: '雪\n\t"\\', rows: ['abc'.repeat(20000)], value: 7, absent: null };
-  const result = f.capture('001', `const fs = require('node:fs'); fs.appendFileSync('effects', 'once'); process.stderr.write('diagnostic\\n'); console.log(${JSON.stringify(JSON.stringify(observed))});`);
+  f.json('payload.json', observed);
+  const result = f.capture('001', `const fs = require('node:fs'); fs.appendFileSync('effects', 'once'); process.stderr.write('diagnostic\\n'); console.log(fs.readFileSync('payload.json', 'utf8'));`);
   expect(result.status, result.stderr).toBe(0);
   const captured = receipt(result.stdout);
   expect(captured).toMatchObject({ action: 'capture', status: 'complete', id: '001', exitCode: 0 });
   expect(result.stdout).not.toContain('stateRoot');
   expect(result.stderr).toBe('');
   expect(fs.readFileSync(path.join(f.root, 'effects'), 'utf8')).toBe('once');
+  expect(fs.readFileSync(path.join(f.root, '.qa-evidence/001/stdout'), 'utf8')).toBe(JSON.stringify(observed) + '\n');
   expect(fs.readFileSync(path.join(f.root, '.qa-evidence/001/stderr'), 'utf8')).toBe('diagnostic\n');
   f.json('intent.json', { capture: '001', observationCommand: 'first native command', hypothesis: 'The successful boundary suggests testing the rejected input next.', nextCommand: 'second native command' });
   const checkpoint = f.run('checkpoint', f.root, '001', 'intent.json');
