@@ -117,10 +117,11 @@ describe('paid CI coordination stays off the eval image', () => {
       if (name === 'evals.yml') expect(report.permissions).toEqual({ contents: 'read' });
     });
 
-    test(`${name}: failure logs include the hidden spool directory without uploading the rest of the cache`, () => {
-      const logs = jobs['eval-slices'].steps.find(step => step.with?.name === 'paid-slice-${{ matrix.slice }}-logs');
+    test(`${name}: shard logs include the hidden spool directory without uploading the rest of the cache`, () => {
+      const logs = jobs['eval-slices'].steps.find(step => step.with?.name === 'paid-logs-slice-${{ matrix.slice }}-a${{ github.run_attempt }}');
       expect(logs?.uses).toStartWith('actions/upload-artifact@');
-      expect(logs?.if).toBe('failure()');
+      // A failed trial no longer reds its runner; its log is still the evidence.
+      expect(logs?.if).toBe('always()');
       expect(logs?.with?.['include-hidden-files']).toBe(true);
       expect(String(logs?.with?.path).trim().split('\n')).toEqual([
         '/home/runner/.cache/gstack-paid-shard-*.log',
