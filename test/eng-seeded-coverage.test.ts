@@ -6,6 +6,7 @@ import * as path from 'node:path';
 import { createEngBatchingIssueCounter, isEngBatchingIssueAUQ } from './helpers/eng-seeded-coverage';
 import { engSetupAUQ, hasCompletePlanReport, nativePlanCallFingerprint } from './helpers/claude-pty-runner';
 import batchingCapture from './fixtures/eng-batching-unsourced-brief-36606688266.json';
+import bulletTargetCapture from './fixtures/eng-batching-bullet-target-rerun.json';
 
 function question(call: NativePlanQuestionCall, text: string) {
   const answer = call.answers![call.questions[0]!.question]!;
@@ -158,5 +159,36 @@ describe('batching replay of run 36606688266 (unsourced native briefs)', () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('batching replay of a 2.1.284 rerun (bullet target, unnamed plan)', () => {
+  // Eleven separate native questions; the briefs name no plan and the report
+  // declares '- **Review target (fixed):** `/abs/PLAN.md`' under '# Eng Review — PLAN.md: <plan>'.
+  const calls = bulletTargetCapture.calls as unknown as NativePlanQuestionCall[];
+  const count = (plan: string) => {
+    const counter = createEngBatchingIssueCounter(() => plan, engSetupAUQ);
+    calls.forEach((call, index) => counter.isReviewAUQ(nativePlanCallFingerprint(call, 0, true), calls.slice(0, index)));
+    return counter.trace.map(entry => entry.issue);
+  };
+
+  test('the recorded verdict counted none of the separate decisions', () => {
+    expect(bulletTargetCapture.recordedOutcome).toMatchObject({ reviewCount: 0 });
+    expect(calls.length).toBe(11);
+  });
+
+  test('ledger-bound decisions count once each through the report target field', () => {
+    expect(count(bulletTargetCapture.plan).length).toBe(9);
+  });
+
+  for (const [name, change] of [
+    ['a foreign target file', (plan: string) => plan.replace(/(Review target \(fixed\):\*\* `[^`]*\/)PLAN\.md`/, '$1OTHER.md`')],
+    ['a second target declaration', (plan: string) => plan.replace('- **Review target (fixed):**', '- **Review target (fixed):** `OTHER.md`\n- **Review target (fixed):**')],
+    ['no target declaration', (plan: string) => plan.replace('- **Review target (fixed):**', '- **Report scope:**')],
+    ['an archived report title', (plan: string) => plan.replace('# Eng Review —', '# Archived Eng Review —')],
+  ] as const) test(`the bullet target route rejects ${name}`, () => {
+    const plan = change(bulletTargetCapture.plan);
+    expect(plan).not.toBe(bulletTargetCapture.plan);
+    expect(count(plan)).toEqual([]);
   });
 });
