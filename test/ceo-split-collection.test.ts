@@ -176,7 +176,7 @@ const state = JSON.parse(fs.readFileSync(${JSON.stringify(inputPath)}, 'utf8'));
 const facts = { runs: 0, evaluators: 0, judges: 0, directory: '', candidateCalls: 0, suppliedCalls: 0 };
 const save = () => fs.writeFileSync(${JSON.stringify(factsPath)}, JSON.stringify(facts));
 mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/e2e-gate.ts'))}, () => ({
-  describeE2ETier: tier => { expect(tier).toBe('periodic'); return describe; },
+  describeE2ETier: tier => { expect(tier).toBe('marathon'); return describe; },
 }));
 mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/plan-review-decisions.ts'))}, () => ({
   evaluatePlanReviewDecisions: async input => {

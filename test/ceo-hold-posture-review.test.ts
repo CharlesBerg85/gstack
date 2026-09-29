@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import captured from './fixtures/ceo-hold-proof-fb10.json';
 import { buildCeoHoldPostureReview, evaluateCeoHoldPostureReview, type CeoHoldPostureReviewInput } from './helpers/ceo-hold-posture-review';
-import { hasNativePostAnswerCeoPosture } from './helpers/ceo-mode-option';
+import { hasNativePostAnswerCeoPosture, holdDeferKeepIndex } from './helpers/ceo-mode-option';
 import type { PlanReviewDecisionInput, PlanReviewDecisionJudgment } from './helpers/plan-review-decisions';
 import type { NativePublicToolEvent } from './helpers/plan-count-transcript';
 import { nativePlanCallFingerprint } from './helpers/claude-pty-runner';
@@ -243,7 +243,7 @@ async function registered(scenario:'accept'|'uncertain'|'missing source'|'missin
     navigateToModeAskUserQuestion:async()=>({modeIndex:3,visibleAtMode:'captured mode',question:{nativeCall:mode(f)}}),
     planCountQuestionInput:(_v:string,q:any)=>q.nativeCall.toolUseId===modeId?'3':'1',selectPtyNumberedOption:async()=>{throw Error('unexpected legacy key');},
     hasNativePostAnswerCeoPosture:scenario==='lexical pass'||scenario==='expansion'?()=>true:hasNativePostAnswerCeoPosture,
-    ceoModeSubmissionInput:()=>null,ceoExpansionPacingReady:()=>false,ceoExpansionPacingChoice:()=>null,
+    ceoModeSubmissionInput:()=>null,ceoExpansionPacingReady:()=>false,ceoExpansionPacingChoice:()=>null,holdDeferKeepIndex,
     nextCeoPostureContinuation:(_a:any,_b:any,_c:any,_d:any,_e:any,continued:boolean)=>continued?null:'question',
     capturePlanCountQuestion:()=>({nativeCall:pending}),isPlanReadyVisible:()=>false,isNumberedOptionListVisible:()=>false,
     buildCeoHoldPostureReview,evaluateCeoHoldPostureReview:async(review:PlanReviewDecisionInput)=>{

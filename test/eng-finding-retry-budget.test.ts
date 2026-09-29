@@ -168,9 +168,14 @@ test('explicit allocation keeps its timer across load scheduling', () => {
 });
 
 test('single-slice manifest retains all registered files with one allocation', () => {
-  const m = buildRunManifest({ tier: 'periodic', sliceCount: 1, evalsAll: true, env: { EVALS_ALL: '1' } });
-  expect(m.entries.filter(e => e.status === 'planned').every(e => e.slice === 1)).toBe(true);
-  for (const budget of FINDING_RETRY_BUDGETS) expect(m.entries.find(e => e.file === budget.file)?.budget).toEqual(resolvePaidShardBudget([budget.file]));
+  // A registered file runs in exactly one scheduled lane: periodic, or the marathon lane for full flows.
+  const manifests = (['periodic', 'marathon'] as const).map(tier => buildRunManifest({ tier, sliceCount: 1, evalsAll: true, env: { EVALS_ALL: '1' } }));
+  for (const m of manifests) expect(m.entries.filter(e => e.status === 'planned').every(e => e.slice === 1)).toBe(true);
+  for (const budget of FINDING_RETRY_BUDGETS) {
+    const entries = manifests.flatMap(m => m.entries.filter(e => e.file === budget.file && e.status === 'planned'));
+    expect(entries, budget.file).toHaveLength(1);
+    expect(entries[0]!.budget).toEqual(resolvePaidShardBudget([budget.file]));
+  }
 });
 
 test('current detach supervision covers the live-census floor', () => {

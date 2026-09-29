@@ -300,7 +300,7 @@ mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/plan-review-decisions
   },
 }));
 mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/e2e-gate.ts'))}, () => ({
-  describeE2ETier: tier => { expect(tier).toBe('periodic'); return describe; },
+  describeE2ETier: tier => { expect(tier).toBe('marathon'); return describe; },
 }));
 const boundary = () => false;
 mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/claude-pty-runner.ts'))}, () => ({

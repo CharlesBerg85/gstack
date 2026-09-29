@@ -16,7 +16,7 @@ Source: the Sept 28 weekly census (run 36385945043) and the two proof censuses o
 | Weekly periodic census wall clock | 2h 45m | 15 min for 32 of 33 machines (proof run 2) |
 | Longest planned slice | 160 min (one test, twice) | ~10 min |
 | Automatic retries on paid evals | up to 2 per file | 0 |
-| Product-code type errors | 105 (no check) | 0, required in `free-tests` |
+| Product-code type errors | 103 on v1.91.8.0 (no check) | 0, required in `free-tests` |
 | `lib/cso` longest source line | 2,159 chars | 785 (a string literal) |
 
 The biggest change is honesty. With 238 live cases, a retry used to hide a failing test; now every trial is recorded, `bun run eval:pass-rates` shows each case's pass rate with a confidence range, and a case that slides gets flagged by its history instead of passing on a lucky rerun.
