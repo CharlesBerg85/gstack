@@ -72,7 +72,12 @@ export const CASE_CI_EXCLUDE: Record<string, { reason: string; tracking: string 
  *                 new-policy trials; exit at >= `exit.rate` over >=
  *                 `exit.minTrials`; at most `capFraction` of each tier's
  *                 blocking cases; an entry expires after `expiryWeeklyRuns`.
- *   drift       - one-sided Fisher exact alarm between input-identity series.
+ *   judge       - a judge case draws `samples` independent samples of one
+ *                 prompt concurrently; numeric dimensions gate on the panel
+ *                 mean against the unchanged threshold, booleans on a strict
+ *                 majority; an erroring sample fails the panel, never resampled.
+ *   drift       - one-sided Fisher exact alarm between input-identity series
+ *                 (Holm-controlled across the cases tested in one report).
  *   infraRedispatch - a census whose every red verdict is machine-classified
  *                 INFRA or INCOMPLETE may be re-dispatched this many times as
  *                 a new run; both runs are reported.
@@ -86,6 +91,7 @@ export const EVAL_POLICY = {
     capFraction: 0.10,
     expiryWeeklyRuns: 8,
   },
+  judge: { samples: 3 },
   drift: { fisherAlpha: 0.05, fisherMinPerSide: 6 },
   infraRedispatch: 1,
 } as const;

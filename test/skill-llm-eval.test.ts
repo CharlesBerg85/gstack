@@ -14,7 +14,7 @@ import { afterAll, expect } from 'bun:test';
 import { JUDGE_MS } from './helpers/eval-budgets';
 import * as fs from 'fs';
 import * as path from 'path';
-import { callJudge, judge, JudgeRefusalError, DEFAULT_JUDGE_MAX_TOKENS } from './helpers/llm-judge';
+import { callJudge, judge, JudgeRefusalError, DEFAULT_JUDGE_MAX_TOKENS, judgePanel, judgePanelMean, judgePanelMajority, judgePanelReasoning, JUDGE_SCORE_DIMENSIONS } from './helpers/llm-judge';
 import { ENG_REVIEW_EXCERPT } from './helpers/workflow-excerpt';
 import type { JudgeScore } from './helpers/llm-judge';
 import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES, WORKFLOW_JUDGE_RESPONSE_SCHEMA, type WorkflowJudgeInput } from './helpers/workflow-judge-input';
@@ -100,8 +100,9 @@ describeIfSelected('LLM-as-judge quality evals', [
     // rewrites the pin).
     const section = sliceBrowseSection('## Snapshot Flags');
 
-    const scores = await judge('browse skill reference (flags + commands)', section);
-    console.log('Browse SKILL.md scores:', JSON.stringify(scores, null, 2));
+    const samples = await judgePanel(() => judge('browse skill reference (flags + commands)', section));
+    const scores = judgePanelMean(samples, JUDGE_SCORE_DIMENSIONS);
+    console.log('Browse SKILL.md panel:', JSON.stringify({ mean: scores, samples }, null, 2));
 
     const baselinesPath = path.join(ROOT, 'test', 'fixtures', 'eval-baselines.json');
     const baselines = JSON.parse(fs.readFileSync(baselinesPath, 'utf-8'));
@@ -120,9 +121,9 @@ describeIfSelected('LLM-as-judge quality evals', [
       tier: 'llm-judge',
       passed: scores.clarity >= 3 && scores.completeness >= 4 && scores.actionability >= 4 && regressions.length === 0,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability },
-      judge_reasoning: regressions.length ? `${scores.reasoning} | ${regressions.join('; ')}` : scores.reasoning,
+      judge_reasoning: regressions.length ? `${judgePanelReasoning(samples)} | ${regressions.join('; ')}` : judgePanelReasoning(samples),
     });
 
     expect(scores.clarity).toBeGreaterThanOrEqual(3);
@@ -144,8 +145,9 @@ describeIfSelected('LLM-as-judge quality evals', [
     if (setupStart < 0 || setupEnd < 0) throw new Error('browse/SKILL.md: setup block not found — regenerate with: bun run gen:skill-docs');
     const section = content.slice(setupStart, setupEnd);
 
-    const scores = await judge('setup/binary discovery instructions', section);
-    console.log('Setup block scores:', JSON.stringify(scores, null, 2));
+    const samples = await judgePanel(() => judge('setup/binary discovery instructions', section));
+    const scores = judgePanelMean(samples, JUDGE_SCORE_DIMENSIONS);
+    console.log('Setup block panel:', JSON.stringify({ mean: scores, samples }, null, 2));
 
     evalCollector?.addTest({
       name: 'setup block',
@@ -153,9 +155,9 @@ describeIfSelected('LLM-as-judge quality evals', [
       tier: 'llm-judge',
       passed: scores.actionability >= 3 && scores.clarity >= 3,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability },
-      judge_reasoning: scores.reasoning,
+      judge_reasoning: judgePanelReasoning(samples),
     });
 
     // Setup block is intentionally minimal (binary discovery only).
@@ -203,7 +205,7 @@ describeIfSelected('QA skill quality evals', ['qa/SKILL.md workflow', 'qa/SKILL.
       startMarker: '# /qa: Test', endMarker: null,
       references: ['qa/templates/functional-report-template.md'] }).text;
 
-    const scores = await callJudge<JudgeScore>(`You are evaluating the quality of a QA testing workflow document for an AI coding agent.
+    const samples = await judgePanel(() => callJudge<JudgeScore>(`You are evaluating the quality of a QA testing workflow document for an AI coding agent.
 
 The agent reads this source-file bundle to select browser, native functional or mixed
 surfaces, explore with bounded probes, reproduce and diagnose defects, add a regression
@@ -222,8 +224,9 @@ Respond with ONLY valid JSON:
 
 Here is the QA workflow to evaluate:
 
-${section}`);
-    console.log('QA workflow scores:', JSON.stringify(scores, null, 2));
+${section}`));
+    const scores = judgePanelMean(samples, JUDGE_SCORE_DIMENSIONS);
+    console.log('QA workflow panel:', JSON.stringify({ mean: scores, samples }, null, 2));
 
     evalCollector?.addTest({
       name: 'qa/SKILL.md workflow',
@@ -231,9 +234,9 @@ ${section}`);
       tier: 'llm-judge',
       passed: scores.clarity >= 3 && scores.completeness >= 3 && scores.actionability >= 4,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability },
-      judge_reasoning: scores.reasoning,
+      judge_reasoning: judgePanelReasoning(samples),
     });
 
     expect(scores.clarity).toBeGreaterThanOrEqual(3);
@@ -247,7 +250,7 @@ ${section}`);
     const t0 = Date.now();
     const section = sliceQaPatterns('## Health Score Rubric');
 
-    const scores = await callJudge<JudgeScore>(`You are evaluating a health score rubric that an AI agent must follow to compute a numeric QA score.
+    const samples = await judgePanel(() => callJudge<JudgeScore>(`You are evaluating a health score rubric that an AI agent must follow to compute a numeric QA score.
 
 The agent uses this rubric after QA testing a website. It needs to:
 1. Understand each scoring category and what counts as a deduction
@@ -264,8 +267,9 @@ Respond with ONLY valid JSON:
 
 Here is the rubric to evaluate:
 
-${section}`);
-    console.log('QA health rubric scores:', JSON.stringify(scores, null, 2));
+${section}`));
+    const scores = judgePanelMean(samples, JUDGE_SCORE_DIMENSIONS);
+    console.log('QA health rubric panel:', JSON.stringify({ mean: scores, samples }, null, 2));
 
     evalCollector?.addTest({
       name: 'qa/SKILL.md health rubric',
@@ -273,9 +277,9 @@ ${section}`);
       tier: 'llm-judge',
       passed: scores.clarity >= 3 && scores.completeness >= 3 && scores.actionability >= 4,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability },
-      judge_reasoning: scores.reasoning,
+      judge_reasoning: judgePanelReasoning(samples),
     });
 
     expect(scores.clarity).toBeGreaterThanOrEqual(3);
@@ -294,7 +298,7 @@ ${section}`);
     const diffAwareSection = sliceQaPatterns('### Diff-aware', '### Full');
     const rulesSection = sliceQaPatterns('## Important Rules');
 
-    const result = await callJudge<{ would_browse: boolean; fallback_behavior: string; confidence: number; reasoning: string }>(`You are evaluating whether a QA testing skill document would cause an AI agent to USE THE BROWSER or REFUSE to use the browser in a specific scenario.
+    const samples = await judgePanel(() => callJudge<{ would_browse: boolean; fallback_behavior: string; confidence: number; reasoning: string }>(`You are evaluating whether a QA testing skill document would cause an AI agent to USE THE BROWSER or REFUSE to use the browser in a specific scenario.
 
 SCENARIO:
 A user runs /qa (a browser-based QA testing skill). The branch diff shows ONLY prompt template files and config file changes — no routes, views, controllers, components, or CSS were changed. The changes are "purely backend" with no obvious UI surface.
@@ -318,9 +322,10 @@ Respond with ONLY valid JSON:
 Rules:
 - would_browse should be true if the document instructs the agent to always use the browser regardless of diff content
 - would_browse should be false if the document allows the agent to skip browser testing for non-UI changes
-- confidence: 5 = document is unambiguous, 1 = document is unclear or contradictory`);
+- confidence: 5 = document is unambiguous, 1 = document is unclear or contradictory`));
+    const result = { would_browse: judgePanelMajority(samples, 'would_browse'), ...judgePanelMean(samples, ['confidence'] as const) };
 
-    console.log('QA anti-refusal result:', JSON.stringify(result, null, 2));
+    console.log('QA anti-refusal panel:', JSON.stringify({ result, samples }, null, 2));
 
     evalCollector?.addTest({
       name: 'qa/SKILL.md anti-refusal',
@@ -328,9 +333,9 @@ Rules:
       tier: 'llm-judge',
       passed: result.would_browse === true && result.confidence >= 4,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: { would_browse: result.would_browse ? 1 : 0, confidence: result.confidence },
-      judge_reasoning: result.reasoning,
+      judge_reasoning: judgePanelReasoning(samples),
     });
 
     expect(result.would_browse).toBe(true);
@@ -362,7 +367,7 @@ describeIfSelected('Cross-skill consistency evals', ['cross-skill greptile consi
       extractGrepLines(retroContent, 'retro/SKILL.md'),
     ].join('\n\n');
 
-    const result = await callJudge<{ consistent: boolean; issues: string[]; score: number; reasoning: string }>(`You are evaluating whether multiple skill configuration files implement the same data architecture consistently.
+    const samples = await judgePanel(() => callJudge<{ consistent: boolean; issues: string[]; score: number; reasoning: string }>(`You are evaluating whether multiple skill configuration files implement the same data architecture consistently.
 
 INTENDED ARCHITECTURE:
 - greptile-history has TWO paths: per-project (~/.gstack/projects/{slug}/greptile-history.md) and global (~/.gstack/greptile-history.md)
@@ -383,9 +388,10 @@ Evaluate consistency. Respond with ONLY valid JSON:
   "reasoning": "brief explanation"
 }
 
-score (1-5): 5 = perfectly consistent, 1 = contradictory`);
+score (1-5): 5 = perfectly consistent, 1 = contradictory`));
+    const result = { consistent: judgePanelMajority(samples, 'consistent'), ...judgePanelMean(samples, ['score'] as const) };
 
-    console.log('Cross-skill consistency:', JSON.stringify(result, null, 2));
+    console.log('Cross-skill consistency panel:', JSON.stringify({ result, samples }, null, 2));
 
     evalCollector?.addTest({
       name: 'cross-skill greptile consistency',
@@ -393,9 +399,9 @@ score (1-5): 5 = perfectly consistent, 1 = contradictory`);
       tier: 'llm-judge',
       passed: result.consistent && result.score >= 4,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: { consistency_score: result.score },
-      judge_reasoning: result.reasoning,
+      judge_reasoning: judgePanelReasoning(samples),
     });
 
     expect(result.consistent).toBe(true);
@@ -439,7 +445,8 @@ async function runWorkflowJudge(opts: {
   const workDeadline = started + JUDGE_MS;
   let stage: 'input' | 'judge' | 'validation' | 'recording' = 'input';
   let finalized = false;
-  let scores: JudgeScore | undefined;
+  let samples: JudgeScore[] | undefined;
+  let scores: Record<typeof JUDGE_SCORE_DIMENSIONS[number], number> | undefined;
   let manualReview: ManualJudgeReview | undefined;
   let customInputMetadata: { prompt: string; model: string } | undefined;
   let reused: ReturnType<ReturnType<typeof prepareWorkflowJudgeCache>['lookup']> = null;
@@ -458,19 +465,19 @@ async function runWorkflowJudge(opts: {
     evalCollector?.addTest({
       name: opts.testName, suite: opts.suite, tier: 'llm-judge', passed, attempt,
       duration_ms: Math.max(0, performance.now() - started),
-      cost_usd: reused || !scores ? 0 : 0.02,
+      cost_usd: reused || !samples ? 0 : 0.02 * samples.length,
       execution: reused ? 'reused' : 'executed',
       ...customInputMetadata,
       ...(manualReview ? { manual_review: manualReview } : {}),
       ...(reused ? { reused_from: { input_key: reused.reuse.key, run_id: reused.reuse.source.runId,
         revision: reused.reuse.source.revision, completed_at: new Date(reused.reuse.source.completedAt).toISOString() } } : {}),
-      ...(scores ? { judge_scores: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability },
-        judge_reasoning: scores.reasoning } : {}),
+      ...(scores ? { judge_scores: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability } } : {}),
+      ...(samples ? { judge_reasoning: judgePanelReasoning(samples) } : {}),
       ...(passed ? {} : { exit_reason: error instanceof JudgeRefusalError ? 'provider_refusal'
         : error instanceof Error && error.name === 'WorkflowJudgeDeadline' ? 'timeout'
         : error instanceof Error && error.name === 'WorkflowJudgeSuperseded' ? 'cancelled'
         : stage === 'validation' ? 'validation_failed' : 'harness_error',
-      error: `${error instanceof Error ? error.message : String(error)}${scores ? '' : error instanceof JudgeRefusalError
+      error: `${error instanceof Error ? error.message : String(error)}${samples ? '' : error instanceof JudgeRefusalError
         ? '\nNo automated score; provider refusal usage retained when manually accepted; cost unavailable.'
         : '\nNo completed model response; cost and usage unavailable.'}` }),
     });
@@ -508,11 +515,11 @@ async function runWorkflowJudge(opts: {
     checkActive();
     stage = 'judge';
     const maxTokens = opts.maxTokens ?? DEFAULT_JUDGE_MAX_TOKENS;
-    let result: JudgeScore;
+    let result: JudgeScore[];
     try {
-      result = reused?.scores ?? await callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens,
+      result = reused?.samples ?? await judgePanel(() => callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens,
         ...(opts.stream ? { stream: true } : {}),
-        ...(opts.structuredResponse ? { jsonSchema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } : {}) });
+        ...(opts.structuredResponse ? { jsonSchema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } : {}) }));
     } catch (error) {
       checkActive();
       if (error instanceof JudgeRefusalError && customInputMetadata) {
@@ -529,20 +536,21 @@ async function runWorkflowJudge(opts: {
       throw error;
     }
     checkActive();
-    scores = result;
+    samples = result;
     console.log(`[workflow-judge] ${opts.testName}: ${reused ? `reused ${reused.reuse.source.runId} @ ${reused.reuse.source.revision} (${new Date(reused.reuse.source.completedAt).toISOString()})` : 'executed'}`);
-    console.log(`${opts.testName} scores:`, JSON.stringify(scores, null, 2));
     stage = 'validation';
-    if (opts.structuredResponse && !validWorkflowJudgeScore(scores as unknown as EvalCacheValue, { clarity: 1, completeness: 1, actionability: 1 }, true)) {
+    if (opts.structuredResponse && !samples.every(sample => validWorkflowJudgeScore(sample as unknown as EvalCacheValue, { clarity: 1, completeness: 1, actionability: 1 }, true))) {
       throw new Error('Structured workflow judge violated the response schema');
     }
+    scores = judgePanelMean(samples, JUDGE_SCORE_DIMENSIONS);
+    console.log(`${opts.testName} panel:`, JSON.stringify({ mean: scores, samples }, null, 2));
     expect(scores.clarity).toBeGreaterThanOrEqual(thresholds.clarity);
     expect(scores.completeness).toBeGreaterThanOrEqual(thresholds.completeness);
     expect(scores.actionability).toBeGreaterThanOrEqual(thresholds.actionability);
     checkActive();
     stage = 'recording';
     arm();
-    const discardReceipt = reused ? undefined : cache.publish(scores, active);
+    const discardReceipt = reused ? undefined : cache.publish(samples, active);
     try { checkActive(); finish(true); }
     catch (error) { discardReceipt?.(); throw error; }
   };
@@ -792,7 +800,7 @@ describeIfSelected('Voice directive eval', ['voice directive tone'], () => {
     const voiceEnd = content.indexOf('\n## ', voiceStart + 1);
     const voiceSection = content.slice(voiceStart, voiceEnd > 0 ? voiceEnd : voiceStart + 3000);
 
-    const result = await callJudge<{
+    const samples = await judgePanel(() => callJudge<{
       directness: number;
       concreteness: number;
       avoids_corporate: number;
@@ -812,9 +820,10 @@ Return JSON only:
 {"directness": N, "concreteness": N, "avoids_corporate": N, "avoids_ai_vocabulary": N, "connects_user_outcomes": N, "reasoning": "..."}
 
 THE VOICE DIRECTIVE:
-${voiceSection}`);
+${voiceSection}`));
+    const result = judgePanelMean(samples, ['directness', 'concreteness', 'avoids_corporate', 'avoids_ai_vocabulary', 'connects_user_outcomes'] as const);
 
-    console.log('Voice directive scores:', JSON.stringify(result, null, 2));
+    console.log('Voice directive panel:', JSON.stringify({ mean: result, samples }, null, 2));
 
     evalCollector?.addTest({
       name: 'voice directive tone',
@@ -823,7 +832,7 @@ ${voiceSection}`);
       passed: result.directness >= 4 && result.concreteness >= 4 && result.avoids_corporate >= 4
         && result.avoids_ai_vocabulary >= 4 && result.connects_user_outcomes >= 4,
       duration_ms: Date.now() - t0,
-      cost_usd: 0.02,
+      cost_usd: 0.02 * samples.length,
       judge_scores: {
         directness: result.directness,
         concreteness: result.concreteness,
@@ -831,7 +840,7 @@ ${voiceSection}`);
         avoids_ai_vocabulary: result.avoids_ai_vocabulary,
         connects_user_outcomes: result.connects_user_outcomes,
       },
-      judge_reasoning: result.reasoning,
+      judge_reasoning: judgePanelReasoning(samples),
     });
 
     expect(result.directness).toBeGreaterThanOrEqual(4);

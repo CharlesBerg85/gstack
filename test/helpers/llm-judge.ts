@@ -23,6 +23,8 @@ export interface JudgeScore {
   reasoning: string;
 }
 
+export const JUDGE_SCORE_DIMENSIONS = ['clarity', 'completeness', 'actionability'] as const;
+
 export interface JudgeRefusalEvidence {
   stop_reason: 'refusal';
   response_id: string | null;
@@ -194,6 +196,63 @@ export async function callJudge<T>(
     }));
     throw error;
   }
+}
+
+/**
+ * Samples per judge panel: EVAL_POLICY.judge.samples, restated here so this
+ * helper (imported by many paid tests) does not pull the quarantine registry
+ * into their touchfile closure. test/judge-panel.test.ts pins the two equal.
+ */
+export const JUDGE_PANEL_SAMPLES = 3;
+
+/**
+ * Judge panel (EVAL_POLICY.judge): every `judge`-kind entry draws a fixed number of
+ * independent samples of the SAME prompt concurrently, inside its unchanged
+ * JUDGE_MS budget. Numeric dimensions gate on the per-dimension panel mean
+ * against the unchanged minimum; boolean fields gate on a strict majority.
+ * A sample that errors (refusal, truncation, non-JSON, malformed field) fails
+ * the whole panel and is never resampled. callJudge's 429 backoff happens
+ * before any model output exists, so it is transport, not a verdict retry.
+ */
+export async function judgePanel<T>(sample: () => Promise<T>): Promise<T[]> {
+  const settled = await Promise.allSettled(Array.from({ length: JUDGE_PANEL_SAMPLES }, () => sample()));
+  const failures = settled.flatMap((result, index) => result.status === 'rejected' ? [{ index, reason: result.reason }] : []);
+  if (failures.length === 0) return settled.map(result => (result as PromiseFulfilledResult<T>).value);
+  const first = failures[0]!;
+  // A refusal is an unscored panel only when EVERY sample refused; a partial
+  // refusal beside scored samples is an ordinary failed panel.
+  if (first.reason instanceof JudgeRefusalError && failures.length < settled.length) {
+    throw new Error(`Judge panel sample ${first.index + 1} of ${settled.length} failed beside scored samples: ${first.reason.message}`);
+  }
+  throw first.reason;
+}
+
+/** Per-dimension mean over a panel; any non-finite sample value fails the panel. */
+export function judgePanelMean<K extends string>(samples: ReadonlyArray<Record<K, unknown>>, keys: readonly K[]): Record<K, number> {
+  if (samples.length === 0) throw new Error('Judge panel has no samples');
+  return Object.fromEntries(keys.map(key => {
+    const values = samples.map(sample => sample && typeof sample === 'object' ? sample[key] : undefined);
+    const bad = values.findIndex(value => typeof value !== 'number' || !Number.isFinite(value));
+    if (bad !== -1) throw new Error(`Judge panel sample ${bad + 1} has non-numeric ${key}: ${JSON.stringify(values[bad])}`);
+    return [key, (values as number[]).reduce((sum, value) => sum + value, 0) / values.length];
+  })) as Record<K, number>;
+}
+
+/** Strict majority of a boolean field; any non-boolean sample value fails the panel. */
+export function judgePanelMajority<K extends string>(samples: ReadonlyArray<Record<K, unknown>>, key: K): boolean {
+  if (samples.length === 0) throw new Error('Judge panel has no samples');
+  const values = samples.map(sample => sample && typeof sample === 'object' ? sample[key] : undefined);
+  const bad = values.findIndex(value => typeof value !== 'boolean');
+  if (bad !== -1) throw new Error(`Judge panel sample ${bad + 1} has non-boolean ${key}: ${JSON.stringify(values[bad])}`);
+  return values.filter(value => value === true).length * 2 > values.length;
+}
+
+/** Sample reasoning lines, numbered, for the collector record. */
+export function judgePanelReasoning(samples: ReadonlyArray<unknown>): string {
+  return samples.map((sample, index) => {
+    const reasoning = sample && typeof sample === 'object' ? (sample as { reasoning?: unknown }).reasoning : undefined;
+    return `[sample ${index + 1}] ${typeof reasoning === 'string' ? reasoning : ''}`;
+  }).join('\n');
 }
 
 /**
