@@ -117,6 +117,9 @@ export function isEngBatchingIssueAUQ(fp: AskUserQuestionFingerprint, priorCalls
   return !priorCalls.some(prior => batchingIssueNumber(prior) === issue);
 }
 
+// The report's one target declaration, in the skill's own spellings.
+const TARGET_FIELD = /^(?:Reviewed |Review )?[Tt]arget(?: \(fixed\))?:/;
+
 /** A native brief can use its D number and topic while its stable R identity
  * lives in the required saved ledger. Count that owned choice, not a title
  * spelling. This does not approve the row or validate the implementation. */
@@ -160,10 +163,10 @@ function recordedBatchingIssue(call: NativePlanQuestionCall, savedPlan: string):
   const rawSourceNames = [...(lines[1] ?? '').matchAll(/\b[\w./-]+\.md\b/g)];
   const directSource = sourceNames.length > 0 && sourceNames.every(name => name === 'PLAN.md') &&
     new Set([...metadata.matchAll(/\bPLAN\.md:([1-9]\d*(?:[-–][1-9]\d*)?)\b/g)].map(match => match[1])).size <= 1;
-  const targetName = (s: string) => clean(s).replace(/^Eng(?:ineering)? review:\s*/i, '')
+  const targetName = (s: string) => clean(s).replace(/^Eng(?:ineering)? review\s*[:—–-]\s*/i, '')
     .replace(/^Plan\s*[:—–-]\s*/i, '').toLowerCase();
-  const named = [...(lines[1] ?? '').matchAll(/"(Plan:\s*[^"\n]+)"|“(Plan:\s*[^”\n]+)”/g)]
-    .map(match => targetName(match[1] ?? match[2]!));
+  const named = [...(lines[1] ?? '').matchAll(/"(Plan:\s*[^"\n]+)"|“(Plan:\s*[^”\n]+)”|\b[Pp]lan\s+"([^"\n]+)"|\b[Pp]lan\s+“([^”\n]+)”/g)]
+    .map(match => targetName(match[1] ?? match[2] ?? match[3] ?? match[4]!));
   const titles = tokens.slice(0, start).filter(token => token.type === 'heading' && token.depth === 1);
   const targetFields = tokens.slice(0, start).flatMap((token, at) => {
     if (token.type !== 'paragraph' || !currentHeading(at)) return [];
@@ -171,14 +174,16 @@ function recordedBatchingIssue(call: NativePlanQuestionCall, savedPlan: string):
     const quotedContext = /\b(?:quoted|copied|historical|example|hypothetical|archived)\b[^\n]*:\s*$/i;
     if (previous?.type === 'paragraph' && quotedContext.test(previous.raw)) return [];
     const parts = token.raw.split('\n');
-    return parts.filter((line, i) => /^Reviewed target:/.test(line) &&
+    return parts.filter((line, i) => TARGET_FIELD.test(line) &&
       !parts.slice(0, i).some(part => quotedContext.test(part)));
   });
-  const namedSource = !rawSourceNames.length && named.length === 1 && titles.length === 1 &&
+  // The report title owns the target; an unfenced copy of the reviewed plan
+  // may add its own H1 only when it names that same plan.
+  const namedSource = !rawSourceNames.length && named.length === 1 && titles.length >= 1 &&
     titles[0]!.type === 'heading' && currentHeading(tokens.indexOf(titles[0]!)) &&
-    /^Eng(?:ineering)? review:\s*Plan\s*[:—–-]/i.test(clean(titles[0]!.text)) &&
-    targetName(titles[0]!.text) === named[0] && targetFields.length === 1 &&
-    /^Reviewed target:\s*`?PLAN\.md`?(?:\s|$)/.test(targetFields[0]!) &&
+    /^Eng(?:ineering)? review\s*[:—–-]\s*\S/i.test(clean(titles[0]!.text)) &&
+    titles.every(title => title.type === 'heading' && targetName(title.text) === named[0]) && targetFields.length === 1 &&
+    new RegExp(`${TARGET_FIELD.source}\\s*\`?PLAN\\.md\`?(?:\\s|$)`).test(targetFields[0]!) &&
     [...targetFields[0]!.matchAll(/\b[\w./-]+\.md\b/g)].length === 1;
   if (!directSource && !namedSource) return;
   const withdrawn = (value: string, owners: string) => new RegExp(
@@ -265,7 +270,7 @@ function recordedBatchingIssue(call: NativePlanQuestionCall, savedPlan: string):
     if (questions.length !== 1) continue;
     const inlineBrief = fields[questions[0]!]!.slice(marker.length).trim();
     const inline = Boolean(inlineBrief);
-    if (!inline && (namedSource || clean(fields[questions[0]! + 1] ?? '') !== clean(title))) continue;
+    if (!inline && clean(fields[questions[0]! + 1] ?? '') !== clean(title)) continue;
     const sources = [...finding[0]!.matchAll(/\b([\w./-]+\.md)(?::([1-9]\d*(?:[-–][1-9]\d*)?))?\b/g)];
     if (sources.length !== 1 || sources[0]![1] !== 'PLAN.md' ||
         !inline && !sources[0]![2] || source && sources[0]![2] !== source) continue;
