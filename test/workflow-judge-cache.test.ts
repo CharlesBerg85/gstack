@@ -392,6 +392,8 @@ test('Ship sends its authorized 64k cap and compact response contract through th
   expect(options.structuredResponse).toBe(true);
   expect(options.maxTokens).toBe(65_536);
   expect(options.stream).toBe(true);
+  expect(WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning).not.toHaveProperty('pattern');
+  expect(WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning).not.toHaveProperty('maxLength');
   expect(source.match(/structuredResponse: true/g)).toHaveLength(1);
   const f = fixture();
   const stream = spyOn(Messages.prototype, 'stream').mockReturnValue({ finalMessage: async () => ({

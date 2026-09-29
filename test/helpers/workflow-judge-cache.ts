@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { DEFAULT_JUDGE_MAX_TOKENS, resolveEvalModel } from '../../lib/eval-model';
 import { JUDGE_MS } from './eval-budgets';
 import type { JudgeScore } from './llm-judge';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, WORKFLOW_JUDGE_RESPONSE_SCHEMA } from './workflow-judge-input';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, WORKFLOW_JUDGE_RESPONSE_SCHEMA, WORKFLOW_JUDGE_REASONING_WORD_LIMIT } from './workflow-judge-input';
 import { buildEvalInputIdentity, lookupEvalInputCache, storeEvalInputCache,
   type EvalCacheValue, type EvalInputIdentity, type EvalPassingProof } from '../../scripts/eval-input-cache';
 
@@ -69,7 +69,8 @@ export function validWorkflowJudgeScore(value: EvalCacheValue, thresholds: Thres
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).sort().join(',') !== 'actionability,clarity,completeness,reasoning'
     || typeof value.reasoning !== 'string'
-    || (structuredResponse && !new RegExp(WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning.pattern).test(value.reasoning))) return false;
+    || (structuredResponse && (!value.reasoning.trim()
+      || value.reasoning.trim().split(/\s+/).length >= WORKFLOW_JUDGE_REASONING_WORD_LIMIT))) return false;
   return (['clarity', 'completeness', 'actionability'] as const).every(key =>
     typeof value[key] === 'number' && Number.isInteger(value[key]) && value[key] >= thresholds[key] && value[key] <= 5);
 }
@@ -107,7 +108,8 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
         parameters: { rootPackage, thresholds: opts.thresholds, max_tokens: opts.maxTokens ?? DEFAULT_JUDGE_MAX_TOKENS, temperature: null, budget_ms: JUDGE_MS,
           request: opts.stream ? 'messages.stream/user' : 'messages.create/user', retries: 1,
           ...(opts.stream ? { stream: true } : {}),
-          ...(opts.structuredResponse ? { output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } } } : {}) },
+          ...(opts.structuredResponse ? { output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } },
+            response_validation: { reasoning_words_below: WORKFLOW_JUDGE_REASONING_WORD_LIMIT } } : {}) },
         runtime: { image: env.EVALS_CACHE_RUNTIME_ID!, bun: Bun.version, node: process.versions.node,
           platform: process.platform, arch: process.arch, judge: resolveEvalModel('judge', opts.model, env),
           anthropic_base_url: env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com',
