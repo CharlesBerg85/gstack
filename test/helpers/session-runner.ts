@@ -73,7 +73,7 @@ const BROWSE_ERROR_PATTERNS = [
   /Unknown snapshot flag: .+/,
   /ERROR: browse binary not found/,
   /Server failed to start/,
-  /no such file or directory[^\r\n]*\bbrowse(?:\.exe)?(?=$|[\s'":),])/i,
+  /no such file or directory.*\bbrowse(?:\.exe)?(?=$|[\s'":),])/i,
 ];
 
 // --- Testable NDJSON parser ---

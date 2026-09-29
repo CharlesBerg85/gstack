@@ -35,6 +35,11 @@ test.each(['full', 'pr'] as const)('%s selection binds the captured failure and 
 });
 
 describe('native browser-error evidence', () => {
+  test('all JavaScript line terminators bound missing-file diagnostics in execution output and stderr', () => {
+    const rows = observations.sessions.filter(row => row.id.startsWith('line-boundary-'));
+    expect(rows).toHaveLength(8);
+    for (const row of rows) expect(row.result.browseErrors, row.id).toEqual([]);
+  });
   test.each(['captured-ci', 'separate-lines', 'browser-document', 'browse-document', 'read-document', 'assistant-text', 'transport-metadata'])('%s is not a browser failure', id => {
     const row = observations.sessions.find(row => row.id === id);
     expect(row.spawns).toBe(1);
@@ -105,6 +110,10 @@ const cases: any[] = [
  {id:'read-document',events:events(diagnostics.map(x=>x[1]).join('\n'),'Read')},
  {id:'assistant-text',events:[{type:'assistant',message:{content:[{type:'text',text:diagnostics.map(x=>x[1]).join('\n')}]}}]},
  {id:'transport-metadata',events:[...events('no browser error'),{type:'system',message:diagnostics.map(x=>x[1]).join('\n')}]},
+ ...[['lf','\n'],['cr','\r'],['ls','\u2028'],['ps','\u2029']].flatMap(([id,separator])=>[
+  {id:'line-boundary-'+id,events:events('No such file or directory: Gemfile'+separator+'browse')},
+  {id:'line-boundary-'+id+'-stderr',events:events('ok'),stderr:'No such file or directory: Gemfile'+separator+'browse'},
+ ]),
  ...diagnostics.flatMap(([id,signal])=>[{id,signal,events:events(signal)},{id:id+'-stderr',signal,events:events('ok'),stderr:signal}]),
 ];
 let active: any;
