@@ -106,14 +106,18 @@ export const EVAL_POLICY = {
  * failures (a product defect is never quarantined), and unchanged case
  * touchfiles in the change that adds it. Pinned by
  * test/periodic-exclude-policy.test.ts.
- *   reason    - the written diagnosis
- *   tracking  - issue or TODOS pointer
- *   owner     - who removes it
- *   enteredAt - ISO date the entry landed (expiry counts weekly runs from here)
- *   exit      - the measurable exit condition
+ *   reason       - the written diagnosis, with the pass-rate evidence
+ *   failureClass - what the diagnosis found; a product defect has no class here
+ *   tracking     - issue or TODOS pointer
+ *   owner        - who removes it
+ *   enteredAt    - YYYY-MM-DD the entry landed (expiry counts weekly runs from here)
+ *   exit         - the measurable exit condition
+ * At most EVAL_POLICY.quarantine.capFraction of a tier's cases (gate and
+ * periodic are the blocking tiers) may be quarantined at once.
  */
 export const CASE_QUARANTINE: Record<string, {
   reason: string;
+  failureClass: 'detector' | 'harness' | 'model-latency';
   tracking: string;
   owner: string;
   enteredAt: string;
