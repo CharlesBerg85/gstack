@@ -193,7 +193,8 @@ function checkpoint(root: string, checkpointId: string, source: string | Record<
   const captured = readQaCapture(root, intent.capture);
   const value = { observationCommand: intent.observationCommand, observed: captured.observed, hypothesis: intent.hypothesis, nextCommand: intent.nextCommand };
   const sha256 = publish(root, `exploration-${checkpointId}.json`, value);
-  return { action: 'checkpoint', id: checkpointId, status: 'complete', sha256, capture: intent.capture, captureSha256: captured.sha256, intentSha256: hash(bytes), exitCode: 0 };
+  return { action: 'checkpoint', id: checkpointId, status: 'complete', sha256, capture: intent.capture, captureSha256: captured.sha256, intentSha256: hash(bytes),
+    link: `[checkpoint ${checkpointId}](exploration-${checkpointId}.json)`, exitCode: 0 };
 }
 
 function materialize(root: string, source: string) {
