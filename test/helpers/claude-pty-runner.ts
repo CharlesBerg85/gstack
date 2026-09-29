@@ -1987,7 +1987,7 @@ function conflictingDesignClosure(text: string): boolean {
     new RegExp(`(?:^|[.!?;]\\s+|\\n)(?:If|When|Once|Unless|Assuming|Provided)\\b[^.!?\\n]*\\b${owner}\\b`, 'i').test(text);
 }
 
-function hasCompletePlanReport(expectedPlanPath: string, minimumMtime: number, maximumMtime: number,
+export function hasCompletePlanReport(expectedPlanPath: string, minimumMtime: number, maximumMtime: number,
   allowRunHeaderForFailure = false, requiredReview?: 'Design'): boolean {
   if (!path.isAbsolute(expectedPlanPath)) return false;
   try {
