@@ -276,3 +276,11 @@ for(const sourcePath of ['C:\\owned\\PLAN.md','\\\\server\\share\\PLAN.md'])test
       expect(r.deadlines).toEqual([r.deadline]);expect(r.error).toBeUndefined();expect(r.snapshots.at(-1)).toBe('posture_confirmed');
     }else{expect(r.error).toBeInstanceOf(Error);expect(r.snapshots.at(-1)).toBe('failed');}
   });
+
+test('a decision whose grounding line names no plan file stays bound by the owned source Read (census 36597762183 HOLD D2)',()=>{
+  const f=input();revise(f,q=>{q.question=q.question.replace(/Project\/branch\/task:[^\n]*/,'Project/branch/task: gstack-plan-count on main, HOLD SCOPE review of saved project views.');});
+  expect(buildCeoHoldPostureReview(f)!.plan).toBe(f.source.content);
+  const unread=input();revise(unread,q=>{q.question=q.question.replace(/Project\/branch\/task:[^\n]*/,'Project/branch/task: gstack-plan-count on main, HOLD SCOPE review of saved project views.');});
+  unread.publicTools=unread.publicTools.filter(e=>e.toolUseId!==sourceId);
+  expect(()=>buildCeoHoldPostureReview(unread)).toThrow('complete original source Read/ACK');
+});

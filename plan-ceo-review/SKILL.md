@@ -1032,11 +1032,11 @@ Follow the preamble's session rules; `CONDUCTOR_SESSION: true` changes transport
    wins. When `QUESTION_TUNING: true`, include `<gstack-qid:plan-ceo-review-mode>`.
    These modes differ in kind, not coverage; do NOT score completeness.
 
-4. **Mode handoff:** After selection, send brief chat before tools or further questions: the mode's application and rationale; every governing approved row's ID, answer reference and accepted scope. Keep rows separate.
+4. **Mode handoff:** After selection, always send brief chat before tools or further questions: the mode's application and rationale; every governing approved row's ID, answer reference and accepted scope. Keep rows separate.
 - `plan-ceo-review-mode: AUTO_DECIDE`: `Auto-decided review mode → <selected mode> (your preference). Change with /plan-tune. Approved decisions: <rows or none>. <Application and rationale>.`
 - Other selections: `Mode: <selected mode>; approved decisions: <rows or none>. <Application and rationale>.`
 
-Record mode provenance after the handoff:
+Record mode provenance after the handoff chat:
 - **Explicit user choice:** instruction and mode; no question log because none was asked.
 - **Successful preference check:** result and recommendation; log `plan-ceo-review-mode`, `auto_decided: true`.
 - **Actual question answer:** question, answer reference and mode; log `auto_decided: false`, including the question ID only when `QUESTION_TUNING: true`.
@@ -1075,14 +1075,14 @@ In expansion modes, extend 0F's pending list.
 1. **10x check:** Describe 10x value for 2x effort.
 2. **Platonic ideal:** What would the best engineer with unlimited time and perfect taste build? Start with the user's experience.
 3. **Delight scan:** List at least 5 adjacent 30-minute improvements that would delight the user.
-4. **Expansion opt-in ceremony:** Present visions and individual proposals; enthusiastically explain each one's value. The user decides.
+4. **Expansion opt-in ceremony:** Lead each proposal with the felt user experience, then its shape, effort and impact. The user decides.
 
 **For SELECTIVE EXPANSION:**
 1. Run all three HOLD SCOPE checks below, including their defer/keep decisions.
 2. Describe 10x ambition, run the delight scan and assess platform potential. Candidates stay pending until scope answers.
 3. **Cherry-pick ceremony:** Use 0F with S/M/L/XL effort and risk. For more than 8, present the top 5–6; offer the rest on request.
 
-For both expansion modes, ask separately for each addition: **A)** Add to this plan's scope **B)** Defer to TODOS.md **C)** Skip. Accepted items govern the remaining sections.
+For both expansion modes, ask separately for each addition, starting with the first; no pacing menu: **A)** Add to this plan's scope **B)** Defer to TODOS.md **C)** Skip. Accepted items govern the remaining sections.
 
 **For HOLD SCOPE** — run this:
 1. Complexity check: at more than 8 files or more than 2 new classes/services, challenge whether fewer moving parts achieve the same goal.
