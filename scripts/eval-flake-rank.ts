@@ -155,7 +155,7 @@ export function readTrialOutcomeDir(dir: string): { records: TrialRecord[]; erro
   const errors: string[] = [];
   if (!fs.existsSync(dir)) return { records, errors };
   for (const name of fs.readdirSync(dir, { recursive: true }) as string[]) {
-    if (!/(^|\/)trial-outcomes[^/]*\.jsonl$/.test(name)) continue;
+    if (!/^trial-outcomes[^/\\]*\.jsonl$/.test(path.basename(name))) continue;
     const full = path.join(dir, name);
     const parsed = parseTrialOutcomes(fs.readFileSync(full, 'utf8'), { maxBytes: TRIAL_OUTCOMES_MAX_BYTES });
     records.push(...parsed.records.map(record => ({
