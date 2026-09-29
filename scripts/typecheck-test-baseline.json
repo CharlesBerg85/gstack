@@ -448,7 +448,6 @@
     "test/section-capture-native-tools.test.ts\tTS2339\tProperty 'CI' does not exist on type '{ NODE_ENV?: string | undefined; TZ?: string | undefined; PATH: string; }'.": 1,
     "test/session-runner-browse-errors.test.ts\tTS2769\tNo overload matches this call. The last overload gave the following error. Argument of type 'never[]' is not assignable to parameter of type 'undefined'.": 1,
     "test/session-runner-browse-errors.test.ts\tTS7006\tParameter 'row' implicitly has an 'any' type.": 6,
-    "test/setup-gbrain-fixture.test.ts\tTS2352\tConversion of type '{ addTest: (row: EvalTestEntry) => number; }' to type 'EvalCollector' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first. Type '{ addTest: (row: EvalTestEntry) => number; }' is missing the following properties from type 'EvalCollector': tier, tests, finalized, evalDir, and 6 more.": 3,
     "test/setup-gbrain-path4-caller.test.ts\tTS2339\tProperty 'diagnostic-secret' does not exist on type '{ 'no-verifier': number; 'no-install': number; 'no-init': number; 'no-registration': number; }'.": 1,
     "test/setup-gbrain-path4-caller.test.ts\tTS2339\tProperty 'exit' does not exist on type '{ 'no-verifier': number; 'no-install': number; 'no-init': number; 'no-registration': number; }'.": 1,
     "test/setup-gbrain-path4-caller.test.ts\tTS2339\tProperty 'leaked-claude-md' does not exist on type '{ 'no-verifier': number; 'no-install': number; 'no-init': number; 'no-registration': number; }'.": 1,
