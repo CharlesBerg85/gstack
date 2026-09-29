@@ -62,7 +62,7 @@ ${generateQAMethodReads(ctx)}
 ${reportOnly ? `Await each successful Read result before continuing. A supplied target, isolation
 description, section index or remembered method is not a completed instruction Read.
 Do not repeat a Read already completed in this invocation; reuse only its acknowledged
-full contents. If either required Read is missing, complete it now before step 1.
+full contents. If either required Read is missing, complete it now before Charter and preflight.
 ` : ''}Missing or unreadable assets, prerequisites or permission block affected probes, not independent safe checks.
 Report QA setup blockers.
 

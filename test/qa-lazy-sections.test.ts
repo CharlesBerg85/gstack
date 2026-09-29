@@ -430,7 +430,12 @@ describe('installed QA pointers', () => {
       expect(setup).toContain('prior report');
       expect(setup).toMatch(/baseline paths.*before writing/);
       expect(setup).toContain('only when it is empty; otherwise choose a fresh owned run subdirectory');
-      expect(setup).toContain('Never overwrite previous reports, baselines, screenshots or exploration notes');
+      if (skill === 'qa-only') {
+        expect(setup).toContain('Never overwrite artifacts from earlier runs');
+        expect(setup).toContain("Preserve this run's baselines, screenshots and exploration notes when finalizing its report");
+      } else {
+        expect(setup).toContain('Never overwrite previous reports, baselines, screenshots or exploration notes');
+      }
       expect(setup).toContain("caller\'s fixed artifact paths and permissions take precedence");
       expect(setup).toMatch(/impossible.*(?:output blocker|blocker)/);
       expect(setup).toMatch(/(?:rather than expanding|do not expand) write authority/);

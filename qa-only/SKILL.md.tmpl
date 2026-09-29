@@ -64,7 +64,7 @@ and adjacent behavior. Do not discover a browser merely because no URL was suppl
 Look for a test plan in this conversation. If this session already knows the
 project's state directory, also Read its newest `*-test-plan-*.md` when permitted.
 Do not create state or run bookkeeping helpers just to find optional context.
-Prefer the plan covering more selected contracts; break ties by recency.
+Prefer the plan covering more requested contracts; break ties by recency.
 If neither exists, use git diff analysis.
 
 {{LEARNINGS_SEARCH}}
@@ -93,7 +93,8 @@ before writing. Select the requested output dir or `.gstack/qa-reports`; create 
 Use that directory as `REPORT_DIR` only when it is empty; otherwise choose a fresh owned run subdirectory.
 Use `run-YYYYMMDDTHHMMSSZ` in UTC, adding a suffix on collision.
 All local reports, baselines and evidence use this directory.
-Never overwrite previous reports, baselines, screenshots or exploration notes.
+Never overwrite artifacts from earlier runs. Preserve this run's baselines,
+screenshots and exploration notes when finalizing its report.
 
 A caller's fixed artifact paths and permissions take precedence. An existing empty
 directory already established as owned by the caller needs no new shell commands

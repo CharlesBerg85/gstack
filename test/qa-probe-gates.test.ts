@@ -67,7 +67,7 @@ describe('QA probe entry and checkpoint gates', () => {
     const current = generateQAExploratory({ host: 'claude', skillName: 'qa-only', tmplPath: '', paths: HOST_PATHS.claude });
     for (const clause of ['## 0. Preparation gate', 'Await each successful Read result before continuing',
       'description, section index or remembered method is not a completed instruction Read',
-      'If either required Read is missing, complete it now before step 1']) {
+      'If either required Read is missing, complete it now before Charter and preflight']) {
       expect(old).not.toContain(clause);
       expect(current).toContain(clause);
     }
