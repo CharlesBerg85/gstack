@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { resolveEvalModel } from '../lib/eval-model';
 import { JUDGE_MS, CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { runSkillTest } from './helpers/session-runner';
 import {
@@ -16,7 +17,6 @@ import { extractSkillBody } from './helpers/skill-fixture';
 import { createCoverageAuditFixture } from './fixtures/coverage-audit-fixture';
 import { validateCoverageAudit, type CoverageFile } from './helpers/coverage-audit';
 import { runRecordedOfficeHoursAttempt, OFFICE_HOURS_BUN_GRACE_MS } from './helpers/office-hours-attempt';
-import { resolveEvalModel } from '../lib/eval-model';
 
 const evalCollector = createEvalCollector('e2e');
 
@@ -468,7 +468,7 @@ Write the full output (including the GATE verdict) to ${codexDir}/codex-output.m
       timeout: CAPTURE_MS,
       testName: 'codex-review',
       runId,
-      model: 'claude-opus-4-7',
+      model: resolveEvalModel('capture'),
     });
 
     logCost('/codex review', result);

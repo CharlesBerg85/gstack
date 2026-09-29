@@ -35,6 +35,7 @@
  */
 
 import { expect, beforeAll, afterAll } from 'bun:test';
+import { resolveEvalModel } from '../lib/eval-model';
 import { CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { execFileSync, spawnSync } from 'child_process';
 import {
@@ -228,7 +229,7 @@ exit 0
           collector: evalCollector,
           name: '/office-hours-brain-writeback',
           suite: 'Office Hours Brain Writeback E2E',
-          model: 'claude-sonnet-4-6',
+          model: resolveEvalModel('capture'),
           run: (signal) => runSkillTest({
             signal,
             prompt: `Read office-hours/SKILL.md for the workflow.
@@ -245,7 +246,7 @@ This is a test of the brain-writeback path. Do NOT skip the gbrain save step und
             timeout: CAPTURE_LONG_MS,
             testName: 'office-hours-brain-writeback',
             runId,
-            model: 'claude-sonnet-4-6',
+            model: resolveEvalModel('capture'),
             env: childEnv,
           }),
           validate: (result) => {

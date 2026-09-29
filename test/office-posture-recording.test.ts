@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test';
+import { resolveEvalModel } from '../lib/eval-model';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
@@ -26,7 +27,7 @@ async function exercise(owner: Owner, scenarios: Scenario[]) {
   } };
   const args: Record<string, any> = {
     expect, beforeAll: (fn: () => void) => setups.push(fn), afterAll: (fn: () => void) => finalizers.push(fn),
-    CAPTURE_MS, CAPTURE_LONG_MS, OFFICE_HOURS_BUN_GRACE_MS, runRecordedOfficeHoursAttempt,
+    CAPTURE_MS, CAPTURE_LONG_MS, OFFICE_HOURS_BUN_GRACE_MS, runRecordedOfficeHoursAttempt, resolveEvalModel,
     ROOT: '/source', runId: 'synthetic-posture-run', evalsEnabled: true,
     describeIfSelected: (_title: string, _names: string[], fn: () => void) => fn(),
     testConcurrentIfSelected: (name: string, fn: () => Promise<void>, timeout: number) => { expect(timeout).toBe(CAPTURE_LONG_MS + OFFICE_HOURS_BUN_GRACE_MS); callbacks.set(name, fn); },
@@ -44,7 +45,7 @@ async function exercise(owner: Owner, scenarios: Scenario[]) {
     runSkillTest: async (opts: any) => {
       index++; current = scenarios[index]!; expect(current).toBeDefined(); calls.push(opts);
       expect(opts.testName).toBe(owner); expect(opts.maxTurns).toBe(8); expect(opts.timeout).toBe(CAPTURE_MS);
-      expect(opts.model).toBe('claude-sonnet-4-6'); expect(opts.runId).toBe('synthetic-posture-run');
+      expect(opts.model).toBe(resolveEvalModel('capture')); expect(opts.runId).toBe('synthetic-posture-run');
       expect(opts.signal).toBeInstanceOf(AbortSignal);
       expect(opts.prompt).toContain('Skip any AskUserQuestion');
       const file = path.join(opts.workingDirectory, owner === owners[0] ? 'q3.md' : 'unlocks.md');
