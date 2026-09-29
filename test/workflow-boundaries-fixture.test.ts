@@ -292,12 +292,12 @@ test('F9 changed-input selection produces three cases with exact patterns and co
   expect(prProfileTestNamePattern(files[1], selected.selection)).toBe('(?:^|\\s)(?:investigate-owned-abort|investigate-owned-ending-error)$');
 });
 
-test('both F9 files fit the existing wall with every Bun retry and reserve', () => {
+test('both F9 files fit the existing wall with their one run and reserve', () => {
   for (const file of files) {
     const source = fs.readFileSync(path.join(import.meta.dir, '..', file), 'utf8');
     const count = PR_PROFILE_FILES[file].length;
     expect([...source.matchAll(/\}, CAPTURE_MS\);/g)]).toHaveLength(count);
-    expect(retriesForFiles([file])).toBe(1);
+    expect(retriesForFiles([file])).toBe(0);
     const budget = resolvePaidShardBudget([file]);
     expect(budget).toEqual({ timeoutMs: DEFAULT_SHARD_TIMEOUT_MS, source: 'default', policyId: null });
     expect(count * CAPTURE_MS * (retriesForFiles([file]) + 1) + 120000).toBeLessThanOrEqual(budget.timeoutMs);

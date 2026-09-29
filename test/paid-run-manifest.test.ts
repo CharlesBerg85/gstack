@@ -487,8 +487,8 @@ describe('hollow-shard guard', () => {
 });
 
 describe('retry parity', () => {
-  test('registered native workflows follow the retry rule while overlay attempts stay isolated', () => {
-    // A 25-minute case is past RETRY_MAX_CASE_MS: its timed-out attempt is the verdict.
+  test('registered native workflows and overlays run once', () => {
+    // Paid evals never retry: a timed-out attempt is the verdict.
     const native = 'test/skill-e2e-plan-ceo-split-overflow.test.ts';
     expect(retriesForFiles([native])).toBe(0);
     expect(retriesForFiles([native.replaceAll('/', '\\')])).toBe(0);
@@ -496,16 +496,15 @@ describe('retry parity', () => {
     const overlay = 'test/skill-e2e-overlay-harness-claude-dedicated-tools-vs-bash.test.ts';
     expect(retriesForFiles([overlay])).toBe(0);
   });
-  test('the matrix-era earned retries now follow the timeout-is-a-verdict rule, and each names a real file', () => {
-    // These three old matrix rows earned `retries: 2`; every one has a
-    // CAPTURE_LONG case, so a timed-out attempt is now their verdict.
+  test('the matrix-era earned retries are retired, and each names a real file', () => {
+    // These three old matrix rows earned `retries: 2`; paid evals never retry.
     for (const file of ['test/skill-e2e-office-hours-auto-mode.test.ts', 'test/skill-e2e-plan-mode-no-op.test.ts', 'test/skill-e2e-workflow.test.ts']) {
       expect(fs.existsSync(path.join(ROOT, file)), `stale retry parity entry: ${file}`).toBe(true);
       expect(retriesForFiles([file])).toBe(0);
     }
     expect(retriesForFiles(['test/skill-e2e-retro.test.ts'])).toBe(0);
-    expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(1);
+    expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(0);
     expect(buildPaidShardArgs(['x'], 1000, 4, 2)).toContain('2');
-    expect(buildPaidShardArgs(['x'], 1000, 4).join(' ')).toContain('--retry 1');
+    expect(buildPaidShardArgs(['x'], 1000, 4).join(' ')).toContain('--retry 0');
   });
 });

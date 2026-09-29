@@ -6,13 +6,12 @@ import os from 'node:os';
 import path from 'node:path';
 
 for (const budget of FINDING_RETRY_BUDGETS) {
-  test(`${budget.file}: supervision preserves every existing attempt and retry`, () => {
+  test(`${budget.file}: supervision covers its one run of every case`, () => {
     expect(budget.testMs).toBe(1_500_000);
-    // A 25-minute case is past RETRY_MAX_CASE_MS: a timed-out attempt is its verdict.
-    expect(budget.retries).toBe(0);
-    expect(retriesForFiles([budget.file])).toBe(budget.retries);
+    // Paid evals never retry: a timed-out case is its verdict.
+    expect(retriesForFiles([budget.file])).toBe(0);
     expect(budget.shardReserveMs).toBe(SHARD_RESERVE_MS);
-    expect(budget.shardMs).toBe(budget.cases * budget.testMs * (budget.retries + 1) + budget.shardReserveMs);
+    expect(budget.shardMs).toBe(budget.cases * budget.testMs + budget.shardReserveMs);
     expect(resolvePaidShardBudget([budget.file])).toEqual({ timeoutMs: budget.shardMs, source: 'registered', policyId: budget.id });
     const source = fs.readFileSync(path.join(import.meta.dir, '..', budget.file), 'utf8');
     if (budget.file === 'test/skill-e2e-plan-ceo-split-overflow.test.ts') {
@@ -184,10 +183,10 @@ test('current detach supervision covers the live-census floor', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '../package.json'), 'utf8'));
   const periodicTimeout = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
   const gateTimeout = Number(pkg.scripts['eval:bg:gate'].match(/--timeout\s+(\d+)/)[1]);
-  expect(floorFor('gate')).toBe(26_471);
+  expect(floorFor('gate')).toBe(21_725);
   expect(gateTimeout).toBe(49_320);
   expect(gateTimeout).toBeGreaterThanOrEqual(floorFor('gate'));
-  expect(floorFor('periodic')).toBe(30_797);
+  expect(floorFor('periodic')).toBe(22_481);
 });
 
 for (const jobs of [1, 2, 3]) test(`FIFO bound covers partial durations with ${jobs} workers`, () => {

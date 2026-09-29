@@ -21,8 +21,8 @@ const fakeEnv = {
 };
 
 describe('overlay file policy', () => {
-  test('grouped planning isolates every overlay and preserves ordinary retries', () => {
-    // Two short-case files keep their one retry (timeout-is-a-verdict rule).
+  test('grouped planning isolates every overlay and never retries ordinary files', () => {
+    // Paid evals never retry (approved 2026-09-29), short-case files included.
     const workflow = 'test/skill-e2e-review.test.ts';
     const files = [...overlayFiles, 'test/skill-e2e-triage.test.ts', workflow];
     for (const maxFilesPerShard of [2, 3, 10]) {
@@ -31,9 +31,9 @@ describe('overlay file policy', () => {
       for (const file of overlayFiles) expect(shards).toContainEqual([file]);
       const workflowShard = shards.find(shard => shard.includes(workflow))!;
       expect(workflowShard.some(isOverlayTestFile)).toBe(false);
-      expect(retriesForFiles(workflowShard)).toBe(1);
+      expect(retriesForFiles(workflowShard)).toBe(0);
       const args = buildPaidShardArgs(workflowShard, resolvePaidShardTimeoutMs(workflowShard), 2, retriesForFiles(workflowShard));
-      expect(args[args.indexOf('--retry') + 1]).toBe('1');
+      expect(args[args.indexOf('--retry') + 1]).toBe('0');
       expect(planPaidShards(files.map(file => file.replaceAll('/', '\\')), { maxFilesPerShard })).toEqual(shards);
     }
   });
@@ -66,10 +66,10 @@ describe('overlay file policy', () => {
     for (const file of [normalFile, 'test/skill-e2e-overlay-harness.test.ts', 'test/model-overlays.test.ts']) {
       expect(isOverlayTestFile(file)).toBe(false);
       expect(resolvePaidShardTimeoutMs([file])).toBe(DEFAULT_SHARD_TIMEOUT_MS);
-      // Not overlays; unlisted files run once because their case budget is unknown.
+      // Not overlays; every paid file runs once.
       expect(retriesForFiles([file])).toBe(0);
     }
-    expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(1);
+    expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(0);
     expect(resolvePaidShardTimeoutMs([normalFile], 1234)).toBe(1234);
     expect(resolvePaidShardTimeoutMs([overlayFiles[0]], 1_900_000)).toBe(1_900_000);
     expect(() => resolvePaidShardTimeoutMs([overlayFiles[0]], 1_800_000)).toThrow('explicit wall');

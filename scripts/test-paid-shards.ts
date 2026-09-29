@@ -67,7 +67,7 @@ import {
 } from './test-strict-output';
 import { PAID_TEST_GLOBS, isPaidTestFile } from '../test/helpers/paid-test-set';
 import { CASE_CI_EXCLUDE, PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
-import { FILE_RETRY_BUDGETS, SHORT_CASE_RETRY_FILES, STRICT_RETRY_CASE_BUDGETS } from '../test/helpers/eval-budgets';
+import { FILE_RETRY_BUDGETS, STRICT_RETRY_CASE_BUDGETS } from '../test/helpers/eval-budgets';
 import { getProjectEvalDir, getClaudeCliVersion, isFinalizedEvalResultFile, evalEntryOutcome } from '../test/helpers/eval-store';
 import { manualReviewProblem } from '../test/helpers/cookie-workflow-manual-review';
 import { preflightAnthropicApi } from '../test/helpers/anthropic-preflight';
@@ -644,9 +644,9 @@ export function resolvePaidShardBudget(files: string[], overrideMs?: number): Pa
   if (overlay && overrideMs !== undefined && overrideMs < OVERLAY_MIN_FILE_WALL_MS) {
     throw new Error(`Overlay shard requires at least ${OVERLAY_MIN_FILE_WALL_MS}ms; explicit wall ${overrideMs}ms cannot preserve its work and finalization budget`);
   }
-  // A registered file's case shard supervises one case and its allowed attempts.
+  // A registered file's case shard supervises its one case.
   const registeredMs = finding && shardCaseId(files[0]!) !== null
-    ? finding.caseMs * (finding.retries + 1) + finding.shardReserveMs : finding?.shardMs;
+    ? finding.caseMs + finding.shardReserveMs : finding?.shardMs;
   return {
     timeoutMs: overrideMs ?? (registeredMs ?? (overlay ? OVERLAY_MIN_FILE_WALL_MS : DEFAULT_SHARD_TIMEOUT_MS)),
     source: overrideMs !== undefined ? 'explicit' : finding ? 'registered' : 'default',
@@ -667,9 +667,9 @@ export function buildPaidShardArgs(
   // Explicit --concurrent/--max-concurrency: the legacy path always set one;
   // omitting it here made within-shard parallelism differ silently between
   // the two runners (observed: 1.6x sumdur/wall sharded vs 8x legacy).
-  // Retries come from retriesForFiles (the timeout-is-a-verdict rule) at the
-  // call site; the fallback of 1 serves only direct callers.
-  return ['test', ...files, '--retry', String(retries ?? 1), '--concurrent', `--max-concurrency=${maxConcurrency}`, `--timeout=${timeoutMs}`];
+  // Paid evals never retry (retriesForFiles); `--retry 0` is explicit so a
+  // bunfig default can never reintroduce one.
+  return ['test', ...files, '--retry', String(retries ?? 0), '--concurrent', `--max-concurrency=${maxConcurrency}`, `--timeout=${timeoutMs}`];
 }
 
 /**
@@ -1254,20 +1254,13 @@ export interface PaidRunManifest {
 }
 
 /**
- * Automatic retries follow the approved rule in test/helpers/eval-budgets.ts:
- * a timed-out attempt is a verdict, so only files whose every case budget is
- * at most RETRY_MAX_CASE_MS keep a retry (registered rows derive it from their
- * caseMs; SHORT_CASE_RETRY_FILES lists the rest). Overlays and every other
- * paid file run once. A multi-file shard takes the smallest allowance.
+ * Paid evals never retry (approved 2026-09-29): a failed verdict is final for
+ * its run, and trials are fixed by kind before the run (EVAL_POLICY). The
+ * function stays the single statement of that policy for the Bun arguments
+ * and the reuse identity.
  */
-export function retriesForFiles(files: string[]): number {
-  if (files.some(isOverlayTestFile)) return 0;
-  return Math.min(...files.map((file) => {
-    const rel = shardFile(file);
-    const registered = FILE_RETRY_BUDGETS.find(budget => budget.file === rel);
-    if (registered) return registered.retries;
-    return SHORT_CASE_RETRY_FILES.includes(rel) ? 1 : 0;
-  }));
+export function retriesForFiles(_files: string[]): number {
+  return 0;
 }
 
 export const PAID_TEST_DURATIONS_FILE = 'scripts/paid-test-durations.json';
