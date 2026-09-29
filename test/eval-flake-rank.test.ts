@@ -281,6 +281,8 @@ describe('pass-rates inputs', () => {
   test('legacy records attribute by shard suffix, id, label or single-owner file, else stay unattributed', () => {
     expect(attributeLegacyRecord('/anything', 'skill-e2e-b--beh-b', registry)).toBe('beh-b');
     expect(attributeLegacyRecord('rule-a', 'skill-e2e-zzz', registry)).toBe('rule-a');
+    expect(attributeLegacyRecord('/Rule a', 'skill-e2e-zzz', registry)).toBe('rule-a');
+    expect(attributeLegacyRecord('/rule a extra', 'skill-e2e-zzz', registry)).toBeNull();
     expect(attributeLegacyRecord('/gate c labeled', undefined, registry)).toBe('gate-c');
     expect(attributeLegacyRecord('/a display name', 'skill-e2e-a', registry)).toBe('rule-a');
     expect(attributeLegacyRecord('/shared display', 'skill-e2e-shared', registry)).toBeNull();

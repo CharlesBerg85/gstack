@@ -189,14 +189,17 @@ export function caseTier(id: string, registry: Registry = LIVE_REGISTRY): string
 
 /**
  * Attribute a legacy eval-store record to a registry id: the case-shard slug
- * suffix (`<file>--<id>`), the recorded name, a CASE_TEST_NAMES label, or the
- * only id its shard file registers. Anything else is unattributed (null).
+ * suffix (`<file>--<id>`), the recorded name or its exact slug (`/qa b6-static`
+ * is `qa-b6-static`), a CASE_TEST_NAMES label, or the only id its shard file
+ * registers. Anything else is unattributed (null).
  */
 export function attributeLegacyRecord(name: string, shard: string | undefined, registry: Registry = LIVE_REGISTRY): string | null {
   const known = (id: string) => id in registry.kinds;
   const [slugFile, slugCase] = (shard ?? '').split('--');
   if (slugCase && known(slugCase)) return slugCase;
   if (known(name)) return name;
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (known(slug)) return slug;
   const labeled = Object.entries(registry.testNames).find(([, label]) => label === name)?.[0];
   if (labeled && known(labeled)) return labeled;
   if (slugFile) {
