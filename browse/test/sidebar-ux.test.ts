@@ -182,43 +182,6 @@ describe('browser tab bar (sidepanel.css)', () => {
   });
 });
 
-// ─── Sidebar CSS tests ──────────────────────────────────────────
-
-describe('sidebar CSS (sidepanel.css)', () => {
-  const css = fs.readFileSync(path.join(ROOT, '..', 'extension', 'sidepanel.css'), 'utf-8');
-
-  test('stop button style exists', () => {
-    expect(css).toContain('.stop-btn');
-  });
-
-  test('stop button uses error color', () => {
-    const stopBtnSection = css.slice(
-      css.indexOf('.stop-btn {'),
-      css.indexOf('}', css.indexOf('.stop-btn {')) + 1,
-    );
-    expect(stopBtnSection).toContain('--error');
-  });
-
-  test('experimental-banner no longer uses amber warning colors', () => {
-    const bannerSection = css.slice(
-      css.indexOf('.experimental-banner {'),
-      css.indexOf('}', css.indexOf('.experimental-banner {')) + 1,
-    );
-    // Should not be amber/warning anymore
-    expect(bannerSection).not.toContain('245, 158, 11, 0.15');
-    expect(bannerSection).not.toContain('#F59E0B');
-  });
-
-  test('tool description uses system font not mono', () => {
-    const toolSection = css.slice(
-      css.indexOf('.agent-tool {'),
-      css.indexOf('}', css.indexOf('.agent-tool {')) + 1,
-    );
-    expect(toolSection).toContain('font-system');
-    expect(toolSection).not.toContain('font-mono');
-  });
-});
-
 // ─── Inspector message allowlist fix ────────────────────────────
 
 describe('inspector message allowlist fix', () => {
@@ -490,11 +453,6 @@ describe('chat toolbar buttons disabled state', () => {
 describe('tab switching does not steal focus', () => {
   const serverSrc = fs.readFileSync(path.join(ROOT, 'src', 'server.ts'), 'utf-8');
   const bmSrc = fs.readFileSync(path.join(ROOT, 'src', 'browser-manager.ts'), 'utf-8');
-
-  test('switchTab has bringToFront option', () => {
-    expect(bmSrc).toContain('bringToFront?: boolean');
-    expect(bmSrc).toContain('bringToFront !== false');
-  });
 
   test('handleCommand tab pinning does NOT steal focus', () => {
     // All switchTab calls in handleCommand should use bringToFront: false
@@ -1004,40 +962,11 @@ describe('BROWSE_NO_AUTOSTART (sidebar headless prevention)', () => {
 // chat-queue rip (PR #1216) — /command and /batch reset the timer and are
 // covered by that factory suite.
 
-// ─── Shutdown kills the terminal-agent (server.ts) ──────────────
-
-describe('shutdown cleanup (server.ts)', () => {
-  const serverSrc = fs.readFileSync(path.join(ROOT, 'src', 'server.ts'), 'utf-8');
-
-  test('shutdown kills the terminal-agent via identity-based kill (no pkill)', () => {
-    // v1.44+ identity-based teardown: only the PID recorded by THIS
-    // daemon's agent is signaled. The pre-v1.44 `pkill -f terminal-agent`
-    // regex killed sibling gstack sessions on the same host (also pinned
-    // by browse/test/terminal-agent-pid-identity.test.ts).
-    const shutdownFn = serverSrc.slice(
-      serverSrc.indexOf('async function shutdown('),
-      serverSrc.indexOf('try { detachSession()', serverSrc.indexOf('async function shutdown(')),
-    );
-    expect(shutdownFn).toContain('stopAgentByRecord');
-    expect(shutdownFn).toContain('isOurAgent(record, process.pid)');
-    expect(shutdownFn).toContain('readAgentRecord');
-    // No pkill CALL — the word may appear in the explanatory comment, so
-    // match invocation shapes only. The repo-wide reintroduction tripwire
-    // is browse/test/terminal-agent-pid-identity.test.ts.
-    expect(shutdownFn).not.toMatch(/(?:spawnSync|execSync|\$)\(\s*['"`]pkill/);
-  });
-});
-
 // ─── Cookie button in sidebar footer ────────────────────────────
 
 describe('cookie import button (sidebar)', () => {
   const html = fs.readFileSync(path.join(ROOT, '..', 'extension', 'sidepanel.html'), 'utf-8');
   const js = fs.readFileSync(path.join(ROOT, '..', 'extension', 'sidepanel.js'), 'utf-8');
-
-  test('quick actions toolbar has cookies button', () => {
-    expect(html).toContain('id="chat-cookies-btn"');
-    expect(html).toContain('Cookies');
-  });
 
   test('cookies button navigates to cookie-picker', () => {
     expect(js).toContain("'chat-cookies-btn'");

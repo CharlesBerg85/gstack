@@ -7,12 +7,10 @@ import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 
-test('QA-only fixture regressions and owned sections select the no-fix consumer', () => {
-  expect(selectTests(['test/qa-only-fixture.test.ts'], E2E_TOUCHFILES).selected).toEqual(['qa-only-no-fix']);
-  for (const file of ['test/helpers/qa-browser-deadline-evidence.ts', 'test/qa-browser-deadline-evidence.test.ts', 'test/fixtures/qa-only-observation-public.json',
-    'test/fixtures/qa-only-browser-probe.ts', 'test/qa-only-browser-probe.test.ts',
-    'test/helpers/qa-only-cleanup.ts', 'test/qa-only-cleanup.test.ts']) {
-    expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['qa-only-no-fix']);
+test('QA-only fixture helpers and owned sections select the no-fix consumer', () => {
+  expect(selectTests(['test/fixtures/qa-only-observation-public.json'], E2E_TOUCHFILES).selected).toEqual(['qa-only-no-fix']);
+  for (const file of ['test/helpers/qa-browser-deadline-evidence.ts', 'test/fixtures/qa-only-browser-probe.ts', 'test/helpers/qa-only-cleanup.ts']) {
+    expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual(['qa-bootstrap', 'qa-fix-loop', 'qa-only-no-fix', 'qa-quick']);
   }
   expect(selectTests(['browse/test/fixtures/qa-only.html'], E2E_TOUCHFILES).selected).toEqual([
     'aside-browse-basic', 'aside-browse-flow', 'qa-only-no-fix', 'carve-section-loading',

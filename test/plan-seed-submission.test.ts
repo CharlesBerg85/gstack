@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { submitPlanSeed, PlanSeedTimeout } from './helpers/plan-seed-submission';
-import { PtyCurrentScreen } from './helpers/pty-current-screen';
+import { createPtyScreen } from './helpers/pty-screen';
 import { launchClaudePty, runPlanSkillObservation, isProseAUQVisible, isNumberedOptionListVisible, isPermissionDialogVisible } from './helpers/claude-pty-runner';
 
 // A real PTY process consumes the actual paste/Enter/slash bytes and publishes
@@ -27,12 +27,12 @@ for (const scenario of ['success', 'completed-tool', 'status-updating', 'history
     const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'plan-seed-')));
     const config = path.join(dir, '.claude'); fs.mkdirSync(config);
     const script = path.join(dir, 'cli.ts'); fs.writeFileSync(script, CLI);
-    const decoder = new PtyCurrentScreen({ cols: 120, rows: 40 });
+    const decoder = await createPtyScreen(120, 40);
     let raw = '', exited = false;
     const launchedAt = Date.now();
     const proc = Bun.spawn([process.execPath, script], {
       cwd: dir, env: { ...process.env, CLAUDE_CONFIG_DIR: config, SEED_CASE: scenario },
-      terminal: { cols: 120, rows: 40, data(_terminal, data) { const s = Buffer.from(data).toString(); raw += s; decoder.feed(s); } },
+      terminal: { cols: 120, rows: 40, data(_terminal, data) { const s = Buffer.from(data).toString(); raw += s; decoder.write(s); } },
       onExit() { exited = true; },
     });
     const sent: string[] = [];
@@ -41,7 +41,7 @@ for (const scenario of ['success', 'completed-tool', 'status-updating', 'history
       send(s: string) { sent.push(s); proc.terminal!.write(s); },
       sendKey(key: string) { expect(key).toBe('Enter'); sent.push('\r'); proc.terminal!.write('\r'); },
       mark: () => raw.length,
-      currentScreen: async () => { const mark = raw.length; const frame = await decoder.snapshot();
+      currentScreen: async () => { const mark = raw.length; const frame = await decoder.readFrame();
         if (scenario === 'startup-fresh-waiting') {
           const statusFile = path.join(config, 'sessions', `${proc.pid}.json`);
           const status = JSON.parse(fs.readFileSync(statusFile, 'utf8'));
@@ -81,7 +81,7 @@ for (const scenario of ['success', 'completed-tool', 'status-updating', 'history
     } finally {
       if (!exited) proc.kill();
       await proc.exited;
-      proc.terminal?.close(); decoder.dispose();
+      proc.terminal?.close(); await decoder.dispose();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   }, 6000);

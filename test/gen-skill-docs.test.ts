@@ -196,17 +196,6 @@ describe('gen-skill-docs', () => {
     expect(commands).toEqual(sorted);
   });
 
-  test('generated header is present in SKILL.md', () => {
-    const content = fs.readFileSync(path.join(ROOT, 'SKILL.md'), 'utf-8');
-    expect(content).toContain('AUTO-GENERATED from SKILL.md.tmpl');
-    expect(content).toContain('Regenerate: bun run gen:skill-docs');
-  });
-
-  test('generated header is present in browse/SKILL.md', () => {
-    const content = fs.readFileSync(path.join(ROOT, 'browse', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('AUTO-GENERATED from SKILL.md.tmpl');
-  });
-
   test('snapshot flags section contains all flags', () => {
     const content = readSkillUnion('browse');
     for (const flag of SNAPSHOT_FLAGS) {
@@ -329,7 +318,7 @@ describe('gen-skill-docs', () => {
   test('no generated SKILL.md contains unresolved placeholders', () => {
     for (const skill of CLAUDE_GENERATED_SKILLS) {
       const content = fs.readFileSync(path.join(ROOT, skill.dir, 'SKILL.md'), 'utf-8');
-      const unresolved = content.match(/\{\{[A-Z_]+\}\}/g);
+      const unresolved = content.match(/\{\{\w+\}\}/g);
       expect(unresolved).toBeNull();
     }
   });

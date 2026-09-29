@@ -9,8 +9,8 @@
  * gate had signed off — the gate validated a stale plan.
  *
  * These assertions pin the template so a refactor can't silently restore the
- * old order. The paid chain E2E (skill-e2e-autoplan-chain.test.ts) verifies the
- * runtime behavior; this pins the source of truth for free on every PR.
+ * old order. No paid eval runs the whole chain; the production phase-publication
+ * hook enforces the order at runtime (autoplan-publication-guard.test.ts).
  */
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';

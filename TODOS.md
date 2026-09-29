@@ -144,9 +144,10 @@ wave"). Each was explicitly deferred with rationale, not dropped:
 - **#2443 AskUserQuestion numbering redesign** — real mismatch (brief letters
   vs host-rendered numbers), but a prompt-behavior redesign that shifts eval
   baselines; needs its own PR with baseline refresh. Effort S.
-- **#2447 typecheck infra** — tsconfig + repo-wide typecheck script + latent
-  type fixes. High-value, repo-wide blast radius, own PR with bake time.
-  Effort M. Re-derive on current main (several of its fixes landed since).
+- ~~**#2447 typecheck infra**~~ — superseded: the audit fix wave (v1.91.8.0)
+  added `tsconfig.json`, `bun run typecheck` (zero product errors) and the
+  `typecheck:test` ratchet inside the required `free-tests` check, reusing
+  #2447's fixes where they still applied.
 - **#2492 per-project Chromium profile** — needs an on-disk migration story
   for the machine-wide profile default and SingletonLock scoping. Effort M.
 - **#2286 `triggers:` frontmatter** — the Claude Code router never reads the
@@ -502,32 +503,6 @@ touchfiles and re-offer pending ones on the next interactive run.
 false) permanently misses the artifacts-rename migration unless they paste the
 manual command. **Effort:** M. **Priority:** P2.
 
-### P2: periodic tier — TWO documented-red tests need structural repair (was three)
-
-**2026-08-29 update (test-infra overhaul):** (1) the sidebar E2E trio is
-ALREADY DELETED — no file in the tree POSTs to /sidebar-command or
-/sidebar-chat; only tombstone tests remain (browse/test/sidebar-tabs.test.ts
-asserts the endpoints STAY deleted), so part (1) closes as already-done.
-(2) skill-e2e-ship-idempotency and (3) skill-e2e-brain-privacy-gate are now
-EXCLUDED from the weekly lane with tracking
-(test/helpers/periodic-exclude-data.ts) — removing their entries re-activates
-them; the structural investigations below are the re-entry condition.
-
-**What:** (1) The sidebar E2E trio (navigate, url-accuracy, css-interaction)
-POSTs to /sidebar-command and /sidebar-chat — endpoints removed on every tree
-when the PTY terminal replaced the chat queue (server.ts tombstone ~2671);
-rewrite them against the PTY surface or delete them. (2)
-skill-e2e-ship-idempotency: the PTY child sits at the Claude Code welcome
-screen in plan mode for the full budget — the typed /ship never lands
-(readiness/typing race vs CLI v2.1.233's welcome screen); never green since
-it was born in v1.63. (3) skill-e2e-brain-privacy-gate: never green anywhere;
-the artifacts-sync stop-gate preconditions don't survive the hermetic env
-even with per-test HOME/GSTACK_HOME injection — needs a transcript-level
-debug of what the child's preamble actually echoes.
-
-**Why:** every red periodic run costs triage time; two of these have burned
-three triage passes across two releases. **Effort:** M. **Priority:** P2.
-
 ### P1: #1882 — portable skill-install prefix (non-`gstack` install dirs break silently)
 
 **What:** Every generated SKILL.md hardcodes the literal `~/.claude/skills/gstack/...`
@@ -851,6 +826,83 @@ audit trail lives in Aside.
 
 ## Test infrastructure
 
+### Automatic exclusion policy for chronically red periodic files (P3)
+
+**What:** A weekly periodic file that stays red for several consecutive runs keeps burning slice minutes
+until someone triages it by hand (the five finding-count evals were red eight runs straight before the
+2026-09 audit retired them). Add a report step that, after N consecutive reds, opens a PR adding the file
+to `PERIODIC_CI_EXCLUDE` with its failing run links, a tracking entry and a re-entry condition.
+
+**Re-entry / done when:** the periodic report proposes the exclusion automatically and a human approves it.
+
+### P3: Collapse the native-completion negative table
+
+**What:** After the 2026-09 audit the 14-mutation "native completion and menu ownership" table survives
+only in `test/eng-first-review.test.ts` (14 per-incident copies), `test/plan-count-completion.test.ts`
+and `test/dx-selected-navigation-ap.test.ts`. One shared table run once against a canonical call is sound
+only after `engFirstReviewAUQ` checks native completion once at entry; today each branch gates it
+separately, so the change alters a paid verdict and needs its own paid run.
+
+### P3: Re-pin the four remaining claude-opus-4-7 paid files
+
+**What:** The 2026-09 audit moved seven paid evals to the default capture model (`resolveEvalModel('capture')`).
+`skill-e2e-design`, `skill-e2e-office-hours-phase4`, `skill-e2e-plan-prosons` and `skill-e2e-plan` keep
+`claude-opus-4-7` because six cases failed on the default model in one run (plan-design-review-plan-mode timeout,
+office-hours-phase4-fork format, plan-review-prosons-neutral-neg missing output, plan-ceo-review-selective and
+plan-eng-review 600 s timeouts, plan-ceo-review-expansion-energy posture score 3). They measure an old model.
+
+**Re-entry:** fix the prompt, budget or rubric so each case passes on the default model in one run, then drop the pin.
+
+### P3: Retire the unused CEO payment seeder
+
+**What:** `seedCeoPaymentProject` and `pickSuppliedCeoPlanStart` in `test/helpers/ceo-finding-fixture.ts`
+and `test/fixtures/ceo-existing-payment/` lost their only paid consumer when the CEO finding-count eval
+was retired; the fixture tests in `test/ceo-finding-fixture.test.ts` still exercise them. Delete the
+seeder, its fixture and those tests together.
+
+### P3: No paid eval runs the full /autoplan chain
+
+**What:** `skill-e2e-autoplan-chain` was retired (it never reached a product
+verdict: launch failures, then 85-minute budget overruns). Phase order is still
+enforced by `autoplan/bin/phase-publication-hook.ts` and pinned by the free
+`test/autoplan-publication-guard.test.ts`, and `skill-e2e-autoplan-dual-voice`
+covers CEO Phase 1 dispatch. Nothing proves a live model completes
+CEO → Design → DX → Eng or reads the required phase sections
+(`CARVE_GUARDS.autoplan` is `behavioral: 'none'`).
+
+**Re-entry:** a chain eval that fits the ordinary PTY tiers, for example one that
+runs the no-UI, no-DX path (CEO then Eng) and asserts the section reads.
+
+### P3: CI-unrunnable paid evals
+
+**What:** Seven paid files cannot execute in the CI image (no `codex` CLI, no
+macOS/Aside, no physical iPhone), so the weekly periodic lane scheduled them as
+green shards that verified nothing. They are now in `PERIODIC_CI_EXCLUDE`
+(`test/helpers/periodic-exclude-data.ts`): `codex-e2e`, `codex-e2e-sol-scope`,
+`codex-e2e-shared-libs`, `codex-e2e-recommendation-substance`,
+`skill-e2e-outside-voice`, `skill-e2e-aside`, `skill-e2e-ios-device`. They still
+run locally on a machine that has the CLI or device.
+
+**Re-entry:** the CLI or device is available in the CI image. First target:
+`codex-e2e-sol-scope` as the Codex host smoke once the Codex CLI is installed
+(see "Install the Codex CLI in the CI image"). Remove each file's exclude entry
+when its prerequisite exists.
+
+**Review by:** 2026-12-28. **Effort:** S per file. **Priority:** P3.
+
+### P3: Install the Codex CLI in the CI image
+
+**What:** Add `@openai/codex` to `.github/docker/Dockerfile.ci` and provide a
+Codex `auth.json` as a CI secret so the four `codex-e2e*` files and
+`skill-e2e-outside-voice` can leave `PERIODIC_CI_EXCLUDE`.
+
+**Cost estimate:** image build +1 npm global install (~30 s per image build);
+weekly model spend on the order of the repo's periodic rule of thumb, ~$1 per
+file per run, so ~$5/week for the five files, billed to the Codex account
+behind the secret. **Risk:** a long-lived credential in CI.
+
+**Effort:** S. **Priority:** P3.
+
 ### P1: skillify gate test red — HOME-override sessions never discover project skills (pre-existing)
 
 **What:** `test/skill-e2e-skillify.test.ts` `skillify-provenance-refusal` fails
@@ -960,11 +1012,12 @@ coverage fill. Remaining, in rough priority order:
   CLI reads a local `eval <file>` itself and sends the code as `js` (
   semantics-preserving; keep the daemon path for remote callers), plus a
   namespace hint appended to read-commands.ts:313's error. Effort S.
-- **P2 — PTY boot-readiness wait.** The PTY tests' Bun.sleep(8000) preludes
-  and invokeAndObserve's 6s boot_grace_ms are blind waits; a real readiness
-  waitFor needs empirical CLI 2.1.x ready-marker probing in a working
-  terminal environment (this sandbox's PTY probe wedged). Effort S, needs a
-  dev machine.
+- **P2 — PTY boot-readiness wait (paid runner).** Free fake-CLI tests now pass
+  `startupReadyMarker` (plan-count-history since the 2026-09 audit). The paid
+  runner's real-CLI path (`runPlanSkillCounting` without a marker) and
+  `test/pty-screen-session.test.ts` still pay the blind 8 s wait; a real
+  readiness waitFor needs empirical CLI 2.1.x ready-marker probing in a working
+  terminal environment. Effort S, needs a dev machine.
 - **P2 — single typed test registry.** Paid globs, tiers, touchfiles keys,
   and exclusions are still separate literal authorities synced by tripwires;
   derive them from one registry and the drift class dies structurally
@@ -980,9 +1033,8 @@ coverage fill. Remaining, in rough priority order:
 - **P3 — eval-list should exclude _partial runs** (pinned as current
   behavior in test/eval-cli-family.test.ts with an improvement note).
   Effort S.
-- **P3 — codex-e2e-plan-format's testIfSelected names have no map keys**
-  (run-all only today) + 15 E2E / 2 judge PHANTOM touchfiles keys select
-  tests that exist nowhere — add keys or delete, one sweep. Effort S.
+- **P3 — 15 E2E / 2 judge PHANTOM touchfiles keys** select tests that exist
+  nowhere — add keys or delete, one sweep. Effort S.
 - **P3 — first-execution rot from the sliced lane's first live runs: 2 of 3
   FIXED** (PR #2721): (a) ✅ skillify family — root cause was HOME==cwd
   making claude treat <cwd>/.claude/skills as the PERSONAL dir (project
@@ -1968,6 +2020,13 @@ plus a TTL so abandoned PTYs eventually exit.
 
 **Priority:** P2.
 **Effort:** S (CC: ~30 min once fixture exists). Captured from v1.21.1.0 plan-eng-review D2.
+
+**Status (2026-09):** The four `skill-e2e-plan-*-finding-count` evals were retired
+after eight red weekly runs whose failures were harness and budget, not skill
+behavior. The `*-finding-floor` evals assert at least one AskUserQuestion, not one
+per finding, so this contract has no paid coverage today. Re-entry test: a
+qid-keyed per-finding count on a multi-finding fixture with `QUESTION_TUNING: true`
+(the `<gstack-qid:…>` markers only appear with tuning on).
 
 ---
 
@@ -3154,7 +3213,7 @@ files have no `evals.yml` matrix row, so CI never runs them
 (`KNOWN_MATRIX_GAPS` in the test enumerates them — notably the plan-mode and
 finding-floor smokes and the AUQ format-compliance gate). (2) Four matrix rows
 point at whole-file tier-gated files but set no row `tier:` property, so with
-`EVALS_TIER` unexported those suites self-skip: `codex-e2e`/`gemini-e2e` run
+`EVALS_TIER` unexported those suites self-skip: `codex-e2e` runs
 ZERO tests and report green on every PR (vestigial rows; the periodic cron
 lane owns them — consider deleting the rows), and `e2e-pty-plan-smoke` spends
 ~7 min on setup then skips every describe (hollow-green since the files
@@ -3832,7 +3891,7 @@ the browse files with no "Ran N tests" summary. Receipts:
 ### Pre-existing test failures surfaced during v1.12.0.0 ship — RESOLVED
 
 - `test/brain-sync.test.ts` GSTACK_HOME isolation fixed on main in v1.13.0.0.
-- `test/model-overlay-opus-4-7.test.ts` updated on main to match the new overlay content (the v1.10.1.0 removal of "Fan out explicitly" was correct — measured −60pp fanout vs baseline).
+- The Opus 4.7 overlay test (now a block in `test/model-overlays.test.ts`) updated on main to match the new overlay content (the v1.10.1.0 removal of "Fan out explicitly" was correct — measured −60pp fanout vs baseline).
 
 **Completed:** v1.13.0.0 (2026-04-25, on main)
 
@@ -3851,7 +3910,7 @@ the browse files with no "Ran N tests" summary. Receipts:
 
 - **Fixed the `bearer-token-json` regression in `bin/gstack-brain-sync`** — the value charset `[A-Za-z0-9_./+=-]{16,}` didn't permit spaces, so auth headers with the standard `Bearer <token>` form (literal space after the scheme name) slipped past the scanner. Added an optional `(Bearer |Basic |Token )?` prefix to the pattern. Validated against 5 positive cases (including the regression fixture) + 3 negative cases (short tokens, non-secret keys, random JSON). The 7-pattern secret scanner now passes all fixtures including bearer-json.
 - **Added `test/gstack-brain-init-gh-mock.test.ts`** — 8 tests exercising the `gh` CLI auto-create path that previously had zero coverage. Stubs `gh` on PATH to record every call, asserts `gh repo create --private --description "..." --source <GSTACK_HOME>` fires with the computed `gstack-brain-<user>` default name. Covers: happy path, fall-through-to-`gh repo view` when create hits already-exists, user-provided-URL-bypasses-gh, gh-not-on-path prompts for URL, gh-not-authed prompts for URL, idempotent `--remote` re-runs, conflicting-remote rejection.
-- **Added `test/skill-e2e-brain-privacy-gate.test.ts`** — periodic-tier E2E (~$0.30-$0.50/run). Stages a fake `gbrain` on PATH + `gbrain_sync_mode_prompted=false` in config, runs a real skill via `runAgentSdkTest`, intercepts tool-use via `canUseTool`, and asserts the preamble fires the 3-option privacy AskUserQuestion with canonical prose ("publish session memory" / "artifact" / "decline"). Second test asserts the gate is silent when `prompted=true` (idempotency-within-session).
+- **Added the brain privacy-gate E2E** (retired as never green in the 2026-09 test audit; `test/gstack-skill-start.test.ts` now pins consent before egress) — periodic-tier E2E (~$0.30-$0.50/run). Stages a fake `gbrain` on PATH + `gbrain_sync_mode_prompted=false` in config, runs a real skill via `runAgentSdkTest`, intercepts tool-use via `canUseTool`, and asserts the preamble fires the 3-option privacy AskUserQuestion with canonical prose ("publish session memory" / "artifact" / "decline"). Second test asserts the gate is silent when `prompted=true` (idempotency-within-session).
 - **Registered `brain-privacy-gate` in `test/helpers/touchfiles.ts`** (periodic tier) with dependency tracking on `scripts/resolvers/preamble/generate-brain-sync-block.ts`, `bin/gstack-brain-sync`, `bin/gstack-brain-init`, `bin/gstack-config`, and the Agent SDK runner. Diff-based selection will re-run the E2E whenever any of those change.
 
 **Completed:** v1.12.0.0 (2026-04-24)
@@ -4102,9 +4161,9 @@ makes live agents start skipping a section. The canary is the only
 mechanism that catches that, from real usage.
 
 **Context:** Deferred from the carve-guard-hardening plan (D5→T2, codex
-outside-voice #7). `test/helpers/transcript-section-logger.ts` exists but
-is built for deterministic test transcripts + ship action fingerprints,
-NOT real-session drift — it needs rework before it can back this. Ship
+outside-voice #7). The deterministic `test/helpers/transcript-section-logger.ts`
+was deleted in the 2026-09 test audit (no paid or production caller; see
+docs/test-audit-2026-09.md); a real-session logger starts from scratch. Ship
 the deterministic guards first; add this once they've proven useful. The
 carved-skill set + each skill's `requiredReads` are already declared in
 `test/helpers/carve-guards.ts`, so the canary reads its expectations
@@ -4112,7 +4171,7 @@ from there.
 
 **Effort:** M (human ~2d, CC ~4h).
 
-**Depends on:** `transcript-section-logger.ts` real-session-drift rework.
+**Depends on:** a real-session section-read logger (none exists today).
 
 ### P2: Harden behavioral section-loading test hermeticity
 

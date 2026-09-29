@@ -77,8 +77,9 @@ export interface CarveGuard {
    *  - 'external' → covered by a dedicated bespoke test (complex fixtures, e.g.
    *                 ship's git/VERSION/CHANGELOG state). The data-driven loop
    *                 skips it; E1 asserts `externalTest` exists instead.
+   *  - 'none'     → no behavioral guard; the static invariants still apply.
    */
-  behavioral: 'plan' | 'prompt' | 'external';
+  behavioral: 'plan' | 'prompt' | 'external' | 'none';
   /** Required when behavioral === 'external': path (repo-relative) to the dedicated test. */
   externalTest?: string;
   /** Parity: max bytes for the always-loaded skeleton (asserts the carve shrank it). */
@@ -565,8 +566,8 @@ do not launch the downstream skill or open a browser.`,
       ],
       gateAfterStop: 'AskUserQuestion options:',
     },
-    behavioral: 'external',
-    externalTest: 'test/skill-e2e-autoplan-chain.test.ts', // phase-complete markers live ONLY in sections — its assertions ARE section-read proof
+    // The retired skill-e2e-autoplan-chain was its only section-read proof.
+    behavioral: 'none',
     maxSkeletonBytes: 70_000, // Phase-specific outside coverage, native fallback, and harness guard.
     minUnionBytes: 85_000, // measured union 86,926
     mustContain: ['6 Decision Principles', 'TASTE DECISION', 'USER CHALLENGE', 'consensus', 'Restore Point'],

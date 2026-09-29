@@ -590,6 +590,52 @@ export default app;
     }
   }, CAPTURE_MS);
 
+  testIfSelected('journey-negatives', async () => {
+    // Casual or off-topic prompts that share routing keywords ("wtf",
+    // "algorithm", "send it to the team") must not invoke a skill. Folded
+    // from the retired Opus 4.7 routing eval; same bound: at most one of the
+    // three may route.
+    const cases = [
+      { name: 'neg-syntax-q', prompt: 'wtf does this Python list comprehension syntax even mean, [x for x in y if z]?' },
+      { name: 'neg-algo-q', prompt: 'does this bubble sort algorithm actually work in O(n log n)?' },
+      { name: 'neg-slack-send', prompt: 'can you help me write the slack message? I want to send it to the team.' },
+    ];
+    const tmpDir = createRoutingWorkDir('negatives');
+    try {
+      const results = await Promise.all(cases.map(async c => {
+        const result = await runSkillTest({
+          prompt: c.prompt,
+          workingDirectory: tmpDir,
+          maxTurns: 2,
+          allowedTools: ['Skill', 'Read'],
+          timeout: JUDGE_MS,
+          testName: `journey-negatives-${c.name}`,
+          runId,
+        });
+        const skillCalls = result.toolCalls.filter(tc => tc.tool === 'Skill');
+        const actualSkill = skillCalls.length > 0 ? skillCalls[0]?.input?.skill : undefined;
+        logCost(`journey: journey-negatives ${c.name}`, result);
+        evalCollector?.addTest({
+          name: `journey-negatives-${c.name}`,
+          suite: 'Skill Routing E2E',
+          tier: 'e2e',
+          passed: actualSkill === undefined,
+          duration_ms: result.duration,
+          cost_usd: result.costEstimate.estimatedCost,
+          transcript: result.transcript,
+          output: `routed=${actualSkill ?? '(none)'}`,
+          turns_used: result.costEstimate.turnsUsed,
+          exit_reason: result.exitReason,
+        });
+        return { name: c.name, actualSkill };
+      }));
+      const routed = results.filter(r => r.actualSkill !== undefined);
+      expect(routed.length, `negatives routed: ${routed.map(r => `${r.name}→${r.actualSkill}`).join(', ')}`).toBeLessThanOrEqual(1);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }, CAPTURE_MS);
+
   testIfSelected('journey-visual-qa', async () => {
     const tmpDir = createRoutingWorkDir('visual-qa');
     try {

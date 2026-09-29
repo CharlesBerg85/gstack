@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test';
+import { resolveEvalModel } from '../lib/eval-model';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { runSkillTest } from './helpers/session-runner';
 import { outcomeJudge } from './helpers/llm-judge';
@@ -108,7 +109,7 @@ CRITICAL RULES:
       timeout: CAPTURE_MS,
       testName: `qa-${label}`,
       runId,
-      model: 'claude-opus-4-7',
+      model: resolveEvalModel('capture'),
     });
 
     logCost(`/qa ${label}`, result);

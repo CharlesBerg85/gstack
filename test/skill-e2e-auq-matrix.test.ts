@@ -27,6 +27,7 @@
  * Run a subset in the foreground with AUQ_MATRIX_ONLY="plan-eng-review,spec".
  */
 import { test } from 'bun:test';
+import { resolveEvalModel } from '../lib/eval-model';
 import { CAPTURE_MS } from './helpers/eval-budgets';
 import { describeE2ETier } from './helpers/e2e-gate';
 import * as fs from 'node:fs';
@@ -96,7 +97,7 @@ const MATRIX: MatrixSkill[] = [
     // controlled Opus re-run passed cleanly (7/7 format, substance 5, 160s).
     // The spec workflow's long pre-question phase needs the stronger model
     // to reach its first AskUserQuestion inside the turn budget.
-    model: 'claude-opus-4-7',
+    model: resolveEvalModel('capture'),
   },
   {
     skill: 'design-consultation',

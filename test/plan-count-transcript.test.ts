@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { readPlanCountTranscript, unresolvedPlanQuestionCalls } from './helpers/plan-count-transcript';
-import { nativePlanCallFingerprint, planCountQuestionPhase, engStep0Boundary, ceoStep0Boundary, ceoFirstReviewAUQ } from './helpers/claude-pty-runner';
+import { nativePlanCallFingerprint, planCountQuestionPhase, engStep0Boundary } from './helpers/claude-pty-runner';
 
 const dirs: string[] = [];
 afterEach(() => { for (const dir of dirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
@@ -36,50 +36,6 @@ function fixture() {
 }
 
 describe('native plan-count transcripts', () => {
-  test('the actual partially answered CEO setup packet counts once without selecting its unanswered mode', () => {
-    const f = fixture();
-    // Native question/header/label metadata from targeted-a's paired CEO
-    // call. The successful tool_result answered only routing and approach.
-    const packet = [{"header":"Routing","question":"gstack works best when your project's CLAUDE.md includes skill routing rules — should I add them? <gstack-qid:routing-injection>","options":[{"label":"Add routing rules (Recommended)"},{"label":"Skip for now"}]},{"header":"Prerequisites","question":"No design doc found for this branch. Run /office-hours to capture structured problem context first, or proceed directly to the plan review? <gstack-qid:plan-ceo-review-office-hours>","options":[{"label":"Skip — review the plan directly (Recommended)"},{"label":"Run /office-hours first"}]},{"header":"Test Scope","question":"Which implementation approach should the tests follow? This shapes the review scope. <gstack-qid:plan-ceo-review-approach>\n\nD1 — Approach selection for processPayment() test coverage\nProject: Payment Processing — adding missing unit tests\nELI10: The plan calls for exactly 2 tests. Adding a few more for the most common real-world Stripe failures (card declined, rate limit) costs ~10 extra minutes with CC but closes the gaps users actually hit. The question is whether to stay at 2 or expand to ~5-6 tests.\nStakes if we pick wrong: Choosing minimal leaves 402 (card declined) untested — the most common production failure. Choosing full adds ~5 min of CC work.\nRecommendation: B (Core Stripe paths) because 402 card declined is the highest-volume real-world failure and CC compresses the extra work to near-zero.\nCompleteness: A=7/10, B=9/10","options":[{"label":"Minimal — 2 tests as planned (7/10)"},{"label":"Core paths — ~5 tests (9/10) (Recommended)"}]},{"header":"Review Mode","question":"D2 — Review mode for this plan?\nProject: Payment Processing test coverage — adding missing unit tests for processPayment()\nELI10: The plan adds 2 missing unit tests. HOLD SCOPE means: take the scope as given, review it with maximum rigor — catch every ambiguity, failure mode, edge case, observability gap. SELECTIVE EXPANSION means: do all that AND surface cherry-pick expansions (additional test scenarios, receipt schema validation, etc.) one at a time for your approval.\nStakes if we pick wrong: HOLD keeps the review tight and fast. SELECTIVE surfaces more opportunities but adds round-trips.\nRecommendation: HOLD SCOPE — this is a focused gap-fill, and rigor matters more than ambition here.\nNote: options differ in kind, not coverage — no completeness score. <gstack-qid:plan-ceo-review-mode>","options":[{"label":"HOLD SCOPE — maximum rigor (Recommended)"},{"label":"SELECTIVE EXPANSION — rigor + cherry-picks"}]}];
-    f.append(f.ask('actual-packet', packet), f.answer('actual-packet', [packet[0], packet[2]]));
-    const [call] = f.read().calls;
-    expect(call.answered).toBe(true);
-    expect(call.failed).toBe(false);
-    expect(call.unansweredQuestionIndices).toEqual([1, 3]);
-    expect(f.read().calls.filter(c => c.answered)).toHaveLength(1);
-    const setup = nativePlanCallFingerprint(call, 0, true);
-    expect(setup.options.some(o => /HOLD SCOPE/.test(o.label))).toBe(false);
-    expect(ceoStep0Boundary(setup)).toBe(false);
-    expect(ceoFirstReviewAUQ(setup)).toBe(false);
-
-    const finding = [{"header":"Receipt Schema","question":"D3 — The plan says 'assert correct receipt is generated' but doesn't define what a correct receipt looks like. Without a schema, the test will pass even if the receipt is missing critical fields.\n\nELI10: Right now the test could assert `receipt != nil` and call it a day. That test passes even if the receipt has the wrong amount or no charge ID. We need to specify what fields a correct receipt must have.\n\nStakes if we pick wrong: Tests pass in CI but fail to catch a real receipt bug — e.g., wrong charge_id linked to wrong customer.\n\nRecommendation: A — specify the receipt schema in the plan now; costs ~5 min, prevents a class of silent bugs.\nCompleteness: A=9/10, B=7/10, C=3/10 <gstack-qid:plan-ceo-receipt-schema>","options":[{"label":"Specify schema in plan (Recommended)"},{"label":"Specify during implementation"},{"label":"Skip — too much detail for a plan"}]}];
-    f.append(f.ask('receipt-schema', finding), f.answer('receipt-schema', finding));
-    const review = nativePlanCallFingerprint(f.read().calls[1], 1, true);
-    expect(planCountQuestionPhase(review, false, ceoStep0Boundary, ceoFirstReviewAUQ))
-      .toEqual({ preReview: false, reviewStarted: true });
-
-    // A refused/empty packet must not receive the same completion credit.
-    f.append(f.ask('empty-packet', packet), f.answer('empty-packet', []));
-    const empty = f.read().calls[2];
-    expect(empty.answered).toBe(false);
-    expect(empty.failure).toContain('no matching nonempty answers');
-  });
-
-  test('CEO first-finding fallback requires native finding identity and rejects setup decisions', () => {
-    const f = fixture();
-    for (const [id, text] of [
-      ['setup', 'D1 — Missing context: choose a scope <gstack-qid:plan-ceo-review-scope>'],
-      ['mode', 'D1 — Missing context: choose a mode <gstack-qid:plan-ceo-review-mode>'],
-      ['unscoped', 'D1 — Missing receipt schema'],
-      ['arbitrary', 'D1 — Pick an option <gstack-qid:plan-ceo-review-choice>'],
-      ['next', 'D1 — Missing engineering review: what next? <gstack-qid:plan-ceo-next-steps>'],
-    ]) {
-      const questions = [f.question(text)];
-      f.append(f.ask(id, questions), f.answer(id, questions));
-    }
-    for (const call of f.read().calls) expect(ceoFirstReviewAUQ(nativePlanCallFingerprint(call, 0, true))).toBe(false);
-  });
-
   test('requires a matching successful answer and preserves full native question metadata', () => {
     const f = fixture();
     const questions = [f.question('D1 — Cross-project learnings scope\n' + 'full context '.repeat(40) + '<gstack-qid:learnings-cross-project>')];

@@ -198,18 +198,14 @@ describe('dependency-free CI planner and report execution', () => {
   for (const tier of ['gate', 'periodic'] as const) {
     test(`${tier}: host planner preserves the complete manifest and report fails closed`, () => {
       const sliceCount = tier === 'gate' ? 6 : 7;
-      const dedicatedAutoplanSlice = tier === 'periodic';
       const reportDir = path.join(fixture, tier);
       const manifestPath = path.join(reportDir, 'manifest.json');
-      const planned = run([
-        '--emit-plan', manifestPath, '--slices', String(sliceCount),
-        ...(dedicatedAutoplanSlice ? ['--autoplan-slice'] : []),
-      ], tier);
+      const planned = run(['--emit-plan', manifestPath, '--slices', String(sliceCount)], tier);
       expect(planned.error).toBeUndefined();
       expect(planned.status, planned.stderr).toBe(0);
       const manifest: PaidRunManifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       expect(manifest).toEqual(buildRunManifest({
-        tier, sliceCount, dedicatedAutoplanSlice, evalsAll: true, env: { EVALS_ALL: '1' },
+        tier, sliceCount, evalsAll: true, env: { EVALS_ALL: '1' },
       }));
       expect(manifest.entries.filter(entry => entry.status === 'planned').length).toBeGreaterThan(0);
       expect(fs.existsSync(path.join(fixture, 'node_modules'))).toBe(false);

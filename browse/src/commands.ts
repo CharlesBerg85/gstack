@@ -161,7 +161,7 @@ export const COMMAND_DESCRIPTIONS: Record<string, { category: string; descriptio
   'handoff': { category: 'Server', description: 'Open visible Chrome at current page for user takeover', usage: 'handoff [message]' },
   'resume':  { category: 'Server', description: 'Re-snapshot after user takeover, return control to AI', usage: 'resume' },
   // Headed mode
-  'connect': { category: 'Server', description: 'Launch headed Chromium with Chrome extension', usage: 'connect' },
+  'connect': { category: 'Server', description: 'Launch headed Chromium with Chrome extension; --supervise keeps the CLI attached and respawns a crashed server', usage: 'connect [--supervise]' },
   'disconnect': { category: 'Server', description: 'Disconnect headed browser, return to headless mode' },
   'focus':   { category: 'Server', description: 'Bring headed browser window to foreground (macOS)', usage: 'focus [@ref]' },
   // Inbox

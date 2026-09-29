@@ -17,7 +17,7 @@ describe('carved-skill cases each get a complete paid process budget', () => {
       expect(isPaidTestFile('test/' + file)).toBe(true);
       return calls.map(match => match[1]);
     });
-    expect(covered.sort()).toEqual(Object.values(CARVE_GUARDS).filter(guard => guard.behavioral !== 'external').map(guard => guard.skill).sort());
+    expect(covered.sort()).toEqual(Object.values(CARVE_GUARDS).filter(guard => guard.behavioral === 'plan' || guard.behavioral === 'prompt').map(guard => guard.skill).sort());
     expect(new Set(covered).size).toBe(covered.length);
     expect(selectPaidTestFiles(files.map(file => 'test/' + file), 'periodic').selected).toHaveLength(files.length);
     expect(selectPaidTestFiles(files.map(file => 'test/' + file), 'gate').selected).toHaveLength(0);

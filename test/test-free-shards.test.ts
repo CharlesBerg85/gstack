@@ -571,7 +571,6 @@ describe('test-free-shards: enumeration', () => {
     expect(isFreeTestFile('test/skill-llm-eval.test.ts')).toBe(false);
     expect(isFreeTestFile('test/codex-e2e.test.ts')).toBe(false);
     expect(isFreeTestFile('test/codex-e2e-sol-scope.test.ts')).toBe(false);
-    expect(isFreeTestFile('test/gemini-e2e.test.ts')).toBe(false);
   });
 
   test('collectFreeTestFiles returns sorted, deduped, only-free list', () => {

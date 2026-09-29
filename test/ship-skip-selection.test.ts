@@ -10,8 +10,7 @@ test.each([
   'ship/sections/manifest.json', 'bin/gstack-review-log', 'bin/gstack-review-read',
   'bin/gstack-slug', 'bin/gstack-config', 'bin/gstack-brain-enqueue',
   'lib/review-evidence.ts', 'test/helpers/ship-skip-actor.ts', 'test/helpers/scratch-repo.ts',
-  'test/skill-e2e-ship-skip.test.ts', 'test/ship-skip-actor.test.ts',
-  'test/ship-skip-selection.test.ts', '.github/docker/Dockerfile.ci',
+  'test/skill-e2e-ship-skip.test.ts', '.github/docker/Dockerfile.ci',
 ])('%s selects the native queued-Skip regression', file => {
   expect(selectTests([file], E2E_TOUCHFILES).selected).toContain(id);
   expect(E2E_TIERS[id]).toBe('gate');

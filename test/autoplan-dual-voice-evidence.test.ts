@@ -340,7 +340,7 @@ test('outside-voice failure reasons name the probe identity, mode and canonical 
  const probeReason=(f:ReturnType<typeof fixture>)=>f.read().reasons.find(reason=>reason.startsWith('probeToolUseId='));
  let f=withoutOutside();
  expect(probeReason(f)).toBe('probeToolUseId=probe probeMode=ready canonicalMatch=yes (mode recorded; 0 non-canonical Bash call(s) mention CODEX_MODE)');
- f=withoutOutside();f.events[0]!.message.content[0].input.command='echo probing\n'+f.options.commands.probe;
+ f=withoutOutside();f.events[0]=use('probe','Bash',{command:'echo probing\n'+f.options.commands.probe});
  expect(probeReason(f)).toBe('probeToolUseId=none probeMode=none canonicalMatch=no (no Bash call matched the canonical probe block; 1 non-canonical Bash call(s) mention CODEX_MODE)');
  f=withoutOutside();f.events[1]=ack('probe','CODEX_MODE: not_installed\nextra trailing output');
  expect(probeReason(f)).toBe('probeToolUseId=probe probeMode=none canonicalMatch=yes (probe output has 1 CODEX_MODE line(s) and does not end with it; 0 non-canonical Bash call(s) mention CODEX_MODE)');

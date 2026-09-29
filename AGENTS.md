@@ -234,6 +234,9 @@ When fixing failures or preparing `/ship`, follow this order:
 
 ```bash
 bun install              # install dependencies
+bun run typecheck        # strict tsc over product code; must report zero errors
+bun run typecheck:test   # test-code type-debt ratchet (new diagnostics fail; --write-baseline locks in fixes)
+bun run format:cso       # format lib/cso/*.ts (format:cso:check is the CI gate)
 bun run test:quick       # fast measured free subset for edit feedback (not acceptance)
 bun run test             # complete free suite via the strict shard runner (no API spend)
 bun run test:ubicloud    # same suite on an ephemeral 16-vCPU Ubicloud VM (needs UBICLOUD_API_KEY)

@@ -132,7 +132,7 @@ export function sessionKind(cwd?: string): 'spawned' | 'headless' | 'interactive
       timeout: 3000,
       cwd: cwd && fs.existsSync(cwd) ? cwd : undefined,
     });
-    const out = (res.stdout || '').trim();
+    const out = String(res.stdout || '').trim();
     if (out === 'spawned' || out === 'headless' || out === 'interactive') return out;
   } catch (e) {
     logHookError(`sessionKind failed: ${(e as Error).message}`);

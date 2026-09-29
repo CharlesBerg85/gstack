@@ -105,7 +105,7 @@ function canonical(value: unknown): string {
 export function buildEvalInputIdentity(input: EvalInputManifest): EvalInputIdentityResult {
   try {
     if (!validScope(input.scope)) throw new Error('A repository and positive PR number are required');
-    if (!object(input.coverage) || ['dependencies', 'prompts', 'environment'].some(key => input.coverage[key] !== 'complete')
+    if (!object(input.coverage) || (['dependencies', 'prompts', 'environment'] as const).some(key => input.coverage[key] !== 'complete')
       || !Array.isArray(input.unknownDependencies) || input.unknownDependencies.length !== 0) {
       throw new Error('Consumed input coverage is incomplete or unknown');
     }

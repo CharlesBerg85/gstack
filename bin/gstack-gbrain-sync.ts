@@ -75,7 +75,10 @@ interface CodeStageDetail {
     | "failed"
     | "refused-autopilot"
     | "refused-reclone"
-    | "refused-egress-receipt";
+    | "refused-egress-receipt"
+    | "skipped-policy-read-only"
+    | "refused-policy-deny"
+    | "refused-policy-unreadable";
 }
 
 interface StageResult {

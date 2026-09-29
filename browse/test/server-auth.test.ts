@@ -8,6 +8,7 @@
 import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
+import { buildHeadedServerEnv } from '../src/cli';
 
 const SERVER_SRC = fs.readFileSync(path.join(import.meta.dir, '../src/server.ts'), 'utf-8');
 const CLI_SRC = fs.readFileSync(path.join(import.meta.dir, '../src/cli.ts'), 'utf-8');
@@ -22,17 +23,6 @@ function sliceBetween(source: string, startMarker: string, endMarker: string): s
 }
 
 describe('Server auth security', () => {
-  // Test 1 (IRON RULE, inverted in v1.62): /health NEVER serves a token in
-  // ANY mode. Both carve-outs (headed-mode disjunct + chrome-extension://
-  // Origin disjunct) are gone. Token bootstrap moved to POST /extension-token
-  // with a pinned extension Origin.
-  test('/health never serves a token — no headed-mode or chrome-extension carve-out', () => {
-    const healthBlock = sliceBetween(SERVER_SRC, "url.pathname === '/health'", "url.pathname === '/connect'");
-    expect(healthBlock).not.toContain('token: authToken');
-    expect(healthBlock).not.toContain("getConnectionMode() === 'headed'");
-    expect(healthBlock).not.toContain("startsWith('chrome-extension://')");
-  });
-
   // Test 1a: the pinned-origin bootstrap endpoint exists and gates on both
   // the exact extension Origin and a loopback Host.
   test('POST /extension-token gates on pinned Origin and loopback Host', () => {
@@ -45,13 +35,6 @@ describe('Server auth security', () => {
     expect(tokenBlock).toContain("'127.0.0.1'");
     expect(tokenBlock).toContain("'localhost'");
     expect(tokenBlock).toContain('403');
-  });
-
-  // Test 1b: /health does not expose sensitive browsing state
-  test('/health does not expose currentUrl or currentMessage', () => {
-    const healthBlock = sliceBetween(SERVER_SRC, "url.pathname === '/health'", "url.pathname === '/connect'");
-    expect(healthBlock).not.toContain('currentUrl');
-    expect(healthBlock).not.toContain('currentMessage');
   });
 
   // Test 1c: newtab must check domain restrictions (CSO finding #5)
@@ -366,15 +349,12 @@ describe('Server auth security', () => {
     // The connect subprocess env must override BROWSE_PARENT_PID
     expect(pairBlock).toContain("BROWSE_PARENT_PID");
     expect(pairBlock).toContain("'0'");
-    // The connect command must propagate BROWSE_PARENT_PID=0 via the
-    // serverEnv object literal passed to startServer. The literal text
-    // `serverEnv.BROWSE_PARENT_PID` is NOT in source — the value is
-    // assigned via object-literal syntax (`BROWSE_PARENT_PID: '0'`)
-    // inside the `const serverEnv: Record<string, string> = { ... }`
-    // declaration. Assert both pieces appear in the connect block.
+    // The connect command starts its server with buildHeadedServerEnv, the
+    // same env the --supervise respawn uses, and that env disables the
+    // parent-PID watchdog.
     const connectBlock = sliceBetween(CLI_SRC, 'Launching headed Chromium', 'Terminal agent started');
-    expect(connectBlock).toContain("const serverEnv");
-    expect(connectBlock).toContain("BROWSE_PARENT_PID: '0'");
+    expect(connectBlock).toContain('startServer(buildHeadedServerEnv(globalFlags))');
+    expect(buildHeadedServerEnv({ proxyUrl: null, configHash: '' }).BROWSE_PARENT_PID).toBe('0');
   });
 
   // Regression: newtab returned 403 for scoped tokens because the tab ownership

@@ -533,6 +533,7 @@ export function start(): { port: number } {
     fetch: fetchHandler,
   });
   const actualPort = serverRef.port;
+  if (actualPort === undefined) throw new Error('design daemon did not bind a TCP port');
   const state: DaemonState = {
     pid: process.pid,
     port: actualPort,

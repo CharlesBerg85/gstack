@@ -3,14 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {spawnSync} from 'node:child_process';
-import {E2E_TOUCHFILES, selectTests} from './helpers/touchfiles';
-
 const ROOT = path.resolve(import.meta.dir, '..');
-
-test('QA-only capability regressions select the no-fix case', () => {
-  expect(selectTests(['test/qa-only-capability.test.ts'], E2E_TOUCHFILES).selected).toEqual(['qa-only-no-fix']);
-});
-
 test.each(['success', 'omitted-tools', 'report-edit', 'source-edit', 'source-write', 'preparation-late', 'charter-sidecar', 'memory-write', 'checkpoint-rewrite'])
   ('QA-only registered capability and no-fix contract: %s', scenario => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'qa-tools-'));

@@ -402,12 +402,6 @@ export function verboseSkill(): string {
   );
 }
 
-function execGit(args: string[]): string {
-  const r = spawnSync('git', args, { cwd: ROOT, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, timeout: 30_000 });
-  if (r.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${r.stderr}`);
-  return r.stdout;
-}
-
 /**
  * Capture the real mode-selection tool input, without answering the question.
  * Print mode retains the existing 12-turn cap; interactive CLI max-turns is

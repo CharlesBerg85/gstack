@@ -14,9 +14,7 @@ const transpile = (text: string) => new Bun.Transpiler({ loader: 'ts' }).transfo
 const flush = async () => { for (let i = 0; i < 100; i++) await Promise.resolve(); };
 afterEach(() => __resetSemaphoreForTests(3));
 
-test('cancellation regression selects its native owners and shared drain policy retains global selection', () => {
-  expect(selectTests(['test/shared-libs-cancellation.test.ts'], E2E_TOUCHFILES, GLOBAL_TOUCHFILES).selected.sort())
-    .toEqual(Object.keys(E2E_TOUCHFILES).filter(name => name.startsWith('shared-libs-') && name !== 'shared-libs-codex-read-only').sort());
+test('shared drain policy retains global selection', () => {
   for (const table of [E2E_TOUCHFILES, LLM_JUDGE_TOUCHFILES]) {
     expect(selectTests(['test/helpers/session-drain-policy.ts'], table, GLOBAL_TOUCHFILES).selected.sort())
       .toEqual(selectTests(['test/helpers/session-runner.ts'], table, GLOBAL_TOUCHFILES).selected.sort());

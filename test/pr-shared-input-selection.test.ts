@@ -13,13 +13,21 @@ const periodicIds = Object.keys(E2E_TOUCHFILES).filter(id => E2E_TIERS[id] === '
 const judgeIds = Object.keys(LLM_JUDGE_TOUCHFILES).sort();
 
 test.each(sharedInputs)('%s retains the full gate after native dependency registration', file => {
-  const result = computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles: [file] });
+  // A package.json change beyond its version; the version-only exemption is
+  // decided from git history and would otherwise depend on the checkout.
+  const result = computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles: [file], packageVersionOnly: false });
   expect(result.coverage?.mode).toBe('full-fallback');
   expect(result.selection.e2e).toEqual(gateIds);
   expect(result.selection.judges).toEqual(judgeIds);
   expect(result.coverage?.deferred.map(({ id }) => id).sort()).toEqual(periodicIds);
   expect(result.coverage?.reasons).toContain(`Shared runtime/build inputs restore every gate case and judge: ${file}`);
   expect(result.coverage?.needsFullValidation).toBe(false);
+});
+
+test('a version-only package.json change does not restore the full gate', () => {
+  const result = computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles: ['package.json'], packageVersionOnly: true });
+  expect(result.coverage?.mode).not.toBe('full-fallback');
+  expect(result.coverage?.reasons.join('\n')).not.toContain('Shared runtime/build inputs restore every gate case and judge: package.json');
 });
 
 test.each(sharedInputs)('%s broad policy is independent of native, judge and global maps', file => {

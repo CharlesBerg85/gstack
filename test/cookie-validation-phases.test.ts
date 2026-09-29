@@ -41,8 +41,8 @@ test('the existing quality and behavior phases retain their complete separate sh
   const behaviorFiles = behavior.entries.filter(entry => entry.status === 'planned').map(entry => entry.file);
   expect(quality.evalsAll).toBe(true);
   expect(behavior.evalsAll).toBe(true);
-  expect(qualityFiles).toHaveLength(2);
-  expect(behaviorFiles).toHaveLength(60);
+  expect(qualityFiles).toHaveLength(1);
+  expect(behaviorFiles).toHaveLength(45);
   expect(behaviorFiles).toEqual(expect.arrayContaining([
     'test/skill-e2e-qa-callers.test.ts',
     'test/skill-e2e-qa-functional-fix.test.ts',

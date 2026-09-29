@@ -2,8 +2,6 @@ import { expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CAPTURE_MS, CAPTURE_LONG_MS } from './helpers/eval-budgets';
-import { E2E_TOUCHFILES } from './helpers/touchfiles';
-
 const source = fs.readFileSync(path.join(import.meta.dir, 'skill-e2e-office-hours-phase4.test.ts'), 'utf8');
 const question = (word = 'architectural', options = 'A) Put retrieval on the server\nB) Put retrieval on the client') =>
   `Where should retrieval live?\nThis ${word} choice decides which component owns the retrieval algorithm and the cross-host API contract.\n${options}\nRecommendation: A because all hosts need a consistent algorithm with one owner.\n`;
@@ -97,8 +95,4 @@ test('Phase4 caller fixture retains fork validation under either path convention
     const rejected=await runCaller(question('architectural','A) Only one option'),'success',fixturePath);
     expect(rejected.thrown).toBeDefined(); expect(rejected.judged).toBe(0); expect(rejected.rows[0].passed).toBe(false);
   }
-});
-
-test('Phase4 caller controls select only the existing Phase4 paid owner', () => {
-  expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes('test/office-hours-phase4-caller.test.ts')).map(([name])=>name)).toEqual(['office-hours-phase4-fork']);
 });

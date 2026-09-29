@@ -254,12 +254,14 @@ describe('cookie workflow judge input', () => {
   });
 
   test('each owned dependency selects this judge in the fast PR profile', () => {
-    for (const file of ['setup-browser-cookies/SKILL.md.tmpl', 'setup-browser-cookies/SKILL.md', 'BROWSER.md', 'test/helpers/cookie-workflow-judge-input.ts', 'test/cookie-workflow-judge-input.test.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/cookie-workflow-manual-review.test.ts', 'test/helpers/manual-judge-review-fixture.ts', '.github/cookie-workflow-manual-review.json']) {
+    for (const file of ['setup-browser-cookies/SKILL.md.tmpl', 'setup-browser-cookies/SKILL.md', 'BROWSER.md', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/manual-judge-review-fixture.ts', '.github/cookie-workflow-manual-review.json']) {
       const selectedJudges = selectTests([file], LLM_JUDGE_TOUCHFILES).selected;
-      expect(selectedJudges).toEqual([NAME]);
+      // Helpers the judge file imports select every judge that file registers (derived closure).
+      const exact = !file.startsWith('test/helpers/') || file === 'test/helpers/manual-judge-review-fixture.ts';
+      if (exact) expect(selectedJudges).toEqual([NAME]); else expect(selectedJudges).toContain(NAME);
       const selectedE2E = selectTests([file], E2E_TOUCHFILES).selected;
       const profile = selectPrProfile({ changedFiles: [file], selectedJudges, selectedE2E });
-      expect(profile.judges).toEqual([NAME]);
+      if (exact) expect(profile.judges).toEqual([NAME]); else expect(profile.judges).toContain(NAME);
       expect(profile.deferredPromptFiles).toEqual([]);
       expect(profile.missingCoverage).toEqual([]);
       expect(profile.needsFullValidation).toBe(false);

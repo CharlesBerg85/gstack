@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'bun:test';
 import { ENG_REVIEW_EXCERPT, readWorkflowExcerpt } from './helpers/workflow-excerpt';
-import { LLM_JUDGE_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -54,13 +53,6 @@ function expectOutsideReviewControlFlow(text: string, promptHeading: string): vo
 }
 
 describe('workflow judge excerpts', () => {
-  test('helper changes select all dependent workflow judges', () => {
-    const selected = selectTests(['test/helpers/workflow-excerpt.ts'], LLM_JUDGE_TOUCHFILES, []).selected;
-    expect(selected).toHaveLength(14);
-    expect(selected).toContain('ship/SKILL.md workflow');
-    expect(selected).toContain('plan-design-review/SKILL.md passes');
-  });
-
   test('expands ship sections in execution order, not alphabetical order', () => {
     const text = readWorkflowExcerpt('ship/SKILL.md', '# Ship:', '## Important Rules');
     const headings = ['## Step 3:', '## Step 4:', '## Step 7:', '## Step 8:', '## Step 9:', '## Step 10:', '## Step 11:', '## Step 11.5:', '## Step 12:', '## Step 13:', '## Step 14:'];

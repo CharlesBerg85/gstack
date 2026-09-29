@@ -837,7 +837,7 @@ function hasCompleteCiSummary(outcome: FreeShardOutcome): boolean {
 
 export const QUICK_CORE = [
   'test/strict-output.test.ts', 'test/gen-skill-docs.test.ts',
-  'test/skill-check-driver.test.ts', 'test/ceo-native-ledger-replay.test.ts',
+  'test/skill-check-driver.test.ts',
   'test/skill-ceo-section-ordering.test.ts',
   'test/qa-functional-observer.test.ts', 'test/qa-checkpoint-evidence.test.ts',
   'test/test-free-shards-capture.test.ts',
@@ -958,23 +958,6 @@ function formatShardSummary(shards: string[][]): string[] {
     const suffix = files.length > 3 ? ', ...' : '';
     return `Shard ${index + 1}/${shards.length}: ${files.length} files${preview ? ` -> ${preview}${suffix}` : ''}`;
   });
-}
-
-/**
- * True when a shard's output shows the run ended WITHOUT bun's final summary
- * ("Ran N tests across ..."). A process.exit() fired mid-suite skips the
- * summary AND hands back whatever code the caller passed — historically 0,
- * which made a truncated shard indistinguishable from a green one. Exit code
- * alone is therefore not evidence of completion; the summary line is.
- *
- * The runner itself now enforces this (and more) through
- * scripts/test-strict-output.ts inside runFreeShard; this predicate remains
- * the minimal documented primitive that test/exit-propagation.test.ts drives
- * with genuine truncated and genuine complete bun runs.
- */
-export function shardRunLooksTruncated(status: number | null, output: string): boolean {
-  if (status !== 0) return false; // already failing — not the silent case
-  return !/Ran \d+ tests? across \d+ files?/.test(output);
 }
 
 // ---------------------------------------------------------------------------

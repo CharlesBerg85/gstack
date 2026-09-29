@@ -41,7 +41,7 @@ Seeded planning sessions also receive an isolated runtime home through
 to the working tree under test. Explicit per-test home overrides remain intact.
 Autoplan resolves each review skill from its own installed host registry.
 
-**Interactive planning evidence.** Finding-count and autoplan-chain drivers use
+**Interactive planning evidence.** Native plan-review count drivers use
 `observeScreen: true` and await `currentScreen()` before choosing an input. The
 existing xterm dependency interprets cursor moves and erases; old menus in the
 raw stream cannot establish a current prompt. Snapshots preserve
@@ -353,28 +353,11 @@ archaeology.
 `test/helpers/eval-budgets.ts` (JUDGE/CAPTURE/CAPTURE_LONG/PTY/PTY_LONG);
 `test/eval-budgets-policy.test.ts` pins that every tier fits the shard wall
 minus overhead and ratchets raw literals. Budget above the wall is fiction.
-The registered four-phase exception is `AUTOPLAN_CHAIN_BUDGET` for
-`test/skill-e2e-autoplan-chain.test.ts`: 80 minutes of work (four `PTY_LONG`
-allocations), an 84-minute session watchdog, an 85-minute Bun test deadline,
-and a 172-minute supervised shard wall. The unchanged retry count of one
-permits two 85-minute attempts plus two minutes for cleanup. This is a
-**specified allocation for the stronger four-phase contract**, not a measured
-calibration or statistical upper bound. The historical 900-second failures
-remain failures. Models, fixtures, phase assertions and production review
-caller timeouts are unchanged; this explicitly changes eval latency/cost policy.
+No paid test may exceed the ordinary tiers.
 
-The Autoplan chain explicitly enables native `PreToolUse` approval for edits to
-its owned temporary review artifacts. Approval starts with the `/autoplan`
-command and requires the exact parent session, prior successful file history,
-and a current request digest. Other recorder callers remain observational.
-A rejected artifact edit fails the test instead of falling through to terminal
-permission input. Approval itself supplies no edit success or phase credit:
-the native tool result and all four completed review phases are still required.
-
-`FINDING_RETRY_BUDGETS` also registers six finding files. Each retains its
-25-minute case deadline and one retry: the two-case CEO finding-count file has
-a 102-minute shard wall, and the five single-case files have 52-minute walls,
-including two minutes for cleanup. No per-case budget grows. Overlay wrappers
+`FINDING_RETRY_BUDGETS` also registers the CEO split-overflow and Eng
+multi-finding batching files. Each retains its 25-minute case deadline and one
+retry in a 52-minute shard wall, including two minutes for cleanup. No per-case budget grows. Overlay wrappers
 have a 1,830-second minimum shard wall and run without Bun retries; see the
 [overlay contract](OVERLAY_BENCHMARK_CONTRACT.md) for their unchanged work budget.
 
@@ -397,32 +380,31 @@ to both the saved plan and the execution receipt; missing or stale budget
 records fail reconciliation. Case deadlines, model budgets and retries do not grow.
 
 `resolvePaidShardBudget(files, overrideMs?)` is the canonical per-job resolver.
-Autoplan, each registered finding file, and each overlay wrapper require their
+Each registered finding file and each overlay wrapper requires its
 own shard, even with `--files-per-shard` above one. Mixed or multi-file overlay
 jobs are rejected so ordinary files retain their configured retries. An explicit
 CLI `--timeout`, `EVALS_SHARD_TIMEOUT_MS`, or API `timeoutMs` still wins for these
 policies, including a lower cap; overlay overrides below their minimum are rejected.
 Planner entries and execution results record the effective wall,
 its source and policy identifier. Custom drivers must resolve each job instead
-of passing their ordinary 1800-second default as an explicit Autoplan cap;
+of passing their ordinary 1800-second default as an explicit cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
-The current paid census has 122 files: 61 gate-tier and 103 periodic-tier.
+The current paid census has 104 files: 46 gate-tier and 70 periodic-tier.
 `eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps; the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
 wrapper reserves 49320 seconds, and release reserves 116700 seconds for both
 tiers. Legacy monolithic
 `eval:bg`/`eval:bg:all` retain their shorter 5400/7200-second caps and do not
-promise two complete Autoplan attempts; use the sharded periodic path for this policy.
+promise every registered retry; use the sharded periodic path for this policy.
 
-Periodic CI plans `--slices 9 --autoplan-slice`: the ninth runs only Autoplan.
-When overlays are selected, the eighth is reserved for their serial wrappers;
-registered finding files are distributed across the remaining ordinary slices
-by their supervised walls. Each slice job has a 360-minute cap; Autoplan retains
-its 172-minute shard wall. Reconciliation rejects missing, duplicated or misplaced
+Periodic CI plans `--slices 7`. When overlays are selected, the seventh is
+reserved for their serial wrappers; registered finding files are distributed
+across the remaining ordinary slices by their supervised walls. Each slice job
+has a 360-minute cap. Reconciliation rejects missing, duplicated or misplaced
 registered work and absent budget records. The weekly gate census has a
-352-minute cap across eight single-worker slices with at most four running at
-once. Its longest current work wall is 302 minutes. PR slices retain seven
-two-worker slices with a 265-minute cap for their 242-minute work wall plus
+352-minute cap across seven single-worker slices with at most four running at
+once. Its longest current work wall is 272 minutes. PR slices retain seven
+two-worker slices with a 265-minute cap for their 212-minute work wall plus
 setup. Free supervision tests
 verify these bounds against the complete current census, configured retries,
 and setup reserve. Ordinary paid tiers and the default 1800-second

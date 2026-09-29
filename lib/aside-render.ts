@@ -296,7 +296,7 @@ export function serveDir(root: string, nonce: string = randomBytes(16).toString(
 // ─── Async spawn (keeps the loopback server's event loop free) ────────────────
 
 async function runProc(cmd: string, args: string[], timeoutMs: number): Promise<{ code: number | null; stdout: string; stderr: string; error?: string }> {
-  let child: ReturnType<typeof Bun.spawn>;
+  let child: Bun.Subprocess<'ignore', 'pipe', 'pipe'>;
   try {
     child = Bun.spawn([cmd, ...args], { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' });
   } catch (e) {
@@ -608,7 +608,7 @@ export const NO_BROWSER_HELP = "open the Aside app (macOS 15+, aside.com), or ru
 export type EngineChoice =
   | { engine: 'aside'; version: string }
   | { engine: 'browse'; bin: string }
-  | { engine: null; probe: AsideProbe; error: string };
+  | { engine: null; probe: Extract<AsideProbe, { ok: false }>; error: string };
 
 let chosen: EngineChoice | undefined;
 

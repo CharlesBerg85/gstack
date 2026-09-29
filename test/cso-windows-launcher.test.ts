@@ -135,7 +135,7 @@ describe('CSO native Windows build contract', () => {
     expect(msvc).toContain('GSTACK_CSO_GIT_PATH');
     expect(msvc).toContain('/FI$binding');
     expect(msvc).toContain('if ($LASTEXITCODE -ne 0)');
-    const processSource=fs.readFileSync(path.join(ROOT,'lib','cso','process.ts'),'utf8');
+    const processSource=fs.readFileSync(path.join(ROOT,'lib','cso','process.ts'),'utf8').replace(/\s+/g,'');
     expect(processSource).toContain("includeNullPath=process.platform==='win32'?'/dev/null':nullPath");
     const launcherSource = fs.readFileSync(path.join(ROOT, 'lib/cso/launcher-windows.c'), 'utf8');
     expect(launcherSource).toContain('.gstack-cso-generation.lock');

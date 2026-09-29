@@ -13,13 +13,16 @@ const PHASES = ['ceo', 'design', 'dx', 'eng', 'tasks'] as const;
 type Phase = typeof PHASES[number];
 type Event = ClaudeParentPublicEvent;
 type Use = Event & { kind: 'use' };
+type Tool = Extract<Event, { toolUseId: string }>;
+type Turn = Extract<Event, { kind: 'end_turn' | 'user_turn' }>;
+const isUse = (e: Event): e is Use => e.kind === 'use';
 const number: Record<Phase, number> = { ceo: 1, design: 2, dx: 2.5, eng: 3, tasks: 4 };
 const object = (x: unknown): x is Record<string, any> => x !== null && typeof x === 'object' && !Array.isArray(x);
 const positive = (x: unknown): x is number => Number.isSafeInteger(x) && (x as number) > 0;
 const hash = (x: string | Buffer) => createHash('sha256').update(x).digest('hex');
 const ownPath = (value: unknown): value is string => typeof value === 'string' && path.isAbsolute(value) && path.normalize(value) === value;
 class BoundaryError extends Error {}
-const fail = (reason: string): never => { throw new BoundaryError(reason); };
+function fail(reason: string): never { throw new BoundaryError(reason); }
 export interface PublicationHookInput {
   hook_event_name: 'PreToolUse'; session_id: string; transcript_path: string; cwd: string;
   tool_name: string; tool_use_id: string; tool_input: Record<string, unknown>; agent_id?: string | null;
@@ -151,8 +154,9 @@ function textResult(event: Event): string | undefined {
 
 /** Authenticate the existing direct-create result; this does not prove its shell command's origin. */
 function checkpointResult(result: Event, entered: Event[], init: Invocation): { phase: Phase; path: string } | undefined {
-  const use = entered.find(e => e.kind === 'use' && e.toolUseId === result.toolUseId);
-  if (result.kind !== 'result' || use?.name !== 'Bash' || use.order >= result.order) return;
+  if (result.kind !== 'result') return;
+  const use = entered.find((e): e is Use => isUse(e) && e.toolUseId === result.toolUseId);
+  if (use?.name !== 'Bash' || use.order >= result.order) return;
   const text = textResult(result);
   if (text === undefined) return;
   const output = JSON.parse(text);
@@ -197,7 +201,7 @@ function invocation(events: Event[], root: string): Invocation {
     if (!object(result) || result.sourcePlan !== fs.realpathSync(args[0]!) || result.activePlan !== args[1] ||
         result.restorePath !== args[2] || typeof result.reused !== 'boolean' || !positive(result.originalBytes) ||
         !/^[a-f0-9]{64}$/.test(result.originalSha256)) fail('Autoplan initialization does not match the successful native request.');
-    if (result.reused && bound?.activePlan === result.activePlan && bound.restorePath === result.restorePath) continue;
+    if (result.reused && bound && bound.activePlan === result.activePlan && bound.restorePath === result.restorePath) continue;
     chosen = result;
     bound = { activePlan: result.activePlan, restorePath: result.restorePath,
       originalSha256: result.originalSha256, start: results[0]!.order };
@@ -280,7 +284,7 @@ function closePacket(file: string, phase: Phase, init: Invocation, current = tru
 
 /** A skill hook survives end_turn; unrelated human intervals are never phase evidence. */
 function disarmed(events: Event[], root: string): boolean {
-  const human = events.filter(e => e.kind === 'user_turn').at(-1);
+  const human = events.filter((e): e is Turn => e.kind === 'user_turn').at(-1);
   return !!human && !human.autoplan && events.some(e => e.kind === 'end_turn' && e.order < human.order) &&
     !events.some(e => e.kind === 'use' && e.name === 'Bash' && e.order > human.order && initArguments(e.input?.command, root));
 }
@@ -293,7 +297,7 @@ function verifyCloseEdits(events: Event[], closeOrder: number, init: Invocation)
   const current = read(init.activePlan);
   let prior = current;
   for (const use of edits.toReversed()) {
-    const results = events.filter(e => e.kind === 'result' && e.toolUseId === use.toolUseId);
+    const results = events.filter((e): e is Tool => e.kind === 'result' && e.toolUseId === use.toolUseId);
     if (results.length !== 1) fail('An active-plan mutation is pending after the close Read. Wait for its result, then verify the current close input.');
     if (results[0]!.isError === true) continue;
     const input = use.input;
@@ -375,7 +379,7 @@ function evaluatePublication(input: PublicationHookInput, root: string, events: 
     // Pinned Claude retains skill hooks after end_turn. Only an authenticated
     // later human request can release the old invocation; tool results and
     // compaction never do. A native slash or an actual init re-arms the guard.
-    const human = before.filter(e => e.kind === 'user_turn').at(-1);
+    const human = before.filter((e): e is Turn => e.kind === 'user_turn').at(-1);
     if (disarmed(before, root)) {
       if (pendingRead) fail('Current native phase-entry identity is unavailable after this invocation ended.');
       return { allow: true };
@@ -403,8 +407,8 @@ function evaluatePublication(input: PublicationHookInput, root: string, events: 
         } else if (!preparedCheckpoints.has(created.phase)) preparedCheckpoints.set(created.phase, created.path);
         continue;
       }
-      if (use.kind !== 'use' || !['Read', 'Agent'].includes(use.name ?? '')) continue;
-      const results = entered.filter(e => e.kind === 'result' && e.toolUseId === use.toolUseId);
+      if (!isUse(use) || !['Read', 'Agent'].includes(use.name ?? '')) continue;
+      const results = entered.filter((e): e is Tool => e.kind === 'result' && e.toolUseId === use.toolUseId);
       if (results.length !== 1 || results[0]!.isError !== false || results[0]!.order <= use.order) continue;
       let next: Consumer | undefined;
       try { next = consumption(use, input.cwd, root, init, true); } catch { continue; }
