@@ -134,6 +134,28 @@ mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/claude-pty-runner.ts'
     expect(opts.isReviewAUQ(nativeFinding)).toBe(true);
     expect(opts.isReviewAUQ(unnumberedFinding)).toBe(true);
     expect(opts.isReviewAUQ(finding)).toBe(true);
+    // Titles and option-label prefixes projected from Sep 29 local captures of the
+    // real skill. The first four went unrecognized, so the run timed out after
+    // four answered findings; issue-numbered option sets identify each finding.
+    const labeled = (id, question, labels) => {
+      const call = fp(id, question, false);
+      call.nativeCall.questions[0].options = labels.map(label => ({ label, description: '' }));
+      return call;
+    };
+    for (const [question, labels] of [
+      ['D7 — Issue 1: Codify the page hierarchy from approved Variant A in the plan?', ['1A) Full hierarchy with caps and overflo', '1B) Layout and read order only', '1C) Leave hierarchy out']],
+      ['D8 — Issue 2: How does the dashboard fit the existing app shell and navigation?', ['2A) Reuse existing shell, Dashboard nav ', '2B) Standalone minimal header, no nav it', '2C) Leave the shell unspecified']],
+      ['D9 — Issue 3: Add a user-visible interaction state table for every dashboard feature?', ['3A) Full state table with copy (recommen', '3B) Structure only, copy TBD', '3C) Leave states as listed']],
+      ['D10 — Issue 4: Confirmation pattern and content for "Mark all as read"?', ['4A) Keep modal, specify copy and labels ', '4B) No modal; immediate action plus undo', '4C) Keep modal, leave copy to implemente']],
+      ['Issue 1 — What does the user see first on a phone?', ['1A: Notifications first on sm, feed firs', '1B: Feed first everywhere', '1C: Bell badge + drawer on sm']],
+    ]) expect(opts.isReviewAUQ(labeled('captured-issue', question, labels))).toBe(true);
+    for (const [question, labels] of [
+      ['D11 — Update the approved mockups with these decisions?', ['A) Regenerate mockups (recommended)', 'B) Keep the current mockups']],
+      ['D12 — Which follow-up should I record?', ['1A) Record a TODO', '2B) Skip it']],
+      ['D13 — Which follow-up should I record?', ['1A) Record a TODO', '1A) Record it again']],
+      ['D14 — Record this follow-up?', ['1A) Record a TODO']],
+      ['D15 — Want outside design voices before the detailed review?', ['1A) Yes, run outside voices', '1B) No, proceed without']],
+    ]) expect(opts.isReviewAUQ(labeled('not-a-finding', question, labels))).toBe(false);
     const chosenFocus = mode.startsWith('native-') ? nativeFocus : mode === 'paraphrase' ? paraphrase : fp('focus', focus);
     const pendingCall = {...chosenFocus.nativeCall, answered: false, unansweredQuestionIndices: [0]};
     const pending = nativePlanCallFingerprint(pendingCall, 1000, true);

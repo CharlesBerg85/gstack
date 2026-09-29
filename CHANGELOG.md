@@ -34,6 +34,7 @@ The table compares v1.91.6.0 with this branch before it merged v1.91.7.0, which 
 - The plan-count history PTY test waits for its startup marker instead of a fixed 8-second sleep.
 
 ### Fixed
+- The `/plan-design-review` UI-scope gate eval recognizes a Design finding by the review's own issue-numbered options (`1A`, `1B`, …) as well as by UI vocabulary, so a real finding about hierarchy, navigation, state tables or confirmation patterns no longer goes uncounted until the 600-second cap. It timed out on v1.91.7.0 in one of two local runs and on this branch's CI; both fixed runs finished in about 420 seconds.
 - `bun run test:ubicloud` no longer reports `pull failed` when a run leaves no flake ledger in `/tmp`: a retrieval glob that matches nothing is skipped with a note, and the retained shard logs still land in `.context/ubicloud/<timestamp>/free-test-logs/`.
 
 ### For contributors
