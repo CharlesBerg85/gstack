@@ -824,6 +824,23 @@ const mutations:Record<string,(x:any)=>void>={
 };
 for(const [name,mutate] of Object.entries(mutations))test(name,()=>{const x=clone();mutate(x);expect(check(x)).toBe(false)});
 test('later quoted withdrawal is not current withdrawal',()=>{const x=clone();x.transcript.assistantMessages.push({sessionId:decision(x).sessionId,timestamp:new Date().toISOString(),text:'Example: "I withdraw this decision."'});expect(check(x)).toBe(true)});
+{
+  const briefs = require('./fixtures/ceo-hold-note-briefs-36597762183.json');
+  const withBrief = (brief: any, change: (q: any) => void = () => {}) => {
+    const x = clone(); const c = decision(x); const before = c.questions[0].question;
+    const q = structuredClone(brief); change(q); c.questions[0] = q; delete c.answers[before]; c.answers[q.question] = q.options[0].label;
+    x.tools.find((t: any) => t.kind === 'use' && t.toolUseId === c.toolUseId).input.questions = structuredClone(c.questions);
+    return check(x);
+  };
+  test('census HOLD Defer/Keep brief with the Note form and a one-line Net applies HOLD in its ELI10', () => expect(withBrief(briefs.census)).toBe(true));
+  test('rerun HOLD Defer/Keep brief applies HOLD in its Recommendation reason', () => expect(withBrief(briefs.rerun)).toBe(true));
+  test.each([
+    ['no HOLD rationale', (q: any) => { q.question = q.question.replace('HOLD SCOPE preserves stated scope by default, ', ''); }],
+    ['a second sentence after Net', (q: any) => { q.question = q.question.replace(/(Net:[^\n]*)$/, '$1 Also add shared views.'); }],
+    ['a foreign-mode context', (q: any) => { q.question = q.question.replace('HOLD SCOPE review', 'SCOPE EXPANSION review'); }],
+    ['a missing Note or score', (q: any) => { q.question = q.question.replace(/Note: options differ[^\n]*\n/, ''); }],
+  ])('rerun brief with %s is not HOLD posture', (_name, change) => expect(withBrief(briefs.rerun, change)).toBe(false));
+}
 test('new proof path is unavailable without explicit fixture source binding',()=>{const x=clone();expect(hasNativePostAnswerCeoPosture(x.transcript,'HOLD SCOPE',posture,x.selectionStartedAt,x.tools)).toBe(false)});
 
 test('retry source cat requires the actual owned project',()=>{const x=clone(1);x.tools.find((t:any)=>t.kind==='use'&&t.input?.command?.includes('cat PLAN.md')).input.command=x.tools.find((t:any)=>t.kind==='use'&&t.input?.command?.includes('cat PLAN.md')).input.command.replace(x.source.path.replace('/PLAN.md',''),'/foreign');expect(check(x)).toBe(false)});

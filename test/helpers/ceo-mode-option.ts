@@ -291,7 +291,8 @@ function singleScopeBrief(text: string, descriptions: readonly string[], compari
     quote => quote.replace(/\?/g, '')) : text;
   const questions = questionText.replace(/\?[A-Za-z_][\w-]*=/g, '=').match(/\?/g);
   if ((questions?.length ?? 0) !== (proposalHeading ? 0 : 1) || /```|~~~|^\s*>/m.test(text)) return false;
-  const comparisonMarker = expansion
+  // The preamble requires the Note form for different-kind menus (Add/Defer/Skip, Defer/Keep).
+  const comparisonMarker = expansion || !comparison
     ? /Completeness:|Note:\s*options differ in kind, not coverage\s*[—–-]\s*no completeness score\./gi
     : /Completeness:/gi;
   const markers = [/Project\/branch\/task:/gi, /ELI10:/gi, /Stakes if (?:we pick )?wrong:/gi,
@@ -312,7 +313,7 @@ function singleScopeBrief(text: string, descriptions: readonly string[], compari
     if (!ratings.length || ratings.some(score => Number(score[1]) > 10)) return false;
   }
   return complete && (comparison ? /^[^.!?;\n]+ (?:vs|versus) [^.!?;\n]+\.$/.test(net)
-    : /^[^.!?;\n]+\.$/.test(net.replace(/\bvs\./gi, 'vs')));
+    : /^[^.!?\n]+\.$/.test(net.replace(/\bvs\./gi, 'vs')));
 }
 
 /** Fixture-owned baseline for a completed scope-preservation decision. */
@@ -388,7 +389,9 @@ function hasAnsweredHoldPosture(transcript: PlanCountTranscript, selected: Nativ
     // standalone prose is published. Metadata and answer echoes do not count.
     // This recognizes posture language; it does not validate every scope choice.
     const context = /Project\/branch\/task:([\s\S]*?)(?=ELI10:)/i.exec(q.question)?.[1] ?? '';
-    const rationale = /ELI10:([\s\S]*?)(?=Stakes if (?:we pick )?wrong:)/i.exec(q.question)?.[1]?.trim() ?? '';
+    // The ELI10 and the Recommendation's reason are both the brief's own rationale.
+    const rationale = [/ELI10:([\s\S]*?)(?=Stakes if (?:we pick )?wrong:)/i, /Recommendation:[^\n]*?\bbecause\b([^\n]*)/i]
+      .map(part => part.exec(q.question)?.[1]?.trim() ?? '').join('\n');
     const offered = q.options.map(o => o.label.trim());
     if (!q.multiSelect && q.options.length >= 2 && q.options.length <= 4 && new Set(offered).size === offered.length &&
         offered.includes(call.answers?.[q.question] ?? '') && /\bHOLD SCOPE\b/i.test(context) &&

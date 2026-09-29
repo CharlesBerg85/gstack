@@ -415,11 +415,11 @@ Follow the preamble's session rules; `CONDUCTOR_SESSION: true` changes transport
    wins. When `QUESTION_TUNING: true`, include `<gstack-qid:plan-ceo-review-mode>`.
    These modes differ in kind, not coverage; do NOT score completeness.
 
-4. **Mode handoff:** After selection, always send brief chat before tools or further questions: the mode's application and rationale; every governing approved row's ID, answer reference and accepted scope. Keep rows separate.
+4. **Mode handoff:** After selection, send brief chat before tools or further questions: the mode's application and rationale; every governing approved row's ID, answer reference and accepted scope. Keep rows separate.
 - `plan-ceo-review-mode: AUTO_DECIDE`: `Auto-decided review mode → <selected mode> (your preference). Change with /plan-tune. Approved decisions: <rows or none>. <Application and rationale>.`
 - Other selections: `Mode: <selected mode>; approved decisions: <rows or none>. <Application and rationale>.`
 
-Record mode provenance after the handoff chat:
+Record mode provenance after the handoff:
 - **Explicit user choice:** instruction and mode; no question log because none was asked.
 - **Successful preference check:** result and recommendation; log `plan-ceo-review-mode`, `auto_decided: true`.
 - **Actual question answer:** question, answer reference and mode; log `auto_decided: false`, including the question ID only when `QUESTION_TUNING: true`.
