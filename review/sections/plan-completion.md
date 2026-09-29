@@ -27,8 +27,8 @@ done
 3. **Validation:** For search results, read the first 20 lines and verify the project, feature and current branch. A mismatch means "no plan file found." Conversation-supplied paths bypass this search-result check.
 
 **Error handling:**
-- No plan file found → skip with "No plan file detected — skipping."
-- Plan file found but unreadable (permissions, encoding) → skip with "Plan file found but unreadable — skipping."
+- No plan file found → say "No plan file detected." and use the Fallback Intent Sources below.
+- Plan file found but unreadable (permissions, encoding) → say "Plan file found but unreadable." and use the Fallback Intent Sources below; never report plan items as verified.
 
 ### Actionable Item Extraction
 
@@ -192,13 +192,15 @@ The plan completion results augment the existing Scope Drift Detection. If a pla
 
 - **NOT DONE items** become additional evidence for **MISSING REQUIREMENTS** in the scope drift report.
 - **Items in the diff that don't match any plan item** become evidence for **SCOPE CREEP** detection.
-- **HIGH-impact discrepancies** trigger AskUserQuestion:
+- **HIGH-impact plan-file discrepancies** trigger AskUserQuestion:
   - Show the investigation findings
   - Options: A) Stop this review for implementation, B) Continue this review with P1 TODOs, C) Record the items as intentionally dropped
   - A ends this invocation before code review or implementation. List the missing work; after implementation, start a fresh /review.
   - B queues the approved TODO changes for Step 5, not this read-only audit. B/C continue to the final Scope Check and Step 2. None of these choices authorizes shipping or waives required verification.
 
-This is **INFORMATIONAL** unless HIGH-impact discrepancies are found (then it gates via AskUserQuestion).
+This is **INFORMATIONAL** unless HIGH-impact plan-file discrepancies are found (then it gates via AskUserQuestion).
+Discrepancies derived only from fallback sources (commit messages, TODOS.md, PR description) never trigger
+this question, whatever their IMPACT: report them in the Scope Check as lower-confidence missing requirements.
 
 When continuing after the audit (no HIGH-impact gate, or option B/C), emit the
 single final Scope Check using Step 1.5's provisional notes and this plan context:

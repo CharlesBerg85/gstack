@@ -502,8 +502,8 @@ Run the shared preflight; start its smoke guard once. Guard every smoke probe. F
 - Required: plan commands/assertions, listed separately. Other ideas are optional, untested.
 
 **3. Run smoke and plan checks.**
-Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.
-Then run required plan checks, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
+Follow the shared Probe loop for smoke checks and replays until the smoke limit.
+Then run required plan checks and revalidation, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
 Use finite command timeouts, capped at the caller's remaining time if it has a deadline.
 Await clock/guard results before acting. When the caller's deadline expires, mark unfinished checks not-run.
 

@@ -386,8 +386,9 @@ for the native result, or vice versa. Step 4.8's structured-review gate still ap
 
 - Use Step 4.6's `specialists` object unchanged, including its empty small-diff map.
   If this host omits Review Army, use `specialists: {}` without claiming specialist coverage.
-- Build `findings` from final-pass core, specialist, verified exploratory QA
-  findings and invocation actions. Retain `fingerprint`, `severity`
+- Build `findings` from the final-pass findings Step 5 combined (core, specialist,
+  Step 4.8 adversarial, VALID & ACTIONABLE Greptile and verified exploratory QA
+  findings) and invocation actions. Retain `fingerprint`, `severity`
   (`CRITICAL|INFORMATIONAL`), `action`, and any `advisory`, `evidence_paths`,
   `helper_target`. Recheck source after fixes. The logger uses `sharedLibsFingerprint`,
   never supplied/model hashes.

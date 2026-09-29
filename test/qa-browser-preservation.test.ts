@@ -149,7 +149,7 @@ describe('compact QA browser recipes retain native operations', () => {
       ]) expect(loop).toContain(contract);
       for (const field of ['observationCommand', 'observed', 'hypothesis', 'nextCommand']) expect(loop).toContain(`${field}:`);
       expect(loop).toContain('Functional Full, Quick and Regression have no default total timer');
-      if (skillName !== 'qa-only') expect(loop).toContain('Explicit plan checks remain required beyond this smoke budget');
+      if (skillName !== 'qa-only') expect(loop).toContain('Explicit plan checks and revalidation remain required beyond this smoke budget');
     }
   });
 

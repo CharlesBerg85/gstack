@@ -71,7 +71,7 @@ Write a **charter** per behavior: contract, risk, entrypoint, isolation, exit co
 
 ${reportOnly ? '' : `For /review and /ship, no plan/server is required.
 Stop after 5 minutes or 12 probes, whichever comes first (SECONDS=300 across surfaces).
-Explicit plan checks remain required beyond this smoke budget.`}
+Explicit plan checks and revalidation remain required beyond this smoke budget.`}
 For /qa and /qa-only:
 - Browser Quick: SECONDS=30. Browser Full/Regression: SECONDS=900.
 - Functional Full, Quick and Regression have no default total timer.
@@ -126,7 +126,7 @@ ${reportOnly ? `   For guarded text, copy the complete span between the guard's 
    Another input or a regression test is not that replay.
 ${reportOnly ? `5. If the user or another process changes source, commands or fixtures, review the affected
    contracts and return to step 2 for each affected revalidation. Do not make product changes yourself.
-   Keep the original limits/notes; update outcomes only from fresh evidence.` : `5. After source/commands/fixtures change, repeat affected review and return to step 2 for each affected revalidation. Keep limits/notes; status requires fresh evidence.`}
+   Keep the original limits/notes; update outcomes only from fresh evidence.` : `5. After source/commands/fixtures change, re-review and return to step 2 for each affected revalidation. Keep limits/notes; status requires fresh evidence.`}
 
 ## 3. Parent handoff
 
@@ -255,9 +255,9 @@ Never install, import cookies or bootstrap tests. Functional-only skips browser 
 - Required: plan commands/assertions, listed separately. Other ideas are optional, untested.
 
 **3. Run smoke and plan checks.**
-Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.
-Then run required plan checks, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
-Use finite command timeouts, capped at the caller's remaining time if it has a deadline.
+Follow the shared Probe loop for smoke checks and replays until the smoke limit.
+Then run required plan checks and revalidation, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
+Use finite command timeouts, capped at the caller's remaining time if it has a deadline.${ship ? '' : ' /review sets none; only an invoker-supplied EARLIER_UTC counts.'}
 Await clock/guard results before acting. When the caller's deadline expires, mark unfinished checks not-run.
 
 **4. Check freshness before reporting.**
@@ -275,7 +275,8 @@ Return verified defects to Fix-First: \`path\`, \`line\`, \`category\`,
 \`fingerprint: path:line:category\`, replay, \`test_stub\`. Use checklist severity;
 unmatched functional failures are \`functional-contract\`, \`CRITICAL\`.
 Setup/permission blockers are not defects. Test creation needs user approval.
-${ship ? 'Step 9.4 asks: permission/repair or explicit named-risk acceptance; otherwise blocked.' : 'Ask for setup/permission, never secrets. Unresolved coverage makes Step 5.8 incomplete; a ship waiver cannot complete it.'}
+${ship ? 'Step 9.4 asks: permission/repair or explicit named-risk acceptance; otherwise blocked.' : `Ask only for a named permission or setup the user performs, never secrets. Report-only /review never runs setup, installs or cookie import, even after approval.
+After a grant, recheck readiness and run affected checks; otherwise they stay blocked. Unresolved coverage makes Step 5.8 incomplete; a ship waiver cannot complete it.`}
 
 ${ship ? `Read QA's \`templates/functional-report-template.md\`: PR section \`## Exploratory QA\`,
 fields as subsections. Link every checkpoint; no second report. Separate browser results;
