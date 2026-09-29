@@ -121,14 +121,6 @@ test('cropped actual panes bind their full directory and basename to the current
     } finally { f.close(); }
   }
 });
-
-test('the permission regression selects every existing count caller', () => {
-  for (const file of ['test/plan-count-permission-ac.test.ts', 'test/fixtures/plan-count-permission-ac.json']) {
-    for (const skill of ['design', 'ceo', 'devex', 'eng'])
-      expect(selectTests([file], E2E_TOUCHFILES).selected).toContain(`plan-${skill}-finding-count`);
-  }
-});
-
 test('a later exact owned binding wins over an earlier same-basename block', () => {
   const f = fixture(); try {
     f.record('PreToolUse', 'current');
@@ -241,7 +233,6 @@ for (const c of cases) {
 test('AD crop fixture selects the exact existing permission regression callers', () => {
   expect(selectTests(['test/fixtures/plan-count-permission-ad.json'], E2E_TOUCHFILES).selected.sort()).toEqual(
     selectTests(['test/fixtures/plan-count-permission-ac.json'], E2E_TOUCHFILES).selected.sort());
-  expect(selectTests(['test/fixtures/plan-count-permission-ad.json'], E2E_TOUCHFILES).selected).toContain('plan-ceo-finding-count');
 });
 
 test('AE crop admits one native divider only and preserves its exact existing caller selection', () => {

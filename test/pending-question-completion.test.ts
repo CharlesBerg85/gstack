@@ -189,7 +189,7 @@ describe('scoped pending question completion payloads', () => {
 
   test('the completion regression and fixture select exactly the two opted-in paid workflows', () => {
     for(const file of ['test/pending-question-completion.test.ts','test/fixtures/pending-question-completion-ad.json']) {
-      expect(selectTests([file],E2E_TOUCHFILES,[]).selected.sort()).toEqual(['autoplan-chain-pty','plan-ceo-mode-routing']);
+      expect(selectTests([file],E2E_TOUCHFILES,[]).selected.sort()).toEqual(['plan-ceo-mode-routing']);
     }
   });
 });

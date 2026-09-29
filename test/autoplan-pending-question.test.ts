@@ -211,7 +211,7 @@ describe('opt-in pending native AskUserQuestion capture', () => {
 
   test('the helper and new free test select only the two opted-in workflows', () => {
     for (const file of ['test/helpers/plan-count-pending-question.ts', 'test/autoplan-pending-question.test.ts']) {
-      expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(['autoplan-chain-pty', 'plan-ceo-mode-routing']);
+      expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(['plan-ceo-mode-routing']);
     }
   });
 

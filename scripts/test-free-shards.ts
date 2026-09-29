@@ -809,7 +809,7 @@ function hasCompleteCiSummary(outcome: FreeShardOutcome): boolean {
 
 export const QUICK_CORE = [
   'test/strict-output.test.ts', 'test/gen-skill-docs.test.ts',
-  'test/skill-check-driver.test.ts', 'test/ceo-native-ledger-replay.test.ts',
+  'test/skill-check-driver.test.ts',
   'test/skill-ceo-section-ordering.test.ts',
 ];
 

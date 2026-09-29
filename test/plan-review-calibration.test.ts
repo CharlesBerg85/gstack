@@ -8,8 +8,7 @@ import { ENG_BATCHING_FINDINGS } from './helpers/plan-review-cases';
 import { E2E_TOUCHFILES, E2E_TIERS, selectTests } from './helpers/touchfiles';
 
 const ROOT = path.resolve(import.meta.dir, '..');
-const IDS = ['plan-ceo-finding-count', 'plan-eng-finding-count', 'plan-design-finding-count', 'plan-devex-finding-count',
-  'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow', 'plan-decision-classification'].sort();
+const IDS = ['plan-eng-multi-finding-batching', 'plan-ceo-split-overflow', 'plan-decision-classification'].sort();
 
 test('semantic helper changes also select the separate DX analysis calibration', () => {
   for (const file of ['test/helpers/plan-review-decisions.ts', 'test/plan-review-decisions.test.ts',
@@ -27,7 +26,7 @@ test('semantic helper changes also select the separate DX analysis calibration',
     if (file === 'test/plan-review-cases.test.ts') expected.push(
       'plan-eng-review', 'plan-eng-review-artifact', 'plan-review-report',
       'plan-eng-review-plan-mode', 'plan-mode-no-op',
-      'carve-section-loading', 'autoplan-chain-pty', 'plan-eng-finding-floor',
+      'carve-section-loading', 'plan-eng-finding-floor',
       'plan-eng-review-format-coverage', 'plan-eng-review-format-kind',
       'plan-ceo-review-prosons-cadence', 'plan-review-prosons-format',
       'codex-offered-eng-review', 'plan-eng-coverage-audit', 'autoplan-dual-voice',
@@ -36,7 +35,6 @@ test('semantic helper changes also select the separate DX analysis calibration',
       expected.sort());
   }
   for (const id of IDS) expect(E2E_TIERS[id]).toBe('periodic');
-  expect(E2E_TOUCHFILES['plan-ceo-finding-count']).toContain('test/skill-e2e-plan-ceo-finding-count.test.ts');
 });
 
 test('calibration briefs preserve source-required structure and actual choices without phase/qid reliance', () => {

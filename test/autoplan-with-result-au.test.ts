@@ -95,7 +95,7 @@ test('native readiness, timestamp, duplicate and observed-order rules remain int
 
 test('the regression and exact public message select only the existing Autoplan workflow',()=>{
  for(const file of ['test/autoplan-with-result-au.test.ts','test/fixtures/autoplan-with-result-au.json'])
-  expect(selectTests([file],E2E_TOUCHFILES,[]).selected).toEqual(['autoplan-chain-pty']);
+  expect(selectTests([file],E2E_TOUCHFILES,[]).selected).toEqual([]);
 });
 
 

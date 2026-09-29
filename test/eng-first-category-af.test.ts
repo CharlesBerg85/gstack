@@ -97,7 +97,7 @@ test('opposed implementation choices cannot be replaced by report or workflow ch
 test('regression evidence selects only the two affected Eng count owners', () => {
   for (const file of ['test/eng-first-category-af.test.ts', 'test/fixtures/eng-first-category-af.json']) {
     const owners = Object.entries(E2E_TOUCHFILES).filter(([, files]) => files.includes(file)).map(([owner])=>owner).sort();
-    expect(owners).toEqual(['plan-eng-finding-count', 'plan-eng-multi-finding-batching']);
+    expect(owners).toEqual(['plan-eng-multi-finding-batching']);
     expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(owners);
   }
 });

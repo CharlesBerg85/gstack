@@ -205,7 +205,7 @@ describe('native autoplan phase observation', () => {
 
   test('phase observer changes select the autoplan eval', () => {
     for (const file of ['test/helpers/autoplan-phase-observer.ts', 'test/autoplan-phase-observer.test.ts']) {
-      expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['autoplan-chain-pty']);
+      expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual([]);
     }
   });
 

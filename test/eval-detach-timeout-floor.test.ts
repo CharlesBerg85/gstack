@@ -26,7 +26,7 @@ import {
   resolvePaidShardBudget,
   type PaidTier,
 } from '../scripts/test-paid-shards';
-import { AUTOPLAN_CHAIN_BUDGET } from './helpers/eval-budgets';
+import { FINDING_RETRY_BUDGETS } from './helpers/eval-budgets';
 
 const ROOT = path.resolve(import.meta.dir, '..');
 // 5% margin over the theoretical bound: detach setup, lock wait, aggregation.
@@ -94,7 +94,7 @@ describe('eval:bg detach timeouts cover the sharded runner worst case', () => {
 // One long job and one ordinary job can run side by side; the long job still
 // needs its whole wall, regardless of the number of ordinary workers.
 test('a heterogeneous pair rejects the old uniform-wall floor', () => {
-  const pair = [AUTOPLAN_CHAIN_BUDGET.file, 'test/skill-e2e-other.test.ts'];
+  const pair = [FINDING_RETRY_BUDGETS[0]!.file, 'test/skill-e2e-other.test.ts'];
   const actualLongest = Math.max(...pair.map(file => resolvePaidShardBudget([file]).timeoutMs)) / 1000;
   expect(worstCaseSeconds(pair, 2)).toBe(actualLongest);
   expect(worstCaseSeconds(pair, 2)).toBeGreaterThan(DEFAULT_SHARD_TIMEOUT_MS / 1000);

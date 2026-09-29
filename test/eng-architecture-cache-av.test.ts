@@ -101,7 +101,7 @@ describe('declarative architecture issue owns the current cache mutation decisio
  });
  test('the exact public fixture and focused regression select only the Eng finding-count workflow',()=>{
   for(const dependency of ['test/eng-architecture-cache-av.test.ts','test/fixtures/eng-architecture-cache-av-calls.json']){
-   expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(dependency)).map(([name])=>name)).toEqual(['plan-eng-finding-count']);
+   expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(dependency)).map(([name])=>name)).toEqual([]);
   }
  });
 });

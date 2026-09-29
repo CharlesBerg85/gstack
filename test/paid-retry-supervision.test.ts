@@ -31,7 +31,7 @@ const expectedWalls = {
 
 test('registration covers exactly the fourteen demonstrated full-file retry gaps', () => {
   expect(Object.fromEntries(newBudgets.map(row => [row.file, row.shardMs]))).toEqual(expectedWalls);
-  expect(new Set(FILE_RETRY_BUDGETS.map(row => row.file)).size).toBe(20);
+  expect(new Set(FILE_RETRY_BUDGETS.map(row => row.file)).size).toBe(16);
   expect(STRICT_RETRY_CASE_BUDGETS.map(row => row.file)).toEqual([
     ...FINDING_RETRY_BUDGETS.map(row => row.file), AUQ_CONSISTENCY_RETRY_BUDGET.file,
   ]);
@@ -147,7 +147,7 @@ test('quality judge supervision includes the added judge without changing ordina
   expect(qualitySource).toContain('const workDeadline = started + JUDGE_MS');
   expect(qualityBudget.shardMs).toBe((7 * ALL_TIERS.JUDGE_MS + 16 * (ALL_TIERS.JUDGE_MS + 10_000)) * 2 + 120_000);
   expect(FINDING_RETRY_BUDGETS.map(row => [row.cases, row.testMs, row.retries, row.shardMs])).toEqual([
-    [2, 1500000, 1, 6120000], ...Array(5).fill([1, 1500000, 1, 3120000]),
+    ...Array(2).fill([1, 1500000, 1, 3120000]),
   ]);
   for (const tier of ['gate', 'periodic'] as const) {
     const m = buildRunManifest({ tier, sliceCount: 1, evalsAll: true, env: { EVALS_ALL: '1' } });
@@ -240,16 +240,14 @@ test('the periodic executor supervises every actual case and retry within its CI
   expect(execute).toHaveLength(1);
   const planned = cliOptions(emit[0]), active = cliOptions(execute[0]);
   expect(planned.tier).toBe('periodic');
-  expect(planned.dedicatedAutoplanSlice).toBe(true);
-  expect(planned.slices).toBe(8);
+  expect(planned.slices).toBe(7);
   expect(active.jobs).toBe(2);
   expect(executor.strategy.matrix.slice).toEqual(Array.from({ length: planned.slices }, (_, i) => i + 1));
   const manifest = buildRunManifest({ tier: 'periodic', sliceCount: planned.slices,
-    dedicatedAutoplanSlice: planned.dedicatedAutoplanSlice, evalsAll: true, env: { EVALS_ALL: '1' } });
+    evalsAll: true, env: { EVALS_ALL: '1' } });
   const census = manifest.entries.filter(row => row.status === 'planned');
-  expect(census).toHaveLength(82);
+  expect(census).toHaveLength(77);
   expect(census.find(row => row.file === 'test/skill-llm-eval.test.ts')?.budget?.timeoutMs).toBe(5_960_000);
-  expect(manifest.autoplanSlice).toBe(8);
   const walls = executor.strategy.matrix.slice.map((slice: number) => paidShardWallUpperBoundMs(
     census.filter(row => row.slice === slice).map(row => row.file), active.jobs,
   ));

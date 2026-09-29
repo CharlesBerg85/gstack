@@ -162,7 +162,7 @@ describe('Eng AD v2 completed native count evidence', () => {
   test('new evidence selects precisely its affected existing paid workflows', () => {
     const selected = (path: string) => Object.entries(E2E_TOUCHFILES).filter(([, patterns]) => patterns.some(p => matchGlob(path, p))).map(([name]) => name).sort();
     for (const path of ['test/eng-count-ad-v2.test.ts', 'test/fixtures/eng-count-ad-v2.json']) {
-      expect(selected(path)).toEqual(['plan-eng-finding-count', 'plan-eng-multi-finding-batching']);
+      expect(selected(path)).toEqual(['plan-eng-multi-finding-batching']);
     }
   });
 });

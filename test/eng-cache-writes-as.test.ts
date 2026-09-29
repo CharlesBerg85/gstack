@@ -110,6 +110,6 @@ test('a remedy and opposed choice must bind the same current writers and active 
 
 test('new source and exact public fixture select both Eng boundary owners', () => {
   for (const file of ['test/helpers/eng-cache-writer-decision.ts', 'test/eng-cache-writes-as.test.ts', 'test/fixtures/eng-cache-writes-as.json']) {
-    expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(['plan-eng-finding-count', 'plan-eng-multi-finding-batching']);
+    expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(['plan-eng-multi-finding-batching']);
   }
 });

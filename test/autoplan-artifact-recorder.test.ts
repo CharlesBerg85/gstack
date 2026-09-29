@@ -167,9 +167,9 @@ describe('owned Autoplan pending artifact metadata recorder',()=>{
   test('recorder disposal removes owned state and shared recorder inputs select both paid owners',()=>{
     const f=fixture();f.write(f.event());f.dispose();expect(fs.existsSync(f.recorder.file)).toBe(false);
     for(const file of ['test/helpers/autoplan-artifact-recorder.ts','test/autoplan-artifact-recorder.test.ts'])
-      expect(selectTests([file],E2E_TOUCHFILES,[]).selected.sort()).toEqual(['autoplan-chain-pty','plan-eng-finding-count']);
+      expect(selectTests([file],E2E_TOUCHFILES,[]).selected.sort()).toEqual([]);
     for(const file of ['test/autoplan-pending-artifact.test.ts','test/fixtures/autoplan-pending-artifact-ae.json'])
-      expect(selectTests([file],E2E_TOUCHFILES,[]).selected).toEqual(['autoplan-chain-pty']);
+      expect(selectTests([file],E2E_TOUCHFILES,[]).selected).toEqual([]);
   });
 });
 

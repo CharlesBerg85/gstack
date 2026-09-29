@@ -48,9 +48,7 @@ test('whole quoted history and consistent identifiers preserve the current decis
 
 import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
 test('new inputs have only the engineering finding owner and dense paths',()=>{
- for(const file of ['test/eng-cache-brief-am.test.ts','test/fixtures/eng-cache-brief-am.json']) expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(file)).map(([owner])=>owner)).toEqual(['plan-eng-finding-count']);
- const paths=E2E_TOUCHFILES['plan-eng-finding-count']!;
- for(let i=0;i<paths.length;i++){expect(Object.hasOwn(paths,i)).toBe(true);expect(typeof paths[i]).toBe('string');}
+ for(const file of ['test/eng-cache-brief-am.test.ts','test/fixtures/eng-cache-brief-am.json']) expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(file)).map(([owner])=>owner)).toEqual([]);
 });
 test('current-owner withdrawals and conditional metadata cannot lend review evidence',()=>{
  for(const text of ['Correction: this finding is rejected.','Correction: this remedy is cancelled.','Correction: this finding is "withdrawn".','Correction: this explanation is not current.']) expect(engFirstReviewAUQ(edit(q=>q.question+='\n'+text))).toBe(false);

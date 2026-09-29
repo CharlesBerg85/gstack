@@ -88,7 +88,6 @@ describe('selectTests', () => {
     expect(result.reason).toBe('diff');
     expect(result.selected.sort()).toEqual([...new Set([...consumers, ...existing])].sort());
     expect(result.selected).toContain('plan-eng-review');
-    expect(result.selected).toContain('plan-eng-finding-count');
     expect(result.selected).not.toContain('plan-ceo-review-prosons-cadence');
     expect(result.selected).not.toContain('outside-plan-disabled-no-fallback');
   });
@@ -103,12 +102,8 @@ describe('selectTests', () => {
     'Design artifact dependencies select their native consumers: %s', (file) => {
       const result = selectTests([file], E2E_TOUCHFILES);
       expect(result.reason).toBe('diff');
-      expect(result.selected).toContain('plan-design-finding-count');
       expect(result.selected).toContain('plan-design-with-ui-scope');
-      if (file !== 'bin/gstack-slug') expect(result.selected).toContain('autoplan-chain-pty');
-      expect(E2E_TIERS['plan-design-finding-count']).toBe('periodic');
       expect(E2E_TIERS['plan-design-with-ui-scope']).toBe('gate');
-      expect(E2E_TIERS['autoplan-chain-pty']).toBe('periodic');
     },
   );
 
@@ -165,8 +160,8 @@ describe('selectTests', () => {
     const actual = selectTests(['scripts/resolvers/testing.ts'], E2E_TOUCHFILES);
     expect(actual.reason).toBe('diff');
     expect(actual.selected.sort()).toEqual(expected);
-    for (const id of ['plan-eng-finding-count', 'plan-eng-multi-finding-batching',
-      'autoplan-chain-pty', 'plan-eng-review-format-coverage', 'ship-section-loading', 'qa-fix-loop']) {
+    for (const id of ['plan-eng-multi-finding-batching',
+      'plan-eng-review-format-coverage', 'ship-section-loading', 'qa-fix-loop']) {
       expect(actual.selected).toContain(id);
       expect(E2E_TIERS[id]).toBe('periodic');
     }
@@ -351,11 +346,8 @@ describe('selectTests', () => {
     // v1.13.x real-PTY E2E batch entries that also depend on plan-ceo-review/**
     expect(result.selected).toContain('auq-format-gate');
     expect(result.selected).toContain('plan-ceo-mode-routing');
-    expect(result.selected).toContain('autoplan-chain-pty');
     // The dual-voice fixture loads the CEO skill as its Phase 1 dependency.
     expect(result.selected).toContain('autoplan-dual-voice');
-    // Per-finding count + review-report-at-bottom (v1.21.x)
-    expect(result.selected).toContain('plan-ceo-finding-count');
     // v1.22+ AskUserQuestion-blocked regression: auto-decide-preserved
     // also depends on plan-ceo-review/** (autoplan-auto-mode test was
     // removed in v1.28 — see commit message for the rationale).
@@ -369,8 +361,8 @@ describe('selectTests', () => {
     // v2 plan Phase B carve: the section-loading E2E depends on plan-ceo-review/**.
     expect(result.selected).toContain('plan-ceo-section-loading');
     expect(result.selected).toContain('outside-plan-disabled-no-fallback');
-    expect(result.selected.length).toBe(23);
-    expect(result.skipped.length).toBe(Object.keys(E2E_TOUCHFILES).length - 23);
+    expect(result.selected.length).toBe(21);
+    expect(result.skipped.length).toBe(Object.keys(E2E_TOUCHFILES).length - 21);
   });
 
   test('global touchfile triggers ALL tests', () => {
@@ -389,7 +381,6 @@ describe('selectTests', () => {
   ])('live runtime dependency selects PTY consumers: %s', (file) => {
     const result = selectTests([file], E2E_TOUCHFILES);
     expect(result.reason).toBe('diff');
-    expect(result.selected).toContain('autoplan-chain-pty');
     expect(result.selected).toContain('plan-ceo-mode-routing');
     expect(result.selected).not.toContain('retro');
   });

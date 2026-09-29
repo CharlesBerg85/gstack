@@ -41,7 +41,7 @@ test('native completion, timestamp, exact answer, session and visible menu stay 
  for(const edit of edits){const c=fresh();edit(c);expect(first(c)).toBe(false);}const f=fp();expect(engFirstReviewAUQ({...f,signature:'foreign'})).toBe(false);expect(engFirstReviewAUQ({...f,options:f.options.slice().reverse()})).toBe(false);expect(engFirstReviewAUQ({...f,nativeQuestionIndex:1})).toBe(false);
 });
 test('regression fixture and control select the engineering finding-count workflow',()=>{
- for(const file of ['test/eng-annotated-cache-au.test.ts','test/fixtures/eng-annotated-cache-au.json'])expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(file)).map(([owner])=>owner)).toEqual(['plan-eng-finding-count']);
+ for(const file of ['test/eng-annotated-cache-au.test.ts','test/fixtures/eng-annotated-cache-au.json'])expect(Object.entries(E2E_TOUCHFILES).filter(([,paths])=>paths.includes(file)).map(([owner])=>owner)).toEqual([]);
 });
 
 test('current approval conditions and same-option effort boundaries cannot hide withdrawals',()=>{

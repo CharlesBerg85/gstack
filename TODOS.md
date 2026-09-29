@@ -825,6 +825,19 @@ audit trail lives in Aside.
 
 ## Test infrastructure
 
+### P3: No paid eval runs the full /autoplan chain
+
+**What:** `skill-e2e-autoplan-chain` was retired (it never reached a product
+verdict: launch failures, then 85-minute budget overruns). Phase order is still
+enforced by `autoplan/bin/phase-publication-hook.ts` and pinned by the free
+`test/autoplan-publication-guard.test.ts`, and `skill-e2e-autoplan-dual-voice`
+covers CEO Phase 1 dispatch. Nothing proves a live model completes
+CEO → Design → DX → Eng or reads the required phase sections
+(`CARVE_GUARDS.autoplan` is `behavioral: 'none'`).
+
+**Re-entry:** a chain eval that fits the ordinary PTY tiers, for example one that
+runs the no-UI, no-DX path (CEO then Eng) and asserts the section reads.
+
 ### P3: CI-unrunnable paid evals
 
 **What:** Seven paid files cannot execute in the CI image (no `codex` CLI, no
@@ -1971,6 +1984,13 @@ plus a TTL so abandoned PTYs eventually exit.
 
 **Priority:** P2.
 **Effort:** S (CC: ~30 min once fixture exists). Captured from v1.21.1.0 plan-eng-review D2.
+
+**Status (2026-09):** The four `skill-e2e-plan-*-finding-count` evals were retired
+after eight red weekly runs whose failures were harness and budget, not skill
+behavior. The `*-finding-floor` evals assert at least one AskUserQuestion, not one
+per finding, so this contract has no paid coverage today. Re-entry test: a
+qid-keyed per-finding count on a multi-finding fixture with `QUESTION_TUNING: true`
+(the `<gstack-qid:…>` markers only appear with tuning on).
 
 ---
 

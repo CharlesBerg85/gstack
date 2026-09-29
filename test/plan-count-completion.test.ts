@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { hasNativePlanCompletion, hasNativePlanTerminal, isPlanReadyVisible, classifyPlanCountFrame, isNumberedOptionListVisible, isPermissionDialogVisible, isProseAUQVisible, assertReviewReportAtBottom } from './helpers/claude-pty-runner';
+import { hasNativePlanCompletion, hasNativePlanTerminal, isPlanReadyVisible, classifyPlanCountFrame, isNumberedOptionListVisible, isPermissionDialogVisible, isProseAUQVisible } from './helpers/claude-pty-runner';
 import type { PlanCountTranscript } from './helpers/plan-count-transcript';
 import capturedL from './fixtures/devex-review-l-calls.json';
 import designStatusCapture from './fixtures/design-count-native-issue-fields.json';
@@ -39,15 +39,6 @@ describe('captured Design completion envelope', () => {
       const check=()=>evaluate({expectedPlanPath:f.file},hasNativePlanCompletion(f.transcript,f.file,designEnvelope.startedAt),classifyPlanCountFrame(screen),screen,f.transcript,
         designEnvelope.startedAt,new Set(),isNumberedOptionListVisible,isPermissionDialogVisible,isProseAUQVisible,hasNativePlanTerminal);
       expect(check()).toBe(true);
-      const paid=fs.readFileSync(path.join(import.meta.dir,'skill-e2e-plan-design-finding-count.test.ts'),'utf8');
-      const start=paid.indexOf("        if (!['plan_ready', 'completion_summary', 'ceiling_reached'].includes(obs.outcome))");
-      const end=paid.indexOf('\n      } finally {',start);expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);
-      const validate=new Function('fs','planPath','obs','FLOOR','CEILING','assertReviewReportAtBottom',new Bun.Transpiler({loader:'ts'}).transformSync(paid.slice(start,end)));
-      const obs={outcome:'completion_summary',reviewCount:5,step0Count:3,elapsedMs:0,fingerprints:[],evidence:screen};
-      expect(()=>validate(fs,f.file,obs,4,7,assertReviewReportAtBottom)).not.toThrow();
-      expect(()=>validate(fs,f.file,{...obs,outcome:'timed_out'},4,7,assertReviewReportAtBottom)).toThrow('finding-count FAILED');
-      expect(()=>validate(fs,f.file,{...obs,reviewCount:3},4,7,assertReviewReportAtBottom)).toThrow('BAND FAIL');
-      expect(()=>validate(fs,f.file,{...obs,reviewCount:8},4,7,assertReviewReportAtBottom)).toThrow('BAND FAIL');
       f.transcript.calls[0]!.answered=false;expect(check()).toBe(false);
     }finally{f.cleanup();}
   });

@@ -73,6 +73,6 @@ test('dash support keeps ready/current native evidence and first-hit ordering', 
 
 test('dash fixture and regression select only the existing AP owner', () => {
   for (const file of ['test/autoplan-phase-dash-ao.test.ts', 'test/fixtures/autoplan-phase-dash-ao.json']) {
-    expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['autoplan-chain-pty']);
+    expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual([]);
   }
 });

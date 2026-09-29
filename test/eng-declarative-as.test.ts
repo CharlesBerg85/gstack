@@ -94,7 +94,7 @@ test('technical options cannot be quoted, hypothetical, mismatched or cancelled'
 });
 
 test('new boundary regressions select the two Eng count owners', () => {
-  for (const file of ['test/eng-declarative-as.test.ts', 'test/fixtures/eng-declarative-as.json']) expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(['plan-eng-finding-count', 'plan-eng-multi-finding-batching']);
+  for (const file of ['test/eng-declarative-as.test.ts', 'test/fixtures/eng-declarative-as.json']) expect(selectTests([file], E2E_TOUCHFILES, []).selected.sort()).toEqual(['plan-eng-multi-finding-batching']);
 });
 
 

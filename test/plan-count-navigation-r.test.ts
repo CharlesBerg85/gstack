@@ -1,9 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { capturePlanCountQuestion, nativePlanCallFingerprint, planCountPrerequisitePick, planCountQuestionInput } from './helpers/claude-pty-runner';
-import { pickCeoCountQuestion } from './helpers/ceo-approach-pick';
 import type { NativePlanQuestionCall } from './helpers/plan-count-transcript';
-import paired from './fixtures/ceo-approach-r-call.json';
-import distinct from './fixtures/ceo-approach-r-distinct-call.json';
 import prerequisite from './fixtures/dx-prerequisite-r-call.json';
 
 function pending(source: NativePlanQuestionCall): NativePlanQuestionCall {
@@ -22,25 +19,6 @@ function frame(call: NativePlanQuestionCall) {
 }
 
 describe('captured R planning navigation', () => {
-  test('distinct CEO selects its third recommended approach without seed-word matching', () => {
-    const call = pending(distinct as NativePlanQuestionCall);
-    const { visible, active, routing } = frame(call);
-    expect(distinct.answers[distinct.questions[0]!.question]).toBe(distinct.questions[0]!.options[0]!.label);
-    const pick = pickCeoCountQuestion(routing, active) ?? 1;
-    expect(pick).toBe(3);
-    expect(planCountQuestionInput(visible, active, pick)).toBe('3');
-  });
-
-  test('paired CEO follows the offered recommendation instead of accepting vague assertions', () => {
-    const call = pending(paired as NativePlanQuestionCall);
-    const { visible, active, routing } = frame(call);
-    expect(active.nativeCall).toBe(call);
-    expect(paired.answers[paired.questions[0]!.question]).toBe(paired.questions[0]!.options[0]!.label);
-    const pick = pickCeoCountQuestion(routing, active) ?? 1;
-    expect(pick).toBe(2);
-    expect(planCountQuestionInput(visible, active, pick)).toBe('2');
-  });
-
   test('DX declines its optional office-hours detour using the full native option meaning', () => {
     const call = pending(prerequisite as NativePlanQuestionCall);
     const { visible, active, routing } = frame(call);
@@ -50,19 +28,6 @@ describe('captured R planning navigation', () => {
     expect(pick).toBe(2);
     expect(planCountQuestionInput(visible, active, pick)).toBe('2');
   });
-
-  test('CEO routing id and selector wording vary independently of option content and order', () => {
-    for (const id of ['plan-ceo-approach', 'plan-ceo-review-approach', 'plan-ceo-approach-selection', 'plan-ceo-review-approach-selection']) {
-      for (const verb of ['use', 'follow']) {
-        const call = pending(paired as NativePlanQuestionCall);
-        call.questions[0]!.question = `Which implementation approach should this plan ${verb}? <gstack-qid:${id}>`;
-        call.questions[0]!.options = [{ label: 'Existing renderer (Recommended)' }, { label: 'Custom renderer' }];
-        const { active, routing } = frame(call);
-        expect(pickCeoCountQuestion(routing, active)).toBe(1);
-      }
-    }
-  });
-
   test('short prerequisite labels require the current native question and affirmative review action', () => {
     for (const change of [
       (c: NativePlanQuestionCall) => { c.questions[0]!.options[1]!.description = ''; },

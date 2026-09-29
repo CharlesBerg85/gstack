@@ -24,12 +24,8 @@ function change(call:NativePlanQuestionCall,from:string,to:string){
 }
 describe('AO completed manual DX handoff preserves report freshness',()=>{
  test('shared completion callers register the regression with dense literal paths',()=>{
-  for(const owner of ['plan-ceo-finding-count','plan-design-finding-count','plan-eng-finding-count','plan-devex-finding-count']){
-   expect(E2E_TOUCHFILES[owner]).toContain('test/dx-manual-handoff-ao.test.ts');
-   expect(E2E_TOUCHFILES[owner]).toContain('test/fixtures/dx-manual-handoff-ao.json');
-  }
   const arrays=[...Object.values(E2E_TOUCHFILES),...Object.values(LLM_JUDGE_TOUCHFILES),GLOBAL_TOUCHFILES];
-  expect(arrays).toHaveLength(221);
+  expect(arrays).toHaveLength(216);
   for(const values of arrays)for(let i=0;i<values.length;i++)expect(typeof values[i]).toBe('string');
  });
  test('exact owned report precedes navigation only, with the current Exit gate recognized',()=>{

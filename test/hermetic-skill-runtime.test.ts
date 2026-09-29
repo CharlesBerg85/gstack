@@ -15,7 +15,7 @@ const digest = (file: string) => createHash('sha256').update(fs.readFileSync(fil
 describe('hermetic seeded PTY runtime', () => {
   test('runtime helper and regression select every PTY consumer', () => {
     const consumers = Object.entries(E2E_TOUCHFILES).filter(([, files]) => files.includes('test/helpers/claude-pty-runner.ts')).map(([name]) => name).sort();
-    expect(consumers.length).toBeGreaterThan(15);
+    expect(consumers.length).toBeGreaterThanOrEqual(15);
     for (const file of ['test/helpers/hermetic-skill-runtime.ts', 'test/hermetic-skill-runtime.test.ts'])
       expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual(consumers);
   });

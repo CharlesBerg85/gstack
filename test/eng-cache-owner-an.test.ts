@@ -87,5 +87,5 @@ test('native ownership, completion, answer alignment and dense menus remain requ
 
 test('new source dependencies select only the affected engineering workflow', () => {
   for (const path of ['test/eng-cache-owner-an.test.ts', 'test/fixtures/eng-cache-owner-an.json'])
-    expect(selectTests([path], E2E_TOUCHFILES, []).selected).toEqual(['plan-eng-finding-count']);
+    expect(selectTests([path], E2E_TOUCHFILES, []).selected).toEqual([]);
 });

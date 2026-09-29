@@ -9,70 +9,33 @@ describe('periodic fixture dependencies select their behavioral cases', () => {
     ['test/helpers/ceo-hold-posture-review.ts', ['plan-ceo-mode-routing']],
     ['test/ceo-hold-posture-review.test.ts', ['plan-ceo-mode-routing']],
     ['test/fixtures/ceo-hold-proof-fb10.json', ['plan-ceo-mode-routing']],
-    ['test/eng-semantic-terminal.test.ts', ['plan-eng-finding-count']],
-    ['test/fixtures/eng-fb10-count-public.json', ['plan-eng-finding-count']],
-    ['test/fixtures/autoplan-home-phase-entry-fb10.json', ['autoplan-chain-pty']],
-    ['test/ceo-current-decision-record.test.ts', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-current-decision-cdd-public.json', ['plan-ceo-finding-count']],
-    ['test/eng-resolution-block-position.test.ts', ['plan-eng-finding-count', 'plan-eng-multi-finding-batching']],
-    ['test/fixtures/eng-a689-retry-public.json', ['plan-eng-finding-count', 'plan-eng-multi-finding-batching']],
+    ['test/eng-resolution-block-position.test.ts', ['plan-eng-multi-finding-batching']],
+    ['test/fixtures/eng-a689-retry-public.json', ['plan-eng-multi-finding-batching']],
     ['test/fixtures/auto-decide-mode-selector-749df.json', ['auto-decide-preserved']],
     ['test/fixtures/eng-batching-prefixed-ledger-f359.json', ['plan-eng-multi-finding-batching']],
     ['test/fixtures/ceo-hold-preservation-f359.json', ['plan-ceo-mode-routing']],
-    ['test/ceo-native-fields-f359.test.ts', ['plan-ceo-finding-count']],
-    ['test/ceo-conditional-option-facts.test.ts', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-conditional-option-facts-c6fc.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-native-fields-f359.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-plain-fields-f359.json', ['plan-ceo-finding-count']],
-    ['test/eng-task-pause-navigation-f359.test.ts', ['plan-eng-finding-count']],
-    ['test/fixtures/eng-task-pause-navigation-f359.json', ['plan-eng-finding-count']],
     ['test/fixtures/auto-decide-completed-mode-f359.json', ['auto-decide-preserved']],
-    ['test/fixtures/ceo-onboarding-packet-90f.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-baseline-alternatives-90f.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/design-completion-envelope-90f.json', ['plan-design-finding-count']],
-    ['test/review-count-markdown.test.ts', ['plan-eng-finding-count', 'plan-design-finding-count', 'plan-eng-multi-finding-batching']],
-    ['test/fixtures/review-count-markdown-6f.json', ['plan-eng-finding-count', 'plan-design-finding-count', 'plan-eng-multi-finding-batching']],
-    ['test/fixtures/ceo-recorded-decisions-67147822.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/eng-batching-expanded-ledger-6714.json', ['plan-eng-finding-count', 'plan-eng-multi-finding-batching']],
-    ['test/fixtures/eng-native-review-identities-6714.json', ['plan-eng-finding-count', 'plan-eng-multi-finding-batching']],
-    ['test/design-count-current-pass.test.ts', ['plan-design-finding-count']],
-    ['test/fixtures/design-count-current-pass.json', ['plan-design-finding-count']],
-    ['test/eng-test-plan-edit-approval.test.ts', ['autoplan-chain-pty', 'plan-eng-finding-count']],
-    ['test/fixtures/eng-test-plan-edit-dacc.json', ['autoplan-chain-pty', 'plan-eng-finding-count']],
-    ['test/fixtures/eng-test-plan-edit-cli.js', ['autoplan-chain-pty', 'plan-eng-finding-count']],
-    ['test/autoplan-owned-state.test.ts', ['autoplan-chain-pty']],
-    ['test/autoplan-artifact-windows-argv.test.ts', ['autoplan-chain-pty', 'plan-eng-finding-count']],
-    ['test/fixtures/eng-completed-navigation-cab3.json', ['plan-eng-finding-count']],
+    ['test/review-count-markdown.test.ts', ['plan-eng-multi-finding-batching']],
+    ['test/fixtures/review-count-markdown-6f.json', ['plan-eng-multi-finding-batching']],
+    ['test/fixtures/eng-batching-expanded-ledger-6714.json', ['plan-eng-multi-finding-batching']],
+    ['test/fixtures/eng-native-review-identities-6714.json', ['plan-eng-multi-finding-batching']],
     ['test/autoplan-dual-voice-fixture.test.ts', ['autoplan-dual-voice']],
     ['test/helpers/autoplan-dual-voice-evidence.ts', ['autoplan-dual-voice']],
     ['test/autoplan-dual-voice-evidence.test.ts', ['autoplan-dual-voice']],
     ['test/fixtures/autoplan-dual-false-positive-6bd.json', ['autoplan-dual-voice']],
-    ['test/helpers/autoplan-method-read-audit.ts', ['autoplan-chain-pty', 'autoplan-dual-voice']],
-    ['test/fixtures/autoplan-phase-entry-alias-f359.json', ['autoplan-chain-pty']],
-    ['test/fixtures/autoplan-method-read-aa-events.json', ['autoplan-chain-pty', 'autoplan-dual-voice']],
+    ['test/helpers/autoplan-method-read-audit.ts', ['autoplan-dual-voice']],
+    ['test/fixtures/autoplan-method-read-aa-events.json', ['autoplan-dual-voice']],
     ['test/helpers/outside-voice-evidence.ts', ['autoplan-dual-voice', 'outside-plan-disabled-no-fallback',
       'outside-voice-claude-code-to-codex', 'outside-voice-codex-to-claude-code']],
     ['test/fixtures/outside-async-task-m-events.json', ['autoplan-dual-voice',
       'outside-voice-claude-code-to-codex', 'outside-voice-codex-to-claude-code']],
-    ['test/fixtures/devex-journey-evidence-cab3.json', ['plan-devex-finding-count']],
-    ['test/autoplan-phase-handoff.test.ts', ['carve-section-loading', 'autoplan-chain-pty', 'autoplan-dual-voice']],
-    ['test/autoplan-amend-input.test.ts', ['carve-section-loading', 'autoplan-chain-pty', 'autoplan-dual-voice']],
-    ['test/fixtures/autoplan-amend-input-77.json', ['carve-section-loading', 'autoplan-chain-pty', 'autoplan-dual-voice']],
-    ['test/fixtures/autoplan-phase-handoff-6714.json', ['carve-section-loading', 'autoplan-chain-pty', 'autoplan-dual-voice']],
-    ['test/fixtures/autoplan-owned-state-edit.json', ['autoplan-chain-pty']],
-    ['test/eng-finding-retry-budget.test.ts', ['plan-ceo-finding-count', 'plan-ceo-split-overflow', 'plan-design-finding-count', 'plan-devex-finding-count', 'plan-eng-finding-count', 'plan-eng-multi-finding-batching', 'autoplan-chain-pty']],
-    ['test/design-count-native-8525.test.ts', ['plan-design-finding-count']],
-    ['test/fixtures/design-count-native-8525.json', ['plan-design-finding-count']],
-    ['test/fixtures/design-phase-entry-77.json', ['plan-design-finding-count']],
+    ['test/autoplan-phase-handoff.test.ts', ['carve-section-loading', 'autoplan-dual-voice']],
+    ['test/autoplan-amend-input.test.ts', ['carve-section-loading', 'autoplan-dual-voice']],
+    ['test/fixtures/autoplan-amend-input-77.json', ['carve-section-loading', 'autoplan-dual-voice']],
+    ['test/fixtures/autoplan-phase-handoff-6714.json', ['carve-section-loading', 'autoplan-dual-voice']],
+    ['test/eng-finding-retry-budget.test.ts', ['plan-ceo-split-overflow', 'plan-eng-multi-finding-batching']],
     ['test/fixtures/ceo-expansion-pacing-77.json', ['plan-ceo-mode-routing']],
-    ['test/eng-published-navigation.test.ts', ['plan-eng-finding-count']],
-    ['test/fixtures/eng-published-navigation.json', ['plan-eng-finding-count']],
     ['test/fixtures/disabled-retained-record.json', ['outside-plan-disabled-no-fallback']],
-    ['test/ceo-native-ledger-replay.test.ts', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-native-ledger-8525.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-option-metadata-list-6f6730f4.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-zero-test-absence-6f6730f4.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-recorded-decisions-dacc95ea.json', ['plan-ceo-finding-count']],
     ['test/fixtures/ceo-expansion-posture-kind-dacc.json', ['plan-ceo-mode-routing']],
     ['test/fixtures/ceo-expansion-pause-6714.json', ['plan-ceo-mode-routing']],
     ['test/fixtures/ceo-expansion-complete-inventory-6f.json', ['plan-ceo-mode-routing']],
@@ -81,26 +44,16 @@ describe('periodic fixture dependencies select their behavioral cases', () => {
     ['test/fixtures/ceo-fill-lifetime.json', ['plan-ceo-section-loading']],
     ['test/eng-batching-native-replay.test.ts', ['plan-eng-multi-finding-batching']],
     ['test/fixtures/eng-batching-native-8525.json', ['plan-eng-multi-finding-batching']],
-    ['test/eng-batching-saved-ledger.test.ts', ['plan-eng-finding-count', 'plan-eng-multi-finding-batching']],
-    ['test/fixtures/eng-batching-saved-ledger-dacc.json', ['plan-eng-finding-count', 'plan-eng-multi-finding-batching']],
+    ['test/eng-batching-saved-ledger.test.ts', ['plan-eng-multi-finding-batching']],
+    ['test/fixtures/eng-batching-saved-ledger-dacc.json', ['plan-eng-multi-finding-batching']],
     ['test/plan-design-sdk-fixture.test.ts', ['plan-design-review-plan-mode']],
-    ['test/design-count-native-issue-fields.test.ts', ['plan-design-finding-count']],
-    ['test/fixtures/design-count-native-issue-fields.json', ['plan-design-finding-count']],
-    ['test/helpers/ceo-payment-findings.ts', ['plan-ceo-finding-count']],
-    ['test/ceo-payment-findings.test.ts', ['plan-ceo-finding-count']],
-    ['test/ceo-source-attribution.test.ts', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-source-attribution-6aef.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-current-record-6aef.json', ['plan-ceo-finding-count']],
-    ['test/fixtures/ceo-payment-ledger-decisions.json', ['plan-ceo-finding-count']],
     ['test/setup-gbrain-remote-caller.test.ts', ['setup-gbrain-remote']],
     ['test/skill-fixture.test.ts', ['journey-ideation', 'journey-plan-eng', 'journey-debug', 'journey-qa', 'journey-code-review', 'journey-ship', 'journey-docs', 'journey-retro', 'journey-design-system', 'journey-visual-qa', 'journey-negatives']],
     ['test/office-hours-writeback-env.test.ts', ['office-hours-brain-writeback']],
     ['test/helpers/setup-gbrain-sandbox.ts', ['setup-gbrain-bad-token', 'setup-gbrain-path4-local-pglite', 'setup-gbrain-remote']],
     ['test/helpers/setup-gbrain-fixture-command.ts', ['setup-gbrain-bad-token', 'setup-gbrain-path4-local-pglite']],
-    ['test/fixtures/autoplan-caller.fixture.test.ts', ['autoplan-chain-pty']],
-    ['test/gstack-paths.test.ts', ['autoplan-chain-pty', 'carve-section-loading', 'design-html-slop-gate']],
-    ['test/gstack-brain-context-load.test.ts', ['autoplan-chain-pty', 'plan-ceo-section-loading']],
-    ['test/fixtures/autoplan-settings-overwrite.json', ['autoplan-chain-pty']],
+    ['test/gstack-paths.test.ts', ['carve-section-loading', 'design-html-slop-gate']],
+    ['test/gstack-brain-context-load.test.ts', ['plan-ceo-section-loading']],
     ['test/fixtures/eng-file-permission-repaint.json', ['plan-eng-multi-finding-batching']],
     ['test/helpers/carve-section-case.ts', ['carve-section-loading']],
     ['test/helpers/carve-plan-fixture.ts', ['carve-section-loading']],
@@ -108,35 +61,23 @@ describe('periodic fixture dependencies select their behavioral cases', () => {
     ['test/fixtures/carve-existing-repository/src/repository.ts', ['carve-section-loading']],
     ['test/fixtures/carve-existing-repository/README.md', ['carve-section-loading']],
     ['test/fixtures/carve-existing-repository/example.ts', ['carve-section-loading']],
-    ['test/eng-finding-fixture.test.ts', ['plan-eng-finding-count']],
     ['test/codex-carve-fixture.test.ts', ['carve-section-loading']],
     ['test/design-html-section-completion.test.ts', ['carve-section-loading']],
     ['test/fixtures/design-html-section-complete.md', ['carve-section-loading']],
     ['test/plan-design-floor-fixture.test.ts', ['plan-design-finding-floor']],
-    ['test/devex-finding-fixture.test.ts', ['plan-devex-finding-count']],
-    ['test/fixtures/devex-checkpoint-todos.json', ['plan-devex-finding-count']],
-    ['test/fixtures/devex-existing-sdk/README.md', ['plan-devex-finding-count']],
-    ['test/fixtures/devex-existing-sdk/docs/getting-started.md', ['plan-devex-finding-count']],
-    ['test/fixtures/devex-existing-sdk/docs/feedback.md', ['plan-devex-finding-count']],
-    ['test/fixtures/devex-existing-sdk/docs/reference-v1.md', ['plan-devex-finding-count']],
-    ['test/design-finding-fixture.test.ts', ['plan-design-finding-count']],
     ['test/helpers/hermetic-env.test.ts', ['plan-ceo-split-overflow']],
     ['test/helpers/ceo-split-question-policy.ts', ['plan-ceo-split-overflow']],
     ['test/ceo-split-question-policy.test.ts', ['plan-ceo-split-overflow']],
     ['test/ceo-split-collection.test.ts', ['plan-ceo-split-overflow']],
     ['test/fixtures/ceo-split-collection-0bcd.json', ['plan-ceo-split-overflow']],
     ['test/fixtures/ceo-split-actor-6aef.json', ['plan-ceo-split-overflow']],
-    ['test/helpers/ceo-mode-option.ts', ['plan-ceo-mode-routing', 'plan-ceo-finding-count', 'plan-ceo-split-overflow']],
+    ['test/helpers/ceo-mode-option.ts', ['plan-ceo-mode-routing', 'plan-ceo-split-overflow']],
     ['docs/askuserquestion-split.md', ['plan-ceo-split-overflow', 'plan-decision-classification', 'plan-devex-peer-comparison-classification']],
     ['test/resolver-ask-user-format.test.ts', ['plan-ceo-split-overflow']],
-    ['test/skill-e2e-plan-ceo-finding-count.test.ts', ['plan-ceo-finding-count']],
     ['test/section-capture-native-tools.test.ts', ['ship-section-loading', 'plan-ceo-section-loading', 'office-hours-section-loading', 'carve-section-loading']],
-    ['test/fixtures/ceo-paired-option-values.json', ['plan-ceo-finding-count']],
-    ...['README.md', 'platform.ts', 'existing-invoice-handler.ts', 'schema.sql', 'contract.test.ts.fixture'].map((file): [string, string[]] =>
-      [`test/fixtures/ceo-existing-payment/${file}`, ['plan-ceo-finding-count']]),
     ...['test/fixtures/webfetch-permission.json', 'test/plan-skill-webfetch-permission.test.ts'].map((file): [string, string[]] => [file,
-      ['plan-ceo-finding-count', 'plan-eng-finding-count', 'plan-design-finding-count',
-        'plan-devex-finding-count', 'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow'],
+      [
+        'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow'],
     ]),
     ['test/helpers/plan-mode-evidence.ts', ['plan-design-review-plan-mode', 'plan-eng-review-plan-mode']],
     ['test/plan-mode-evidence.test.ts', ['plan-design-review-plan-mode', 'plan-eng-review-plan-mode']],
@@ -221,23 +162,13 @@ test('shared attempt regressions select periodic callers and the gate report cas
   expect(E2E_TIERS['plan-review-report']).toBe('gate');
 });
 
-test('decision-log CLI and validator select the demonstrated DX consumer without global or quality fanout', () => {
-  for (const file of ['bin/gstack-decision-log', 'lib/gstack-decision.ts']) {
-    const selected = selectTests([file], E2E_TOUCHFILES);
-    expect(selected.reason).toBe('diff');
-    expect(selected.selected).toEqual(['plan-devex-finding-count']);
-    expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
-  }
-  expect(E2E_TIERS['plan-devex-finding-count']).toBe('periodic');
-});
-
 test('native fixture dependencies include the migrated auto-decision and seeded CEO smoke callers', () => {
   const expected = [
-    'auto-decide-preserved', 'autoplan-chain-pty',
-    'plan-ceo-finding-count', 'plan-ceo-finding-floor', 'plan-ceo-mode-routing', 'plan-ceo-review-plan-mode', 'plan-ceo-split-overflow',
-    'plan-design-finding-count', 'plan-design-finding-floor', 'plan-design-with-ui-scope',
-    'plan-devex-finding-count', 'plan-devex-finding-floor',
-    'plan-eng-finding-count', 'plan-eng-finding-floor', 'plan-eng-multi-finding-batching',
+    'auto-decide-preserved',
+    'plan-ceo-finding-floor', 'plan-ceo-mode-routing', 'plan-ceo-review-plan-mode', 'plan-ceo-split-overflow',
+    'plan-design-finding-floor', 'plan-design-with-ui-scope',
+    'plan-devex-finding-floor',
+    'plan-eng-finding-floor', 'plan-eng-multi-finding-batching',
   ];
   for (const file of ['test/helpers/plan-count-fixture.ts', 'test/plan-count-fixture.test.ts']) {
     const result = selectTests([file], E2E_TOUCHFILES);
@@ -251,10 +182,10 @@ test('native fixture dependencies include the migrated auto-decision and seeded 
 
 test('shared native input dependencies select every PTY consumer without changing tiers', () => {
   const expected = selectTests(['test/helpers/claude-pty-runner.ts'], E2E_TOUCHFILES).selected.sort();
-  expect(expected).toHaveLength(20);
+  expect(expected).toHaveLength(15);
   expect(expected.filter(id => E2E_TIERS[id] === 'gate')).toHaveLength(7);
-  expect(expected.filter(id => E2E_TIERS[id] === 'periodic')).toHaveLength(13);
-  for (const file of ['test/plan-count-design-ui-recovery.test.ts', 'test/fixtures/design-ui-boxed-question.json', 'test/pty-workspace-trust.test.ts', 'test/fixtures/pty-companion-cli.ts', 
+  expect(expected.filter(id => E2E_TIERS[id] === 'periodic')).toHaveLength(8);
+  for (const file of ['test/plan-count-design-ui-recovery.test.ts', 'test/fixtures/design-ui-boxed-question.json', 'test/pty-workspace-trust.test.ts', 'test/fixtures/pty-companion-cli.ts',
     'test/helpers/plan-skill-questions.ts', 'test/plan-skill-questions.test.ts', 'test/fixtures/design-tasks-bash-permission.json', 'test/fixtures/eng-auq-validation-error.json',
     'test/helpers/plan-skill-question-events.ts', 'test/plan-skill-question-events.test.ts',
     'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts', 'test/plan-skill-question-hook-scope.test.ts']) {
@@ -280,16 +211,16 @@ test('task emission source selects CEO completion consumers', () => {
   const selected = selectTests(['scripts/resolvers/tasks-section.ts'], E2E_TOUCHFILES);
   expect(selected.reason).toBe('diff');
   for (const id of [
-    'plan-ceo-finding-count', 'plan-ceo-finding-floor', 'plan-ceo-split-overflow',
-    'plan-ceo-section-loading', 'plan-ceo-review-plan-mode', 'autoplan-chain-pty',
+    'plan-ceo-finding-floor', 'plan-ceo-split-overflow',
+    'plan-ceo-section-loading', 'plan-ceo-review-plan-mode',
   ]) expect(selected.selected).toContain(id);
   expect(selectTests(['scripts/resolvers/tasks-section.ts'], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
 });
 
 test('review report resolver selects every periodic completion consumer', () => {
   const required = [
-    'plan-ceo-finding-count', 'plan-eng-finding-count', 'plan-design-finding-count',
-    'plan-devex-finding-count', 'plan-ceo-split-overflow', 'autoplan-chain-pty',
+
+    'plan-ceo-split-overflow',
     'carve-section-loading', 'plan-ceo-section-loading', 'plan-eng-multi-finding-batching',
   ];
   const result = selectTests(['scripts/resolvers/review.ts'], E2E_TOUCHFILES);
@@ -324,8 +255,6 @@ test('Eng approval-rule source and free contract controls select every declared 
       'plan-eng-review-plan-mode',
       'plan-mode-no-op',
       'carve-section-loading',
-      'autoplan-chain-pty',
-      'plan-eng-finding-count',
       'plan-eng-finding-floor',
       'plan-eng-multi-finding-batching',
       'plan-eng-review-format-coverage',
@@ -356,8 +285,8 @@ test('Design native-only actor capture selects its gate case', () => {
 
 test('native compact-boundary ancestry selects every consuming callback', () => {
   const expected = [
-    'plan-ceo-mode-routing', 'autoplan-chain-pty', 'plan-ceo-finding-count',
-    'plan-eng-finding-count', 'plan-design-finding-count', 'plan-devex-finding-count',
+    'plan-ceo-mode-routing',
+
     'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow',
     'plan-design-with-ui-scope', 'plan-design-review-plan-mode', 'plan-eng-review-plan-mode',
     'auto-decide-preserved', ].sort();
@@ -372,7 +301,7 @@ test('native compact-boundary ancestry selects every consuming callback', () => 
 
 test('same-plan expansion disposition replay selects the existing mode helper consumers', () => {
   for (const dependency of ['test/ceo-mode-expansion-disposition.test.ts', 'test/fixtures/ceo-expansion-disposition-77.json']) {
-    expect([...selectTests([dependency], E2E_TOUCHFILES).selected].sort()).toEqual(['plan-ceo-finding-count', 'plan-ceo-mode-routing']);
+    expect([...selectTests([dependency], E2E_TOUCHFILES).selected].sort()).toEqual(['plan-ceo-mode-routing']);
     expect(selectTests([dependency], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
   }
 });
@@ -449,8 +378,8 @@ test('floor permissions and large-report fixtures select their actual consumers'
   for (const file of ['test/plan-floor-permission.test.ts', 'test/fixtures/plan-floor-permission-fb10.json'])
     expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual([...floors].sort());
   const filePermissionConsumers = selectTests(['test/helpers/plan-count-file-permission.ts'], E2E_TOUCHFILES).selected;
-  expect(filePermissionConsumers.sort()).toEqual([...floors, 'plan-ceo-finding-count', 'plan-eng-finding-count',
-    'plan-design-finding-count', 'plan-devex-finding-count', 'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow'].sort());
+  expect(filePermissionConsumers.sort()).toEqual([...floors,
+    'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow'].sort());
   expect(selectTests(['test/fixtures/ceo-report-permission-fb10.json'], E2E_TOUCHFILES).selected.sort())
     .toEqual(filePermissionConsumers);
   expect(E2E_TIERS['plan-ceo-finding-floor']).toBe('gate');
@@ -463,8 +392,8 @@ test('floor permissions and large-report fixtures select their actual consumers'
 for (const file of ['test/plan-count-cropped-wrap.test.ts', 'test/fixtures/plan-count-cropped-wrap-6714.json']) {
   test(file, () => {
     const gate = ['plan-ceo-finding-floor', 'plan-devex-finding-floor'];
-    const periodic = ['plan-ceo-finding-count', 'plan-eng-finding-count', 'plan-design-finding-count',
-      'plan-devex-finding-count', 'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow',
+    const periodic = [
+      'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow',
       'plan-eng-finding-floor', 'plan-design-finding-floor'];
     const result = selectTests([file], E2E_TOUCHFILES);
     expect(result.reason).toBe('diff');
@@ -502,10 +431,6 @@ const nativeRepairDependencies = [
       "test/fixtures/plan-create-permission-361c.json"
     ],
     "owners": [
-      "plan-ceo-finding-count",
-      "plan-eng-finding-count",
-      "plan-design-finding-count",
-      "plan-devex-finding-count",
       "plan-eng-finding-floor",
       "plan-ceo-finding-floor",
       "plan-design-finding-floor",
@@ -514,24 +439,7 @@ const nativeRepairDependencies = [
       "plan-ceo-split-overflow"
     ]
   },
-  {
-    "name": "native selection defaults",
-    "files": [
-      "test/plan-review-native-default.test.ts",
-      "test/fixtures/eng-omitted-select-361c.json"
-    ],
-    "owners": [
-      "plan-ceo-mode-routing",
-      "plan-ceo-finding-count",
-      "plan-eng-finding-count",
-      "plan-design-finding-count",
-      "plan-devex-finding-count",
-      "plan-eng-multi-finding-batching",
-      "plan-ceo-split-overflow",
-      "plan-devex-peer-comparison-classification",
-      "plan-decision-classification"
-    ]
-  },
+  
   {
     "name": "split native question and report permission",
     "files": [
@@ -563,10 +471,6 @@ const nativeRepairDependencies = [
       "test/fixtures/plan-count-long-edit-0bcd.json"
     ],
     "owners": [
-      "plan-ceo-finding-count",
-      "plan-eng-finding-count",
-      "plan-design-finding-count",
-      "plan-devex-finding-count",
       "plan-eng-finding-floor",
       "plan-ceo-finding-floor",
       "plan-design-finding-floor",
@@ -591,11 +495,6 @@ const nativeRepairDependencies = [
       "auto-decide-preserved",
       "plan-ceo-mode-routing",
       "plan-design-with-ui-scope",
-      "autoplan-chain-pty",
-      "plan-ceo-finding-count",
-      "plan-eng-finding-count",
-      "plan-design-finding-count",
-      "plan-devex-finding-count",
       "plan-eng-finding-floor",
       "plan-ceo-finding-floor",
       "plan-design-finding-floor",
@@ -624,10 +523,6 @@ test('native repair dependencies preserve every original tier', () => {
   "plan-mode-no-op": "gate",
   "office-hours-auto-mode": "gate",
   "auto-decide-preserved": "periodic",
-  "plan-ceo-finding-count": "periodic",
-  "plan-eng-finding-count": "periodic",
-  "plan-design-finding-count": "periodic",
-  "plan-devex-finding-count": "periodic",
   "plan-eng-finding-floor": "periodic",
   "plan-ceo-finding-floor": "gate",
   "plan-design-finding-floor": "periodic",
@@ -650,11 +545,6 @@ test('promoted public transcript decoder keeps its actual callers selected', () 
     'auto-decide-preserved',
     'plan-ceo-mode-routing',
     'plan-design-with-ui-scope',
-    'autoplan-chain-pty',
-    'plan-ceo-finding-count',
-    'plan-eng-finding-count',
-    'plan-design-finding-count',
-    'plan-devex-finding-count',
     'plan-eng-multi-finding-batching',
     'plan-ceo-split-overflow',
     'plan-ceo-finding-floor',
@@ -667,31 +557,8 @@ test('promoted public transcript decoder keeps its actual callers selected', () 
   expect(selectTests(['lib/claude-public-transcript.ts'], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
 });
 
-test('Autoplan publication libraries and captured hook controls select the native chain', () => {
-  for (const file of [
-    'lib/autoplan-phase-publication.ts',
-    'test/autoplan-publication-guard.test.ts',
-    'test/autoplan-publication-hook.test.ts',
-    'test/autoplan-publication-generation.test.ts',
-    'test/fixtures/autoplan-publication-boundary-361c.json',
-    'test/fixtures/autoplan-phase-consumption-491.json',
-  ]) {
-    expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['autoplan-chain-pty']);
-    expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
-  }
-  // Preserve the existing autoplan/** edges; native hook controls select only
-  // the chain, while a skill file change can select the existing broad owners.
-  expect(selectTests(['autoplan/bin/phase-publication-hook.ts'], E2E_TOUCHFILES).selected.sort())
-    .toEqual(selectTests(['autoplan/SKILL.md'], E2E_TOUCHFILES).selected.sort());
-  expect(E2E_TIERS['autoplan-chain-pty']).toBe('periodic');
-});
-
 test('combined Create captures select the existing owned file-permission consumers', () => {
   const expected = [
-    'plan-ceo-finding-count',
-    'plan-eng-finding-count',
-    'plan-design-finding-count',
-    'plan-devex-finding-count',
     'plan-eng-finding-floor',
     'plan-ceo-finding-floor',
     'plan-design-finding-floor',
@@ -739,7 +606,7 @@ test('numbered native-menu captures select the existing parser consumers', () =>
   const expected = Object.entries(E2E_TOUCHFILES)
     .filter(([, files]) => files.includes('test/plan-skill-questions.test.ts'))
     .map(([id]) => id).sort();
-  expect(expected).toHaveLength(20);
+  expect(expected).toHaveLength(15);
   for (const file of ['test/pty-numbered-option-indent-native.test.ts',
     'test/fixtures/ceo-split-e5-numbered-description-491.json']) {
     expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual(expected);
@@ -752,22 +619,13 @@ test('pending native Write captures select the existing owned-permission consume
   const expected = Object.entries(E2E_TOUCHFILES)
     .filter(([, files]) => files.includes('test/plan-create-combined-permission.test.ts'))
     .map(([id]) => id).sort();
-  expect(expected).toHaveLength(10);
+  expect(expected).toHaveLength(6);
   for (const file of ['test/plan-create-prepublication.test.ts',
     'test/fixtures/plan-create-prepublication-491.json']) {
     expect(selectTests([file], E2E_TOUCHFILES).selected.sort()).toEqual(expected);
     expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
   }
 });
-
-test('the declared engineering actor selects its existing count case', () => {
-  for (const file of ['test/helpers/eng-count-question-policy.ts',
-    'test/eng-count-question-policy.test.ts', 'test/fixtures/eng-count-actor-491.json']) {
-    expect(selectTests([file], E2E_TOUCHFILES).selected).toEqual(['plan-eng-finding-count']);
-    expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
-  }
-});
-
 
 test('stderr lifecycle regression selects runtime consumers without a quality-map edge', () => {
   const expected = [
@@ -821,9 +679,9 @@ for (const file of ['test/plan-count-cross-cwd-ancestry.test.ts', 'test/fixtures
     const selected = selectTests([file], E2E_TOUCHFILES);
     expect(selected.reason).toBe('diff');
     expect(selected.selected.sort()).toEqual([
-      'auto-decide-preserved', 'autoplan-chain-pty', 'plan-ceo-finding-count', 'plan-ceo-mode-routing', 'plan-ceo-split-overflow',
-      'plan-design-finding-count', 'plan-design-review-plan-mode', 'plan-design-with-ui-scope',
-      'plan-devex-finding-count', 'plan-eng-finding-count', 'plan-eng-multi-finding-batching',
+      'auto-decide-preserved', 'plan-ceo-mode-routing', 'plan-ceo-split-overflow',
+      'plan-design-review-plan-mode', 'plan-design-with-ui-scope',
+      'plan-eng-multi-finding-batching',
       'plan-eng-review-plan-mode',
     ].sort());
     expect(selectTests([file], LLM_JUDGE_TOUCHFILES).selected).toEqual([]);
@@ -833,10 +691,10 @@ for (const file of ['test/plan-count-cross-cwd-ancestry.test.ts', 'test/fixtures
 
 test('native clipped regressions retain the existing parser and owned-permission selection', () => {
   for (const [dependency, count, files] of [
-    ['test/helpers/claude-pty-runner.ts', 20, [
+    ['test/helpers/claude-pty-runner.ts', 15, [
       'test/plan-count-clipped-elision.test.ts', 'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json',
     ]],
-    ['test/helpers/plan-count-file-permission.ts', 10, [
+    ['test/helpers/plan-count-file-permission.ts', 6, [
       'test/plan-edit-cropped-permission.test.ts', 'test/fixtures/plan-edit-cropped-permission-1579.json',
     ]],
   ] as const) {

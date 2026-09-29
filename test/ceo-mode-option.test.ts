@@ -69,7 +69,7 @@ describe('CEO mode option matching', () => {
 
   test('the shared parser selects all callers while mode-specific regressions stay scoped', () => {
     expect(selectTests(['test/helpers/ceo-mode-option.ts'], E2E_TOUCHFILES).selected)
-      .toEqual(['plan-ceo-mode-routing', 'plan-ceo-finding-count', 'plan-ceo-split-overflow']);
+      .toEqual(['plan-ceo-mode-routing', 'plan-ceo-split-overflow']);
     expect(selectTests(['test/ceo-mode-option.test.ts'], E2E_TOUCHFILES).selected)
       .toEqual(['plan-ceo-mode-routing', 'plan-ceo-split-overflow']);
     expect(selectTests(['test/pty-option-selection.test.ts'], E2E_TOUCHFILES).selected)

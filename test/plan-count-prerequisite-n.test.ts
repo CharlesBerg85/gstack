@@ -49,9 +49,7 @@ describe('native prerequisite review-now offer', () => {
   test('the captured prerequisite regression selects its exact counting and mode consumers', () => {
     // Floor checks also seed a plan, but never pick a prerequisite answer.
     const expected = [
-      'autoplan-chain-pty', 'plan-ceo-finding-count', 'plan-ceo-mode-routing',
-      'plan-ceo-split-overflow', 'plan-design-finding-count', 'plan-design-with-ui-scope', 'plan-devex-finding-count',
-      'plan-eng-finding-count', 'plan-eng-multi-finding-batching',
+      'plan-ceo-mode-routing', 'plan-ceo-split-overflow', 'plan-design-with-ui-scope', 'plan-eng-multi-finding-batching',
     ].sort();
     for (const dependency of ['test/plan-count-prerequisite-n.test.ts', 'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json']) {
       const consumers = Object.entries(E2E_TOUCHFILES).filter(([, paths]) => paths.includes(dependency));
@@ -66,9 +64,6 @@ describe('native prerequisite review-now offer', () => {
 
 
 import engPrerequisite77 from './fixtures/eng-prerequisite-77.json';
-import { planCountQuestionInput } from './helpers/claude-pty-runner';
-import { nextCeoModeNavigation } from './helpers/ceo-mode-option';
-import { autoplanSetupDecision } from './helpers/autoplan-setup-question';
 import type { NativePlanQuestionCall } from './helpers/plan-count-transcript';
 
 function engPrerequisitePending(): NativePlanQuestionCall {
@@ -93,21 +88,6 @@ function engPrerequisiteFrame(native: NativePlanQuestionCall, index = 0) {
 }
 
 describe('optional Office Hours decision briefs', () => {
-  test('actual acknowledged detour is preserved; the current caller should choose standard review', () => {
-    const actual = engPrerequisite77.completedCall;
-    expect(actual.answered).toBe(true);
-    expect(actual.answers[actual.questions[0]!.question]).toBe('Run /office-hours now');
-    const { screen, active, routing } = engPrerequisiteFrame(engPrerequisitePending());
-    // This is runPlanSkillCounting's exact precedence with no caller override.
-    const pick = planCountPrerequisitePick(routing, active) ?? 1;
-    expect(pick).toBe(2);
-    expect(planCountQuestionInput(screen, active, pick)).toBe('2');
-    const ceo = nextCeoModeNavigation(screen, 'HOLD SCOPE', new Set(), active.nativeCall);
-    expect(ceo.kind).toBe('question');
-    if (ceo.kind === 'question') expect(ceo.index).toBe(2);
-    expect(autoplanSetupDecision(screen, new Set(), active.nativeCall).kind).toBe('input');
-  });
-
   test('optional action is independent of header, numbering, recommendation and order', () => {
     for (const reverse of [false, true]) for (const recommended of ['run', 'skip', 'neither']) {
       const native = engPrerequisitePending(), q = native.questions[0]!;

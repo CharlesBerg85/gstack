@@ -83,8 +83,8 @@ describe('PR profile paid-runner integration', () => {
     const fallback = computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles: ['lib/unknown-pr-runtime.ts'] });
     expect(fallback.coverage?.mode).toBe('full-fallback');
     expect(fallback.selection.e2e).toContain('qa-only-no-fix');
-    expect(fallback.selection.e2e).not.toContain('autoplan-chain-pty');
-    expect(fallback.coverage?.deferred.some(item => item.id === 'autoplan-chain-pty')).toBe(true);
+    expect(fallback.selection.e2e).not.toContain('autoplan-dual-voice');
+    expect(fallback.coverage?.deferred.some(item => item.id === 'autoplan-dual-voice')).toBe(true);
     expect(() => computePaidCaseSelection({ profile: 'pr', env: {}, changedFiles: ['unregistered/nested/SKILL.md'] })).toThrow('requires full validation');
   });
 
