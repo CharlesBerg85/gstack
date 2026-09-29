@@ -18,7 +18,7 @@ for (const scenario of ['success', 'completed-tool', 'status-updating', 'history
   'startup-waiting', 'startup-prose-question', 'startup-permission', 'startup-fresh-waiting',
   'no-ack', 'fused', 'duplicate', 'session-switch', 'foreign-cwd',
   'pending-tool', 'question', 'prose-question', 'permission', 'no-end-turn', 'partial', 'wrong-pid',
-  'typed-current', 'multiline-current', 'history-box-typed-current', 'history-box-multiline-current',
+  'typed-current', 'late-repaint-typed-current', 'multiline-current', 'history-box-typed-current', 'history-box-multiline-current',
   'missing-current-top', 'missing-current-bottom', 'mismatched-current-rules', 'unframed-current',
   'history-no-current', 'history-missing-current-top', 'history-missing-current-bottom',
   'stray-prompt-after-current', 'stale-response-frame',
