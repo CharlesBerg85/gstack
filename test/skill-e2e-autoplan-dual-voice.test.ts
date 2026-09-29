@@ -240,14 +240,14 @@ ${principles}${preflight}${dual}`, { mode: 0o444, flag: 'wx' });
         ownedRoots: [workDir, stateDir], cwd: workDir, activePlan, methodologySha256,
         commands: loadAutoplanDualCommandContract(ROOT),
       });
-      expect(evidence.claudeVoiceFired, evidence.reasons.join('; ')).toBe(true);
-      expect(evidence.codexVoiceFired || evidence.codexUnavailable, evidence.reasons.join('; ')).toBe(true);
-      expect(evidence.reviewDispatched).toBe(true);
-
       logCost('autoplan-dual-voice', result);
       recordE2E(evalCollector, 'autoplan-dual-voice', 'Autoplan dual-voice E2E', result, {
         passed: evidence.claudeVoiceFired && (evidence.codexVoiceFired || evidence.codexUnavailable) && evidence.reviewDispatched,
+        ...(evidence.reasons.length ? { error: evidence.reasons.join('; ') } : {}),
       });
+      expect(evidence.claudeVoiceFired, evidence.reasons.join('; ')).toBe(true);
+      expect(evidence.codexVoiceFired || evidence.codexUnavailable, evidence.reasons.join('; ')).toBe(true);
+      expect(evidence.reviewDispatched).toBe(true);
     },
     630_000, // per-test timeout slightly > spawn timeout so cleanup can run
   );
