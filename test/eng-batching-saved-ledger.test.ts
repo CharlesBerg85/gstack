@@ -451,14 +451,14 @@ test.each([
 import { describe, expect, mock } from 'bun:test';
 import * as fs from 'node:fs';
 import * as real from ${JSON.stringify(runner)};
-const facts = { runs: 0, stops: [] as boolean[], ceiling: 0 };
+const facts = { runs: 0, stops: [] as boolean[], ceiling: 0, preconfigured: false };
 const save = () => fs.writeFileSync(${JSON.stringify(factsPath)}, JSON.stringify(facts));
 const fp = (signature: string, preReview: boolean, administrative?: string) => ({ signature, preReview, administrative, promptSnippet: signature, options: [], observedAtMs: 1 });
 mock.module(${JSON.stringify(path.join(ROOT, 'test/helpers/e2e-gate.ts'))}, () => ({
   describeE2ETier: (tier: string) => { expect(tier).toBe('periodic'); return describe; },
 }));
 mock.module(${JSON.stringify(runner)}, () => ({ ...real, runPlanSkillCounting: async (opts: any) => {
-  facts.runs++; facts.ceiling = opts.reviewCountCeiling;
+  facts.runs++; facts.ceiling = opts.reviewCountCeiling; facts.preconfigured = opts.preconfiguredReviewActor;
   const setup = [fp('s1', true), fp('s2', true)];
   const review = [fp('r1', false), fp('r2', false), fp('r3', false)];
   facts.stops = [
@@ -479,7 +479,7 @@ await import(${JSON.stringify(path.join(ROOT, 'test/skill-e2e-plan-eng-multi-fin
     const [exit, out, err] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
     const facts = JSON.parse(fs.readFileSync(factsPath, 'utf8'));
     expect(exit, out + err).toBe(passes ? 0 : 1);
-    expect(facts).toEqual({ runs: 1, stops: [false, false, true], ceiling: 7 });
+    expect(facts).toEqual({ runs: 1, stops: [false, false, true], ceiling: 7, preconfigured: true });
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }

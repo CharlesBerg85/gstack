@@ -22,7 +22,7 @@
  *     This is the tightest regression test for the original bug class —
  *     not a band-around-N test, but a "did the agent batch?" test.
  *
- * Tier: periodic (~7 min observed; 25 min budget). Sequential by default.
+ * Tier: periodic (~6 min expected; 25 min budget). Sequential by default.
  */
 
 import { test } from 'bun:test';
@@ -88,6 +88,10 @@ describeE2E('/plan-eng-review multi-finding batching regression (periodic)', () 
           isCollectionComplete: (_transcript, fingerprints) =>
             fingerprints.filter(fp => !fp.preReview && !fp.administrative).length >= FLOOR,
           reviewCountCeiling: N + 3, // hard cap above floor + tolerance
+          // Supplied prerequisites: routing setup and cross-project learnings are
+          // already declined, so the attempt starts at the review (setup answers
+          // were never counted; engSetupAUQ still vetoes any late setup question).
+          preconfiguredReviewActor: true,
           timeoutMs: 1_500_000, // 25 min
           env: { QUESTION_TUNING: 'false', EXPLAIN_LEVEL: 'default' },
         });
