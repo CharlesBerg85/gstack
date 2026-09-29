@@ -6,8 +6,8 @@ import {
   sign,
   verify,
 } from 'node:crypto';
-import { lstatSync, realpathSync } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { existsSync, lstatSync, realpathSync } from 'node:fs';
+import { basename, posix, win32 } from 'node:path';
 import {
   AssertionWitnessBinding,
   AssertionWitnessReceipt,
@@ -593,6 +593,44 @@ export async function runAssertionWitnessChild(): Promise<void> {
   process.stdout.write(JSON.stringify(receipt) + '\n');
 }
 
+export function assertionWitnessChildCommand(input: {
+  execPath: string;
+  platform: NodeJS.Platform;
+  modulePath: string;
+  systemRoot?: string;
+  windir?: string;
+}): { file: string; args: string[]; env: Record<string, string> } {
+  const paths = input.platform === 'win32' ? win32 : posix,
+    directory = paths.dirname(input.execPath);
+  if (/^bun(?:\.exe)?$/i.test(paths.basename(input.execPath)))
+    return {
+      file: input.execPath,
+      args: [input.modulePath, '--child'],
+      env: witnessChildEnv(input, directory),
+    };
+  return {
+    file: paths.join(
+      directory,
+      input.platform === 'win32' ? 'gstack-cso-launcher.exe' : 'gstack-cso-launcher',
+    ),
+    args: ['__cso-assertion-witness'],
+    env: witnessChildEnv(input, directory),
+  };
+}
+
+function witnessChildEnv(
+  input: { platform: NodeJS.Platform; systemRoot?: string; windir?: string },
+  directory: string,
+): Record<string, string> {
+  return input.platform === 'win32'
+    ? {
+        PATH: directory,
+        SYSTEMROOT: input.systemRoot ?? 'C:\\Windows',
+        WINDIR: input.windir ?? 'C:\\Windows',
+      }
+    : { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', TZ: 'UTC' };
+}
+
 export class AssertionWitnessSession {
   private privateKey: string;
   readonly publicKey: string;
@@ -601,6 +639,7 @@ export class AssertionWitnessSession {
   constructor(
     private workDirectory: string,
     private deadline: number,
+    private execPath: string = process.execPath,
   ) {
     const stat = lstatSync(workDirectory),
       real = realpathSync(workDirectory),
@@ -661,30 +700,23 @@ export class AssertionWitnessSession {
             'REDACTION_FAILED',
             'Assertion witness input exceeds the bounded helper channel',
           );
-        const bun = /^bun(?:\.exe)?$/i.test(basename(process.execPath)),
-          file = bun
-            ? process.execPath
-            : join(
-                dirname(process.execPath),
-                process.platform === 'win32' ? 'gstack-cso-launcher.exe' : 'gstack-cso-launcher',
-              ),
-          args = bun ? [import.meta.path, '--child'] : ['__cso-assertion-witness'],
-          env =
-            process.platform === 'win32'
-              ? {
-                  PATH: dirname(process.execPath),
-                  SYSTEMROOT: process.env.SYSTEMROOT ?? 'C:\\Windows',
-                  WINDIR: process.env.WINDIR ?? 'C:\\Windows',
-                }
-              : { PATH: '/usr/bin:/bin', LANG: 'C.UTF-8', LC_ALL: 'C.UTF-8', TZ: 'UTC' },
-          result = await runProcess(file, args, {
-            cwd: this.workDirectory,
-            env,
-            timeoutMs: Math.max(1, expires - Date.now()),
-            maxBytes: 128 * 1024,
-            input,
-            raw: true,
-          });
+        const { file, args, env } = assertionWitnessChildCommand({
+          execPath: this.execPath,
+          platform: process.platform,
+          modulePath: import.meta.path,
+          systemRoot: process.env.SYSTEMROOT,
+          windir: process.env.WINDIR,
+        });
+        if (!existsSync(file))
+          throw new CsoError('PREREQUISITE', `Assertion witness launcher is missing: ${file}`);
+        const result = await runProcess(file, args, {
+          cwd: this.workDirectory,
+          env,
+          timeoutMs: Math.max(1, expires - Date.now()),
+          maxBytes: 128 * 1024,
+          input,
+          raw: true,
+        });
         if (result.timedOut)
           throw new CsoError('DEADLINE', 'Assertion witness exceeded the verification deadline');
         if (result.truncated || result.code !== 0)
