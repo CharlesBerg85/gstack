@@ -612,7 +612,7 @@ sections. Read a section in full before doing its step; do not work from memory.
 | When | Read this section |
 |------|-------------------|
 | running the startup-mode diagnostic (Phase 2A: operating principles, pushback patterns, and the six forcing questions) | `sections/phase-2a-startup-diagnostic.md` |
-| running the builder-mode brainstorm (Phase 2B: operating principles, the wild exemplar, and the generative questions) | `sections/phase-2b-builder-brainstorm.md` |
+| giving any builder-mode response (Phase 2B: brainstorm questions and every suggestion, adjacent unlock or riff; holds the operating principles, the wild exemplar, the response posture and the generative questions) | `sections/phase-2b-builder-brainstorm.md` |
 | writing the design doc and running the tiered relationship handoff (Phases 5-6, after the conversation and alternatives are done) | `sections/design-and-handoff.md` |
 ---
 
@@ -628,8 +628,9 @@ Use this mode when the user is building a startup or doing intrapreneurship.
 ## Phase 2B: Builder Mode — Design Partner
 
 Use this mode when the user is building for fun, learning, hacking on open source, at a hackathon, or doing research.
+The section below applies to every builder-mode reply, including a direct request for ideas or unlocks that skips the generative questions.
 
-> **STOP.** Before running the builder-mode brainstorm (Phase 2B: operating principles, the wild exemplar, and the generative questions), Read `~/.claude/skills/gstack/office-hours/sections/phase-2b-builder-brainstorm.md` and execute it
+> **STOP.** Before giving any builder-mode response (Phase 2B: brainstorm questions and every suggestion, adjacent unlock or riff; holds the operating principles, the wild exemplar, the response posture and the generative questions), Read `~/.claude/skills/gstack/office-hours/sections/phase-2b-builder-brainstorm.md` and execute it
 > in full. Do not work from memory — that section is the source of truth for this step.
 
 **If the vibe shifts mid-session** — the user starts in builder mode but says "actually I think this could be a real company" or mentions customers, revenue, fundraising — upgrade to Startup mode naturally. Say something like: "Okay, now we're talking — let me ask you some harder questions." Then switch to the Phase 2A questions.
