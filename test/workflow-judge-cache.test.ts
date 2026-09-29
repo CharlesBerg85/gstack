@@ -8,7 +8,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { prepareWorkflowJudgeCache, validWorkflowJudgeScore, workflowJudgeDependencies, type WorkflowCacheOptions } from './helpers/workflow-judge-cache';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES } from './helpers/workflow-judge-input';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES, WORKFLOW_JUDGE_RESPONSE_SCHEMA } from './helpers/workflow-judge-input';
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
@@ -167,7 +167,7 @@ test('workflow registration preserves model work and reserves only terminal-reco
   const source = fs.readFileSync(path.join(import.meta.dir, 'skill-llm-eval.test.ts'), 'utf8');
   const body = source.split('async function runWorkflowJudge')[1]!.split('// Block 1:')[0]!;
   const stages = ['workflowJudgeAttempts.set', 'readWorkflowJudgeInput(', 'cache.lookup()',
-    'callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens })',
+    'callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens,',
     'expect(scores.clarity)', 'expect(scores.completeness)', 'expect(scores.actionability)', 'cache.publish(scores, active)']
     .map(stage => body.indexOf(stage));
   expect(stages.every(position => position >= 0)).toBe(true);
@@ -203,6 +203,7 @@ function actualCallback(f: ReturnType<typeof fixture>, overrides: {
     'buildWorkflowJudgePrompt', 'prepareWorkflowJudgeCache', 'workflowJudgeAttempts', 'callJudge',
     'evalCollector', 'expect', 'console', 'performance', 'JUDGE_MS', 'WORKFLOW_JUDGE_RECORD_MS',
     'setTimeout', 'clearTimeout', 'JudgeRefusalError', 'getCookieWorkflowManualReview', 'DEFAULT_JUDGE_MAX_TOKENS', 'resolveEvalModel',
+    'WORKFLOW_JUDGE_RESPONSE_SCHEMA', 'validWorkflowJudgeScore',
     `${javascript}\nreturn runWorkflowJudge;`)(
     f.root, overrides.read ?? readWorkflowJudgeInput, buildWorkflowJudgePrompt,
     (options: WorkflowCacheOptions) => (overrides.prepare ?? prepareWorkflowJudgeCache)({ ...options, env: f.env }),
@@ -212,7 +213,8 @@ function actualCallback(f: ReturnType<typeof fixture>, overrides: {
     }, { addTest: (entry: any) => records.push(entry) }, expect, { log() {} },
     overrides.clock ? { now: overrides.clock } : performance, overrides.budget ?? 120_000, overrides.allowance ?? 5_000,
     overrides.setTimer ?? setTimeout, overrides.clearTimer ?? clearTimeout,
-    JudgeRefusalError, getCookieWorkflowManualReview, DEFAULT_JUDGE_MAX_TOKENS, resolveEvalModel);
+    JudgeRefusalError, getCookieWorkflowManualReview, DEFAULT_JUDGE_MAX_TOKENS, resolveEvalModel,
+    WORKFLOW_JUDGE_RESPONSE_SCHEMA, validWorkflowJudgeScore);
   return { run, records, signals, prompts, attempts, options: { ...f.opts, suite: 'Cache regression' } };
 }
 
@@ -380,4 +382,93 @@ test('the actual workflow callback preserves the complete public API body; cance
     expect(h.records).toHaveLength(1);
     expect(h.records[0].passed).toBe(true);
   } finally { create.mockRestore(); }
+});
+
+test('Ship sends its authorized 64k cap and compact response contract through the streaming SDK boundary', async () => {
+  const source = fs.readFileSync(path.join(import.meta.dir, 'skill-llm-eval.test.ts'), 'utf8');
+  const registration = source.match(/testIfSelected\('ship\/SKILL\.md workflow',[\s\S]*?await runWorkflowJudge\(\{([\s\S]*?)\n    \}\);/);
+  expect(registration).not.toBeNull();
+  const options = new Function('QA_DISCOVERY_REFERENCES', `return ({${registration![1]}});`)(QA_DISCOVERY_REFERENCES);
+  expect(options.structuredResponse).toBe(true);
+  expect(options.maxTokens).toBe(65_536);
+  expect(options.stream).toBe(true);
+  expect(source.match(/structuredResponse: true/g)).toHaveLength(1);
+  const f = fixture();
+  const stream = spyOn(Messages.prototype, 'stream').mockReturnValue({ finalMessage: async () => ({
+    stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify(scores) }],
+  }) } as any);
+  try {
+    const h = actualCallback(f, { judge: (prompt, model, request) => callJudge<typeof scores>(prompt, model, request) });
+    await h.run({ ...h.options, structuredResponse: options.structuredResponse, maxTokens: options.maxTokens, stream: options.stream });
+    expect(stream.mock.calls[0]).toEqual([{
+      model: resolveEvalModel('judge'), max_tokens: 65_536,
+      output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } },
+      messages: [{ role: 'user', content: f.opts.prompt }],
+    }, { signal: h.signals[0] }]);
+    expect(h.records[0]).toMatchObject({ passed: true, judge_scores: { clarity: 4, completeness: 5, actionability: 4 } });
+    expect(f.entries()).toHaveLength(1);
+    expect(f.cache().lookup()).toBeNull();
+    f.opts.structuredResponse = true;
+    f.opts.maxTokens = 65_536;
+    f.opts.stream = true;
+    expect(f.cache().lookup()?.scores).toEqual(scores);
+  } finally { stream.mockRestore(); }
+});
+
+test('changing response serialization misses the cache even when prompt and model match', () => {
+  const f = fixture(); f.cache().publish(scores);
+  f.opts.structuredResponse = true;
+  expect(f.cache().lookup()).toBeNull();
+  f.cache().publish(scores);
+  expect(f.entries()).toHaveLength(2);
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+  const description = WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning.description;
+  try {
+    WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning.description += ' Changed response contract.';
+    expect(f.cache().lookup()).toBeNull();
+  } finally { WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning.description = description; }
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+  f.opts.structuredResponse = false;
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+});
+
+test('the actual cap and streaming transport independently affect workflow cache identity', () => {
+  const f = fixture(); f.cache().publish(scores);
+  f.opts.maxTokens = 65_536;
+  expect(f.cache().lookup()).toBeNull();
+  f.cache().publish(scores);
+  f.opts.stream = true;
+  expect(f.cache().lookup()).toBeNull();
+  f.cache().publish(scores);
+  expect(f.entries()).toHaveLength(3);
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+  delete f.opts.maxTokens;
+  delete f.opts.stream;
+  expect(f.cache().lookup()?.scores).toEqual(scores);
+});
+
+test('the structured callback rejects incomplete, schema-invalid and below-threshold answers without cache credit', async () => {
+  const invalid = [null, {}, { ...scores, extra: 'not a score field' }, { ...scores, clarity: '4' },
+    { ...scores, clarity: 4.5 }, { ...scores, clarity: 6 }, { ...scores, reasoning: '' },
+    { ...scores, reasoning: Array(150).fill('word').join(' ') }, { ...scores, clarity: 2 },
+    { ...scores, completeness: 2 }, { ...scores, actionability: 3 }];
+  const responses: Array<{ stop_reason: string; value: unknown }> = [
+    ...['max_tokens', 'refusal', 'stop_sequence'].map(stop_reason => ({ stop_reason, value: scores })),
+    ...invalid.map(value => ({ stop_reason: 'end_turn', value })),
+  ];
+  const stream = spyOn(Messages.prototype, 'stream');
+  const diagnostics = spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    for (const response of responses) {
+      const f = fixture();
+      stream.mockReturnValue({ finalMessage: async () => ({ stop_reason: response.stop_reason,
+        content: [{ type: 'text', text: JSON.stringify(response.value) }] }) } as any);
+      const h = actualCallback(f, { judge: (prompt, model, request) => callJudge<typeof scores>(prompt, model, request) });
+      await expect(h.run({ ...h.options, structuredResponse: true, maxTokens: 65_536, stream: true })).rejects.toThrow();
+      expect(h.records).toHaveLength(1);
+      expect(h.records[0].passed).toBe(false);
+      expect(f.entries()).toHaveLength(0);
+    }
+    expect(validWorkflowJudgeScore({ ...scores, reasoning: Array(149).fill('word').join(' ') }, { clarity: 1, completeness: 1, actionability: 1 }, true)).toBe(true);
+  } finally { stream.mockRestore(); diagnostics.mockRestore(); }
 });

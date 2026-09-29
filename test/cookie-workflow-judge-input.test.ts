@@ -4,8 +4,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { buildCookieWorkflowJudgeInput, COOKIE_WORKFLOW_JUDGE } from './helpers/cookie-workflow-judge-input';
-import { buildWorkflowJudgePrompt, readWorkflowJudgeInput } from './helpers/workflow-judge-input';
-import { prepareWorkflowJudgeCache, type WorkflowCacheOptions } from './helpers/workflow-judge-cache';
+import { buildWorkflowJudgePrompt, readWorkflowJudgeInput, WORKFLOW_JUDGE_RESPONSE_SCHEMA } from './helpers/workflow-judge-input';
+import { prepareWorkflowJudgeCache, validWorkflowJudgeScore, type WorkflowCacheOptions } from './helpers/workflow-judge-cache';
 import type { EvalTestEntry } from './helpers/eval-store';
 import { selectTests } from './helpers/test-selection';
 import { E2E_TOUCHFILES, LLM_JUDGE_TOUCHFILES } from './helpers/touchfiles-data';
@@ -70,7 +70,7 @@ function actualCookieCallback(root: string, overrides: {
   const records: EvalTestEntry[] = [];
   const attempts = new Map<string, { attempt: number }>();
   let callback: () => Promise<void> = async () => { throw new Error('Judge callback was not registered'); };
-  new Function('describeIfSelected', 'testIfSelected', 'ROOT', 'buildCookieWorkflowJudgeInput', 'resolveEvalModel', 'callJudge', 'COOKIE_WORKFLOW_JUDGE', 'JUDGE_MS', 'WORKFLOW_JUDGE_TEST_MS', 'WORKFLOW_JUDGE_RECORD_MS', 'evalCollector', 'expect', 'console', 'readWorkflowJudgeInput', 'buildWorkflowJudgePrompt', 'prepareWorkflowJudgeCache', 'workflowJudgeAttempts', 'performance', 'setTimeout', 'clearTimeout', 'JudgeRefusalError', 'getCookieWorkflowManualReview', 'DEFAULT_JUDGE_MAX_TOKENS', registration)(
+  new Function('describeIfSelected', 'testIfSelected', 'ROOT', 'buildCookieWorkflowJudgeInput', 'resolveEvalModel', 'callJudge', 'COOKIE_WORKFLOW_JUDGE', 'JUDGE_MS', 'WORKFLOW_JUDGE_TEST_MS', 'WORKFLOW_JUDGE_RECORD_MS', 'evalCollector', 'expect', 'console', 'readWorkflowJudgeInput', 'buildWorkflowJudgePrompt', 'prepareWorkflowJudgeCache', 'workflowJudgeAttempts', 'performance', 'setTimeout', 'clearTimeout', 'JudgeRefusalError', 'getCookieWorkflowManualReview', 'DEFAULT_JUDGE_MAX_TOKENS', 'WORKFLOW_JUDGE_RESPONSE_SCHEMA', 'validWorkflowJudgeScore', registration)(
     (_suite: string, names: string[], run: () => void) => { expect(names).toEqual([NAME]); run(); },
     (name: string, run: () => Promise<void>, budget: number) => { expect(name).toBe(NAME); expect(budget).toBe(JUDGE_MS + 10_000); callback = run; },
     root, buildCookieWorkflowJudgeInput, (_kind: string, explicit?: string) => explicit ?? 'fixture-model',
@@ -85,6 +85,7 @@ function actualCookieCallback(root: string, overrides: {
     attempts, overrides.clock ? { now: overrides.clock } : performance,
     overrides.setTimer ?? setTimeout, overrides.clearTimer ?? clearTimeout,
     JudgeRefusalError, getCookieWorkflowManualReview, DEFAULT_JUDGE_MAX_TOKENS,
+    WORKFLOW_JUDGE_RESPONSE_SCHEMA, validWorkflowJudgeScore,
   );
   return { run: () => callback(), requests, records, attempts };
 }

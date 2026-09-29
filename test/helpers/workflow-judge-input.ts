@@ -24,6 +24,19 @@ export const QA_DISCOVERY_REFERENCES = [
   'qa/templates/functional-report-template.md',
 ];
 
+export const WORKFLOW_JUDGE_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    clarity: { type: 'integer', enum: [1, 2, 3, 4, 5] },
+    completeness: { type: 'integer', enum: [1, 2, 3, 4, 5] },
+    actionability: { type: 'integer', enum: [1, 2, 3, 4, 5] },
+    reasoning: { type: 'string', pattern: '^\\s*\\S+(\\s+\\S+){0,148}\\s*$',
+      description: 'Under 150 words with at most two decisive examples, evaluating the complete supplied workflow.' },
+  },
+  required: ['clarity', 'completeness', 'actionability', 'reasoning'],
+  additionalProperties: false,
+};
+
 export function buildWorkflowJudgePrompt(opts: {
   judgeContext: string;
   judgeGoal: string;

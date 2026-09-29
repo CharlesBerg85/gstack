@@ -98,6 +98,7 @@ export interface RecommendationScore {
 export interface CallJudgeOptions {
   temperature?: number;
   max_tokens?: number;
+  stream?: boolean;
   signal?: AbortSignal;
   /** Opt-in serialization contract; callers still validate the judgment locally. */
   jsonSchema?: JSONOutputFormat['schema'];
@@ -122,13 +123,16 @@ export async function callJudge<T>(
   const maxTokens = opts?.max_tokens ?? DEFAULT_JUDGE_MAX_TOKENS;
   const client = new Anthropic();
 
-  const makeRequest = () => client.messages.create({
+  const request = {
     model: resolvedModel,
     max_tokens: maxTokens,
     ...(opts?.temperature !== undefined ? { temperature: opts.temperature } : {}),
     ...(opts?.jsonSchema === undefined ? {} : { output_config: { format: { type: 'json_schema' as const, schema: opts.jsonSchema } } }),
-    messages: [{ role: 'user', content: prompt }],
-  }, signal ? { signal } : undefined);
+    messages: [{ role: 'user' as const, content: prompt }],
+  };
+  const makeRequest = () => opts?.stream
+    ? client.messages.stream(request, signal ? { signal } : undefined).finalMessage()
+    : client.messages.create(request, signal ? { signal } : undefined);
 
   // 429s under CI concurrency: jittered exponential backoff over 3 retries
   // (~1s/4s/16s + jitter), honoring the server's retry-after when present.

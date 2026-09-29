@@ -18,11 +18,12 @@ import * as path from 'path';
 import { callJudge, judge, JudgeRefusalError, DEFAULT_JUDGE_MAX_TOKENS } from './helpers/llm-judge';
 import { ENG_REVIEW_EXCERPT } from './helpers/workflow-excerpt';
 import type { JudgeScore } from './helpers/llm-judge';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES, type WorkflowJudgeInput } from './helpers/workflow-judge-input';
-import { prepareWorkflowJudgeCache } from './helpers/workflow-judge-cache';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES, WORKFLOW_JUDGE_RESPONSE_SCHEMA, type WorkflowJudgeInput } from './helpers/workflow-judge-input';
+import { prepareWorkflowJudgeCache, validWorkflowJudgeScore } from './helpers/workflow-judge-cache';
 import { buildCookieWorkflowJudgeInput, COOKIE_WORKFLOW_JUDGE } from './helpers/cookie-workflow-judge-input';
 import { getCookieWorkflowManualReview, type ManualJudgeReview } from './helpers/cookie-workflow-manual-review';
 import { resolveEvalModel } from '../lib/eval-model';
+import type { EvalCacheValue } from '../scripts/eval-input-cache';
 import { LLM_JUDGE_TOUCHFILES } from './helpers/touchfiles';
 // Runs when EVALS=1 is set (requires ANTHROPIC_API_KEY in env) — the EVALS
 // gate lives in the shared describeIfSelected. Selection machinery is shared
@@ -601,6 +602,9 @@ async function runWorkflowJudge(opts: {
   judgeContext: string;
   judgeGoal: string;
   agentCapability?: 'frontier';
+  structuredResponse?: boolean;
+  maxTokens?: number;
+  stream?: boolean;
   model?: string;
   thresholds?: { clarity: number; completeness: number; actionability: number };
   readInput?: () => WorkflowJudgeInput;
@@ -681,10 +685,12 @@ async function runWorkflowJudge(opts: {
     reused = cache.lookup();
     checkActive();
     stage = 'judge';
-    const maxTokens = DEFAULT_JUDGE_MAX_TOKENS;
+    const maxTokens = opts.maxTokens ?? DEFAULT_JUDGE_MAX_TOKENS;
     let result: JudgeScore;
     try {
-      result = reused?.scores ?? await callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens });
+      result = reused?.scores ?? await callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens,
+        ...(opts.stream ? { stream: true } : {}),
+        ...(opts.structuredResponse ? { jsonSchema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } : {}) });
     } catch (error) {
       checkActive();
       if (error instanceof JudgeRefusalError && customInputMetadata) {
@@ -705,6 +711,9 @@ async function runWorkflowJudge(opts: {
     console.log(`[workflow-judge] ${opts.testName}: ${reused ? `reused ${reused.reuse.source.runId} @ ${reused.reuse.source.revision} (${new Date(reused.reuse.source.completedAt).toISOString()})` : 'executed'}`);
     console.log(`${opts.testName} scores:`, JSON.stringify(scores, null, 2));
     stage = 'validation';
+    if (opts.structuredResponse && !validWorkflowJudgeScore(scores as unknown as EvalCacheValue, { clarity: 1, completeness: 1, actionability: 1 }, true)) {
+      throw new Error('Structured workflow judge violated the response schema');
+    }
     expect(scores.clarity).toBeGreaterThanOrEqual(thresholds.clarity);
     expect(scores.completeness).toBeGreaterThanOrEqual(thresholds.completeness);
     expect(scores.actionability).toBeGreaterThanOrEqual(thresholds.actionability);
@@ -729,6 +738,9 @@ describeIfSelected('Ship & Release skill evals', ['ship/SKILL.md workflow', 'doc
   testIfSelected('ship/SKILL.md workflow', async () => {
     await runWorkflowJudge({
       testName: 'ship/SKILL.md workflow',
+      structuredResponse: true,
+      maxTokens: 65_536,
+      stream: true,
       suite: 'Ship & Release skill evals',
       agentCapability: 'frontier',
       // The contract now precedes platform detection; keep the complete workflow.

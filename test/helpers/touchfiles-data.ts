@@ -1863,7 +1863,7 @@ export const LLM_JUDGE_TOUCHFILES: Record<string, string[]> = {
   'baseline score pinning':           ['browse/sections/**', 'SKILL.md', 'SKILL.md.tmpl', 'test/fixtures/eval-baselines.json', 'test/skill-llm-eval.test.ts'],
 
   // Ship & Release
-  'ship/SKILL.md workflow':               ['ship/SKILL.md', 'ship/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts', 'test/workflow-judge-cache.test.ts', 'scripts/eval-input-cache.ts', 'test/eval-input-cache.test.ts', 'test/workflow-judge-input.test.ts', 'test/helpers/workflow-excerpt.ts',
+  'ship/SKILL.md workflow':               ['ship/SKILL.md', 'ship/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts', 'test/workflow-judge-cache.test.ts', 'test/llm-judge-stream.test.ts', 'scripts/eval-input-cache.ts', 'test/eval-input-cache.test.ts', 'test/workflow-judge-input.test.ts', 'test/helpers/workflow-excerpt.ts',
     'test/ship-control-flow.test.ts', 'test/ship-workflow-clarity.test.ts', 'test/ship-plan-completion-invariants.test.ts', 'scripts/resolvers/review.ts',
     'scripts/resolvers/testing.ts', 'ship/sections/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review-army.ts', 'test/ship-publication-gates.test.ts'
   ],
