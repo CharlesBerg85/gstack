@@ -169,7 +169,7 @@ describe('setup-gbrain owned Path 4 fixture', () => {
           pathToClaudeCodeExecutable: '/nonexistent/free-test-never-spawn-claude',
           signal: controller.signal,
         }, () => { validated = true; }, mode === 'deadline' ? 250 : 1000, {
-          collector: { addTest: (row: EvalTestEntry) => rows.push(row) } as EvalCollector,
+          collector: { addTest: (row: EvalTestEntry) => rows.push(row) } as unknown as EvalCollector,
           name: 'setup-gbrain-path4-local-pglite', suite: 'setup-gbrain',
         });
       } catch (error) { failure = String(error); }
@@ -214,7 +214,7 @@ describe('setup-gbrain owned Path 4 fixture', () => {
         await Promise.resolve();
         controller.abort(new Error('caller cancelled during validation'));
       }, 1000, {
-        collector: { addTest: (row: EvalTestEntry) => rows.push(row) } as EvalCollector,
+        collector: { addTest: (row: EvalTestEntry) => rows.push(row) } as unknown as EvalCollector,
         name: 'setup-gbrain-path4-local-pglite', suite: 'setup-gbrain',
       })).rejects.toThrow('caller cancelled during validation');
       expect(rows).toHaveLength(1);
@@ -288,7 +288,7 @@ describe('setup-gbrain owned Path 4 fixture', () => {
               throw new Error(`assertion diagnostic ${fixture.token} ${credentialUrl}`);
             }
           }, undefined, {
-            collector: { addTest: (row: EvalTestEntry) => rows.push(row) } as EvalCollector,
+            collector: { addTest: (row: EvalTestEntry) => rows.push(row) } as unknown as EvalCollector,
             name: 'setup-gbrain-path4-local-pglite', suite: 'setup-gbrain',
           });
         } catch (error) { thrown = String(error); }

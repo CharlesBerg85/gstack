@@ -1,18 +1,17 @@
 import { expect, test } from 'bun:test';
-import { resolvePaidShardBudget, retriesForFiles, planPaidShards, parseRunManifest, verifySliceResults, runPaidShard, buildRunManifest, paidShardWallUpperBoundMs, collectPaidTestFiles, selectPaidTestFiles, isOverlayTestFile, DEFAULT_SHARD_TIMEOUT_MS, DEFAULT_JOBS, parseCliOptions, expandCaseShards, shardFile, sliceExecutionOrder, sliceSupervisedWallMs } from '../scripts/test-paid-shards';
+import { resolvePaidShardBudget, retriesForFiles, planPaidShards, parseRunManifest, verifySliceResults, runPaidShard, buildRunManifest, paidShardWallUpperBoundMs, collectPaidTestFiles, selectPaidTestFiles, isOverlayTestFile, DEFAULT_SHARD_TIMEOUT_MS, DEFAULT_JOBS, parseCliOptions, expandCaseShards, expandTrialShards, shardFile, sliceExecutionOrder, sliceSupervisedWallMs } from '../scripts/test-paid-shards';
 import { FINDING_RETRY_BUDGETS, ALL_TIERS, SHARD_RESERVE_MS } from './helpers/eval-budgets';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 for (const budget of FINDING_RETRY_BUDGETS) {
-  test(`${budget.file}: supervision preserves every existing attempt and retry`, () => {
+  test(`${budget.file}: supervision covers its one run of every case`, () => {
     expect(budget.testMs).toBe(1_500_000);
-    // A 25-minute case is past RETRY_MAX_CASE_MS: a timed-out attempt is its verdict.
-    expect(budget.retries).toBe(0);
-    expect(retriesForFiles([budget.file])).toBe(budget.retries);
+    // Paid evals never retry: a timed-out case is its verdict.
+    expect(retriesForFiles([budget.file])).toBe(0);
     expect(budget.shardReserveMs).toBe(SHARD_RESERVE_MS);
-    expect(budget.shardMs).toBe(budget.cases * budget.testMs * (budget.retries + 1) + budget.shardReserveMs);
+    expect(budget.shardMs).toBe(budget.cases * budget.testMs + budget.shardReserveMs);
     expect(resolvePaidShardBudget([budget.file])).toEqual({ timeoutMs: budget.shardMs, source: 'registered', policyId: budget.id });
     const source = fs.readFileSync(path.join(import.meta.dir, '..', budget.file), 'utf8');
     if (budget.file === 'test/skill-e2e-plan-ceo-split-overflow.test.ts') {
@@ -176,18 +175,20 @@ test('single-slice manifest retains all registered files with one allocation', (
 
 test('current detach supervision covers the live-census floor', () => {
   const floorFor = (tier: 'gate' | 'periodic') => {
-    // Case-sharded files contribute one shard per case, exactly as the runner plans.
-    const files = expandCaseShards(selectPaidTestFiles(collectPaidTestFiles(), tier).selected, tier);
+    // Case-sharded files contribute one shard per case and isolated cases one
+    // shard per trial, exactly as the runner plans.
+    const files = expandTrialShards(expandCaseShards(selectPaidTestFiles(collectPaidTestFiles(), tier).selected, tier), tier).keys;
     const excess = files.reduce((n, file) => n + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - DEFAULT_SHARD_TIMEOUT_MS), 0);
     return Math.ceil((Math.ceil(files.length / DEFAULT_JOBS) * DEFAULT_SHARD_TIMEOUT_MS + excess) / 1000 * 1.05);
   };
   const pkg = JSON.parse(fs.readFileSync(path.join(import.meta.dir, '../package.json'), 'utf8'));
   const periodicTimeout = Number(pkg.scripts['eval:bg:periodic'].match(/--timeout\s+(\d+)/)[1]);
   const gateTimeout = Number(pkg.scripts['eval:bg:gate'].match(/--timeout\s+(\d+)/)[1]);
-  expect(floorFor('gate')).toBe(26_471);
+  expect(floorFor('gate')).toBe(21_725);
   expect(gateTimeout).toBe(49_320);
   expect(gateTimeout).toBeGreaterThanOrEqual(floorFor('gate'));
-  expect(floorFor('periodic')).toBe(30_797);
+  expect(floorFor('periodic')).toBe(33_821);
+  expect(periodicTimeout).toBeGreaterThanOrEqual(floorFor('periodic'));
 });
 
 for (const jobs of [1, 2, 3]) test(`FIFO bound covers partial durations with ${jobs} workers`, () => {

@@ -9,10 +9,11 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { CASE_CI_EXCLUDE, PERIODIC_CI_EXCLUDE } from './helpers/periodic-exclude-data';
+import { CASE_CI_EXCLUDE, CASE_QUARANTINE, EVAL_POLICY, PERIODIC_CI_EXCLUDE } from './helpers/periodic-exclude-data';
 import { E2E_TOUCHFILES } from './helpers/touchfiles';
+import { quarantinePolicyProblems } from '../scripts/eval-flake-rank';
 import { isPaidTestFile } from './helpers/paid-test-set';
-import { buildRunManifest, CASE_SHARDED_FILES, expandCaseShards, partitionCaseExclusions, selectPaidTestFiles, shardCaseId, shardFile } from '../scripts/test-paid-shards';
+import { buildRunManifest, CASE_SHARDED_FILES, expandCaseShards, fileCaseRegistration, partitionCaseExclusions, selectPaidTestFiles, shardCaseId, shardFile } from '../scripts/test-paid-shards';
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -68,6 +69,33 @@ describe('periodic exclude policy', () => {
         const entry = manifest.entries.find(entry => entry.file === key)!;
         expect(entry).toMatchObject({ status: 'excluded', slice: 0 });
         expect(entry.reason).toContain(CASE_CI_EXCLUDE[key]!.tracking);
+      }
+    }
+  });
+});
+
+describe('eval verdict policy (pre-registered)', () => {
+  test('EVAL_POLICY carries exactly the approved constants; a change needs re-approval and a version bump', () => {
+    expect(EVAL_POLICY).toEqual({
+      version: 1,
+      panel: { n: 3, k: 2 },
+      quarantine: { entry: { rate: 0.95, minTrials: 10 }, exit: { rate: 0.97, minTrials: 10 }, capFraction: 0.10, expiryWeeklyRuns: 8 },
+      judge: { samples: 3 },
+      drift: { fisherAlpha: 0.05, fisherMinPerSide: 6 },
+      infraRedispatch: 1,
+    });
+  });
+
+  test('every CASE_QUARANTINE entry is a diagnosed, dated, non-product blocking case within the tier cap', () => {
+    expect(quarantinePolicyProblems(CASE_QUARANTINE).map(problem => problem.message)).toEqual([]);
+  });
+
+  test('a quarantined case runs as isolated trial shards: its files register it literally', () => {
+    for (const id of Object.keys(CASE_QUARANTINE)) {
+      const files = (E2E_TOUCHFILES[id] ?? []).filter(file => /^test\/[^/]+\.test\.ts$/.test(file) && isPaidTestFile(file));
+      expect(files.length, `${id}: no paid file registers it`).toBeGreaterThan(0);
+      for (const file of files) {
+        expect(fileCaseRegistration(file, fs.readFileSync(path.join(ROOT, file), 'utf8')).known, `${id}: ${file} registration must be statically known`).toBe(true);
       }
     }
   });

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { buildRunManifest, collectPaidTestFiles, type PaidRunManifest, type SliceResult } from '../scripts/test-paid-shards';
+import { buildRunManifest, collectPaidTestFiles, shardCaseId, shardTrial, type PaidRunManifest, type SliceResult } from '../scripts/test-paid-shards';
 import { STRICT_RETRY_CASE_BUDGETS } from './helpers/eval-budgets';
 import { approvedCookieWorkflowSource, manualReviewFixture } from './helpers/manual-judge-review-fixture';
 
@@ -16,6 +16,11 @@ type Job = {
   permissions: Record<string, string>;
   steps: Step[];
 };
+/** A passing trial record for an isolated trial shard (the executor's current result schema). */
+const trialRecord = (entry: PaidRunManifest['entries'][number]) => entry.trial ? { trial: {
+  case: shardCaseId(entry.file)!, trial: shardTrial(entry.file)!, ...entry.trial, outcome: 'passed' as const, cost_usd: 0, duration_ms: 1,
+} } : {};
+
 const workflows = ['evals.yml', 'evals-periodic.yml'].map(name => ({
   name,
   jobs: (Bun.YAML.parse(fs.readFileSync(path.join(ROOT, '.github/workflows', name), 'utf8')) as {
@@ -112,10 +117,11 @@ describe('paid CI coordination stays off the eval image', () => {
       if (name === 'evals.yml') expect(report.permissions).toEqual({ contents: 'read' });
     });
 
-    test(`${name}: failure logs include the hidden spool directory without uploading the rest of the cache`, () => {
-      const logs = jobs['eval-slices'].steps.find(step => step.with?.name === 'paid-slice-${{ matrix.slice }}-logs');
+    test(`${name}: shard logs include the hidden spool directory without uploading the rest of the cache`, () => {
+      const logs = jobs['eval-slices'].steps.find(step => step.with?.name === 'paid-logs-slice-${{ matrix.slice }}-a${{ github.run_attempt }}');
       expect(logs?.uses).toStartWith('actions/upload-artifact@');
-      expect(logs?.if).toBe('failure()');
+      // A failed trial no longer reds its runner; its log is still the evidence.
+      expect(logs?.if).toBe('always()');
       expect(logs?.with?.['include-hidden-files']).toBe(true);
       expect(String(logs?.with?.path).trim().split('\n')).toEqual([
         '/home/runner/.cache/gstack-paid-shard-*.log',
@@ -217,6 +223,7 @@ describe('dependency-free CI planner and report execution', () => {
             executedTests: STRICT_RETRY_CASE_BUDGETS.find(budget => budget.file === entry.file)?.cases ?? 1,
             skippedTests: 0,
             ...(entry.budget ? { budget: entry.budget } : {}),
+            ...trialRecord(entry),
           })),
         };
         fs.writeFileSync(path.join(reportDir, `slice-${sliceIndex}.json`), JSON.stringify(result));
@@ -248,7 +255,8 @@ describe('dependency-free CI planner and report execution', () => {
       const red = run(['--report', reportDir], tier);
       expect(red.status).toBe(1);
       expect(red.stderr).toContain(`${failed.outcomes[0].files[0]}: failed`);
-      expect(red.stdout).toContain('3 executed, 0 reused; 1 passed, 2 failed, 0 manual accepted (unscored; no score-cache credit) (6 attempt records from 1 collectors)');
+      // Paid evals never retry: every record counts, a later pass never hides an earlier failure.
+      expect(red.stdout).toContain('6 executed, 0 reused; 2 passed, 4 failed, 0 manual accepted (unscored; no score-cache credit) (6 attempt records from 1 collectors');
       expect(red.stdout).toContain('3 cases with multiple attempts this run:');
       expect(red.stdout).not.toMatch(/passed only on retry|not blocking/);
 
@@ -274,7 +282,7 @@ describe('dependency-free CI planner and report execution', () => {
       outcomes: manifest.entries.filter(entry => entry.status === 'planned').map(entry => ({
         files: [entry.file], status: 'passed', exitCode: 0, elapsedMs: 1,
         executedTests: STRICT_RETRY_CASE_BUDGETS.find(budget => budget.file === entry.file)?.cases ?? 1,
-        skippedTests: 0, ...(entry.budget ? { budget: entry.budget } : {}),
+        skippedTests: 0, ...(entry.budget ? { budget: entry.budget } : {}), ...trialRecord(entry),
       })),
     };
     const slicePath = path.join(reportDir, 'slice-1.json');

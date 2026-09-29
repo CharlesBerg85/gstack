@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { DEFAULT_JUDGE_MAX_TOKENS, resolveEvalModel } from '../../lib/eval-model';
 import { JUDGE_MS } from './eval-budgets';
-import type { JudgeScore } from './llm-judge';
+import { JUDGE_PANEL_SAMPLES, JUDGE_SCORE_DIMENSIONS, judgePanelMean, type JudgeScore } from './llm-judge';
 import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, WORKFLOW_JUDGE_RESPONSE_SCHEMA, WORKFLOW_JUDGE_REASONING_WORD_LIMIT } from './workflow-judge-input';
 import { buildEvalInputIdentity, lookupEvalInputCache, sourceDependencyClosure, storeEvalInputCache,
   type EvalCacheValue, type EvalInputIdentity, type EvalPassingProof } from '../../scripts/eval-input-cache';
@@ -39,17 +39,28 @@ export function validWorkflowJudgeScore(value: EvalCacheValue, thresholds: Thres
     || typeof value.reasoning !== 'string'
     || (structuredResponse && (!value.reasoning.trim()
       || value.reasoning.trim().split(/\s+/).length >= WORKFLOW_JUDGE_REASONING_WORD_LIMIT))) return false;
-  return (['clarity', 'completeness', 'actionability'] as const).every(key =>
+  return JUDGE_SCORE_DIMENSIONS.every(key =>
     typeof value[key] === 'number' && Number.isInteger(value[key]) && value[key] >= thresholds[key] && value[key] <= 5);
 }
 
+const SAMPLE_RANGE: Thresholds = { clarity: 1, completeness: 1, actionability: 1 };
+
+/** A complete judge panel: exactly JUDGE_PANEL_SAMPLES of valid samples whose per-dimension mean meets every threshold. */
+export function validWorkflowJudgePanel(value: EvalCacheValue, thresholds: Thresholds, structuredResponse = false): value is { samples: Array<JudgeScore & EvalCacheValue> } {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).join(',') !== 'samples'
+    || !Array.isArray(value.samples) || value.samples.length !== JUDGE_PANEL_SAMPLES
+    || !value.samples.every(sample => validWorkflowJudgeScore(sample, SAMPLE_RANGE, structuredResponse))) return false;
+  const mean = judgePanelMean(value.samples as JudgeScore[], JUDGE_SCORE_DIMENSIONS);
+  return JUDGE_SCORE_DIMENSIONS.every(key => mean[key] >= thresholds[key]);
+}
+
 export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
-  lookup(): { scores: JudgeScore; reuse: WorkflowJudgeReuse } | null;
+  lookup(): { samples: JudgeScore[]; reuse: WorkflowJudgeReuse } | null;
   /** The attempt guard is rechecked after synchronous input/provenance reads. */
-  publish(scores: JudgeScore, isActive?: () => boolean): (() => void) | undefined;
+  publish(samples: JudgeScore[], isActive?: () => boolean): (() => void) | undefined;
 } {
   const env = opts.env ?? process.env;
-  const noCache = { lookup: () => null, publish: (_scores: JudgeScore) => undefined };
+  const noCache = { lookup: () => null, publish: (_samples: JudgeScore[]) => undefined };
   const pr = Number(env.EVALS_CACHE_PR);
   // Runtime ID is the immutable CI image manifest, not a mutable image tag.
   // Nonstandard Node/Bun preload code or custom model endpoints need a separate
@@ -74,7 +85,8 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
         files: workflowJudgeDependencies(opts.root, input.files.map(file => file.path)),
         prompts: { [opts.testName]: prompt },
         parameters: { rootPackage, thresholds: opts.thresholds, max_tokens: opts.maxTokens ?? DEFAULT_JUDGE_MAX_TOKENS, temperature: null, budget_ms: JUDGE_MS,
-          request: opts.stream ? 'messages.stream/user' : 'messages.create/user', retries: 1,
+          request: opts.stream ? 'messages.stream/user' : 'messages.create/user', retries: 0,
+          panel: { samples: JUDGE_PANEL_SAMPLES, numeric: 'mean', boolean: 'majority' },
           ...(opts.stream ? { stream: true } : {}),
           ...(opts.structuredResponse ? { output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } },
             response_validation: { reasoning_words_below: WORKFLOW_JUDGE_REASONING_WORD_LIMIT } } : {}) },
@@ -94,14 +106,15 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
   return {
     lookup() {
       const result = lookupEvalInputCache({ ...common, identity: before,
-        validateResult: value => validWorkflowJudgeScore(value, opts.thresholds, opts.structuredResponse) });
+        validateResult: value => validWorkflowJudgePanel(value, opts.thresholds, opts.structuredResponse) });
       return result.status === 'reused'
-        ? { scores: result.result as JudgeScore, reuse: { key: result.key, source: result.source } } : null;
+        ? { samples: (result.result as unknown as { samples: JudgeScore[] }).samples, reuse: { key: result.key, source: result.source } } : null;
     },
-    publish(scores, isActive = () => true) {
+    publish(samples, isActive = () => true) {
       // Caller reaches here ONLY after its actual assertions passed. A later
       // failed case in the file does not erase this independently completed case.
-      if (!isActive() || !validWorkflowJudgeScore(scores as unknown as EvalCacheValue, opts.thresholds, opts.structuredResponse)) return;
+      const panel = { samples: samples.map(({ clarity, completeness, actionability, reasoning }) => ({ clarity, completeness, actionability, reasoning })) };
+      if (!isActive() || !validWorkflowJudgePanel(panel as unknown as EvalCacheValue, opts.thresholds, opts.structuredResponse)) return;
       const after = currentIdentity();
       const runId = env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}/${env.GITHUB_RUN_ATTEMPT ?? '1'}` : env.EVALS_RUN_ID;
       if (!after || !runId || !isActive()) return;
@@ -112,7 +125,7 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
         cancelled: false, skipped: 0, failed: 0, passed: 1,
         cases: [{ id: opts.testName, outcome: 'passed', attempt: 1 }],
         source: { runId, revision: revision.stdout.trim(), completedAt: Date.now() },
-        result: { clarity: scores.clarity, completeness: scores.completeness, actionability: scores.actionability, reasoning: scores.reasoning },
+        result: panel,
       } });
       // A slow synchronous write can consume the recording allowance. The
       // caller withdraws this new receipt if its final deadline check fails.

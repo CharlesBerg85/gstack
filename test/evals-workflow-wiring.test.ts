@@ -263,3 +263,68 @@ describe('shared setup composites (every paid lane)', () => {
     }
   });
 });
+
+describe('panel verdict surfaces (eval reliability policy)', () => {
+  type AnyJob = { if?: string; needs?: string[]; permissions?: Record<string, string>; outputs?: Record<string, string>;
+    strategy?: { 'max-parallel': number }; steps: Array<Step & { if?: string; uses?: string }> };
+  const jobsOf = (source: string) => (Bun.YAML.parse(source) as { jobs: Record<string, AnyJob> }).jobs;
+
+  test('planners size the capacity preflight with their executor cap', () => {
+    for (const [source, executor, manifest] of [[evalsYml, 'eval-slices', '/tmp/paid-plan/manifest.json'],
+      [periodicYml, 'eval-slices', '/tmp/paid-plan/manifest.json'], [periodicYml, 'gate-census', '/tmp/gate-census-plan/manifest.json']] as const) {
+      const jobs = jobsOf(source);
+      const emit = jobs['plan-slices']!.steps.find(step => step.run?.includes(`--emit-plan ${manifest} `))!;
+      const cap = Number(/--max-parallel (\d+)/.exec(emit.run!)?.[1]);
+      expect(cap, `${executor}: --max-parallel`).toBe(jobs[executor]!.strategy!['max-parallel']);
+    }
+  });
+
+  test('slice artifacts are attempt-scoped and never merged into one tree', () => {
+    for (const source of [evalsYml, periodicYml, marathonYml]) {
+      const jobs = jobsOf(source);
+      const uploads = Object.values(jobs).flatMap(job => job.steps).filter(step => step.uses?.startsWith('actions/upload-artifact@'))
+        .map(step => step.with?.name ?? '').filter(name => /slice|census-\$/.test(name));
+      expect(uploads.length).toBeGreaterThan(0);
+      for (const name of uploads) expect(name, name).toContain('-a${{ github.run_attempt }}');
+      const downloads = Object.values(jobs).flatMap(job => job.steps).filter(step => step.uses?.startsWith('actions/download-artifact@') && step.with?.pattern);
+      for (const step of downloads) expect((step.with as Record<string, unknown>)['merge-multiple'], step.with!.pattern).toBeUndefined();
+    }
+  });
+
+  test('the PR comment reads collector-outcomes v2 and never recomputes a verdict', () => {
+    const comment = evalsYml.slice(evalsYml.indexOf('  slices-comment:'));
+    expect(comment).toContain('.version == 2');
+    expect(comment).toContain("jq -r '.failures[]'");
+    expect(comment).toContain('name: report-verdict-a${{ github.run_attempt }}');
+    expect(evalsYml).not.toContain('group_by(.name)');
+    expect(comment).not.toMatch(/paid-slice-/);
+    const report = jobsOf(evalsYml)['slices-report']!;
+    expect(report.steps.some(step => step.run?.includes('scripts/eval-trial-series.ts /tmp/paid-report/trial-outcomes.jsonl'))).toBe(true);
+    expect(report.steps.some(step => step.with?.name?.startsWith('trial-outcomes-'))).toBe(true);
+  });
+
+  test('the weekly report gates on pass-rate history, closes its issue on green, and re-dispatches INFRA-only reds once', () => {
+    const jobs = jobsOf(periodicYml);
+    const report = jobs.report!;
+    expect(report.permissions).toEqual({ contents: 'read', issues: 'write', actions: 'read' });
+    const gate = report.steps.find(step => step.id === 'pass-rates')!;
+    expect(gate.run).toContain('bun run eval:pass-rates --gate --runs 10');
+    expect(gate.if).toBe('always()');
+    for (const name of ['Upsert tracking issue on failure', 'Fail the workflow when reconciliation failed']) {
+      expect(report.steps.find(step => step.name === name)!.if).toContain("steps.pass-rates.outputs.exit != '0'");
+    }
+    const upsert = report.steps.find(step => step.name === 'Upsert tracking issue on failure')!;
+    expect(upsert.run).toContain('report-summary.md');
+    expect(report.steps.find(step => step.name === 'Close the tracking issue on a green run')!.run).toContain('gh issue close');
+    expect(report.steps.filter(step => step.with?.name?.startsWith('trial-outcomes-')).length).toBe(2);
+    const redispatch = jobs.redispatch!;
+    expect([redispatch.needs].flat()).toEqual(['report']);
+    expect(redispatch.permissions).toEqual({ actions: 'write' });
+    expect(redispatch.if).toBe("${{ !cancelled() && needs.report.outputs.redispatch == 'true' }}");
+    expect(redispatch.steps[0]!.run).toContain('-f redispatch_of="$GITHUB_RUN_ID"');
+    const classify = report.steps.find(step => step.id === 'verdict')!;
+    expect(classify.run).toContain('.verdict.redispatchEligible == true');
+    expect(classify.run).toContain('[ -z "$REDISPATCH_OF" ]');
+    expect(periodicYml).toMatch(/group: evals-periodic\$\{\{ inputs\.redispatch_of/);
+  });
+});

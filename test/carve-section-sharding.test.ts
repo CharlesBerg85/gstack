@@ -22,7 +22,7 @@ describe('carved-skill cases each get a complete paid process budget', () => {
     expect(selectPaidTestFiles(files.map(file => 'test/' + file), 'periodic').selected).toHaveLength(files.length);
     expect(selectPaidTestFiles(files.map(file => 'test/' + file), 'gate').selected).toHaveLength(0);
   });
-  test('all configured retries plus teardown fit even with within-shard concurrency one', () => {
+  test('every case run plus teardown fits even with within-shard concurrency one', () => {
     for (const file of files) {
       const attempts = retriesForFiles(['test/' + file]) + 1;
       expect(CAPTURE_LONG_MS * attempts + 10_000).toBeLessThan(DEFAULT_SHARD_TIMEOUT_MS);

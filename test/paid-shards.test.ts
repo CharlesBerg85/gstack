@@ -47,6 +47,17 @@ import {
   selectPaidTestFiles,
   buildRunManifest,
   parseRunManifest,
+  classifyTrialShard,
+  sliceExitCode,
+  guardTrialRecords,
+  parseJUnitCases,
+  caseIdForTestName,
+  shardTrial,
+  excludedCasesNamePattern,
+  runCaseDiagnosis,
+  caseFile,
+  parseCliOptions,
+  type CaseTrialPlan,
   type ShardOutcome,
 } from '../scripts/test-paid-shards';
 
@@ -576,5 +587,116 @@ describe('all-skipped pass census', () => {
     expect(codexLine).toContain('all 8 tests SKIPPED');
     expect(codexLine).toContain('verified nothing');
     expect(reviewLine).not.toContain('SKIPPED');
+  });
+});
+
+describe('isolated trial shards: record, classification and slice exit', () => {
+  const plan: CaseTrialPlan = { kind: 'behavior', panel: { n: 3, k: 2 }, quarantined: false };
+  const key = (n: number) => `test/skill-e2e-review.test.ts#review-sql-injection~t${n}`;
+  const base = { status: 'passed' as const, executedTests: 1, skippedTests: 0, elapsedMs: 5 };
+  const none = { records: [], contract: null };
+
+  test('trial keys keep their case id, file and index', () => {
+    expect(shardCaseId(key(2))).toBe('review-sql-injection');
+    expect(shardFile(key(2))).toBe('test/skill-e2e-review.test.ts');
+    expect(shardTrial(key(2))).toBe(2);
+    expect(shardTrial('test/skill-e2e-review.test.ts#review-sql-injection')).toBeNull();
+    expect(shardSlug([key(2)])).toBe('skill-e2e-review--review-sql-injection.t2');
+  });
+
+  test('classification: verdicts versus harness problems', () => {
+    const c = (over: Partial<ShardOutcome>, evidence: { records: any[]; contract: string | null } = none) =>
+      classifyTrialShard({ ...base, ...over }, 'review-sql-injection', 1, plan, evidence);
+    expect(c({}).outcome).toBe('passed');
+    expect(c({}, { records: [], contract: 'handoff missing' })).toMatchObject({ outcome: 'failed', failure_class: 'contract', error: 'handoff missing' });
+    expect(c({ status: 'failed' }, { records: [{ passed: false, exit_reason: 'timeout', timeout_at_turn: 9, error: 'x' }], contract: null }))
+      .toMatchObject({ outcome: 'failed', failure_class: 'timeout', timeout_at_turn: 9 });
+    expect(c({ status: 'failed' }, { records: [{ passed: false, error: 'expected 3' }], contract: null })).toMatchObject({ outcome: 'failed', failure_class: 'assertion' });
+    expect(c({ status: 'timed-out', executedTests: null, skippedTests: null })).toMatchObject({ outcome: 'failed', failure_class: 'timeout' });
+    expect(c({ status: 'failed', executedTests: null, skippedTests: null })).toMatchObject({ outcome: 'failed', failure_class: 'infra' });
+    expect(c({ status: 'failed', executedTests: 0, skippedTests: 0 })).toMatchObject({ outcome: 'failed', failure_class: 'infra' });
+    expect(c({ executedTests: 1, skippedTests: 1 })).toMatchObject({ outcome: 'skipped' });
+    for (const over of [{ status: 'never-started' as const }, { status: 'passed-empty' as const }, { executedTests: 2 },
+      { runnerError: 'spawn failed' }, { executedTests: 0, skippedTests: 0 }]) {
+      expect(c(over).outcome, JSON.stringify(over)).toBeNull();
+    }
+  });
+
+  test('slice exit: rule shards stay strict; failed trials never red the runner, missing records do', () => {
+    const trial = (outcome: 'passed' | 'failed' | null) => ({ status: outcome === 'failed' ? 'failed' as const : 'passed' as const,
+      trial: { case: 'c', trial: 1, ...plan, outcome, cost_usd: 0, duration_ms: 1, ...(outcome === null ? { harness: 'never started' } : {}) } });
+    expect(sliceExitCode([{ status: 'passed' }, trial('failed')])).toBe(0);
+    expect(sliceExitCode([{ status: 'failed' }, trial('passed')])).toBe(1);
+    expect(sliceExitCode([{ status: 'passed' }, trial(null)])).toBe(1);
+    expect(sliceExitCode([{ status: 'timed-out' }])).toBe(1);
+    const hollow = guardTrialRecords([{ ...trial('passed'), status: 'passed-empty' as const }]);
+    expect(hollow[0]!.trial!.outcome).toBeNull();
+    expect(sliceExitCode(hollow)).toBe(1);
+  });
+
+  test('runPaidShards binds each trial to its case, index and panel and records its outcome', async () => {
+    const evalDirBase = fs.mkdtempSync(path.join(os.tmpdir(), 'trial-shards-'));
+    try {
+      const script = (fail: boolean) => `const fs = require('fs'), path = require('path');
+const dir = process.env.GSTACK_EVAL_DIR; fs.mkdirSync(dir, { recursive: true });
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith('GSTACK_EVAL_') || k === 'EVALS_SELECTION_JSON'));
+fs.writeFileSync(path.join(dir, 'env.json'), JSON.stringify(env));
+fs.writeFileSync(path.join(dir, 'run.json'), JSON.stringify({ tests: [{ name: 'review-sql-injection', passed: ${!fail}, cost_usd: 0.5,
+  duration_ms: 1, exit_reason: ${fail ? "'timeout'" : "'success'"}, timeout_at_turn: 4, model: 'm' }] }));
+console.log("Ran 1 tests across 1 files. [1ms]"); process.exit(${fail ? 1 : 0});`;
+      const summary = await runPaidShards([[key(1)], [key(2)], [key(3)]], {
+        jobs: 3, evalDirBase, log: () => {}, trials: { [key(1)]: plan, [key(2)]: plan, [key(3)]: plan },
+        commandFor: files => ({ command: process.execPath, args: ['-e', script(files[0] === key(2))] }),
+      });
+      const byKey = (n: number) => summary.outcomes.find(o => o.files[0] === key(n))!;
+      expect(byKey(1).trial).toMatchObject({ case: 'review-sql-injection', trial: 1, outcome: 'passed', cost_usd: 0.5, model: 'm' });
+      expect(byKey(2).trial).toMatchObject({ trial: 2, outcome: 'failed', failure_class: 'timeout', exit_reason: 'timeout', timeout_at_turn: 4 });
+      expect(sliceExitCode(summary.outcomes)).toBe(0);
+      const env = JSON.parse(fs.readFileSync(path.join(evalDirBase, 'shards', shardSlug([key(3)]), 'env.json'), 'utf8'));
+      expect(env).toMatchObject({ GSTACK_EVAL_CASE_ID: 'review-sql-injection', GSTACK_EVAL_KIND: 'behavior', GSTACK_EVAL_TRIAL: '3',
+        GSTACK_EVAL_PANEL_N: '3', GSTACK_EVAL_PANEL_K: '2', GSTACK_EVAL_POLICY_VERSION: '1' });
+      expect(JSON.parse(env.EVALS_SELECTION_JSON).selected).toEqual(['review-sql-injection']);
+    } finally { fs.rmSync(evalDirBase, { recursive: true, force: true }); }
+  });
+
+  test('file shards exclude isolated names; JUnit cases map to registry ids or stay unattributed', () => {
+    const pattern = new RegExp(excludedCasesNamePattern(['review-sql-injection']));
+    expect(pattern.test('suite > review-sql-injection')).toBe(false);
+    expect(pattern.test('suite > review-enum-completeness')).toBe(true);
+    const cases = parseJUnitCases(`<testsuites><testsuite name="f">
+  <testcase name="review-sql-injection" classname="s" time="1.5" />
+  <testcase name="review-enum-completeness" classname="s" time="0.1"><failure type="TimeoutError" message="test &amp; timed out" /></testcase>
+  <testcase name="plain helper" classname="" time="0"><skipped /></testcase>
+</testsuite></testsuites>`);
+    expect(cases).toEqual([
+      { name: 'review-sql-injection', classname: 's', outcome: 'passed', timeMs: 1500 },
+      { name: 'review-enum-completeness', classname: 's', outcome: 'failed', timeMs: 100, failureType: 'TimeoutError', message: 'test & timed out' },
+      { name: 'plain helper', classname: '', outcome: 'skipped', timeMs: 0 },
+    ]);
+    expect(caseIdForTestName('review-sql-injection')).toBe('review-sql-injection');
+    expect(caseIdForTestName(CASE_TEST_NAMES['plan-review-report']!)).toBe('plan-review-report');
+    expect(caseIdForTestName('plain helper')).toBeNull();
+  });
+
+  test('--case/--trials: local diagnosis flags are validated and never combine with CI modes', () => {
+    expect(parseCliOptions(['--case', 'review-sql-injection', '--trials', '5'], {})).toMatchObject({ caseId: 'review-sql-injection', trials: 5 });
+    expect(() => parseCliOptions(['--trials', '3'], {})).toThrow('--trials requires --case');
+    expect(() => parseCliOptions(['--case', 'no-such-case'], {})).toThrow('live E2E case id');
+    expect(() => parseCliOptions(['--case', 'review-sql-injection', '--report', '/tmp/r'], {})).toThrow('local diagnosis');
+    expect(caseFile('review-sql-injection')).toBe('test/skill-e2e-review.test.ts');
+  });
+
+  test('--case runs the CI panel runner and prints its panelVerdict', async () => {
+    const evalDirBase = fs.mkdtempSync(path.join(os.tmpdir(), 'case-diagnosis-'));
+    const lines: string[] = [];
+    try {
+      const verdict = await runCaseDiagnosis('review-sql-injection', { trials: 3, evalDirBase, log: line => lines.push(line), jobs: 3,
+        commandFor: files => ({ command: process.execPath, args: ['-e',
+          `console.log("Ran 1 tests across 1 files. [1ms]"); process.exit(${files[0]!.endsWith('~t3') ? 1 : 0});`] }) });
+      // A rule case keeps its meaning locally: every trial must pass.
+      expect(verdict).toMatchObject({ case: 'review-sql-injection', kind: 'rule', panel: { n: 3, k: 3 }, passed: 2, status: 'FAIL' });
+      expect(lines.join('\n')).toContain('--case review-sql-injection: 3 trial(s) of test/skill-e2e-review.test.ts');
+      expect(lines.join('\n')).toContain('FAIL 2/3 (✓✓✗)');
+    } finally { fs.rmSync(evalDirBase, { recursive: true, force: true }); }
   });
 });
