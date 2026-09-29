@@ -116,9 +116,10 @@ export let selectedTests: string[] | null = resolveModuleSelection(
 // EVALS_TIER: filter tests by tier after diff-based selection.
 // 'gate' = gate tests only (CI default — blocks merge)
 // 'periodic' = periodic tests only (weekly cron / manual)
+// 'marathon' = full end-to-end flows only (non-blocking marathon lane)
 // not set = run all selected tests (local dev default, backward compat)
 if (evalsEnabled && process.env.EVALS_TIER) {
-  const tier = process.env.EVALS_TIER as 'gate' | 'periodic';
+  const tier = process.env.EVALS_TIER as 'gate' | 'periodic' | 'marathon';
   const tierTests = Object.entries(E2E_TIERS)
     .filter(([, t]) => t === tier)
     .map(([name]) => name);

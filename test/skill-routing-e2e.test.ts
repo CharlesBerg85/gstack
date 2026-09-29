@@ -46,7 +46,7 @@ if (evalsEnabled && !process.env.EVALS_ALL) {
 
 // Apply EVALS_TIER filter (same logic as e2e-helpers.ts)
 if (evalsEnabled && process.env.EVALS_TIER) {
-  const tier = process.env.EVALS_TIER as 'gate' | 'periodic';
+  const tier = process.env.EVALS_TIER as 'gate' | 'periodic' | 'marathon';
   const tierTests = Object.entries(E2E_TIERS)
     .filter(([, t]) => t === tier)
     .map(([name]) => name);

@@ -59,7 +59,7 @@ export const PR_PROFILE_FILES: Record<string, readonly string[]> = {
 export interface PrProfileMaps {
   e2eTouchfiles: Record<string, string[]>;
   judgeTouchfiles: Record<string, string[]>;
-  tiers: Record<string, 'gate' | 'periodic'>;
+  tiers: Record<string, 'gate' | 'periodic' | 'marathon'>;
   globalTouchfiles: readonly string[];
 }
 
@@ -72,7 +72,7 @@ export interface PrProfileSelection {
   mode: 'pr' | 'full-fallback';
   e2e: string[];
   judges: string[];
-  deferred: Array<{ id: string; tier: 'gate' | 'periodic'; reason: string }>;
+  deferred: Array<{ id: string; tier: 'gate' | 'periodic' | 'marathon'; reason: string }>;
   unknownFiles: string[];
   deferredPromptFiles: string[];
   missingCoverage: string[];
@@ -92,8 +92,8 @@ export function validatePrProfileInventory(
     }
   }
   for (const id of Object.keys(maps.e2eTouchfiles)) {
-    if (maps.tiers[id] !== 'gate' && maps.tiers[id] !== 'periodic') {
-      throw new Error(`E2E case has no broad gate/periodic census: ${id}`);
+    if (maps.tiers[id] !== 'gate' && maps.tiers[id] !== 'periodic' && maps.tiers[id] !== 'marathon') {
+      throw new Error(`E2E case has no broad gate/periodic/marathon census: ${id}`);
     }
   }
 }
@@ -182,9 +182,11 @@ export function selectPrProfile(options: {
   const kept = new Set(e2e);
   const deferred = candidates.filter(id => !kept.has(id)).map(id => ({
     id, tier: maps.tiers[id],
-    reason: maps.tiers[id] === 'periodic'
-      ? 'Broad periodic/release coverage; not executed by the PR gate'
-      : 'Broad gate census/release coverage; outside the fast PR profile',
+    reason: maps.tiers[id] === 'marathon'
+      ? 'Full end-to-end marathon coverage; non-blocking lane, not executed by the PR gate'
+      : maps.tiers[id] === 'periodic'
+        ? 'Broad periodic/release coverage; not executed by the PR gate'
+        : 'Broad gate census/release coverage; outside the fast PR profile',
   }));
   const noQuickCoverage = files.filter(file => isPromptFile(file)
     && !(depends(file, maps.globalTouchfiles) && (e2e.length > 0 || judges.length > 0))

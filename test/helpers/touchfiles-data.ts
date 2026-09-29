@@ -1118,10 +1118,11 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 };
 
 /**
- * E2E test tiers — 'gate' blocks PRs, 'periodic' runs weekly/on-demand.
+ * E2E test tiers — 'gate' blocks PRs, 'periodic' runs weekly/on-demand,
+ * 'marathon' keeps full start-to-finish flows in a non-blocking lane only.
  * Must have exactly the same keys as E2E_TOUCHFILES.
  */
-export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
+export const E2E_TIERS: Record<string, 'gate' | 'periodic' | 'marathon'> = {
   'ship-skipped-queued-finding': 'gate',
   'investigate-owned-completion': 'gate',
   'investigate-owned-abort': 'gate',
