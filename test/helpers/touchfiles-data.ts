@@ -803,8 +803,6 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   'ship-triage': [ 'ship/**', 'bin/gstack-repo-mode', 'test/skill-e2e-triage.test.ts',
     'scripts/resolvers/testing.ts'
   ],
-  'ship-docsync': [ 'ship/**', 'document-release/**', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/sections.ts', 'test/skill-e2e-ship-docsync.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/docsync-*.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts',  'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
   'ship-docsync-completion': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
   'ship-docsync-current': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
   'ship-docsync-failure': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
@@ -1350,7 +1348,6 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic' | 'marathon'> = {
   'ship-local-hook-preservation': 'gate',
   'ship-coverage-audit': 'gate',
   'ship-triage': 'gate',
-  'ship-docsync': 'gate',
   'ship-docsync-missing-marker': 'gate',
   'ship-docsync-missing-asset': 'gate',
   'ship-docsync-launch-failure': 'gate',

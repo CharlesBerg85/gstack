@@ -136,6 +136,7 @@ export const CASE_SHARDED_FILES: readonly string[] = [
   'test/skill-e2e-review-army.test.ts',
   'test/skill-e2e-shared-libs-paths.test.ts',
   'test/skill-e2e-shared-libs.test.ts',
+  'test/skill-e2e-ship-docsync.test.ts',
 ];
 
 /** Bun test names that differ from their E2E id. */

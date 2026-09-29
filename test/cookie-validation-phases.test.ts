@@ -45,9 +45,9 @@ test('the existing quality and behavior phases retain their complete separate sh
   expect(behavior.evalsAll).toBe(true);
   expect(qualityFiles).toHaveLength(1);
   // 44 files (first-task-scaffold registers no gate case, so the gate lane
-  // skips it); the five case-sharded files contribute one shard per gate case.
+  // skips it); the six case-sharded files contribute one shard per gate case.
   expect(new Set(behaviorFiles.map(file => file.split('#')[0])).size).toBe(44);
-  expect(behaviorFiles).toHaveLength(62);
+  expect(behaviorFiles).toHaveLength(73);
   expect(behaviorFiles).toEqual(expect.arrayContaining([
     'test/skill-e2e-qa-callers.test.ts',
     'test/skill-e2e-qa-functional-fix.test.ts',

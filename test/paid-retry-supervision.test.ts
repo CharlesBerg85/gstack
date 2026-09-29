@@ -20,7 +20,7 @@ const newBudgets = FILE_RETRY_BUDGETS.filter(row => !FINDING_RETRY_BUDGETS.some(
 const expectedWalls = {
   'test/skill-e2e-qa-callers.test.ts': 3_270_000,
   'test/skill-e2e-shared-libs-paths.test.ts': 1_920_000,
-  'test/skill-e2e-ship-docsync.test.ts': 5_520_000,
+  'test/skill-e2e-ship-docsync.test.ts': 4_920_000,
   'test/skill-llm-eval.test.ts': 6_220_000,
   'test/skill-e2e-auq-consistency.test.ts': 1_080_000,
   'test/skill-e2e-auq-matrix.test.ts': 3_720_000,
@@ -172,8 +172,8 @@ test('fixed AUQ count remains strict while mixed-tier files keep ordinary case h
     [AUQ_CONSISTENCY_RETRY_BUDGET.file, 0, false],
     [AUQ_CONSISTENCY_RETRY_BUDGET.file, 1, true],
     [AUQ_CONSISTENCY_RETRY_BUDGET.file, 2, false],
-    ['test/skill-e2e-ship-docsync.test.ts', 5, true],
-    ['test/skill-e2e-ship-docsync.test.ts', 7, true],
+    ['test/skill-e2e-qa-callers.test.ts', 3, true],
+    ['test/skill-e2e-qa-callers.test.ts', 5, true],
     // A case shard of a case-sharded registered file executes exactly its case.
     [plannedKey('test/skill-e2e-plan.test.ts'), 1, true],
     [plannedKey('test/skill-e2e-plan.test.ts'), 2, false],
@@ -227,7 +227,7 @@ test('detached PR fallback and release commands cover their actual default worke
   const prFloor = Math.ceil((Math.ceil(fullGateFiles.length / prWorkers) * 1_800_000 + fullGateFiles.reduce(
     (total, file) => total + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - 1_800_000), 0,
   )) / 1000 * 1.05);
-  expect(prFloor).toBe(71_957);
+  expect(prFloor).toBe(77_501);
   expect(prWall).toBe(92_820_000);
   expect(prWall).toBeGreaterThanOrEqual(paidShardWallUpperBoundMs(files, prWorkers) + 120_000);
 
@@ -246,8 +246,8 @@ test('detached PR fallback and release commands cover their actual default worke
     )) / 1000 * 1.05));
   }
   const detachedReleaseWall = Number(scripts['eval:bg:release'].match(/--timeout (\d+)/)?.[1]) * 1000;
-  expect(releaseFloors).toEqual([26_597, 30_797]);
-  expect(releaseFloors.reduce((total, floor) => total + floor, 0)).toBe(57_394);
+  expect(releaseFloors).toEqual([26_471, 30_797]);
+  expect(releaseFloors.reduce((total, floor) => total + floor, 0)).toBe(57_268);
   expect(detachedReleaseWall).toBe(116_700_000);
   expect(detachedReleaseWall).toBeGreaterThanOrEqual(releaseWall + 120_000);
 });

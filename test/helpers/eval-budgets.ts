@@ -147,7 +147,7 @@ export const FILE_RETRY_BUDGETS = [
   ...[
     { file: 'test/skill-e2e-qa-callers.test.ts', attemptMs: 5 * (CAPTURE_MS + 15_000), caseMs: CAPTURE_MS + 15_000, configuredRetries: 1 },
     { file: 'test/skill-e2e-shared-libs-paths.test.ts', attemptMs: 3 * CAPTURE_LONG_MS, caseMs: CAPTURE_LONG_MS, configuredRetries: 1 },
-    { file: 'test/skill-e2e-ship-docsync.test.ts', attemptMs: 5 * CAPTURE_LONG_MS + 8 * CAPTURE_MS, caseMs: CAPTURE_LONG_MS, configuredRetries: 1 },
+    { file: 'test/skill-e2e-ship-docsync.test.ts', attemptMs: 4 * CAPTURE_LONG_MS + 8 * CAPTURE_MS, caseMs: CAPTURE_LONG_MS, configuredRetries: 1 },
     // Seventeen workflow judges include their 10s recording grace; the other
     // seven judges retain 120s. Supervise all 24 and the existing one retry.
     { file: 'test/skill-llm-eval.test.ts', attemptMs: 17 * (JUDGE_MS + 10_000) + 7 * JUDGE_MS, caseMs: JUDGE_MS + 10_000, configuredRetries: 1 },
