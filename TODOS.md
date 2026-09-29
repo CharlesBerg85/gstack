@@ -880,7 +880,9 @@ macOS/Aside, no physical iPhone), so the weekly periodic lane scheduled them as
 green shards that verified nothing. They are now in `PERIODIC_CI_EXCLUDE`
 (`test/helpers/periodic-exclude-data.ts`): `codex-e2e`, `codex-e2e-sol-scope`,
 `codex-e2e-shared-libs`, `codex-e2e-recommendation-substance`,
-`skill-e2e-outside-voice`, `skill-e2e-aside`, `skill-e2e-ios-device`. They still
+`skill-e2e-outside-voice`, `skill-e2e-aside`, `skill-e2e-ios-device`. One case
+inside a case-sharded file is excluded the same way through `CASE_CI_EXCLUDE`:
+`test/skill-e2e-design.test.ts#design-review-fix` (needs Aside). They still
 run locally on a machine that has the CLI or device.
 
 **Re-entry:** the CLI or device is available in the CI image. First target:
