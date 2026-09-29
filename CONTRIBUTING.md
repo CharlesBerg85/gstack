@@ -228,9 +228,32 @@ gate and periodic censuses run fresh weekly and on manual
 dispatch of `evals-periodic.yml`; `bun run eval:bg:release` runs both locally.
 Some broad behavioral failures will therefore be found after the PR gate.
 
+Blocking paid lanes (the PR gate and the weekly periodic + gate census) aim to
+finish in about 12 minutes including setup. The planner packs recorded wall
+times (`scripts/paid-test-durations.json`, per tier) into as many ~9-minute
+runners as the work needs, one file or a tightly packed group each; files whose
+cases are short but whose total is long run one case per runner. Matrix size and
+job timeout come from that plan. Preview it for free with
+`bun run scripts/test-paid-shards.ts --tier periodic --list --slice-budget 540 --jobs 2`.
+Complete start-to-finish flows belong to the `marathon` tier
+(`describeE2ETier('marathon')`), which runs only in the non-blocking
+`evals-marathon.yml` lane (weekly and on dispatch) and never gates a merge.
+
+Retries: a timed-out attempt is a verdict. Only files whose every case budget is
+CAPTURE tier or shorter (`RETRY_MAX_CASE_MS` in `test/helpers/eval-budgets.ts`)
+keep one automatic retry for fast-failing flakes; every other paid file runs once.
+Case budgets themselves never change with this rule.
+
 CI enables verified first-attempt reuse for 16 workflow quality judges for
-24 hours within the same PR. The cookie workflow's custom input, the other 11
-quality cases and all dynamic agent cases stay fresh. Local runs stay fresh unless
+24 hours within the same PR. The cookie workflow's custom input and the other 11
+quality cases stay fresh. PR-profile E2E shards that run once (no retry, so the
+pass is provably a first attempt) reuse a pass from the same PR when every
+consumed input is byte-identical: the test's import closure, every tracked file
+its registered cases' touchfiles and the global touchfiles match, the runner and
+workflow, the child's EVALS_/GSTACK_/CLAUDE_/ANTHROPIC_ environment (secret
+presence only), the CI image and Claude CLI version (`scripts/e2e-shard-reuse.ts`).
+A computed case registration or a touchfile pattern matching nothing keeps the
+shard fresh. The weekly census, marathon and release lanes never reuse. Local runs stay fresh unless
 the complete scoped cache and runtime configuration is supplied. The key includes complete prompt bytes, generated inputs,
 fixtures, runner/rubric code, installed dependencies, model settings and runtime.
 The current assertions validate a reused score again. Records retain the original

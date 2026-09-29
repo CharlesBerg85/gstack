@@ -208,7 +208,10 @@ When fixing failures or preparing `/ship`, follow this order:
    result and pending permission state; diagnose a blocked actor before waiting
    through its deadline. Preserve cancellation separately from a test verdict.
    Skipped or unstarted cases
-   do not satisfy coverage; preserve configured retries and every attempt.
+   do not satisfy coverage; preserve every attempt. Retries follow the approved
+   policy in `test/helpers/eval-budgets.ts`: a timed-out attempt is a verdict, so
+   only files whose every case budget is CAPTURE tier or shorter keep one retry;
+   never add retries to pass a longer case.
 7. Prove all known repairs with focused tests, including affected paid cases.
    Rerun a failed case only after a concrete repair or a demonstrated launch
    correction. Run the remaining required selected evaluations on the integrated
@@ -242,6 +245,7 @@ bun run test             # complete free suite via the strict shard runner (no A
 bun run test:ubicloud    # same suite on an ephemeral 16-vCPU Ubicloud VM (needs UBICLOUD_API_KEY)
 bun run eval:bg:pr       # changed fast live probes + selected judges, with explicit deferrals
 bun run eval:bg:release  # fresh complete gate + periodic live coverage
+bun run scripts/test-paid-shards.ts --tier periodic --list --slice-budget 540 --jobs 2  # CI slice plan preview (free)
 bun run test:windows     # curated Windows-safe subset (runs on windows-latest)
 bun run build            # generate docs + compile binaries
 bun run gen:skill-docs   # regenerate SKILL.md files from templates

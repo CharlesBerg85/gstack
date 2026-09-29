@@ -252,8 +252,16 @@ processes × `EVALS_CONCURRENCY` within-shard, per-shard `GSTACK_EVAL_DIR`,
 full-stream spooling to per-shard log files (path printed at START and on
 failure), never-started/timed-out taxonomy, and parent-computed diff
 selection propagated to children via `EVALS_SELECTION_JSON` (fail-open: a
-child that can't parse it recomputes locally with one warning). Retry parity
-lives in `RETRY_OVERRIDES` (literals; old matrix rows' earned `retries: 2`).
+child that can't parse it recomputes locally with one warning). Retries follow
+one rule (`retriesForFiles`, `RETRY_MAX_CASE_MS` in `test/helpers/eval-budgets.ts`):
+a timed-out attempt is a verdict, so a file keeps one Bun retry only when every
+case budget is CAPTURE tier plus its recording grace or shorter (registered rows
+derive it from `caseMs`, `SHORT_CASE_RETRY_FILES` lists the rest); every other
+file, including the former `retries: 2` matrix rows, runs once. `--list` prints
+each shard's retries. Files in `CASE_SHARDED_FILES` run one registered case per
+process (`<file>#<case id>`, an exact `--test-name-pattern`, exactly one executed
+case), so a long file of short cases spreads across runners and each case gets
+its own SDK semaphore.
 Flake telemetry rides the store: every recorded test carries its 1-based
 `attempt` (a pass-on-attempt-2 stays visible forever — bun's own stream hides
 it), runs list `flaky_retries`, the report warns on passed-only-on-retry
@@ -304,8 +312,17 @@ does not match the cache adapter and stays fresh, as do the other 11 quality cas
 CI supplies the scoped cache/runtime configuration; local runs are fresh by
 default. Cached scores must
 pass current assertions; reused records retain their original source and time
-and cannot renew the receipt. Dynamic live-agent runs are currently ineligible.
-`EVALS_FRESH=1`, periodic and release validation bypass both lookup and publishing.
+and cannot renew the receipt. `scripts/e2e-shard-reuse.ts` extends the same receipts
+to PR-profile E2E shards that run with zero retries (so the pass is structurally a
+first attempt): the identity hashes the test's import closure, every tracked file
+matched by the touchfiles of every case the file registers plus the global
+touchfiles, the runner/workflow/setup actions, the child's environment pins, the
+CI image and Claude CLI version, and the shard's case ids, pattern, wall and
+concurrency. A computed registration, an unmatched touchfile pattern, a retrying
+file, a preload option or a custom endpoint makes the shard ineligible. A reused
+shard reports `reused` with its source run and writes `execution: "reused"`
+collector records; the report rejects reused outcomes outside the fast PR profile.
+`EVALS_FRESH=1`, periodic, marathon and release validation bypass both lookup and publishing.
 
 **Free test timing and isolation.** `test:quick` is an explicitly partial measured
 subset for edit feedback. `test` remains complete local acceptance with its
@@ -318,18 +335,24 @@ the entire lane, not separately to every machine. Refresh the full timing list
 with `bun run test:ubicloud --record-durations`. Profiling records failures faithfully
 and is separate from final release acceptance.
 
-**CI planner/executor/report.** `--emit-plan <path> --slices K` computes
-selection + the slice plan ONCE (killing per-slice selector divergence);
+**CI planner/executor/report.** `--emit-plan <path> --slice-budget S --jobs J`
+(CI) or `--slices K` (local) computes selection + the slice plan ONCE (killing
+per-slice selector divergence);
 `--plan <path> --slice i` executors consume the manifest and write
 slice-result artifacts; `--report <dir>` reconciles them FAIL-CLOSED (a slice
 whose artifact never landed, or a planned shard nobody reported, is a
-failure). Slices start from the supervision baseline (registered long files
-spread by budget, the rest round-robin), then are re-packed by the recorded
-wall times in `scripts/paid-test-durations.json`: a file moves or swaps out of
-the heaviest slice only if no slice's worst-case wall (`paidShardWallUpperBoundMs`
-for 1–4 workers) rises above the baseline's maximum, so CI timeout coverage is
-never weakened. Refresh the seed from a downloaded report directory with
-`--report <dir> --write-durations`. Under `EVALS_ALL` the hollow-shard guard marks exit-0 shards with
+failure). Budget mode (`packBySliceBudget`) places shards longest-recorded-first
+into the fullest slice whose estimated wall on J FIFO workers stays within S
+seconds, else a new slice; a shard with no recorded wall weighs the whole budget
+(its own runner), a shard longer than the budget runs alone, and overlays keep
+one final one-at-a-time slice. The manifest's `plan` records each slice estimate
+and `ciTimeoutMinutes` (every slice's supervised worst case plus 20 minutes
+setup); CI derives the matrix (`[range(1; .sliceCount + 1)]`) and job timeout
+from it, and executors refuse an `EVALS_JOBS` other than the planned J and run
+their shards longest first. `--slices K` keeps the supervised round-robin
+baseline re-packed by recorded times for local runs. Durations are recorded per
+tier (a file's gate and periodic cases differ); refresh one tier from a
+downloaded report directory with `--report <dir> --write-durations`. Under `EVALS_ALL` the hollow-shard guard marks exit-0 shards with
 ZERO executed tests `passed-empty` (a failure) — census-health, not just
 test runs. evals.yml runs the sliced gate lane per PR — the ONLY paid lane
 since the legacy 17-row matrix (22.6 min/$21 per PR serialized ahead of the
@@ -337,7 +360,12 @@ slices) was deleted after demonstrated parity; its
 `KNOWN_MATRIX_GAPS`/`KNOWN_TIER_UNSET` ratchets retired with it and
 `test/evals-workflow-wiring.test.ts` pins the surviving wiring (slice-count
 agreement, tier consistency, the shared register-skills composite with its
-fail-fast verification loop). evals-periodic.yml runs ALL
+fail-fast verification loop). Tier `marathon` (complete start-to-finish flows)
+is selected positively: a file enters the marathon plan only when it declares
+`describeE2ETier('marathon')` or registers a marathon-tier case, and the gate and
+periodic planners exclude marathon-only files; `evals-marathon.yml` runs them
+weekly and on dispatch, fresh, one file per runner, with its own fail-closed
+report and tracking issue, and nothing requires it. evals-periodic.yml runs ALL
 periodic-tier files weekly (the coverage contract) minus the reasoned
 exclusions in `test/helpers/periodic-exclude-data.ts` (reason + tracking
 required per entry; removal re-activates the file), plus a weekly
@@ -356,28 +384,31 @@ minus overhead and ratchets raw literals. Budget above the wall is fiction.
 No paid test may exceed the ordinary tiers.
 
 `FINDING_RETRY_BUDGETS` also registers the CEO split-overflow and Eng
-multi-finding batching files. Each retains its 25-minute case deadline and one
-retry in a 52-minute shard wall, including two minutes for cleanup. No per-case budget grows. Overlay wrappers
+multi-finding batching files. Each retains its 25-minute case deadline and, as a
+case past the retry cap, runs once in a 27-minute shard wall including two
+minutes for cleanup. No per-case budget grows. Overlay wrappers
 have a 1,830-second minimum shard wall and run without Bun retries; see the
 [overlay contract](OVERLAY_BENCHMARK_CONTRACT.md) for their unchanged work budget.
 
-The quality file reserves 7,180 seconds for all 28 cases and their existing
-retry, plus cleanup. Each still has 120 seconds of model work. Its 17 workflow
+The quality file reserves its whole-file wall for every case and its one retry
+(judge cases are under the retry cap), plus cleanup. Each still has 120 seconds of model work. Its 17 workflow
 judges own their deadline and abort signal, with five seconds for terminal
 recording inside a ten-second Bun grace; the other 11 retain their existing
 120-second Bun timeout. Late responses cannot create records or cache passes.
 
-The ship documentation file reserves 10,920 seconds for five 600-second cases and
-eight 300-second fault cases, each with one retry, plus cleanup. The standalone
+The ship documentation file reserves 5,520 seconds for five 600-second cases and
+eight 300-second fault cases, run once (a 600-second case is past the retry cap), plus cleanup. The standalone
 documentation child retains its 600-second case. The five review/ship explorer
 cases reserve 3,270 seconds including their existing retry and finalization grace.
 These are whole-file supervision limits, not additional model work per case.
 
-The shared-library path file reserves 3,720 seconds for its three serial
-600-second cases, each with one retry, plus 120 seconds for cleanup. Its
+The shared-library path file reserves 1,920 seconds for its three serial
+600-second cases, run once, plus 120 seconds for cleanup; in CI each case runs as
+its own shard with a 720-second wall (a registered file's case shard supervises
+`caseMs` times its allowed attempts plus the reserve). Its
 registered budget keeps the file in its own shard and binds the expected wall
 to both the saved plan and the execution receipt; missing or stale budget
-records fail reconciliation. Case deadlines, model budgets and retries do not grow.
+records fail reconciliation. Case deadlines and model budgets do not grow.
 
 `resolvePaidShardBudget(files, overrideMs?)` is the canonical per-job resolver.
 Each registered finding file and each overlay wrapper requires its
@@ -389,27 +420,26 @@ Planner entries and execution results record the effective wall,
 its source and policy identifier. Custom drivers must resolve each job instead
 of passing their ordinary 1800-second default as an explicit cap;
 their outer controller/detach wall must also cover the allocated work and cleanup.
-The current paid census has 104 files: 46 gate-tier and 70 periodic-tier.
+The paid census counts are printed by `--list` for each tier.
 `eval:bg:pr` and `eval:bg:periodic` have 92820/67380-second outer caps; the PR
 wrapper covers a full-gate fallback at its default two workers. The broad gate
 wrapper reserves 49320 seconds, and release reserves 116700 seconds for both
-tiers. Legacy monolithic
+tiers; free tests recompute each floor from the live shard census, case shards
+included. Legacy monolithic
 `eval:bg`/`eval:bg:all` retain their shorter 5400/7200-second caps and do not
 promise every registered retry; use the sharded periodic path for this policy.
 
-Periodic CI plans `--slices 7`. When overlays are selected, the seventh is
-reserved for their serial wrappers; registered finding files are distributed
-across the remaining ordinary slices by their supervised walls. Each slice job
-has a 360-minute cap. Reconciliation rejects missing, duplicated or misplaced
-registered work and absent budget records. The weekly gate census has a
-352-minute cap across seven single-worker slices with at most four running at
-once. Its longest current work wall is 272 minutes. PR slices retain seven
-two-worker slices with a 265-minute cap for their 212-minute work wall plus
-setup. Free supervision tests
-verify these bounds against the complete current census, configured retries,
-and setup reserve. Ordinary paid tiers and the default 1800-second
-shard wall remain unchanged; the registered and overlay policies above supply
-exceptions, and unregistered over-ceiling tests still fail policy checks.
+CI plans with `--slice-budget 540 --jobs 2` for the PR gate, the periodic census
+and the weekly gate census (the gate census also `--skip-judges`), and
+`--slice-budget 1 --jobs 1` (one file per runner) for marathon. The live plans
+must fit their workflow's `max-parallel` so every slice starts at once, and
+`ciTimeoutMinutes` must stay within 360; `test/evals-workflow-wiring.test.ts`
+recomputes both from the complete census. Reconciliation rejects missing,
+duplicated or misplaced registered work, absent budget records, case shards that
+did not execute exactly their case, and reused results outside the PR profile.
+Ordinary paid tiers and the default 1800-second shard wall remain unchanged; the
+registered and overlay policies above supply exceptions, and unregistered
+over-ceiling tests still fail policy checks.
 
 Session timeouts are two-phase: a silent API dies at the startup grace (90s
 local / 300s CI floor, distinct exit reason `timeout_startup`) and the work
