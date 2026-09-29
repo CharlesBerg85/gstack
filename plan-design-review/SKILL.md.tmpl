@@ -205,6 +205,8 @@ review design — real visuals, not text descriptions."
 
 The ONLY time you skip mockups is when:
 - `DESIGN_NOT_AVAILABLE` was printed (designer binary not found)
+- The first `$D` generation command fails before producing an image (for
+  example `No OpenAI API key found`): treat it exactly as `DESIGN_NOT_AVAILABLE`
 - The plan has zero UI scope (pure backend/API/infrastructure)
 
 If the user explicitly says "skip mockups" or "text only", respect that. Otherwise, generate.
@@ -264,7 +266,7 @@ Note which direction was approved. This becomes the visual reference for all sub
 
 **Multiple variants/screens:** If the user asked for multiple variants (e.g., "5 versions of the homepage"), generate ALL as separate variant sets with their own comparison boards. Each screen/variant set gets its own subdirectory under `designs/`. Complete all mockup generation and user selection before starting review passes.
 
-**If `DESIGN_NOT_AVAILABLE`:** Tell the user: "The gstack designer isn't set up yet. Run `$D setup` to enable visual mockups. Proceeding with text-only review, but you're missing the best part." Then proceed to review passes with text-based review.
+**If `DESIGN_NOT_AVAILABLE`:** Tell the user: "The gstack designer isn't set up yet. Run `$D setup` to enable visual mockups. Proceeding with text-only review, but you're missing the best part." Then proceed to review passes with text-based review. Do not substitute hand-built HTML/CSS wireframes, screenshots or a comparison board of your own: they delay the first review question by minutes and are not designer output.
 
 {{DESIGN_OUTSIDE_VOICES}}
 
