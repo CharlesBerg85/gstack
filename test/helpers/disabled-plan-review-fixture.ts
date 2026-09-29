@@ -100,7 +100,7 @@ function withoutAttributedPriorRecordData(output: string, priorRecord?: Record<s
       }
       else {
         record = {};
-        for (const part of text.split(',')) {
+        for (const part of text.split(/[,/;]/)) {
           const field = /^\s*["']?([a-z_]+)["']?\s*[:=]\s*["']?([a-z0-9_.:+-]+)["']?\s*$/i.exec(part);
           if (!field || Object.hasOwn(record, field[1]!)) return false;
           record[field[1]!] = field[2]!;
@@ -142,9 +142,24 @@ function withoutAttributedPriorRecordData(output: string, priorRecord?: Record<s
       spans.push({ start: match.index, end: match.index + match[0].length });
     }
   }
+  // An inline quotation of the retained record's exact status/source/outside_status
+  // values is that record when its own sentence names it as pre-existing and
+  // makes no current claim; wording order around the quotation does not matter.
+  const sentenceOwnsPriorValue = (index: number, length: number): boolean => {
+    const start = Math.max(output.lastIndexOf('\n', index - 1), ...['. ', '! ', '? ', '; '].map(end => output.lastIndexOf(end, index - 1) + 1)) + 1;
+    const ends = ['\n', '. ', '! ', '? ', '; '].map(end => output.indexOf(end, index + length)).filter(at => at >= 0);
+    const sentence = (output.slice(start, index) + ' ' + output.slice(index + length, ends.length ? Math.min(...ends) : output.length))
+      .replace(/[*`]/g, '').replace(/\b(?:predates|before)\s+(?:this|my)\s+(?:run|session|workflow)(?:\s+(?:started|began))?\b/gi, 'beforehand');
+    const priorTime = typeof priorRecord.timestamp === 'string' ? new Date(Date.parse(priorRecord.timestamp)).toISOString() : '';
+    const stamps = [...sentence.matchAll(/\btimestamp(?:ed)?\s+([0-9T:.Z-]+)/gi)].map(stamp => stamp[1]!);
+    if (stamps.some(stamp => stamp !== priorRecord.timestamp && !(priorTime && [priorTime.slice(11, 19), priorTime.slice(11, 19) + 'Z'].includes(stamp)))) return false;
+    return !/\b(?:after|another|other|if|unless)\b/i.test(sentence)
+      && /\b(?:earlier|prior|previous|historical|old(?:er)?|pre[- ]existing|stale)\s+(?:(?:review[- ]log|review|log)\s+)?(?:entry|record|line|row)\b/i.test(sentence)
+      && !/\b(?:now|currently|current|today|new|updat\w*|append\w*|chang\w*|mark\w*|set|write|wrote|reports?|conclud\w*)\b|\bthis\s+(?:run|session|workflow)\b|\boutside_status\b|\bboth reviewers agree\b/i.test(sentence);
+  };
   for (const match of output.matchAll(/`([^`\r\n]+)`/g)) {
     if (spans.some(span => span.start <= match.index && match.index < span.end)) continue;
-    if (ownsPriorValue(output.slice(0, match.index), false) && matchesPrior(match[1]!, false)) {
+    if ((ownsPriorValue(output.slice(0, match.index), false) || sentenceOwnsPriorValue(match.index, match[0].length)) && matchesPrior(match[1]!, false)) {
       spans.push({ start: match.index, end: match.index + match[0].length });
     }
   }
