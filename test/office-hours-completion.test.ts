@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { validateOfficeHoursCompletion, validateOfficeHoursReviewerHandoffs, validateOfficeHoursReviewArtifacts, validateOfficeHoursReviewPreservation, validateOfficeHoursSpecSummary, type OfficeHoursCompletionEvidence } from './helpers/office-hours-completion';
+import { validateOfficeHoursCompletion, validateOfficeHoursDesignDraft, validateOfficeHoursReviewerHandoffs, validateOfficeHoursReviewArtifacts, validateOfficeHoursReviewPreservation, validateOfficeHoursSpecSummary, type OfficeHoursCompletionEvidence } from './helpers/office-hours-completion';
 import { E2E_TOUCHFILES } from './helpers/touchfiles-data';
 import { selectTests } from './helpers/test-selection';
 
@@ -70,6 +70,21 @@ describe('office-hours fixture completion', () => {
     expect(instructions).toContain('write the full relationship closing and handoff directly into REPORT.md');
     expect(instructions.indexOf('Delivery throughout this non-interactive run')).toBeLessThan(compose);
     expect(instructions).toContain('A failed command remains a failure');
+  });
+
+  test('the design-draft checkpoint applies the full validator\'s design and opinion checks alone', () => {
+    const draftDesign = design.replace('Status: APPROVED', 'Status: DRAFT').replace(/## Reviewer Concerns[\s\S]*$/, '');
+    const draft = { designPath, designContent: draftDesign, toolCalls: completed().toolCalls.slice(0, 2) };
+    expect(validateOfficeHoursDesignDraft(draft)).toEqual({ designPath, repoPath: 'docs/designs/roster-check.md', firstDesignWrite: 1 });
+    expect(() => validateOfficeHoursDesignDraft({ ...draft, toolCalls: draft.toolCalls.slice(1) }))
+      .toThrow('Office-hours design draft: no independent Agent/Task opinion');
+    expect(() => validateOfficeHoursDesignDraft({ ...draft, toolCalls: [...draft.toolCalls].reverse() }))
+      .toThrow('no independent Agent/Task opinion');
+    expect(() => validateOfficeHoursDesignDraft({ ...draft, designContent: draftDesign.replace(/## Success Criteria\n[^\n]+\n/, '') }))
+      .toThrow('repo design lacks substantive Success Criteria');
+    expect(() => validateOfficeHoursDesignDraft({ ...draft, designContent: null })).toThrow('repo design is missing');
+    expect(() => validateOfficeHoursCompletion({ ...completed(), toolCalls: completed().toolCalls.slice(1) }))
+      .toThrow('Office-hours completion: no independent Agent/Task opinion');
   });
 
   test('accepts a completed approved design with unresolved reviewer concerns', () => {
@@ -695,6 +710,7 @@ describe('office-hours completion eval selection', () => {
   test('office-hours source selects its dedicated workflow instead of the generic carve file', () => {
     const { selected } = selectTests(['office-hours/sections/design-and-handoff.md.tmpl'], E2E_TOUCHFILES);
     expect(selected).toContain('office-hours-section-loading');
+    expect(selected).toContain('office-hours-design-draft');
     expect(selected).not.toContain('carve-section-loading');
   });
 });

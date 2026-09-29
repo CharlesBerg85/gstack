@@ -5,7 +5,7 @@ const ptyIds = [
   'plan-ceo-review-plan-mode', 'plan-eng-review-plan-mode', 'plan-design-review-plan-mode',
   'plan-devex-review-plan-mode', 'plan-mode-no-op', 'office-hours-auto-mode',
   'auto-decide-preserved', 'plan-ceo-mode-routing', 'plan-design-with-ui-scope', 'plan-eng-finding-floor',
-  'auq-format-gate', 'carve-section-loading', 'office-hours-section-loading', 'plan-ceo-section-loading', 'ship-section-loading',
+  'auq-format-gate', 'carve-section-loading', 'office-hours-section-loading', 'office-hours-design-draft', 'plan-ceo-section-loading', 'ship-section-loading',
   'plan-ceo-finding-floor', 'plan-design-finding-floor', 'plan-devex-finding-floor',
   'plan-eng-multi-finding-batching', 'plan-ceo-split-overflow',
 ].sort();

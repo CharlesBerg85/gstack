@@ -320,7 +320,7 @@ test('new scope route rejects stale, foreign, premature or unsuccessful evidence
     p => { p.tools[1]!.toolUseId = 'unrelated'; },
     p => { p.tools[1]!.sessionId = 'foreign'; },
     p => { p.tools.splice(1, 1); },
-    p => { p.tools.push(structuredClone(p.tools[1]!)); },
+    p => { p.tools.push(structuredClone(p.tools[1]!) as never); },
     p => { p.tools[2]!.timestamp = new Date(p.opts.commandStartedAt + 1).toISOString(); },
     p => { p.tools[2]!.timestamp = new Date(Date.parse(p.tools[1]!.timestamp) - 1).toISOString(); },
     p => { p.tools[2]!.timestamp = 'unknown'; },

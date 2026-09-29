@@ -510,7 +510,7 @@ describe('TOUCHFILES completeness', () => {
   });
 
   test('E2E_TIERS only contains valid tier values', () => {
-    const validTiers = ['gate', 'periodic'];
+    const validTiers = ['gate', 'periodic', 'marathon'];
     for (const [name, tier] of Object.entries(E2E_TIERS)) {
       if (!validTiers.includes(tier)) {
         throw new Error(`E2E_TIERS['${name}'] has invalid tier '${tier}'. Valid: ${validTiers.join(', ')}`);

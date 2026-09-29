@@ -33,13 +33,13 @@ const TEST_DIR = import.meta.dir;
 // Both quote styles — a mechanical refactor to double quotes must not
 // silently drop a file from the invariant (fail-open is the defect class
 // this test exists to kill).
-const SELF_GATE_RE = /EVALS_TIER\s*===\s*['"](gate|periodic)['"]/g;
+const SELF_GATE_RE = /EVALS_TIER\s*===\s*['"](gate|periodic|marathon)['"]/g;
 // Consolidated gate helper (test/helpers/e2e-gate.ts). Both regexes stay
 // active: migrated files self-gate via `describeE2ETier('<tier>')` (or the
 // boolean form `e2eTierEnabled('<tier>')`), while stragglers still using the
 // raw predicate are caught by SELF_GATE_RE above. The tier argument maps to
 // the declared tier exactly like the raw predicate's tier literal did.
-const HELPER_GATE_RE = /\b(?:describeE2ETier|e2eTierEnabled)\(\s*['"](gate|periodic)['"]/g;
+const HELPER_GATE_RE = /\b(?:describeE2ETier|e2eTierEnabled)\(\s*['"](gate|periodic|marathon)['"]/g;
 
 /**
  * Ratchet, not amnesty (the contract KNOWN_MATRIX_GAPS pioneered before the
