@@ -2595,6 +2595,32 @@ if [ "$INSTALL_KIRO" -eq 1 ]; then
           _link_or_copy "$section_file" "$section_dest"
         done
       fi
+      if [ "$skill_name" = "gstack-qa" ] && [ -f "$skill_dir/templates/functional-report-template.md" ]; then
+        if [ -L "$target_dir/templates" ]; then
+          template_target="$(_gstack_link_target_abs "$target_dir/templates")"
+          if ! _gstack_target_is_ours "$template_target" "$SOURCE_GSTACK_DIR"; then
+            echo "  kept $skill_name/templates: directory link is not gstack-managed" >&2
+            continue
+          fi
+          rm -f "$target_dir/templates"
+        elif [ -e "$target_dir/templates" ] && [ ! -d "$target_dir/templates" ]; then
+          echo "  kept $skill_name/templates: existing entry is not a directory" >&2
+          continue
+        fi
+        mkdir -p "$target_dir/templates"
+        template_dest="$target_dir/templates/functional-report-template.md"
+        if [ -L "$template_dest" ]; then
+          template_target="$(_gstack_link_target_abs "$template_dest")"
+          if ! _gstack_target_is_ours "$template_target" "$SOURCE_GSTACK_DIR"; then
+            echo "  kept $skill_name/templates/functional-report-template.md: file link is not gstack-managed" >&2
+            continue
+          fi
+        elif [ -e "$template_dest" ] && ! _gstack_generated_header "$template_dest"; then
+          echo "  kept $skill_name/templates/functional-report-template.md: existing file is not gstack-managed" >&2
+          continue
+        fi
+        _link_or_copy "$skill_dir/templates/functional-report-template.md" "$template_dest"
+      fi
     done
     _prune_stale_generated "$SOURCE_GSTACK_DIR" "$KIRO_DIR" "$KIRO_SKILLS"
     echo "gstack ready (kiro)."

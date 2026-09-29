@@ -158,7 +158,12 @@ export async function submitPlanSeed(session: SeedSession, seed: string, opts: {
     const rows = owned.rows.slice(before);
     const users = rows.filter(r => r.type === 'user' && content(r).some(c => c.type === 'text'));
     if (!users.length) return false;
-    if (users.length !== 1 || content(users[0]).length !== 1 || content(users[0])[0].text !== seed) throw new Error('Plan seed was fused, duplicated, or changed');
+    const received = content(users[0]);
+    const text = received[0]?.text;
+    const nativePaste = typeof text === 'string'
+      ? /^\n\n<pasted_content id="([0-9a-f]+)">\n([\s\S]*)<\/pasted_content id="\1">\n$/.exec(text)?.[2]
+      : undefined;
+    if (users.length !== 1 || received.length !== 1 || (text !== seed && nativePaste !== seed)) throw new Error('Plan seed was fused, duplicated, or changed');
     const after = rows.slice(rows.indexOf(users[0]) + 1);
     const pending = new Set<string>();
     let complete = false;

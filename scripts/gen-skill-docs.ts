@@ -21,6 +21,7 @@ import * as path from 'path';
 import type { Host, TemplateContext } from './resolvers/types';
 import { HOST_PATHS } from './resolvers/types';
 import { RESOLVERS } from './resolvers/index';
+import { usesLazySections } from './resolvers/sections';
 import { ALL_HOST_NAMES, resolveHostArg, getHostConfig } from '../hosts/index';
 import type { HostConfig } from './host-config';
 
@@ -966,6 +967,11 @@ export async function runGeneration(settings: GenerationOptions = {}): Promise<G
         }
         emit(result.outputPath, result.content, 'skill', host);
         if (result.metadata) emit(result.metadata.outputPath, result.metadata.content, 'metadata', host);
+        if (skillDir === 'qa') {
+          const report = fs.readFileSync(path.join(ROOT, 'qa', 'templates', 'functional-report-template.md'), 'utf-8');
+          emit(path.join(path.dirname(result.outputPath), 'templates', 'functional-report-template.md'),
+            (host === 'claude' ? '' : GENERATED_HEADER.replace('{{SOURCE}}', 'qa/templates/functional-report-template.md')) + report, 'asset', host);
+        }
         tokenBudget.push({ skill: relativePath, lines: result.content.split('\n').length, tokens: Math.round(result.content.length / 4) });
         const TOKEN_CEILING_BYTES = 160_000;
         if (result.content.length > TOKEN_CEILING_BYTES) {
@@ -974,9 +980,8 @@ export async function runGeneration(settings: GenerationOptions = {}): Promise<G
         }
       }
 
-      // Claude carves sections; every external host inlines these templates.
-      for (const section of host === 'claude' ? sections : []) {
-        if (!includesSkill(hostConfig, section.skillDir)) continue;
+      for (const section of sections) {
+        if (!includesSkill(hostConfig, section.skillDir) || !usesLazySections(host, section.skillDir)) continue;
         const result = processSectionTemplate(path.join(ROOT, section.tmpl), section.skillDir, host, options);
         emit(result.outputPath, result.content, 'section', host);
         tokenBudget.push({ skill: rel(result.outputPath), lines: result.content.split('\n').length, tokens: Math.round(result.content.length / 4) });

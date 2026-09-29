@@ -30,6 +30,9 @@ const BASELINE = [
   'test/autoplan-phase-observer.test.ts',
   'test/autoplan-public-narration.test.ts',
   'test/benchmark-cli.test.ts',
+  'test/bootstrap-retention-shard.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/bootstrap-retention.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/bootstrap-session-lifecycle.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/brain-sync-windows-paths.test.ts',
   'test/build-script-shell-compat.test.ts',
   'test/builder-profile.test.ts',
@@ -77,6 +80,9 @@ const BASELINE = [
   'test/distill-apply.test.ts',
   'test/distill-free-text.test.ts',
   'test/docs-config-keys.test.ts',
+  'test/docsync-atomic-writes.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/docsync-command-grammar.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/docsync-nested-writes.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/dx-selected-navigation-ap.test.ts',
   'test/eng-batching-current-ledger.test.ts',
   'test/eng-batching-native-replay.test.ts',
@@ -148,6 +154,7 @@ const BASELINE = [
   'test/jsonl-merge.test.ts',
   'test/learnings-injection.test.ts',
   'test/llm-judge-frontier.test.ts',
+  'test/llm-judge-stream.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/memory-cache-injection.test.ts',
   'test/memory-ingest-include-gitignored.test.ts',
   'test/migrations-v1.27.0.0.test.ts',
@@ -159,6 +166,7 @@ const BASELINE = [
   'test/overlay-recording-order.test.ts',
   'test/overlay-sdk-cancel-eof.test.ts',
   'test/paid-orphan-tripwire.test.ts',
+  'test/paid-shard-settlement.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/parity-baseline-integrity.test.ts',
   'test/parity-suite.test.ts',
   'test/pending-question-completion.test.ts',
@@ -203,12 +211,19 @@ const BASELINE = [
   'test/pty-option-selection.test.ts',
   'test/pty-output-wake.test.ts',
   'test/pty-screen-session.test.ts',
+  'test/pty-screen-supervision.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/pty-screen-unicode-ap.test.ts',
   'test/pty-screen.test.ts',
   'test/pty-skill-seeding-wiring.test.ts',
   'test/pty-trust-dialog.test.ts',
+  'test/qa-checkpoint-evidence.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/qa-fix-loop-fixture.test.ts',
+  'test/qa-functional-evidence.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/qa-functional-fixture.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/qa-functional-observer-atomic.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
+  'test/qa-functional-observer.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/qa-only-capability.test.ts',
+  'test/qa-supervision-selection.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/question-log-hook.test.ts',
   'test/readme-throughput.test.ts',
   'test/redact-prepush-rebase-force-push.test.ts',
@@ -218,6 +233,7 @@ const BASELINE = [
   'test/review-count-markdown.test.ts',
   'test/review-enum-lifecycle.test.ts',
   'test/review-n-plus-one-contract.test.ts',
+  'test/review-quality-provenance.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/session-runner-stream-lifecycle.test.ts',
   'test/session-runner-timeout.test.ts',
   'test/setup-browser-hint.test.ts',
@@ -227,6 +243,7 @@ const BASELINE = [
   'test/setup-playwright-platform.test.ts',
   'test/setup-sections-linking.test.ts',
   'test/setup-timeline-hook-gate.test.ts',
+  'test/shared-libs-cancellation.test.ts', // landed in v1.91.7.0 before this ratchet: harness owner for its functional-QA/docsync paid evals
   'test/shared-libs-plan-actor.test.ts',
   'test/shared-libs-revalidation-prompt.test.ts',
   'test/shared-libs-source-reads.test.ts',

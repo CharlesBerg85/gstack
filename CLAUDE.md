@@ -102,9 +102,10 @@ integration tests, the Aside contract pins, and the render-wrapper pins.
 It reports deferred broad coverage; unknown dependencies restore the full gate,
 and an unmapped prompt without registered coverage blocks planning. Full free
 acceptance and required PR checks must pass before publishing. CI can reuse the
-14 workflow-judge passes for 24 hours when their complete consumed inputs and
-runtime match; records preserve original provenance. The other 11 judge cases,
-dynamic agent tests, and local runs without scoped cache configuration stay fresh.
+16 workflow-judge passes for 24 hours when their complete consumed inputs and
+runtime match; records preserve original provenance. The cookie workflow's custom
+input, the other 11 judge cases, dynamic agent tests, and local runs without
+scoped cache configuration stay fresh.
 Scheduled/manual full coverage and `test:release` always run fresh.
 See [testing policy](CONTRIBUTING.md#test-tiers) for commands and measured targets.
 Anything that needs Aside
@@ -726,7 +727,7 @@ the run can also die to idle-sleep. `gstack-detach` fixes both: a fresh session
   (stray `claude`/`codex` grandchildren included), a per-shard
   `GSTACK_EVAL_DIR=<evalDir>/shards/<slug>/` honored by the `EvalCollector`
   constructor, and an aggregate that separates failed vs timed-out vs
-  never-started shards — the detach timeouts (28800s gate / 60600s periodic;
+  never-started shards — the detach timeouts (47340s gate / 67380s periodic;
   floor enforced against the live shard census by
   test/eval-detach-timeout-floor.test.ts)
   are sized against worst-case shard wall clock. `EVALS_JOBS` sets the shard

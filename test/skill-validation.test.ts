@@ -1165,16 +1165,14 @@ describe('gstack-slug', () => {
 // --- Test Bootstrap validation ---
 
 describe('Test Bootstrap ({{TEST_BOOTSTRAP}}) integration', () => {
-  // qa carve: the rendered TEST_BOOTSTRAP body lives in
-  // qa/sections/test-bootstrap.md — read the skeleton+sections union.
   test('TEST_BOOTSTRAP resolver produces valid content', () => {
-    const qaContent = readSkillUnion('qa');
-    expect(qaContent).toContain('Test Framework Bootstrap');
-    expect(qaContent).toContain('RUNTIME:ruby');
-    expect(qaContent).toContain('RUNTIME:node');
-    expect(qaContent).toContain('RUNTIME:python');
-    expect(qaContent).toContain('no-test-bootstrap');
-    expect(qaContent).toContain('BOOTSTRAP_DECLINED');
+    const content = fs.readFileSync(path.join(ROOT, 'ship/sections/tests.md'), 'utf8');
+    expect(content).toContain('Test Framework Bootstrap');
+    expect(content).toContain('RUNTIME:ruby');
+    expect(content).toContain('RUNTIME:node');
+    expect(content).toContain('RUNTIME:python');
+    expect(content).toContain('no-test-bootstrap');
+    expect(content).toContain('BOOTSTRAP_DECLINED');
   });
 
   test('TEST_BOOTSTRAP appears in qa/SKILL.md', () => {
@@ -1254,7 +1252,15 @@ describe('Phase 8e.5 regression test generation', () => {
 
   test('qa/SKILL.md Rule 13 is amended for regression tests', () => {
     const content = fs.readFileSync(path.join(ROOT, 'qa', 'SKILL.md'), 'utf-8');
-    expect(content).toContain('Only modify tests when generating regression tests in Phase 8e.5');
+    expect(content).toContain('Only create tests through authorized codification in Phase 8a.5');
+    expect(content).toContain('Never modify CI configuration or weaken existing tests');
+    expect(content.indexOf('### 8a.5. Regression test before repair')).toBeLessThan(content.indexOf('### 8b. Fix'));
+    expect(content).toContain('Run its detected command before repair');
+    expect(content).toContain('Re-run the regression, original failing probe and adjacent happy path');
+    const exploratory = fs.readFileSync(path.join(ROOT, 'qa', 'sections', 'exploratory.md'), 'utf-8').replace(/\s+/g, ' ');
+    expect(exploratory).toContain('Phase 8 regression gates before verified repair');
+    expect(exploratory).toContain('Replay the exact failing command/request from the same initial fixture state via steps 2–3 (same native command, fresh capture ID) before repair');
+    expect(exploratory).toContain('Another input or a regression test is not that replay');
     expect(content).not.toContain('Never modify tests or CI configuration');
   });
 
@@ -1356,7 +1362,7 @@ describe('ship step numbering', () => {
   // Drift), 9.1 (Review Army), 9.2 (Findings Merge), 9.3 (Cross-review dedup),
   // 9.4 (Fix-First and persistence), 15.0 (WIP context), 15.1 (Bisectable commits),
   // 15.2 (safe optional WIP consolidation).
-  const ALLOWED_SUBSTEPS = new Set(['0.9', '8.1', '8.2', '9.1', '9.2', '9.3', '9.4', '15.0', '15.1', '15.2']);
+  const ALLOWED_SUBSTEPS = new Set(['0.9', '8.1', '8.2', '9.1', '9.2', '9.3', '9.4', '11.5', '14.5', '15.0', '15.1', '15.2']);
 
   test('ship/SKILL.md.tmpl contains no unexpected fractional step numbers', () => {
     const tmpl = fs.readFileSync(path.join(ROOT, 'ship', 'SKILL.md.tmpl'), 'utf-8');
@@ -1385,18 +1391,19 @@ describe('ship step numbering', () => {
     const fractional = headings.filter((n) => n.includes('.'));
     const unexpected = fractional.filter((n) => !ALLOWED_SUBSTEPS.has(n));
     expect(unexpected).toEqual([]);
+    expect(headings.filter((n) => n === '11.5')).toHaveLength(1);
   });
 
   test('review/SKILL.md step numbers unchanged (regression guard for resolver conditionals)', () => {
-    // Carved skill: Step 4.5 lives in sections/review-army.md and Step 5.7 in
+    // Carved skill: Step 4.5 lives in sections/review-army.md and Step 4.8 in
     // sections/adversarial.md — read the skeleton+sections union.
     const skill = readSkillUnion('review');
-    // /review uses its own fractional numbering: 1.5, 2.5, 4.5, 5.5, 5.6, 5.7, 5.8
+    // /review uses its own fractional numbering: 1.5, 2.5, 4.5, 4.8, 5.8
     // If the ship-side renumber accidentally touched the review-side of resolver conditionals,
     // these would vanish. This test catches that.
     expect(skill).toContain('## Step 1.5: Scope Drift Detection');
     expect(skill).toContain('## Step 4.5: Review Army');
-    expect(skill).toContain('## Step 5.7: Adversarial review');
+    expect(skill).toContain('## Step 4.8: Adversarial review');
   });
 });
 
@@ -1566,7 +1573,7 @@ describe('Codex skill', () => {
   });
 
   test('adversarial review in /review always runs both passes', () => {
-    // Carved skill: the Step 5.7 adversarial body lives in sections/adversarial.md.
+    // Carved skill: the Step 4.8 adversarial body lives in sections/adversarial.md.
     const content = readSkillUnion('review');
     expect(content).toContain('Adversarial review (always-on)');
     // Always-on: both Claude and Codex adversarial
@@ -1600,7 +1607,7 @@ describe('Codex skill', () => {
   });
 
   test('scope drift detection in /review and /ship', () => {
-    const reviewContent = fs.readFileSync(path.join(ROOT, 'review', 'SKILL.md'), 'utf-8');
+    const reviewContent = readSkillUnion('review');
     const shipContent = readShipUnion();
     // Both should contain scope drift from the shared resolver
     for (const content of [reviewContent, shipContent]) {
@@ -2016,7 +2023,7 @@ describe('Test failure triage in ship skill', () => {
 
   test('ship/SKILL.md uses in-branch language for stop condition', () => {
     const content = readShipUnion();
-    expect(content).toContain('In-branch test failures');
+    expect(content).toContain('If any in-branch failures remain unfixed, **STOP**. Do not proceed');
   });
 });
 

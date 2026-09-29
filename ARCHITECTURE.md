@@ -342,11 +342,12 @@ Templates contain the workflows, tips, and examples that require human judgment.
 | `{{BROWSE_SETUP}}` | `gen-skill-docs.ts` | Binary discovery + setup instructions |
 | `{{BROWSE_FALLBACK}}` | `resolvers/browse.ts` | Aside→`$B` hand-off: binary discovery + the step-by-step equivalence table, rendered right after `{{ASIDE_SETUP}}` in every browsing skill |
 | `{{BASE_BRANCH_DETECT}}` | `gen-skill-docs.ts` | Dynamic base branch detection for PR-targeting skills (ship, review, qa, plan-ceo-review) |
-| `{{QA_METHODOLOGY}}` | `gen-skill-docs.ts` | Shared QA methodology block for /qa and /qa-only |
+| `{{QA_METHODOLOGY}}` | `resolvers/utility.ts` | Browser-only QA methodology, conditionally loaded by /qa and /qa-only |
+| `{{QA_SCOPE}}, {{QA_EXPLORATORY}}, {{QA_FUNCTIONAL}}, {{QA_RESOURCE}}, {{QA_METHOD_READS}}, {{QA_REVIEW}}` | `resolvers/qa.ts` | Surface selection, checkpointed native/exploratory QA, direct conditional method reads, installed-asset references and bounded review/ship callers |
 | `{{DESIGN_METHODOLOGY}}` | `gen-skill-docs.ts` | Shared design audit methodology for /plan-design-review and /design-review |
 | `{{SHARED_LIBS_RUBRIC}}` | `resolvers/shared-libs.ts` | Shared-code criteria for /deslop-shared-libs, /plan-eng-review, and /review: verified callers, existing helpers, compatibility, tests, and total savings |
 | `{{REVIEW_DASHBOARD}}` | `gen-skill-docs.ts` | Review Readiness Dashboard for /ship pre-flight |
-| `{{TEST_BOOTSTRAP}}` | `gen-skill-docs.ts` | Test framework detection, bootstrap, CI/CD setup for /qa, /ship, /design-review |
+| `{{TEST_BOOTSTRAP}}` | `resolvers/testing.ts` | Test framework detection, bootstrap, CI/CD setup for /ship and /design-review |
 | `{{CODEX_PLAN_REVIEW}}` | `resolvers/review.ts` | Optional outside plan review for /plan-ceo-review and /plan-eng-review: Claude Code on Codex, Codex on other supported harnesses, with the caller's native subagent fallback |
 | `{{DESIGN_SETUP}}` | `resolvers/design.ts` | Discovery pattern for `$D` design binary, mirrors `{{BROWSE_SETUP}}` |
 | `{{DESIGN_DETECTOR}}` | `resolvers/design.ts` | Probe block + sentinel reading for the user-installed impeccable engine (`bin/gstack-design-detect.ts`); `:phase0` renders design-review's mechanical scan, `:gate` design-html's bounded slop gate |
@@ -359,13 +360,17 @@ Templates contain the workflows, tips, and examples that require human judgment.
 | `{{GBRAIN_SAVE_RESULTS}}` | `resolvers/gbrain.ts` | Post-skill brain persistence with entity enrichment, throttle handling, and per-skill save instructions. 8 skill-specific save formats. |
 | `{{FOREGROUND_DISPATCH_NOTE}}` | `resolvers/constants.ts` | Canonical `run_in_background: false` guidance for every synchronous Agent-tool subagent dispatch (subagents run in the background by default since Claude Code v2.1.198). Single source of truth; carriers are pinned per file by `test/run-in-background-guidance.test.ts`. |
 
+`/qa` uses its browser-only `qa/sections/test-bootstrap.md.tmpl`; functional QA never bootstraps.
+
 This is structurally sound — if a command exists in code, it appears in docs. If it doesn't exist, it can't appear.
 
 The generator also owns two files that are not skill docs: `review/design-checklist.md` is rendered from `lib/design-catalog.ts` (through `scripts/resolvers/design-checklist.ts`), and `lib/dom-dump.js` is written from `lib/dom-dump-script.ts`. The checklist `/review` and `/ship` read and the DOM dump `/design-review` runs therefore cannot drift from the catalog and the script the templates describe; `test/design-checklist-sync.test.ts` pins both.
 
-The internal async `runGeneration()` driver inventories skills, Claude sections,
-host metadata, OpenClaw snippets, the index, the agent digest, and auxiliary
-assets. Every artifact goes through one compare-or-write function. Dry runs
+The internal async `runGeneration()` driver inventories skills, Claude sections
+and QA/qa-only sections on every supported host, host metadata, OpenClaw snippets,
+the index, the agent digest, and auxiliary assets. Other skills remain inline on
+non-Claude hosts; QA assets resolve relative to the installed host skill.
+Every artifact goes through one compare-or-write function. Dry runs
 report missing or different artifacts as `STALE` without changing files or
 directories; rendering and filesystem failures report `ERROR` with their cause.
 Either fails the command, including a single-host invocation. Module imports

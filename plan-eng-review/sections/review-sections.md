@@ -2,13 +2,8 @@
 <!-- Regenerate: bun run gen:skill-docs -->
 ## Review preparation
 
-After startup, prepare in this order:
-1. Select the report file and permissions under **Review record and write policy**.
-2. Run **Prior Learnings** and resolve its configuration question.
-3. Run **Retrospective learning** on existing target paths.
-4. Read **Confidence Calibration** and **Decision procedure** as rules, not review passes.
-
-Then run **Scope Challenge A → B → C**, followed by Sections 1–4 in order.
+Follow the blocks below in order after startup. Confidence Calibration and
+Decision procedure are reference rules, not additional review passes.
 
 ## Review record and write policy
 
@@ -34,8 +29,7 @@ Choose the **report file** before any ledger write:
 2. Otherwise use the selected plan file, if there is one.
 3. Otherwise use `$GSTACK_STATE_ROOT/projects/$SLUG/$BRANCH-eng-review-{YYYYMMDD-HHMMSS}.md`, adding a suffix on collision. Obtain assignments from `~/.claude/skills/gstack/bin/gstack-paths` and `~/.claude/skills/gstack/bin/gstack-slug`; failed commands or missing values make this path unavailable.
 
-Name the target in the report header. Never substitute an unrelated active plan
-or silently replace a requested destination.
+Never substitute an unrelated active plan or silently replace a requested destination.
 
 **Check each artifact and parent directory's permission before writing.** Honor
 user and host limits, including active-plan-only restrictions. Permission for one
@@ -46,7 +40,7 @@ path authorizes no other; implementation edits require explicit authority.
 | Working plan, ledger and complete review report | Selected report file | Ask for a permitted destination if the user can supply one; wait without completion telemetry. If none is permitted, complete the review in chat as **not persisted**, then use **Blocked outcome**. |
 | QA Test Plan and task JSONL | Discovery paths below | Present each completely as **not persisted** and continue. |
 | TODOS.md | The project's TODO file | Present accepted TODO content as **not persisted** and continue. |
-| Required Review Log | The helper's state location | Present its fields as **not persisted**; the final gate cannot pass without this log. |
+| Required Review Log | The helper's state location | Present its fields as **not persisted**; at Review Log, use **Blocked outcome** instead of publishing a saved review. The final gate cannot pass without this log. |
 | Best-effort metadata/learning logs | Helper-defined locations | Skip forbidden writes; otherwise keep their best-effort behavior. |
 
 QA Test Plan/task JSONL keep discovery paths `~/.gstack/projects/{slug}/`:
@@ -58,6 +52,20 @@ not the forbidden-write branches above. Do not ask from an unsaved record.
 Forbidden auxiliary writes allow the review to continue; unrecovered attempted
 writes block it. Best-effort logs retain their stated non-blocking behavior.
 Apply this policy at every later write.
+
+**First report save:** Name the fixed target in the report header. Read an
+existing destination and preserve its content. For a new file, create permitted
+parent directories, then write that header, an unchanged copy of the original
+plan (for plan targets), and the scope record or ledger being saved. Recheck option 3's collision before
+creation; use a suffix rather than overwrite. Do not add findings or fixes before
+Scope Challenge C. Put records before an existing `## GSTACK REVIEW REPORT`, or
+at EOF if absent; create that terminal report only at Plan File Review Report.
+
+**Read-only review:** At each scope/decision record save, present the complete
+record, grid and authorized amendments as **not persisted** instead. At both
+pre-question and post-answer verification gates, perform the same comparisons
+on that presentation instead of a saved Read. This supports chat review, never
+the saved-report gate. A failed permitted save is not this route.
 
 ## Prior Learnings
 
@@ -181,21 +189,20 @@ higher confidence.
 
 ## Decision procedure
 
-For Scope Challenge, Sections 1–4, Outside Voice, late changes and TODOs, finish
-one choice at a time through steps 1–6.
+Use this transaction for findings from Scope Challenge, Sections 1–4, Outside
+Voice, late changes and TODO choices. Finish one choice before the next.
 
-Setup gates—Context Recovery/prerequisites, Prior Learnings configuration,
-target and Scope Challenge complexity selectors—use local rules without a
-pre-answer ledger. Scope Challenge B saves actual selector answers afterward,
-outside this remedy loop. These answers approve no engineering remedy.
+Context Recovery/prerequisites, Prior Learnings configuration and the initial
+target selector use their own menus, without a pre-answer ledger. Scope Challenge
+B also uses its own selectors and post-answer scope record. These selections
+approve no engineering remedy; navigation likewise grants no implementation scope.
 
-One question for one choice per AskUserQuestion call. Authorities:
-- Preamble: question format, transport/fallback and authorized auto-decisions.
-- Steps 1–6: substantive choices/answers; Review record/write policy: persistence.
-- Entrypoint: **Paused question** for pending answers; **Blocked outcome** for missing work or failed recovery.
-- Finish: Approval readiness → Required outputs → entrypoint verification.
+Use the preamble's tool resolution, failure fallback and authorized auto-decision
+rules. Use Review record and write policy for every save below.
 
-### 1. Establish current state
+### Prepare an unanswered choice
+
+**Establish current state.**
 
 Read the request, source and actual answers. Give each finding a number, severity,
 confidence, file:line and reviewer. Record two separate facts:
@@ -215,8 +222,10 @@ proof forward without asking again. Otherwise leave the remedy pending. Reopen
 an approved choice only for a concrete new risk, contradictory evidence or a
 changed assumption. Explain the reason and retain earlier values, complete
 briefs and answers in History. Record remaining unknowns and uncertain risks.
+If no new answer is needed, continue the calling section; otherwise prepare one
+pending choice below.
 
-### 2. Separate independent choices
+**Separate independent choices.**
 
 Before drafting options, list each current value and proposed change: behavior,
 approach, guarantee or bound. Include response timing, resources, lifetimes and
@@ -233,7 +242,7 @@ selectable runtime outcomes do not. Optional depths of one verification form
 one choice. Separate instrumentation, follow-ups, guarantees and policies need
 their own choices, and their tests wait for approval.
 
-### 3. Compare one choice
+**Compare one choice.**
 
 Select one pending ID. Prepare its question in this order:
 
@@ -274,8 +283,8 @@ Use these three checks for every column:
 with every row in its grid column. They must make the same commitments and retain
 the same conditions. Put all deliberation in the native question/descriptions;
 a saved-only Pros/cons block cannot supply missing decision context. Repair
-contradictions now. If you discover another independent choice, return to step 2
-before sending the question.
+contradictions now. If you discover another independent choice, separate it and
+rebuild this comparison before saving or sending the question.
 
 For example, jitter and a delay cap can be chosen independently. A menu of “both / cap only / neither” bundles them by omitting “jitter only.” Ask about jitter first:
 
@@ -286,10 +295,10 @@ For example, jitter and a delay cap can be chosen independently. A menu of “bo
 
 After the jitter answer, carry that value into both options of the later cap question.
 
-### 4. Save the pending record
+**Pending-record checkpoint.**
 
-Save the record, complete grid and exact `currentDecision` in the report file,
-before `## GSTACK REVIEW REPORT`. Include every native field, the recommendation
+Save the record, complete grid and exact `currentDecision` using the report
+placement above. Include every native field, the recommendation
 and all options. A–D record selectors are ledger notation only: if a saved label
 already starts `A)`/`B)`/`C)`/`D)`, keep that one prefix; otherwise add it. Compare
 the label separately from that notation by removing the selector before matching.
@@ -306,7 +315,7 @@ to History. Do not leave duplicate Question, Header or Options fields.
 Finding: <number, severity, confidence, file:line and reviewer>
 Plan baseline: <last approved value, exact scope and answer reference; otherwise the original proposal>
 Runtime evidence: <observed value and source/probe; unknown if unverified>
-Comparison grid: <complete grid from step 3>
+Comparison grid: <complete comparison grid>
 Question D2:
 <currentDecision.question in full, including its D2 title and recommendation>
 Header: <currentDecision.header>
@@ -323,26 +332,20 @@ History: <earlier values, briefs, answers and reason for reopening>
 ```
 
 Check the Write/Edit result, then use Read to fetch the entire saved record.
-Compare every native field with `currentDecision` and the whole grid with step 3.
+Compare every native field with `currentDecision` and the whole saved grid with
+the prepared comparison.
 Read after the final edit, even if Edit says the content is current in context.
 Grep, chat references, summaries and planned writes do not verify the record.
 Repair any difference and repeat the complete Read before asking. A failed save
 blocks the question; unreadable or unverifiable records use **Recovery routing**.
 
-On the permitted read-only route, present the complete record and grid as **not
-persisted** and compare them with `currentDecision`. This can support the chat
-review, but cannot pass the saved-report gate.
-
 If any payload field changes, including a shortened label or formatting edit,
-repeat step 3, replace the whole saved payload and Read it again. An older
+rebuild the comparison, replace the whole saved payload and Read it again. An older
 comparison or a critic's advice cannot substitute for this verification.
 
-### 5. Ask and wait
+### Send once and wait
 
-Use the preamble's tool resolution, failure fallback and authorized auto-decision
-rules.
-
-Send `AskUserQuestion({ questions: [currentDecision] })` after step 4. Send one
+Send `AskUserQuestion({ questions: [currentDecision] })` only after the pending-record checkpoint passes. Send one
 question object for one choice; other IDs wait. Copy the verified question,
 header, labels and descriptions literally. Do not add or strip brief paragraphs
 or rebuild options. Authorized prose and auto-decisions use this same verified
@@ -354,12 +357,13 @@ When Question Tuning is enabled, copying the verified question preserves its
 call, start the next section or call ExitPlanMode while the choice awaits an
 answer. An obvious fix still needs an answer unless exact prior approval covers it.
 
-### 6. Apply and refresh
+### Record the answer
 
 Read the selected saved label, full description and grid column together. Carry
 all commitments, conditions, unchanged values and pending choices forward. If
 they conflict or bundle independent choices, preserve the actual answer, explain
-the conflict and repeat steps 2–5 for another answer. Do not reinterpret a caption,
+the conflict and return to **Prepare an unanswered choice** for a new verified
+brief and another answer. Do not reinterpret a caption,
 drop a commitment or advance with conflicting approvals.
 
 Replace the whole adjacent `State` / `Actual answer` / `Accepted scope` block
@@ -370,16 +374,16 @@ to History. If older fields are separated, consolidate all three and remove thei
 old occurrences in the same edit; never update only the answer/scope tail.
 
 Use a scoped Edit to save this record and only the authorized working-plan
-amendments. Leave other choices unchanged. On the read-only route, present both
-completely as **not persisted**.
+amendments. Leave other choices unchanged.
 
 Check the save result, then Read the entire resolution block, including State.
 Verify that its unique state, actual answer and accepted scope match the complete
 selected option and grid column. An answer-only search or current-in-context hint
-cannot replace Read. In read-only mode, verify the presentation instead. Correct
-any discrepancy before advancing; apply the write policy to failures.
+cannot replace Read. Correct any discrepancy before advancing; apply the write
+policy to failures.
 
-Return to step 1 with the updated working plan and answer. Keep chosen values
+For the next choice, use the updated working plan and answer; when finished,
+continue the calling section. Keep chosen values
 fixed in later questions, and explain when a choice has become irrelevant rather
 than asking it again. Start the next section only when no answer is pending in
 this section. Keep unresolved risks and verification visible; resolve risk and
@@ -395,7 +399,11 @@ changes or write findings into the plan yet.
 
 - **What already solves each sub-problem?** Inspect helpers, libraries, callers and reusable outputs: behavior and dependency/deployment boundaries. Cite authored sources; label proposed callers with their motivating plan requirement and assumptions.
 - **What minimum changes achieve the goal?** Flag work deferrable without blocking it; challenge scope creep.
-- **Complexity check:** Count files and new classes/services; seek fewer moving parts. Use these counts in B.
+- **Complexity check:** Count the selected work, not files read only as evidence:
+  for a plan, its proposed changed files and new classes/services; for a diff,
+  changed files and classes/services introduced by that diff; for a file/directory,
+  files in that selected scope and any explicitly proposed new classes/services.
+  Count each once, label estimates, and seek fewer moving parts. Use these counts in B.
 - **Search check:** For each new architectural pattern, infrastructure component
    or concurrency approach, research built-ins, current practice and pitfalls
    through Aside (entrypoint readiness), one read-only request per pattern:
@@ -422,7 +430,8 @@ changes or write findings into the plan yet.
 
 ### B. Resolve complexity selectors
 
-Below both thresholds, skip B's questions and go directly to **C. Resolve findings**.
+With fewer than 8 files AND fewer than 2 new classes/services, skip B's questions
+and go directly to **C. Resolve findings**.
 At 8+ files or 2+ new classes/services, STOP before Section 1. Use the
 preamble's decision-brief format for this complexity gate, in this order:
 
@@ -463,7 +472,13 @@ Run C whether B was completed or skipped.
 2. Resolve each remedy through Decision procedure, reusing exact answers.
    Findings and scope answers approve no remedies.
 3. Report accepted/rejected/deferred/pending dispositions from those answers.
-   Continue to Section 1 only when no answer is pending.
+
+Record the Scope Challenge result from actual accepted changes: with a scope
+reduction, `scope reduced per recommendation`; otherwise `scope accepted as-is`,
+including when B was skipped. A smaller arrangement that preserves scope is not
+a scope reduction. This result supplies MODE; it approves no pending remedy.
+Keep it current if later approved choices change scope.
+Continue to Section 1 only when no answer is pending.
 
 ## Review Sections (after scope is agreed)
 
@@ -736,7 +751,10 @@ After **Add missing tests to the plan** resolves test/eval decisions and the Tes
 
 ### 4. Performance review
 Evaluate:
-* N+1/database access, memory, caching, and slow or complex paths.
+* N+1 queries and database access patterns.
+* Memory usage.
+* Caching opportunities.
+* Slow or complex paths.
 
 ## Outside Voice — Independent Plan Challenge (default-on)
 
@@ -756,11 +774,6 @@ _CODEX_CFG=$(~/.claude/skills/gstack/bin/gstack-config get codex_reviews 2>/dev/
 source ~/.claude/skills/gstack/bin/gstack-codex-probe 2>/dev/null || true
 if [ "$_CODEX_CFG" = "disabled" ]; then
   _CODEX_MODE="disabled"
-# Running-under-Codex presence probe (#2519): a live Codex session exports
-# CODEX_THREAD_ID / CODEX_SANDBOX into every shell it spawns (verified
-# against a live `codex exec 'env | grep -i codex'` capture, codex 0.147.0).
-# Nested codex spawns from inside a Codex host multiply token burn
-# (observed: one /review = 15M tokens). A stale own-harness artifact must stop.
 elif { [ -n "${CODEX_THREAD_ID:-}" ] || [ -n "${CODEX_SANDBOX:-}" ] || [ "${GSTACK_ACTIVE_HOST:-}" = codex ]; }; then
   _CODEX_MODE="under_codex"
 elif ! command -v codex >/dev/null 2>&1; then
@@ -784,11 +797,11 @@ echo "CODEX_MODE: $_CODEX_MODE"
 
 Branch on the echoed `CODEX_MODE`:
 - **`disabled`** — the user turned Codex reviews off (`codex_reviews=disabled`). Skip the reviewer invocation; record disabled coverage as directed below; do NOT fall back to a Claude subagent — disabled means no extra review step. Print: "Codex review skipped (codex_reviews disabled). Re-enable: `gstack-config set codex_reviews enabled`."
-- **`not_installed`** — Codex CLI absent. Print: "Codex not installed — falling back to a Claude subagent (fresh context, but the same harness; model identity is unknown). Install Codex for an actual outside-model read: `npm install -g @openai/codex`." Fall back to the Claude subagent path.
+- **`not_installed`** — Codex CLI absent. Print: "Codex not installed; outside coverage unavailable. Install: `npm install -g @openai/codex`." Fall back to the Claude subagent path.
 - **`under_codex`** — stale artifact selected its own harness. Print: "Codex outside review unavailable: harness mismatch; no outside process started. Missing coverage. Repair: setup --host codex." Skip the outside invocation and construct the prompt below, then follow **Native fallback**. Conflicting inherited harness markers are not grounds to guess another provider.
-- **`not_authed`** — installed but no credentials. Print: "Codex installed but not authenticated — falling back to a Claude subagent (same harness; model identity is unknown). Run `codex login` or set `$CODEX_API_KEY`." Fall back to the Claude subagent path.
-- **`broken_install`** — the CLI is on PATH but cannot execute (spawn ENOENT, non-executable binary, missing vendor payload). Print: "Codex is installed but its binary cannot run — Codex passes skipped. Reinstall: `npm install -g @openai/codex`." Relay the probe's HINT lines and fall back to the Claude subagent path. This state exists because a missing binary used to land in the model probe's fail-open bucket and report `ready`, so every Codex pass was skipped silently (#2742).
-- **`model_unusable`** — authed but the account cannot use gstack's selected Codex model (#2477: HTTP 400 on every call). Relay the probe's HINT lines, tell the user the one-line fix (set `GSTACK_CODEX_MODEL=<supported-model>` or pass an explicit `-c model=...` override), and fall back to the Claude subagent path. The ~10s round trip is cached for 1h; timeouts fail open to `ready`.
+- **`not_authed`** — installed but no credentials. Print: "Codex not authenticated; outside coverage unavailable. Run `codex login` or set `$CODEX_API_KEY`." Fall back to the Claude subagent path.
+- **`broken_install`** — the CLI is on PATH but cannot execute (spawn ENOENT, non-executable binary, missing vendor payload). Print: "Codex is installed but its binary cannot run — Codex passes skipped. Reinstall: `npm install -g @openai/codex`." Relay the probe's HINT lines. Fall back to the Claude subagent path.
+- **`model_unusable`** — authed but the account cannot use gstack's selected Codex model (#2477: HTTP 400 on every call). Relay the probe's HINT lines and tell the user the one-line fix (set `GSTACK_CODEX_MODEL=<supported-model>` or pass an explicit `-c model=...` override). Fall back to the Claude subagent path. The ~10s round trip is cached for 1h; timeouts fail open to `ready`.
 - **`ready`** — run the Codex pass below.
 
 **Outcome routing:** Pick exactly one row from this table, finish that row's
@@ -1037,6 +1050,8 @@ must pass steps 1–4 again.
 1. **Prepare the review body.** Complete the working plan, Implementation Tasks
    and Completion summary below. Leave choices pending according to each record's
    current State, actual answer and accepted scope. Save permitted auxiliary artifacts under the write policy.
+   Check the Test Plan already produced in Test review; update that artifact only
+   if later approved decisions changed its requirements. Do not recreate unchanged output.
 2. **Save and Read back.** Use Plan File Review Report to save the complete body
    and terminal `## GSTACK REVIEW REPORT`; pass its Read-back gate. Forbidden
    persistence or an unrecovered save requires **Blocked outcome**, not logging.
@@ -1189,7 +1204,7 @@ From final decisions/outputs; publish after report Read-back and Review Log:
 
 ## Plan File Review Report
 
-In finish step 2, save the working plan and complete review body with the terminal report below. Apply **Review record and write policy**.
+After Required outputs are prepared, save the working plan and complete review body with the terminal report below. Apply **Review record and write policy**.
 
 ### Use the selected report file
 
@@ -1301,9 +1316,11 @@ architecture choice. Omit it when none exists.
 - **STATUS**: "clean" if `issues_found=0`, `unresolved=0` and `critical_gaps=0`; else "issues_open". Count resolved findings too; "issues_open" can mean mapped work, not failure.
 - **unresolved**: this review's "Unresolved decisions" count; do not include prior reviews
 - **critical_gaps**: number from "Failure modes: ___ critical gaps flagged"
-- **issues_found**: total issues found across all review sections (Architecture + Code Quality + Performance + Test gaps)
+- **issues_found**: four-section count only (Architecture + Code Quality + Performance + Test gaps). Report Scope Challenge and Outside Voice findings separately.
 - **MODE**: FULL_REVIEW for the Scope Challenge result "scope accepted as-is"; SCOPE_REDUCED for "scope reduced per recommendation".
 - **COMMIT**: output of `git rev-parse --short HEAD`
+
+Only a successful required log permits publication as a saved review.
 
 ## Review Readiness Dashboard
 
@@ -1313,17 +1330,69 @@ After completing the review, read the review log and config to display the dashb
 ~/.claude/skills/gstack/bin/gstack-review-read
 ```
 
-Render each record using its recorded host, source, outside_provider, outside_status, and phase. Historical source "claude" means a native Claude subagent; source "claude-code" means the external CLI. Never infer a historical provider from the current harness. Unknown model identity remains unknown. Missing/disabled/skipped outside coverage is distinct from native completion.
+**1. Choose the records to display.** Use the latest record for each row below.
+Do not use a record older than 7 days to clear a row, and never substitute an older
+success for a newer failure. Ship metrics are not review records.
 
-Parse the output. Find the most recent entry for each skill (plan-ceo-review, plan-eng-review, review, plan-design-review, design-review-lite, adversarial-review, codex-review, codex-plan-review). Ignore entries with timestamps older than 7 days. For the Eng Review row, show whichever is more recent between `review` (diff-scoped pre-landing review) and `plan-eng-review` (plan-stage architecture review). Append "(DIFF)" or "(PLAN)" to the status to distinguish. For the Adversarial row, show whichever is more recent between `adversarial-review` (new auto-scaled) and `codex-review` (legacy). For Design Review, show whichever is more recent between `plan-design-review` (full visual audit) and `design-review-lite` (code-level check). Append "(FULL)" or "(LITE)" to the status to distinguish. For the Outside Voice row, show the most recent `codex-plan-review` entry — this captures outside voices from both /plan-ceo-review and /plan-eng-review.
+| Row | Choose the latest of | Status suffix |
+|---|---|---|
+| Eng Review | `review` or `plan-eng-review` | (DIFF) or (PLAN) |
+| CEO Review | `plan-ceo-review` | — |
+| Design Review | `plan-design-review` or `design-review-lite` | (FULL) or (LITE) |
+| Adversarial | `adversarial-review` or legacy `codex-review` | — |
+| Outside Voice | `codex-plan-review` from CEO or Eng review | — |
 
-**Source attribution:** If the most recent entry for a skill has a `"via"` field, append it to the status label in parentheses. Examples: `plan-eng-review` with `via:"autoplan"` shows as "CLEAR (PLAN via /autoplan)". `review` with `via:"ship"` shows as "CLEAR (DIFF via /ship)". Entries without a `via` field show as "CLEAR (PLAN)" or "CLEAR (DIFF)" as before.
+Keep each record's host, source, outside_provider, outside_status and phase.
+Historical source "claude" is a native subagent; "claude-code" is the external CLI.
+Do not infer old providers or unknown models from today's harness. A native result
+does not fill missing, disabled or skipped outside coverage.
 
-From gstack-review-read output, use entries whose skill is `autoplan-voices` or `design-outside-voices` for the coverage detail below the dashboard. Group by workflow run and phase, not merely skill. Show each phase’s recorded provider and outside_status; partial coverage must remain partial. These records do not change the engineering gate.
+**Source attribution:** Append a recorded `via` to the suffix, for example
+"CLEAR (PLAN via /autoplan)" or "CLEAR (DIFF via /ship)". Without `via`, keep
+"CLEAR (PLAN)" or "CLEAR (DIFF)". Below the dashboard, group `autoplan-voices`
+and `design-outside-voices` by workflow run and phase. Show each phase's provider
+and outside_status; retain partial coverage. These details do not clear Eng Review.
 
-Display a fresh `clean` result as CLEAR and `issues_open` as ISSUES OPEN. Show missing, stale, disabled or unavailable results explicitly; none implies CLEAR. Keep the logged status unchanged.
+**2. Check freshness before choosing a verdict.**
 
-Display:
+- **Content-first rule:** For `review`, `adversarial-review`, `codex-review`,
+  ship-stage reviews and `design-review-lite`, use `review_freshness.status`
+  and show its `reason`. CURRENT means a completed clean review whose start and
+  end content fingerprints equal the current `---WTREE---` fingerprint. This
+  fingerprint covers working-tree content, not just the commit.
+  STALE or UNVERIFIED cannot clear Eng Review. Missing `review_freshness`,
+  including legacy log-only records, means UNVERIFIED. Never fall back to HEAD
+  equality or commit distance for diff evidence, even at zero commits.
+  Show recorded cycles, completed/converged fields and missing source/phase
+  coverage. Unknown coverage is not a pass.
+- **Plan records** (plan-ceo-review, plan-eng-review, plan-design-review and
+  codex-plan-review) use the 7-day window, not the working-tree fingerprint.
+  If `plan_sha256` is present, you may compare the plan file and report a mismatch.
+  For plan records only, compare the recorded commit with `---HEAD---`.
+  If different, run `git rev-list --count STORED_COMMIT..HEAD` and report
+  "Note: {skill} review from {date} may be stale — {N} commits since review".
+  A failed command means UNKNOWN, treated as stale. Without commit tracking,
+  retain the note to consider re-running. Omit staleness notes when all reviews
+  are current.
+
+**3. Choose the historical verdict.** CLEARED requires the selected Eng Review
+to be `clean`, within 7 days and fresh under step 2. Otherwise report NOT CLEARED
+and its missing, stale or open-issue reason. If `skip_eng_review` is true, show
+"SKIPPED (global)" for Eng Review and CLEARED for this dashboard.
+Eng Review is required by default; `gstack-config set skip_eng_review true` disables that requirement.
+
+Other rows provide context, not a substitute for Eng Review:
+- Recommend CEO Review for product/business or scope decisions, not routine fixes or cleanup.
+- Recommend Design Review for UI/UX work, not backend, infrastructure or prompt-only work.
+- Adversarial review always includes a native pass. Available, enabled outside
+  challenges supplement it; diffs of 200+ lines also get the structured P1 gate.
+- Outside Voice is the default-on plan review after CEO/Eng review. `codex_reviews`
+  disables that extra step. Provider failure uses native fallback and records
+  missing outside coverage; this dashboard row never gates shipping.
+
+**4. Display the dashboard.** Show missing, stale, disabled or unavailable results
+explicitly, never as CLEAR. Display a fresh `clean` result as CLEAR and
+`issues_open` as ISSUES OPEN without changing the stored status.
 
 ```
 +====================================================================+
@@ -1341,26 +1410,6 @@ Display:
 +====================================================================+
 ```
 
-**Review tiers:**
-- **Eng Review (required by default):** The only review that gates shipping. Covers architecture, code quality, tests, performance. Can be disabled globally with `gstack-config set skip_eng_review true` (the "don't bother me" setting).
-- **CEO Review (optional):** Use your judgment. Recommend it for big product/business changes, new user-facing features, or scope decisions. Skip for bug fixes, refactors, infra, and cleanup.
-- **Design Review (optional):** Use your judgment. Recommend it for UI/UX changes. Skip for backend-only, infra, or prompt-only changes.
-- **Adversarial Review (automatic):** Always-on for every review. Every diff gets a native adversarial pass and, when enabled and available, a host-selected outside challenge. Large diffs (200+ lines) additionally get a structured outside review with P1 gate.
-- **Outside Voice (default-on):** Independent plan review through the host-selected provider after /plan-ceo-review and /plan-eng-review. The codex_reviews switch disables the entire extra step. Provider failure uses the existing native fallback and reports missing outside coverage. Never gates shipping.
-
-**Verdict logic:**
-- **CLEARED**: Eng Review has >= 1 entry within 7 days from either `review` or `plan-eng-review` with status "clean"; diff review must also grade CURRENT below (or `skip_eng_review` is `true`)
-- **NOT CLEARED**: Eng Review missing, stale (>7 days), or has open issues
-- CEO, Design, and outside reviews are shown for context but never block shipping
-- If `skip_eng_review` config is `true`, Eng Review shows "SKIPPED (global)" and verdict is CLEARED
-
-**Staleness detection:** Grade before deciding CLEARED:
-- Ship telemetry reports metrics, not review coverage; it never satisfies a review row.
-- **Content-first rule (diff-scoped rows only: `review`, `adversarial-review`, `codex-review`, ship-stage entries, `design-review-lite`).** Use the helper's computed `review_freshness.status` and show its `reason`. CURRENT requires a completed clean pass with captured start/end wtree equal to the current `---WTREE---`. STALE or UNVERIFIED never clears Eng Review. Missing `review_freshness` is UNVERIFIED, including legacy log-only rows. Never fall back to HEAD equality or commit distance for diff evidence, even at 0 commits. Show recorded cycles, completed/converged state, and missing per-source/phase coverage; unknown is not a pass.
-- Plan-tier rows (plan-ceo-review, plan-eng-review, plan-design-review, codex-plan-review) grade a plan file, not the repo tree — never apply the wtree rule to them; they keep the 7-day freshness logic. If an entry carries `plan_sha256`, you MAY compare it with the plan file and note "plan changed since review" on mismatch.
-- Plan-tier fallback only: parse `---HEAD---`. For entries with a different `commit`, count elapsed commits: `git rev-list --count STORED_COMMIT..HEAD`. If that command FAILS, grade UNKNOWN and treat as stale. Display: "Note: {skill} review from {date} may be stale — {N} commits since review". Missing commit tracking retains the legacy note to consider re-running.
-- If all reviews grade CURRENT, do not display staleness notes
-
 ## Next Steps — Review Chaining
 
 In finish step 5, offer applicable routes from the published dashboard:
@@ -1374,15 +1423,18 @@ Flag stale CEO/design reviews from contradictory assumptions or significant comm
 drift. If no further review is needed or `skip_eng_review: true`, state
 "All relevant reviews complete. Run /ship when ready."
 
-AskUserQuestion with only applicable options. This is **navigation only**: copy
-the working plan's prerequisites, dependencies and execution order without adding
-or strengthening them. Do not serialize independent lanes. A next-step answer
-approves no implementation change.
+AskUserQuestion with only the applicable options. This is **navigation only**:
+copy the working plan's task prerequisites, dependencies and execution order
+without adding or strengthening them in the question or descriptions. A test
+required before editing one function does not make every independent lane wait.
+A next-step answer approves no implementation change.
+A substantive change follows **Recovery routing → Late change or missing work**
+before navigation resumes.
 
 ## Learning hooks
 
-Keep the working plan/approvals fixed. Use the preamble for
-operational learnings, Capture Learnings for other discoveries. Never log twice.
+In finish step 6, keep the working plan/approvals fixed. Review operational learnings
+per preamble; use Capture Learnings below for other discoveries. Never log twice.
 
 ## Capture Learnings
 

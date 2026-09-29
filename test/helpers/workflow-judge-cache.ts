@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { DEFAULT_JUDGE_MAX_TOKENS, resolveEvalModel } from '../../lib/eval-model';
 import { JUDGE_MS } from './eval-budgets';
 import type { JudgeScore } from './llm-judge';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt } from './workflow-judge-input';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, WORKFLOW_JUDGE_RESPONSE_SCHEMA, WORKFLOW_JUDGE_REASONING_WORD_LIMIT } from './workflow-judge-input';
 import { buildEvalInputIdentity, lookupEvalInputCache, storeEvalInputCache,
   type EvalCacheValue, type EvalInputIdentity, type EvalPassingProof } from '../../scripts/eval-input-cache';
 
@@ -14,6 +14,11 @@ type Thresholds = { clarity: number; completeness: number; actionability: number
 export interface WorkflowCacheOptions {
   root: string; testName: string; skillPath: string; startMarker: string; endMarker: string | null;
   judgeContext: string; judgeGoal: string; model?: string; thresholds: Thresholds; prompt: string; attempt: number;
+  references?: readonly string[];
+  agentCapability?: 'frontier';
+  structuredResponse?: boolean;
+  maxTokens?: number;
+  stream?: boolean;
   env?: NodeJS.ProcessEnv;
 }
 export interface WorkflowJudgeReuse {
@@ -60,10 +65,12 @@ export function workflowJudgeDependencies(root: string, documents: string[]): st
   return [...seen].sort();
 }
 
-export function validWorkflowJudgeScore(value: EvalCacheValue, thresholds: Thresholds): value is JudgeScore & EvalCacheValue {
+export function validWorkflowJudgeScore(value: EvalCacheValue, thresholds: Thresholds, structuredResponse = false): value is JudgeScore & EvalCacheValue {
   if (!value || typeof value !== 'object' || Array.isArray(value)
     || Object.keys(value).sort().join(',') !== 'actionability,clarity,completeness,reasoning'
-    || typeof value.reasoning !== 'string') return false;
+    || typeof value.reasoning !== 'string'
+    || (structuredResponse && (!value.reasoning.trim()
+      || value.reasoning.trim().split(/\s+/).length >= WORKFLOW_JUDGE_REASONING_WORD_LIMIT))) return false;
   return (['clarity', 'completeness', 'actionability'] as const).every(key =>
     typeof value[key] === 'number' && Number.isInteger(value[key]) && value[key] >= thresholds[key] && value[key] <= 5);
 }
@@ -98,8 +105,11 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
         coverage: { dependencies: 'complete', prompts: 'complete', environment: 'complete' }, unknownDependencies: [],
         files: workflowJudgeDependencies(opts.root, input.files.map(file => file.path)),
         prompts: { [opts.testName]: prompt },
-        parameters: { rootPackage, thresholds: opts.thresholds, max_tokens: DEFAULT_JUDGE_MAX_TOKENS, temperature: null, budget_ms: JUDGE_MS,
-          request: 'messages.create/user', retries: 1 },
+        parameters: { rootPackage, thresholds: opts.thresholds, max_tokens: opts.maxTokens ?? DEFAULT_JUDGE_MAX_TOKENS, temperature: null, budget_ms: JUDGE_MS,
+          request: opts.stream ? 'messages.stream/user' : 'messages.create/user', retries: 1,
+          ...(opts.stream ? { stream: true } : {}),
+          ...(opts.structuredResponse ? { output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } },
+            response_validation: { reasoning_words_below: WORKFLOW_JUDGE_REASONING_WORD_LIMIT } } : {}) },
         runtime: { image: env.EVALS_CACHE_RUNTIME_ID!, bun: Bun.version, node: process.versions.node,
           platform: process.platform, arch: process.arch, judge: resolveEvalModel('judge', opts.model, env),
           anthropic_base_url: env.ANTHROPIC_BASE_URL ?? 'https://api.anthropic.com',
@@ -116,14 +126,14 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
   return {
     lookup() {
       const result = lookupEvalInputCache({ ...common, identity: before,
-        validateResult: value => validWorkflowJudgeScore(value, opts.thresholds) });
+        validateResult: value => validWorkflowJudgeScore(value, opts.thresholds, opts.structuredResponse) });
       return result.status === 'reused'
         ? { scores: result.result as JudgeScore, reuse: { key: result.key, source: result.source } } : null;
     },
     publish(scores, isActive = () => true) {
       // Caller reaches here ONLY after its actual assertions passed. A later
       // failed case in the file does not erase this independently completed case.
-      if (!isActive() || !validWorkflowJudgeScore(scores as unknown as EvalCacheValue, opts.thresholds)) return;
+      if (!isActive() || !validWorkflowJudgeScore(scores as unknown as EvalCacheValue, opts.thresholds, opts.structuredResponse)) return;
       const after = currentIdentity();
       const runId = env.GITHUB_RUN_ID ? `${env.GITHUB_RUN_ID}/${env.GITHUB_RUN_ATTEMPT ?? '1'}` : env.EVALS_RUN_ID;
       if (!after || !runId || !isActive()) return;

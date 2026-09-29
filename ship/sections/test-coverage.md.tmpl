@@ -1,13 +1,31 @@
 ## Step 7: Test Coverage Audit
 
-**Dispatch this step as a subagent** using the Agent tool with `subagent_type: "general-purpose"`. The fresh-context subagent runs the audit; the parent only needs the conclusion.
+### Shared subagent dispatch
 
-{{FOREGROUND_DISPATCH_NOTE}} The parent needs this audit's LAST-line JSON before continuing.
+For Steps 7, 8 and 10, use the Agent tool with `run_in_background: false`.
+Omitting the flag runs the subagent in the background. The explicit flag waits
+for a result while keeping a fresh context. Do not invoke the target as a Skill
+or run it inline instead. Inline work is allowed only under that section's
+documented fallback, after a failed subagent has stopped.
 
-**Subagent prompt:** Pass the following instructions to the subagent, with `<base>` substituted with the base branch:
+Dispatch the audit through Agent with `subagent_type: "general-purpose"` and
+`run_in_background: false`, using the shared foreground-dispatch rule above.
+Wait for its LAST-line JSON before applying the coverage gate.
+
+**Generation allowance:** Maximum 2 generation passes total per invocation.
+Count each generation-authorized attempt before dispatch/inline execution, including
+the initial audit, failures and zero-test results. Re-entry never resets it.
+Two passes already used means no further generation; read-only reassessment uses no pass.
+
+**Subagent prompt:** Supply `<base>`, Step 4's framework/bootstrap decision,
+permitted paths/commands, remaining gaps, passes used and generation allowance.
+No allowance means audit only; missing permission is not approval. Preserve the
+30-path/20-test/2-minute per-test caps.
 
 ````text
 You are running a ship-workflow test coverage audit. Run `git diff origin/<base>` to include uncommitted tracked changes; also read relevant non-ignored untracked source/tests. Do not commit or push. Perform only this audit; return unresolved user decisions to the parent instead of asking or advancing to another workflow step.
+
+Generation: <allowed|audit-only>; passes used: <N> of 2. Audit-only overrides every generation instruction below.
 
 {{TEST_COVERAGE_AUDIT_SHIP}}
 
@@ -23,7 +41,11 @@ Use null for an undetermined or skipped coverage percentage, not zero. Include e
 3. Embed `diagram` verbatim in the PR body's `## Test Coverage` section (Step 19).
 4. Print a one-line summary: `Coverage: {coverage_pct}%, {gaps} gaps. {tests_added.length} tests added.`
 
-**If the subagent fails, times out, returns invalid JSON, or never completes after ~10 minutes:** stop any live backgrounded task, then run the audit inline in the parent. Do not block /ship on subagent failure — partial results are better than none.
+**Audit failure:** On failure, invalid JSON or no completion after ~10 minutes,
+stop the child and confirm it stopped before running the same audit inline.
+Fallback recovers the audit; it does not pass or bypass the coverage gate.
+Apply that gate to the recovered results, including its undetermined-percentage
+and test-only rules. Preserve partial results as incomplete, not passing coverage.
 
 {{TEST_COVERAGE_GATE_SHIP}}
 

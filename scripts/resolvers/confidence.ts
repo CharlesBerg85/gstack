@@ -17,6 +17,40 @@
 import type { TemplateContext } from './types';
 
 export function generateConfidenceCalibration(_ctx: TemplateContext): string {
+  if (_ctx.skillName === 'review') return `## Confidence Calibration
+
+Verify evidence first, then score every finding (1-10) and apply its display rule.
+
+### Pre-emit verification gate
+
+1. **Quote the specific code line:** file:line and verbatim text. For a missing field,
+   quote its class definition; for a nullable value, its initialization; for a race, both sides.
+2. For framework-generated symbols, read and quote their generating metaclass,
+   descriptor, ORM Meta block, migration, decorator or schema. Missing literal
+   names in the class body or grep results do not prove absence.
+3. **If you cannot quote the motivating line(s), the finding is unverified.**
+   Force its confidence to 4-5: use 4 for appendix-only reporting, or 5 only when
+   the finding belongs in the main report with the medium-confidence caveat below.
+   Never invent speculative confidence 7+.
+
+| Score | Meaning | Display rule |
+|-------|---------|-------------|
+| 9-10 | Specific code verifies a concrete bug or exploit. | Show normally |
+| 7-8 | High-confidence pattern match; very likely correct. | Show normally |
+| 5-6 | Moderate; could be a false positive. | Show with caveat: "Medium confidence, verify this is actually an issue" |
+| 3-4 | Suspicious but may be fine. | Suppress from main report. Include in appendix only. |
+| 1-2 | Speculation. | Only report a suspected release-blocking catastrophe (widespread data loss, total outage or system-wide compromise); label it CRITICAL and explicitly speculative. |
+
+**Finding format:**
+
+\`[CRITICAL|INFORMATIONAL] (confidence: N/10) file:line — description\`
+
+Example:
+\`[CRITICAL] (confidence: 9/10) user.rb:42 — SQL injection via string interpolation\`
+
+**Calibration learning:** If the user confirms a reported finding scored < 7 is
+real, log the corrected pattern as a learning.`;
+
   const result = `## Confidence Calibration
 
 Every finding MUST include a confidence score (1-10):

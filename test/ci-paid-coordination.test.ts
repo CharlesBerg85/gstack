@@ -121,8 +121,17 @@ describe('paid CI coordination stays off the eval image', () => {
         '/home/runner/.cache/gstack-paid-shard-*.log',
         '/tmp/gstack-paid-shard-*.log',
       ]);
-      expect(Object.values(jobs).flatMap(job => job.steps).filter(step => step.with?.['include-hidden-files']))
-        .toEqual([logs]);
+      const hiddenUploads = Object.values(jobs).flatMap(job => job.steps).filter(step => step.with?.['include-hidden-files']);
+      const captures = hiddenUploads.filter(step => step.with?.name === 'native-captures-${{ env.EVALS_RUN_ID }}');
+      expect(captures).toHaveLength(name === 'evals.yml' ? 1 : 2);
+      for (const capture of captures) {
+        expect(capture.if).toBe('always()');
+        expect(String(capture.with?.path).trim().split('\n')).toEqual([
+          '~/.gstack/projects/*/e2e-runs', '~/.gstack/projects/*/evals/qa-callers',
+          '~/.gstack-dev/e2e-runs', '~/.gstack-dev/evals/qa-callers',
+        ]);
+      }
+      expect(hiddenUploads.filter(step => !captures.includes(step))).toEqual([logs]);
     });
   }
 

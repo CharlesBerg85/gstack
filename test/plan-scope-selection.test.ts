@@ -882,7 +882,7 @@ test('unseeded, explicit-target and early announcement rules remain authoritativ
     const template = read(skill);
     const gate = template.slice(template.indexOf('## Scope gate'), template.indexOf('{{PREAMBLE}}'));
     const entry = skill === 'plan-eng-review'
-      ? 'Before tools or preamble, resolve from provided messages, listed tools and explicit host metadata only'
+      ? 'Before discovery tools or preamble, check provided messages, listed tools and explicit host metadata for a target'
       : 'After this skill loads, resolve this gate before any tool';
     const announce = skill === 'plan-eng-review'
       ? 'Announce an auto-selected plan in one line so the user can interrupt'

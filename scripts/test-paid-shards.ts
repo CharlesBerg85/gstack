@@ -54,6 +54,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createBootstrapRetentionScope } from '../test/helpers/bootstrap-retention';
 import {
   BunTestOutputClassifier,
   exactTestFileSelectors,
@@ -62,6 +63,7 @@ import {
   normalizeRelativePath,
   runShardChild,
   strictTestExitCode,
+  type ShardChildResult,
 } from './test-strict-output';
 import { PAID_TEST_GLOBS, isPaidTestFile } from '../test/helpers/paid-test-set';
 import { PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
@@ -736,6 +738,14 @@ export async function runPaidShard(
   env.TEMP = childTmp;
   env.TMP = childTmp;
   env.CHROMIUM_PROFILE = path.join(stateDir, 'chromium-profile');
+  const bootstrapFile = files.some(file => normalizeRelativePath(file) === 'test/skill-e2e-qa-workflow.test.ts');
+  delete env.GSTACK_BOOTSTRAP_RETENTION;
+  if (bootstrapFile && process.platform !== 'linux') log(`${label} bootstrap dependency retention unavailable on ${process.platform}; native behavior still runs without retained-dependency qualification`);
+  const bootstrapRetention = bootstrapFile && process.platform === 'linux'
+    ? createBootstrapRetentionScope(childTmp, path.join(env.GSTACK_EVAL_DIR || getProjectEvalDir(), 'bootstrap-retention'), env.EVALS_RUN_ID ||= `bootstrap-${Date.now()}-${process.pid}`)
+    : undefined;
+  if (bootstrapRetention) Object.assign(env, bootstrapRetention.env);
+  let retentionFailed = false;
 
   const startedAt = Date.now();
   log(`${label} START ${files.join(' ')} (timeout ${Math.round(timeoutMs / 1000)}s, ${budget.source}${budget.policyId ? `: ${budget.policyId}` : ''})`);
@@ -769,6 +779,8 @@ export async function runPaidShard(
   let exitCode: number | null = null;
   let timedOut = false;
   let groupPid: number | null = null;
+  let incompleteCapture: ShardChildResult['incompleteCapture'];
+  const shardDeadline = Date.now() + timeoutMs;
   try {
     // Shared spawn/detached/group-kill/wall-timer/reap lifecycle.
     const result = await runShardChild({
@@ -777,6 +789,7 @@ export async function runPaidShard(
       cwd: rootDir,
       env,
       timeoutMs,
+      deadlineMs: shardDeadline,
       hookStreams: (child) => {
         const streams: Array<Promise<void>> = [];
         if (child.stdout) streams.push(forwardAndClassify(child.stdout, sink(process.stdout), classifier, 'stdout'));
@@ -787,15 +800,64 @@ export async function runPaidShard(
     exitCode = result.exitCode;
     timedOut = result.timedOut;
     groupPid = result.groupPid;
+    incompleteCapture = result.incompleteCapture;
+  } catch (error) {
+    const result = (error as { shardResult?: ShardChildResult } | null)?.shardResult;
+    if (result) {
+      exitCode = result.exitCode;
+      timedOut = result.timedOut;
+      groupPid = result.groupPid;
+      incompleteCapture = result.incompleteCapture;
+    }
+    throw error;
   } finally {
-    // Close the spool even when the spawn itself failed.
-    await new Promise<void>((resolve) => logStream.end(() => resolve()));
+    if (incompleteCapture) log(`${label} incomplete child capture: ${JSON.stringify(incompleteCapture)}; retained log prefix: ${logPath}`);
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (complete: boolean) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        logStream.off('error', onError);
+        logStream.off('close', onClose);
+        if (!complete) {
+          logWriteFailed = true;
+          logStream.destroy();
+          log(`${label} incomplete log capture; retained prefix: ${logPath}`);
+        }
+        resolve();
+      };
+      const onError = () => finish(false);
+      const onClose = () => finish(logStream.writableFinished && !logWriteFailed);
+      const expire = () => { timedOut = true; finish(false); };
+      logStream.once('error', onError);
+      logStream.once('close', onClose);
+      if (Date.now() >= shardDeadline) { expire(); return; }
+      if (logWriteFailed || logStream.destroyed) { finish(false); return; }
+      timer = setTimeout(expire, shardDeadline - Date.now());
+      try { logStream.end(() => finish(logStream.writableFinished && !logWriteFailed)); }
+      catch { finish(false); }
+    });
+    let retentionRemovable = true;
+    if (bootstrapRetention) {
+      try {
+        const retained = await bootstrapRetention.cleanup(shardDeadline);
+        retentionFailed = !retained.complete;
+        retentionRemovable = retained.removable;
+        if (retentionFailed) log(`${label} bootstrap retention incomplete; qualification failed`);
+      } catch {
+        retentionFailed = true;
+        retentionRemovable = false;
+        log(`${label} bootstrap retention acknowledgment failed; preserving shard state`);
+      }
+    }
     try {
       // async rm: a SIGKILLed shard can leave a full git workspace + Chromium
       // profile here; a synchronous recursive delete on the parent's event
       // loop would stall every sibling shard's stream classification and
       // wall timers for seconds (review finding).
-      await fs.promises.rm(stateDir, { recursive: true, force: true });
+      if (retentionRemovable) await fs.promises.rm(stateDir, { recursive: true, force: true });
     } catch {
       // Best-effort: a locked file must not turn a real verdict into an
       // exception (same posture as the free runner's cleanup).
@@ -815,7 +877,7 @@ export async function runPaidShard(
   const expectedFiles = files.length;
   let status: ShardStatus = timedOut
     ? 'timed-out'
-    : strictTestExitCode(exitCode ?? 1, summary, expectedFiles) === 0 ? 'passed' : 'failed';
+    : !retentionFailed && !logWriteFailed && !incompleteCapture && strictTestExitCode(exitCode ?? 1, summary, expectedFiles) === 0 ? 'passed' : 'failed';
   if (status === 'passed' && options.expectedCases) {
     const expected = files.reduce((count, file) => count + (options.expectedCases![file] ?? 0), 0);
     const actual = summary.terminalTestCounts.reduce((count, value) => count + value, 0) - summary.skippedTests;
@@ -1705,6 +1767,14 @@ async function main(): Promise<number> {
     const shards = mine.map((e) => [e.file]);
     for (const files of shards) resolvePaidShardTimeoutMs(files, timeoutOverride);
     console.log(`[test:paid] slice ${options.sliceIndex}/${manifest.sliceCount}: ${shards.length} shard(s), tier=${manifest.tier}, evalsAll=${manifest.evalsAll}`);
+
+    if (options.listOnly) {
+      for (const [index, files] of shards.entries()) {
+        const budget = resolvePaidShardBudget(files, timeoutOverride);
+        console.log(`  shard ${index + 1}/${shards.length}: ${files.join(' ')} wall=${budget.timeoutMs}ms source=${budget.source} policy=${budget.policyId ?? 'none'}`);
+      }
+      return 0;
+    }
 
     const evalDirBase = process.env.GSTACK_EVAL_DIR || getProjectEvalDir();
     let summary: RunSummary;

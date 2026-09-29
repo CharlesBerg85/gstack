@@ -22,7 +22,7 @@ import { generatePreamble } from './preamble';
 import { generateTestFailureTriage } from './preamble';
 import { generateDesignMethodology, generateDesignHardRules, generateDesignOutsideVoices, generateDesignReviewLite, generateDesignSketch, generateDesignSetup, generateDesignMockup, generateDesignShotgunLoop, generateTasteProfile, generateUXPrinciples, generateOverusedFonts, generateDesignSlopBullets, generateDesignDetector, generateDesignMdCheck } from './design';
 import { generateTestBootstrap, generateTestCoverageAuditPlan, generateTestCoverageAuditShip, generateTestCoverageGateShip } from './testing';
-import { generateReviewDashboard, generatePlanFileReviewReport, generatePlanReviewApprovalCheck, generateExitPlanModeGate, generateAntiShortcutClause, generateSpecReviewLoop, generateBenefitsFrom, generateCodexSecondOpinion, generateAdversarialStep, generateCodexPlanReview, generateCodexDocReview, generatePlanCompletionAuditShip, generatePlanCompletionGateShip, generatePlanCompletionAuditReview, generatePlanVerificationExec, generateScopeDrift, generateCrossReviewDedup } from './review';
+import { generateReviewDashboard, generatePlanFileReviewReport, generatePlanReviewApprovalCheck, generateExitPlanModeGate, generateAntiShortcutClause, generateSpecReviewLoop, generateBenefitsFrom, generateCodexSecondOpinion, generateAdversarialStep, generateCodexPlanReview, generateCodexDocReview, generatePlanCompletionAuditShip, generatePlanCompletionGateShip, generatePlanCompletionAuditReview, generatePlanVerificationExec, generateScopeDrift, generateCrossReviewDedup, generateSharedCodeReuse } from './review';
 import { generateSlugEval, generateSlugSetup, generateBaseBranchDetect, generateDeployBootstrap, generateQAMethodology, generateCoAuthorTrailer, generateChangelogWorkflow, generateCodexWebSearchFlag, generateCodexModelConfigFlag, generateCodexReviewModelConfigFlag, generateClaudeModelFlag, generateSetupCommand } from './utility';
 import { generateLearningsSearch, generateLearningsLog } from './learnings';
 import { generateConfidenceCalibration } from './confidence';
@@ -39,6 +39,7 @@ import { generateAsideSetup, generateAsideCookbook, generateAsideResearch, gener
 import { generateCommandReference, generateSnapshotFlags, generateBrowseSetup, generateBrowseFallback } from './browse';
 import { generateDesignDocDiscovery } from './design-doc-discovery';
 import { generateSharedLibsRubric } from './shared-libs';
+import { generateQAScope, generateQAExploratory, generateQAFunctional, generateQAResource, generateQAReview, generateQAReviewPreflight, generateQAMethodReads } from './qa';
 
 export const RESOLVERS: Record<string, ResolverFn> = {
   AUTOPLAN_PUBLICATION_HOOK: generateAutoplanPublicationHook,
@@ -61,6 +62,7 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   THIRD_PARTY_ACTIONS: generateThirdPartyActions,
   DESIGN_DOC_DISCOVERY: generateDesignDocDiscovery,
   SHARED_LIBS_RUBRIC: generateSharedLibsRubric,
+  SHARED_CODE_REUSE: generateSharedCodeReuse,
   UNTRUSTED_CONTENT_WARNING: generateUntrustedContentWarning,
   COMMAND_REFERENCE: generateCommandReference,
   SNAPSHOT_FLAGS: generateSnapshotFlags,
@@ -73,6 +75,13 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   ASIDE_EXEC_PRELUDE: asideExecPrelude,
   BASE_BRANCH_DETECT: generateBaseBranchDetect,
   QA_METHODOLOGY: generateQAMethodology,
+  QA_SCOPE: generateQAScope,
+  QA_EXPLORATORY: generateQAExploratory,
+  QA_FUNCTIONAL: generateQAFunctional,
+  QA_RESOURCE: generateQAResource,
+  QA_REVIEW: generateQAReview,
+  QA_REVIEW_PREFLIGHT: generateQAReviewPreflight,
+  QA_METHOD_READS: generateQAMethodReads,
   DESIGN_METHODOLOGY: generateDesignMethodology,
   DESIGN_HARD_RULES: generateDesignHardRules,
   OVERUSED_FONTS: generateOverusedFonts,

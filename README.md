@@ -37,7 +37,7 @@ Fork it. Improve it. Make it yours. And if you want to hate on free open source 
 2. Run `/office-hours` — describe what you're building
 3. Run `/plan-ceo-review` on any feature idea
 4. Run `/review` on any branch with changes
-5. Run `/qa` on your staging URL
+5. Run `/qa` on your staging URL or an isolated local API, CLI, job or webhook
 6. Stop there. You'll know if this is for you.
 
 ## Install — 30 seconds
@@ -225,15 +225,15 @@ Each skill feeds into the next. `/office-hours` writes a design doc that `/plan-
 | `/devex-review` | **DX Tester** | Live developer experience audit. Actually tests your onboarding: navigates docs, tries the getting started flow, times TTHW, screenshots errors. Compares against `/plan-devex-review` scores — the boomerang that shows if your plan matched reality. |
 | `/design-shotgun` | **Design Explorer** | "Show me options." Generates 4-6 AI mockup variants, opens a comparison board in your browser, collects your feedback, and iterates. Taste memory learns what you like. Repeat until you love something, then hand it to `/design-html`. |
 | `/design-html` | **Design Engineer** | Turn a mockup into production HTML that actually works. Pretext computed layout: text reflows, heights adjust, layouts are dynamic. 30KB, zero deps. Detects React/Svelte/Vue. Smart API routing per design type (landing page vs dashboard vs form). One slop-gate pass through the impeccable engine when you have it. The output is shippable, not a demo. |
-| `/qa` | **QA Lead** | Test your app, find bugs, fix them with atomic commits, re-verify. Auto-generates regression tests for every fix. |
-| `/qa-only` | **QA Reporter** | Same methodology as /qa but report only. Pure bug report without code changes. |
+| `/qa` | **QA Lead** | Explore browser, API, CLI, job and webhook behavior. Reproduce bugs, write failing regressions, fix the cause and re-verify before committing. |
+| `/qa-only` | **QA Reporter** | Explore and report with replayable evidence. Suggest regression cases without changing product code or tests. |
 | `/pair-agent` | **Multi-Agent Coordinator** | Share gstack's own browser with any AI agent. One command, one paste, connected. Works with OpenClaw, Hermes, Codex, Cursor, or anything that can curl. Each agent gets its own tab. Auto-launches headed mode so you watch everything. Auto-starts ngrok tunnel for remote agents. Scoped tokens, tab isolation, rate limiting, activity attribution. (Runs on the bundled browser — the fallback engine; agents driving Aside just open their own tabs.) |
 | `/cso` | **Chief Security Officer** | Security audit with an application model, supported findings, independent challenge, and explicit coverage. Static assessment remains available without catalog profiles. With matching qualified profiles, comprehensive mode adds contained runtime/scanner execution and reviewable repair candidates for Node/Bun, Python, and Rails. Runtime-tested bundles authenticate separate external assertions. Project-test completion remains `self_reported` because target code controls the test process; `tested` is reserved for a future target-independent completion witness. |
-| `/ship` | **Release Engineer** | Sync main, run tests, audit coverage, push, open PR. Bootstraps test frameworks if you don't have one. |
+| `/ship` | **Release Engineer** | Sync main, run tests, explore changed behavior, audit coverage and docs, then verify, push and open a PR. |
 | `/land-and-deploy` | **Release Engineer** | Merge the PR, wait for CI and deploy, verify production health. One command from "approved" to "verified in production." |
 | `/canary` | **SRE** | Post-deploy monitoring loop. Watches for console errors, performance regressions, and page failures. |
 | `/benchmark` | **Performance Engineer** | Baseline page load times, Core Web Vitals, and resource sizes. Compare before/after on every PR. |
-| `/document-release` | **Technical Writer** | Update all project docs to match what you just shipped. Catches stale READMEs automatically. Builds a Diataxis coverage map (reference / how-to / tutorial / explanation) so gaps are visible in the PR body. |
+| `/document-release` | **Technical Writer** | Audit changed behavior against project docs on every ship, before final verification and publication. Also runs standalone. Shows updated, reviewed/current or blocked docs and any remaining gaps. |
 | `/document-generate` | **Documentation Author** | Generate missing docs from scratch using the Diataxis framework. Researches the codebase first, then writes reference / how-to / tutorial / explanation docs that actually match the code. Invokable standalone or chained from `/document-release` when the coverage map finds gaps. Learn more: [tutorial](docs/tutorial-document-generate.md) • [how-to](docs/howto-document-a-shipped-feature.md) • [why Diataxis](docs/explanation-diataxis-in-gstack.md). |
 | `/retro` | **Eng Manager** | Team-aware weekly retro. Per-person breakdowns, shipping streaks, test health trends, growth opportunities. `/retro global` runs across all your projects and AI tools (Claude Code, Codex, Gemini). |
 | `/browse` | **QA Engineer** | Give the agent eyes. Drives your [Aside](https://aside.com) browser first — your real sessions, real clicks, real screenshots — through deterministic `aside repl` scripts. No Aside? It falls back to gstack's own Chromium: real clicks, ~100ms per command, and `/open-gstack-browser` shows it headed with sidebar, anti-bot stealth, and auto model routing. Every other browser skill stands on it. |
@@ -244,6 +244,51 @@ Each skill feeds into the next. `/office-hours` writes a design doc that `/plan-
 | `/learn` | **Memory** | Manage what gstack learned across sessions. Review, search, prune, and export project-specific patterns, pitfalls, and preferences. Learnings compound across sessions so gstack gets smarter on your codebase over time. |
 | `/make-pdf` | **Publisher** | Markdown in, publication-quality document out. Mermaid and excalidraw fences render as vector diagrams, fully offline. Images scale to the page and never truncate; wide diagrams get their own landscape page. `--to html` emits one self-contained file, `--to docx` a Word doc. |
 | `/diagram` | **Diagram Maker** | English in, editable diagram out. Emits a triplet: mermaid source, `.excalidraw` you can open and edit on excalidraw.com (hand-drawn style), and rendered SVG/PNG. Zero network. Embed the source in markdown and `/make-pdf` renders it. |
+
+### QA without a webpage
+
+Use the same commands for browser and non-browser software. Start in a repository
+with its documented native command and an isolated local fixture; name the target
+and the behavior you want checked. For example:
+
+```text
+/qa-only Test this repo's CLI using its documented local fixture. Check valid and invalid input, exit codes, stdout/stderr, and cancellation. Report only; do not change code or tests. For each finding, include the exact command, expected and actual results, and which checks remain untested. Keep requests inside the fixture; ask before contacting an external service.
+
+/qa Test this repo's local webhook and worker fixture. Explore duplicate deliveries and recovery after a partial failure. Keep all effects inside the fixture; preserve reproduced bugs in native regression tests before repairing them.
+```
+
+QA first tells you which surface, tools and write permissions it will use. A CLI or
+API does not need a browser. Browser targets keep real browser testing; developer
+experience audits load only when onboarding, installation or ergonomics are in scope.
+If the native tools or safe fixture are unavailable, the report names the blocker
+and untested contracts instead of inventing a pass or installing another framework.
+
+Exploration means learning from each result and choosing the next useful challenge,
+not running random commands. Before the next discovery probe, QA saves a short
+`exploration-NNN.json` evidence note with the previous result, the assumption being
+tested and the next command. The final report links these notes; they do not require
+an extra chat message between probes. A discovered bug must be reproducible, and its new test
+must fail for the bug before the repair and pass afterward. Unit tests protect logic;
+integration and end-to-end tests protect real boundaries that mocks would hide.
+`/qa-only` proposes those tests without writing them.
+
+Normal `/review` and `/ship` run a bounded version on changed behavior and nearby
+risks automatically, including small diffs without a plan or web server. Existing
+fix/test approval rules still apply. Missing dependencies, denied actions and time
+limits remain visible coverage gaps; a short smoke pass never means exhaustive QA.
+Production access and destructive or external effects require specific permission.
+
+Bounded exploration uses an executable deadline guard, not an estimated clock: it
+refuses late probes and stops owned foreground work at the limit. Unfinished checks
+stay visible in the report. Required plan checks remain outside the review/ship smoke
+budget. See [QA deadlines](docs/reference-qa-deadlines.md) for command, platform and
+cleanup limits.
+
+Every ship also runs the existing documentation audit, including repeat ships and
+existing PR updates. Clear factual corrections join the final checked change; risky
+rewrites need approval. A failed audit stops for recovery or explicit acceptance of
+the named risk rather than silently dropping its result. Ship owns versioning, Git
+and PR publication; the docs helper does not commit or push independently.
 
 ### Which review should I use?
 
@@ -286,7 +331,7 @@ Beyond the slash-command skills, gstack ships standalone CLIs for workflows that
 | `gstack-verify-gate` | **Verification stop hook (opt-in)** — blocks a Claude Code turn from ending until the project's declared verify command passes (after 3 blocked re-entries it yields with a loud still-RED warning instead of looping forever). Declare it on one line in CLAUDE.md: `<!-- gstack:verify: bun test -->`. Hooks bypass the permission system, so a declared command never runs until you trust it once per repo (`gstack-verify-gate --trust`); editing the command invalidates trust until re-granted, and every grant is audit-logged. `./setup` never registers it for you — opt in with `gstack-settings-hook add-event --event Stop --command ~/.claude/skills/gstack/bin/gstack-verify-gate --source verify-gate`, remove with `gstack-settings-hook remove-source --source verify-gate`. |
 | `gstack-memorable` | **Memorable recall bridge (opt-in, third party, Claude Code only)** — connects Claude Code to the external [Memorable](https://memorable.sh) CLI *through gstack* instead of the vendor's own installer, so the hook gets gstack's guarantees: an explicit consent key (`memorable_recall`, off by default, listed by `gstack-egress grants`), a fail-closed egress receipt for every prompt handed over (`gstack-egress list --sink memorable-recall`), a HIGH-tier secret pre-scan, a trust envelope and 8 KiB cap on whatever comes back, an allowlisted environment and process-group containment for the vendor process, and clean removal. `enable` registers the hook at the stable install with a 5 s timeout and never runs the vendor's own consent command; `disable` revokes the gate first and removes the entry by identity even after Claude Code strips the tag; `status` is read-only. gstack never installs Memorable, and what its binary sends is the vendor's claim, not gstack's. Not available on Windows yet. [Full guide](docs/memorable-workflow-memory.md). |
 | `gstack-wtree` | **Working-tree fingerprint** — prints a content hash of what's actually on disk (temp index seeded from the stat cache, ~40x cheaper than a full re-hash; untracked source counts, gitignored scratch doesn't). Identical content fingerprints identically through commits, rebases, amends, and squashes — it's what binds reviews and test evidence to content instead of commit SHAs. |
-| `gstack-review-log` | **Review-pass receipts** — `--start <skill>` captures the working-tree fingerprint before a diff review; `'<JSON>' --finish <token>` consumes that single-use, repository/branch/skill-scoped receipt. Binding requires matching start/end content and reviewer-reported `completed:true` and `converged:true`; it is not independent proof that a model read the source. |
+| `gstack-review-log` | **Review-pass receipts** — `--start <skill>` captures the working-tree fingerprint before a diff review; `'<JSON>' --finish <token>` consumes that single-use, repository/branch/skill-scoped receipt. Binding requires matching start/end content and reviewer-reported `completed:true` and `converged:true`; it is not independent proof that a model read the source. `--check-shared-libs <token>` reads a current finding as JSON on stdin and checks prior Skip decisions against the actual branch, capture and eligible raw source blobs. It returns `reusable:false` when proof is missing or unsafe, including older records without logger-versioned coverage. Final review logging computes shared-code fingerprints and coverage rather than trusting supplied proof. |
 | `gstack-review-read` | **Review freshness** — emits review records with computed `review_freshness.status` and `reason`: CURRENT, STALE, or UNVERIFIED for diff reviews. `/ship` and `/land-and-deploy` use the same grade; a matching commit alone never certifies a diff review. [Dashboard rules](docs/skills.md#review-readiness-dashboard). |
 | `gstack-evidence` | **Verification-evidence ledger** — `run --label <lane> -- <cmd>` transparently wraps any test command (the child's exit code always passes through) and records what ran against which working-tree fingerprint; `check` grades each label FRESH/STALE/MISSING with `--expect-cmd`, `--max-age`, and `--allow-paths` binding. /ship and /land-and-deploy cite fresh evidence instead of re-running suites. Per-run logs are 0600, capped at 2MB, pruned after 30 days; the ledger and logs stay machine-local by design. |
 | `gstack-issue-guard` | **Tracker-text trust envelope** — fetches GitHub issue/PR text (`issue <n>`, `pr-body`, `pr-comments`, or `--stdin`) and wraps it in a labeled envelope so agents treat it as data: injection-shaped lines get labeled even through fullwidth and invisible-character evasion, and forged envelope banners are defused. Every tracker-text ingress in gstack routes through it, enforced by a CI scanner. |
@@ -360,11 +405,11 @@ gstack works well with one sprint. It gets interesting with ten running at once.
 
 **Smart review routing.** Just like at a well-run startup: CEO doesn't have to look at infra bug fixes, design review isn't needed for backend changes. gstack tracks what reviews are run, figures out what's appropriate, and just does the smart thing. The Review Readiness Dashboard tells you where you stand before you ship.
 
-**Test everything.** `/ship` bootstraps test frameworks from scratch if your project doesn't have one. Every `/ship` run produces a coverage audit. Every `/qa` bug fix generates a regression test. 100% test coverage is the goal — tests make vibe coding safe instead of yolo coding.
+**Test everything.** `/ship` bootstraps test frameworks from scratch if your project doesn't have one. Every `/ship` run produces a coverage audit. `/qa` creates native regressions when infrastructure is available and explicitly reports missing test coverage; CSS-only fixes may use browser evidence instead. 100% test coverage is the goal — tests make vibe coding safe instead of yolo coding.
 
-**`/document-release` is the engineer you never had.** It reads every doc file in your project, cross-references the diff, and updates everything that drifted. README, ARCHITECTURE, CONTRIBUTING, CLAUDE.md, TODOS — all kept current automatically. And now `/ship` auto-invokes it — docs stay current without an extra command.
+**`/document-release` is the engineer you never had.** It audits relevant authored docs against the release diff and corrects factual drift before final verification. Risky changes return for approval. `/ship` invokes it on every run and owns TODOS, release metadata, generation and publication; the child reports updated, current or blocked documentation.
 
-**Aside is the browser gstack drives first.** On a Mac with the [Aside](https://aside.com) AI browser open, `/qa`, `/qa-only`, `/design-review`, `/canary`, `/benchmark`, `/scrape`, and `/browse` all run there — your real browser, with your real logged-in sessions, in tabs the agent opens for itself and closes when it's done. No cookie import, no "open the browser" step, no CAPTCHA handoff dance: hit a sign-in wall, sign in inside Aside, say "done", and the agent continues. Anything a page returns is treated as untrusted content — the agent takes syntax from it, never instructions. `/make-pdf`, `/diagram`, and design previews print and screenshot through Aside too (served from your machine on loopback, one render per script), and the planning skills do their web research through Aside's own agent before reaching for a search tool.
+**Aside is the browser gstack drives first.** For browser surfaces, on a Mac with the [Aside](https://aside.com) AI browser open, `/qa`, `/qa-only`, `/design-review`, `/canary`, `/benchmark`, `/scrape`, and `/browse` all run there — your real browser, with your real logged-in sessions, in tabs the agent opens for itself and closes when it's done. No cookie import, no "open the browser" step, no CAPTCHA handoff dance: hit a sign-in wall, sign in inside Aside, say "done", and the agent continues. Anything a page returns is treated as untrusted content — the agent takes syntax from it, never instructions. `/make-pdf`, `/diagram`, and design previews print and screenshot through Aside too (served from your machine on loopback, one render per script), and the planning skills do their web research through Aside's own agent before reaching for a search tool.
 
 **When Aside isn't there, gstack's own browser takes over — automatically.** Linux, Windows, or a Mac with Aside closed: the same skills use the bundled headless Chromium that `./setup` builds, produce the same evidence, and light up the features below that only make sense when the browser is gstack's rather than yours.
 

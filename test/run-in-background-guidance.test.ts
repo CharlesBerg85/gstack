@@ -296,7 +296,7 @@ const GENERATED_WITH_GUIDANCE = [
   'review/sections/review-army.md',
   'autoplan/sections/ceo-phase.md',
   'ship/sections/review-army.md',
-  'ship/sections/pr-body.md',
+  'ship/sections/documentation.md',
   'ship/sections/test-coverage.md',
   'ship/sections/plan-completion.md',
   'ship/sections/greptile.md',
@@ -439,12 +439,19 @@ describe('run_in_background guidance (#2440)', () => {
   // dispatch stranded the ship run. Pin the deadline/recovery branch and the
   // docs-sync scope guard in both the generated section and its template, so
   // neither a template edit nor a stale regen can drop them silently.
-  const PR_BODY_SITES = ['ship/sections/pr-body.md', 'ship/sections/pr-body.md.tmpl'];
+  const PR_BODY_SITES = ['ship/sections/documentation.md', 'ship/sections/documentation.md.tmpl'];
   test('ship pr-body carries the doc-sync deadline recovery + scope guard', () => {
     for (const rel of PR_BODY_SITES) {
-      const content = fs.readFileSync(path.join(ROOT, rel), 'utf-8');
-      expect(content).toContain('document-release did not complete');
-      expect(content).toContain('Scope guard — docs sync ONLY');
+      const content = fs.readFileSync(path.join(ROOT, rel), 'utf-8').replace(/\s+/g, ' ');
+      expect(content).toContain('Inspect the child handle for terminal completion and final output within ~10 minutes');
+      expect(content).toContain('On failure/deadline, use recovery before another writer');
+      expect(content).toContain('Terminal completion or confirmed termination is sufficient');
+      expect(content).toContain('request stop and inspect its status; the request alone is insufficient');
+      expect(content).toContain('Only audit/edit permitted docs');
+      expect(content).toContain('A failed check or `blocked` result goes to recovery');
+      expect(content).toContain('goes to recovery, even with valid JSON');
+      expect(content).toContain('Report `Documentation: blocked` with the reason and actual paths');
+      expect(content).toContain('`Documentation: blocked`');
     }
   });
 
@@ -488,7 +495,7 @@ describe('run_in_background guidance (#2440)', () => {
   // that lives (flag and all) in another file, not a dispatch spec itself.
   const BACKGROUND_OK: Record<string, string> = {
     'ship/SKILL.md':
-      'skeleton anchors reference the Step 18 dispatch by name (carve-guards mustStayInSkeleton); the dispatch spec + flag live in sections/pr-body.md',
+      'skeleton anchors reference the Step 14.5 dispatch by name; the dispatch spec and flag live in sections/documentation.md',
   };
   test('structural scanner: every generated dispatch imperative carries the flag', () => {
     for (const file of allGeneratedSkillFiles()) {

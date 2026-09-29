@@ -44,13 +44,16 @@ export interface PtyScreenFrame {
 
 export interface PtyScreen {
   write(text: string): void;
-  read(): Promise<string>;
-  readFrame(): Promise<PtyScreenFrame>;
+  read(deadlineAt?: number): Promise<string>;
+  readFrame(deadlineAt?: number): Promise<PtyScreenFrame>;
   dispose(): Promise<void>;
 }
 
 /** One terminal per session; read only the actual viewport, never scrollback. */
-export async function createPtyScreen(cols: number, rows: number): Promise<PtyScreen> {
+export async function createPtyScreen(cols: number, rows: number,
+  options: { deadlineAt?: number; signal?: AbortSignal } = {}): Promise<PtyScreen> {
+  const deadlineAt = options.deadlineAt ?? performance.now() + 5_000;
+  if (!Number.isFinite(deadlineAt)) throw new RangeError('PTY screen requires a finite absolute deadline.');
   const Terminal = await loadTerminal();
   const terminal = new Terminal({ cols, rows, scrollback: 0, allowProposedApi: true });
   // Match current CLI scalar column widths instead of xterm5's Unicode 6
@@ -70,10 +73,31 @@ export async function createPtyScreen(cols: number, rows: number): Promise<PtySc
   let final: PtyScreenFrame | undefined;
   let closing: Promise<void> | undefined;
   const waiting = new Set<() => void>();
-  const settled = () => { if (pending === 0) { for (const done of waiting) done(); waiting.clear(); } };
-  const drain = async () => {
-    while (pending > 0) await new Promise<void>(resolve => waiting.add(resolve));
-    if (failure) throw new Error('PTY screen parse failed.', { cause: failure });
+  const settled = () => { if (pending === 0 || failure) { for (const done of waiting) done(); waiting.clear(); } };
+  const fail = (error: unknown) => {
+    failure ??= new Error('PTY screen parse failed; viewport is incomplete.', { cause: error });
+    settled();
+  };
+  const drain = async (readDeadline = deadlineAt) => {
+    if (!Number.isFinite(readDeadline)) throw new RangeError('PTY screen requires a finite absolute deadline.');
+    while (pending > 0 && !failure) {
+      if (options.signal?.aborted) { fail(options.signal.reason); break; }
+      const remaining = Math.min(deadlineAt, readDeadline) - performance.now();
+      if (remaining <= 0) { fail(new Error('PTY screen write callback deadline exceeded.')); break; }
+      await new Promise<void>(resolve => {
+        const done = () => {
+          clearTimeout(timer);
+          options.signal?.removeEventListener('abort', abort);
+          waiting.delete(done);
+          resolve();
+        };
+        const abort = () => fail(options.signal?.reason);
+        const timer = setTimeout(() => fail(new Error('PTY screen write callback deadline exceeded.')), remaining);
+        waiting.add(done);
+        options.signal?.addEventListener('abort', abort, { once: true });
+      });
+    }
+    if (failure) throw failure;
   };
   const viewport = () => {
     const buffer = terminal.buffer.active;
@@ -94,9 +118,9 @@ export async function createPtyScreen(cols: number, rows: number): Promise<PtySc
     });
     return {text: lines.join('\n'), inputOffset, styledText};
   };
-  const readFrame = async () => {
+  const readFrame = async (readDeadline?: number) => {
+    await drain(readDeadline);
     if (closing) { await closing; return final!; }
-    await drain();
     return viewport();
   };
   return {
@@ -105,17 +129,22 @@ export async function createPtyScreen(cols: number, rows: number): Promise<PtySc
       if (!text) return;
       pending++;
       inputOffset += text.length;
-      try { terminal.write(text, () => { pending--; settled(); }); }
-      catch (error) { failure = error; pending--; settled(); }
+      let completed = false;
+      const complete = () => { if (!completed) { completed = true; pending--; settled(); } };
+      try { terminal.write(text, complete); }
+      catch (error) { fail(error); complete(); }
     },
-    async read() {
-      return (await readFrame()).text;
+    async read(readDeadline) {
+      return (await readFrame(readDeadline)).text;
     },
     readFrame,
     dispose() {
       return closing ??= (async () => {
         try { await drain(); final = viewport(); }
-        finally { terminal.dispose(); }
+        finally {
+          try { terminal.dispose(); }
+          catch (error) { if (!failure) throw error; }
+        }
       })();
     },
   };

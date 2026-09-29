@@ -153,8 +153,6 @@ jobs:
           # the ledger uploaded below, so repeats stay visible and ranked.
           GSTACK_FREE_RETRY_FLAKY: '1'
           GSTACK_FLAKE_LEDGER: ${{ runner.temp }}/flake-ledger.jsonl
-          # Point os.tmpdir() at the runner temp so the shard logs land
-          # somewhere the artifact step below can glob.
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: bun run test:windows
@@ -180,7 +178,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: windows-free-test-shard-logs
-          path: ${{ runner.temp }}/gstack-free-test-*.log
+          path: |
+            .context/free-test-logs/gstack-free-test-*.log
+            ${{ runner.temp }}/gstack-free-test-*.log
+          include-hidden-files: true
           if-no-files-found: ignore
 
       - name: Upload flake ledger

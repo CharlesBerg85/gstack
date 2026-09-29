@@ -6,11 +6,11 @@
 #   _gstack_codex_auth_probe      — multi-signal auth check (env + file)
 #   _gstack_codex_model_probe     — round-trip probe of gstack's selected model (#2477)
 #   _gstack_codex_version_check   — warn on known-bad Codex CLI versions
-#   _gstack_codex_timeout_wrapper — gtimeout -> timeout -> unwrapped fallback
+#   _gstack_codex_timeout_wrapper — gtimeout -> timeout -> bash-native watchdog
 #   _gstack_codex_log_event       — telemetry emission to ~/.gstack/analytics/
 #
 # Hygiene rules (enforced by test/codex-hardening.test.ts):
-#   - Never set -e / set -u / trap / IFS= / PATH= in this file.
+#   - Never change -e / -u / traps / IFS / PATH in the caller shell.
 #   - All internal vars prefix with _GSTACK_CODEX_.
 #   - All functions prefix with _gstack_codex_.
 #   - No command execution at source time (only function defs).
@@ -195,19 +195,15 @@ _gstack_codex_timeout_wrapper() {
     # capture on the orphaned sleep.
     "$@" &
     local _cmd_pid=$!
-    ( sleep "$_duration" && kill -TERM "$_cmd_pid" 2>/dev/null ) >/dev/null 2>&1 &
+    ( sleep "$_duration" && trap '' TERM && kill -TERM "$_cmd_pid" 2>/dev/null && exit 124 ) >/dev/null 2>&1 &
     local _watch_pid=$!
     local _rc
     wait "$_cmd_pid"
     _rc=$?
-    if kill -0 "$_watch_pid" 2>/dev/null; then
-      # Command finished before the deadline. Retiring the watchdog subshell
-      # also defuses its pending kill (the `&& kill` lives in the subshell);
-      # its detached sleep expires harmlessly.
-      kill "$_watch_pid" 2>/dev/null
-      wait "$_watch_pid" 2>/dev/null
-    elif [ "$_rc" -ge 128 ]; then
-      _rc=124  # killed by the watchdog: report timeout(1)'s code
+    kill "$_watch_pid" 2>/dev/null
+    wait "$_watch_pid" 2>/dev/null
+    if [ "$?" -eq 124 ]; then
+      _rc=124
     fi
     return "$_rc"
   fi

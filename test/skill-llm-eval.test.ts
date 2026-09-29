@@ -17,11 +17,12 @@ import * as path from 'path';
 import { callJudge, judge, JudgeRefusalError, DEFAULT_JUDGE_MAX_TOKENS } from './helpers/llm-judge';
 import { ENG_REVIEW_EXCERPT } from './helpers/workflow-excerpt';
 import type { JudgeScore } from './helpers/llm-judge';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, type WorkflowJudgeInput } from './helpers/workflow-judge-input';
-import { prepareWorkflowJudgeCache } from './helpers/workflow-judge-cache';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES, WORKFLOW_JUDGE_RESPONSE_SCHEMA, type WorkflowJudgeInput } from './helpers/workflow-judge-input';
+import { prepareWorkflowJudgeCache, validWorkflowJudgeScore } from './helpers/workflow-judge-cache';
 import { buildCookieWorkflowJudgeInput, COOKIE_WORKFLOW_JUDGE } from './helpers/cookie-workflow-judge-input';
 import { getCookieWorkflowManualReview, type ManualJudgeReview } from './helpers/cookie-workflow-manual-review';
 import { resolveEvalModel } from '../lib/eval-model';
+import type { EvalCacheValue } from '../scripts/eval-input-cache';
 import { LLM_JUDGE_TOUCHFILES } from './helpers/touchfiles';
 // Runs when EVALS=1 is set (requires ANTHROPIC_API_KEY in env) — the EVALS
 // gate lives in the shared describeIfSelected. Selection machinery is shared
@@ -198,14 +199,18 @@ function sliceQaPatterns(startHeader: string, endHeader?: string): string {
 describeIfSelected('QA skill quality evals', ['qa/SKILL.md workflow', 'qa/SKILL.md health rubric', 'qa/SKILL.md anti-refusal'], () => {
   testIfSelected('qa/SKILL.md workflow', async () => {
     const t0 = Date.now();
-    const section = sliceQaPatterns('## Workflow', '## Health Score Rubric');
+    const section = readWorkflowJudgeInput({ root: ROOT, skillPath: 'qa/SKILL.md',
+      startMarker: '# /qa: Test', endMarker: null,
+      references: ['qa/templates/functional-report-template.md'] }).text;
 
     const scores = await callJudge<JudgeScore>(`You are evaluating the quality of a QA testing workflow document for an AI coding agent.
 
-The agent reads this document to learn how to systematically QA test a web application. The workflow references
-a browser driver (Aside 'aside repl' scripts, with the headless browse CLI's $B commands as fallback) that is documented
-separately in the skill's BROWSER SETUP section — do NOT penalize for missing driver definitions.
-Instead, evaluate whether the workflow itself is clear, complete, and actionable.
+The agent reads this source-file bundle to select browser, native functional or mixed
+surfaces, explore with bounded probes, reproduce and diagnose defects, add a regression
+before repair, recheck behavior and report evidence/coverage. Sections are separate
+files loaded only at their stated conditions; bundle order is not execution order.
+Evaluate the complete workflow, including authority, isolation, native contracts,
+conditional browser/DX loading and blocked paths, for clarity and executable decisions.
 
 Rate on three dimensions (1-5 scale):
 - **clarity** (1-5): Can an agent follow the step-by-step phases without ambiguity?
@@ -415,8 +420,13 @@ async function runWorkflowJudge(opts: {
   skillPath: string;
   startMarker: string;
   endMarker: string | null;
+  references?: readonly string[];
   judgeContext: string;
   judgeGoal: string;
+  agentCapability?: 'frontier';
+  structuredResponse?: boolean;
+  maxTokens?: number;
+  stream?: boolean;
   model?: string;
   thresholds?: { clarity: number; completeness: number; actionability: number };
   readInput?: () => WorkflowJudgeInput;
@@ -488,7 +498,7 @@ async function runWorkflowJudge(opts: {
     checkActive();
     const thresholds = { clarity: 3, completeness: 3, actionability: 4, ...opts.thresholds };
     const input = opts.readInput ? opts.readInput() : readWorkflowJudgeInput({ root: ROOT, skillPath: opts.skillPath,
-      startMarker: opts.startMarker, endMarker: opts.endMarker });
+      startMarker: opts.startMarker, endMarker: opts.endMarker, references: opts.references });
     checkActive();
     const prompt = buildWorkflowJudgePrompt(opts, input);
     if (opts.readInput) customInputMetadata = { prompt, model: resolveEvalModel('judge', opts.model) };
@@ -497,10 +507,12 @@ async function runWorkflowJudge(opts: {
     reused = cache.lookup();
     checkActive();
     stage = 'judge';
-    const maxTokens = DEFAULT_JUDGE_MAX_TOKENS;
+    const maxTokens = opts.maxTokens ?? DEFAULT_JUDGE_MAX_TOKENS;
     let result: JudgeScore;
     try {
-      result = reused?.scores ?? await callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens });
+      result = reused?.scores ?? await callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens,
+        ...(opts.stream ? { stream: true } : {}),
+        ...(opts.structuredResponse ? { jsonSchema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } : {}) });
     } catch (error) {
       checkActive();
       if (error instanceof JudgeRefusalError && customInputMetadata) {
@@ -521,6 +533,9 @@ async function runWorkflowJudge(opts: {
     console.log(`[workflow-judge] ${opts.testName}: ${reused ? `reused ${reused.reuse.source.runId} @ ${reused.reuse.source.revision} (${new Date(reused.reuse.source.completedAt).toISOString()})` : 'executed'}`);
     console.log(`${opts.testName} scores:`, JSON.stringify(scores, null, 2));
     stage = 'validation';
+    if (opts.structuredResponse && !validWorkflowJudgeScore(scores as unknown as EvalCacheValue, { clarity: 1, completeness: 1, actionability: 1 }, true)) {
+      throw new Error('Structured workflow judge violated the response schema');
+    }
     expect(scores.clarity).toBeGreaterThanOrEqual(thresholds.clarity);
     expect(scores.completeness).toBeGreaterThanOrEqual(thresholds.completeness);
     expect(scores.actionability).toBeGreaterThanOrEqual(thresholds.actionability);
@@ -545,13 +560,18 @@ describeIfSelected('Ship & Release skill evals', ['ship/SKILL.md workflow', 'doc
   testIfSelected('ship/SKILL.md workflow', async () => {
     await runWorkflowJudge({
       testName: 'ship/SKILL.md workflow',
+      structuredResponse: true,
+      maxTokens: 65_536,
+      stream: true,
       suite: 'Ship & Release skill evals',
+      agentCapability: 'frontier',
       // The contract now precedes platform detection; keep the complete workflow.
       skillPath: 'ship/SKILL.md',
       startMarker: '# Ship:',
       endMarker: '## Important Rules',
+      references: QA_DISCOVERY_REFERENCES,
       judgeContext: 'a ship/release workflow document',
-      judgeGoal: 'how to create a PR: merge base branch, run tests, review diff, bump version, update changelog, push, and open PR',
+      judgeGoal: 'how to create a PR: merge base, test, review and explore changed behavior, handle required blocked checks, bump metadata, finish and vet every-ship documentation, then verify stable inputs, push and create/update the PR with visible QA and docs outcomes',
     });
   }, WORKFLOW_JUDGE_TEST_MS);
 
@@ -562,8 +582,8 @@ describeIfSelected('Ship & Release skill evals', ['ship/SKILL.md workflow', 'doc
       skillPath: 'document-release/SKILL.md',
       startMarker: '# Document Release:',
       endMarker: '## Important Rules',
-      judgeContext: 'a post-ship documentation update workflow',
-      judgeGoal: 'how to audit and update project documentation after code ships: README, ARCHITECTURE, CONTRIBUTING, CLAUDE.md, CHANGELOG, TODOS',
+      judgeContext: 'a release documentation audit workflow',
+      judgeGoal: 'how to audit relevant nested docs and authored sources; in ship-owned mode complete a bounded docs-only audit and return a typed result without Git/metadata authority, while standalone mode retains its approval and publication protections',
     });
   }, WORKFLOW_JUDGE_TEST_MS);
 });
@@ -692,9 +712,23 @@ describeIfSelected('Deploy skill evals', [
 
 // Block 5: Other skills
 describeIfSelected('Other skill evals', [
-  'retro/SKILL.md instructions', 'qa-only/SKILL.md workflow', 'gstack-upgrade/SKILL.md upgrade flow',
+  'retro/SKILL.md instructions', 'qa-only/SKILL.md workflow', 'review/SKILL.md workflow', 'gstack-upgrade/SKILL.md upgrade flow',
   'sync-gbrain/SKILL.md read-only readiness',
 ], () => {
+  testIfSelected('review/SKILL.md workflow', async () => {
+    await runWorkflowJudge({
+      testName: 'review/SKILL.md workflow',
+      suite: 'Other skill evals',
+      skillPath: 'review/SKILL.md',
+      startMarker: '## Step 0: Detect platform and base branch',
+      endMarker: null,
+      references: [...QA_DISCOVERY_REFERENCES, 'review/checklist.md', 'review/specialists/testing.md'],
+      judgeContext: 'a pre-landing review with bounded exploratory QA',
+      judgeGoal: 'how to review and explore changed behavior even for small diffs without a plan or server, preserve report-only discovery and the test_stub ASK gate, handle incomplete probes honestly, and rerun affected evidence after approved repairs',
+      agentCapability: 'frontier',
+    });
+  }, WORKFLOW_JUDGE_TEST_MS);
+
   testIfSelected('sync-gbrain/SKILL.md read-only readiness', async () => {
     await runWorkflowJudge({
       testName: 'sync-gbrain/SKILL.md read-only readiness',
@@ -724,10 +758,11 @@ describeIfSelected('Other skill evals', [
       testName: 'qa-only/SKILL.md workflow',
       suite: 'Other skill evals',
       skillPath: 'qa-only/SKILL.md',
-      startMarker: '## Workflow',
-      endMarker: '## Important Rules',
+      startMarker: '# /qa-only:',
+      endMarker: null,
+      references: QA_DISCOVERY_REFERENCES.filter(file => file !== 'qa/sections/exploratory.md'),
       judgeContext: 'a report-only QA testing workflow',
-      judgeGoal: 'how to systematically QA test a web application and produce a structured report with health score, screenshots, and repro steps — without fixing anything',
+      judgeGoal: 'how to select browser/native functional/mixed targets, explore safely with repository tools, report exact contract evidence and coverage limits, conditionally load browser/DX instructions and never mutate product/tests/Git through any tool',
     });
   }, WORKFLOW_JUDGE_TEST_MS);
 

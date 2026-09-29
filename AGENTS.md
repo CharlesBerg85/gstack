@@ -36,8 +36,8 @@ Invoke them by name (e.g., `/office-hours`).
 | `/design-shotgun` | Generate multiple AI design variants, comparison board, iterate. |
 | `/design-html` | Generate production-quality Pretext-native HTML/CSS. |
 | `/devex-review` | Live developer experience audit (TTHW measured against the real flow). |
-| `/qa` | Open a real browser, find bugs, fix them, re-verify. |
-| `/qa-only` | Same methodology as /qa but report only — no code changes. |
+| `/qa` | Test browser, API, CLI, job, worker and webhook behavior; reproduce bugs, fix them and re-verify. |
+| `/qa-only` | The same surface-aware QA, reporting findings and proposed tests without changing product code or tests. |
 | `/scrape` | Pull data from a web page in your Aside browser, with your real logged-in state. Read-only. On the fallback browser a codified browser-skill answers a repeat intent in ~200ms. |
 | `/skillify` | Codify the most recent successful `/scrape` flow into a permanent browser-skill (fallback browser only). |
 
@@ -49,7 +49,7 @@ Invoke them by name (e.g., `/office-hours`).
 | `/land-and-deploy` | Merge the PR, wait for CI and deploy, verify production health. |
 | `/canary` | Post-deploy monitoring loop in your Aside browser (or gstack's own when Aside is absent). |
 | `/landing-report` | Read-only dashboard for the workspace-aware ship queue. |
-| `/document-release` | Update all docs to match what you just shipped. |
+| `/document-release` | Audit relevant docs before final verification on every ship; also supports standalone documentation updates. |
 | `/document-generate` | Generate Diataxis docs (tutorial / how-to / reference / explanation) from code. |
 | `/setup-deploy` | One-time deploy config detection (Fly.io, Render, Vercel, etc.). |
 | `/gstack-upgrade` | Update gstack to the latest version. |

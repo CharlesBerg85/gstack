@@ -313,6 +313,62 @@ describe('gstack-codex-probe: timeout wrapper + namespace hygiene', () => {
     }
   });
 
+  test('bash-native watchdog reports its timeout while still retiring after TERM', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-watchdog-race-'));
+    try {
+      for (const tool of ['bash', 'sleep']) {
+        const resolved = spawnSync('bash', ['-c', `command -v ${tool}`], { timeout: 5000 });
+        expect(resolved.status).toBe(0);
+        fs.symlinkSync(resolved.stdout.toString().trim(), path.join(dir, tool));
+      }
+      const r = runProbe({
+        snippet: `
+kill() {
+  builtin kill "$@"
+  local rc=$?
+  if [ "$1" = -TERM ] && [ "$rc" -eq 0 ]; then sleep 0.2; fi
+  return "$rc"
+}
+_gstack_codex_timeout_wrapper 0.1 sleep 30
+printf 'rc=%s\\n' "$?"
+`,
+        env: { PATH: dir },
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe('rc=124\n');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  for (const [name, command, expected] of [
+    ['success', 'printf finished', 'finishedrc=0\n'],
+    ['ordinary failure', "bash -c 'exit 7'", 'rc=7\n'],
+    ['independent signal', "bash -c 'kill -TERM $$'", 'rc=143\n'],
+  ]) test(`bash-native watchdog preserves ${name} without waiting for its deadline`, () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-watchdog-early-'));
+    try {
+      for (const tool of ['bash', 'sleep']) {
+        const resolved = spawnSync('bash', ['-c', `command -v ${tool}`], { timeout: 5000 });
+        expect(resolved.status).toBe(0);
+        fs.symlinkSync(resolved.stdout.toString().trim(), path.join(dir, tool));
+      }
+      const r = runProbe({
+        snippet: `
+trap 'printf caller-term' TERM
+output=$(_gstack_codex_timeout_wrapper 10 ${command}; printf 'rc=%s\\n' "$?")
+printf '%s\\n' "$output"
+trap -p TERM
+`,
+        env: { PATH: dir },
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toBe(`${expected}trap -- 'printf caller-term' SIGTERM\n`);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('sourcing probe does NOT set errexit/trap/IFS in caller shell (namespace hygiene)', () => {
     // Capture `set -o` output before and after sourcing. Any drift means the
     // probe polluted the caller.
@@ -469,7 +525,7 @@ describe('codex review-mode section Step 2A: PROMPT + --base mutual exclusion gu
 describe('codex timeout wrapper: /review + /ship diff passes', () => {
   const WRAPPED_SITES = [
     'scripts/resolvers/review.ts', // generator (source of truth)
-    'review/sections/adversarial.md', // review section (Step 5.7 carved out of the skeleton)
+    'review/sections/adversarial.md', // review section (Step 4.8 carved out of the skeleton)
     'ship/sections/adversarial.md', // ship section source
   ];
 

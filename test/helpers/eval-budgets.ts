@@ -85,9 +85,12 @@ export const STRICT_RETRY_CASE_BUDGETS = [...FINDING_RETRY_BUDGETS, AUQ_CONSISTE
 export const FILE_RETRY_BUDGETS = [
   ...STRICT_RETRY_CASE_BUDGETS,
   ...[
-    // Sixteen workflow judges include their 10s recording grace; the other
-    // seven judges retain 120s. Supervise all 23 and the existing one retry.
-    { file: 'test/skill-llm-eval.test.ts', attemptMs: 16 * (JUDGE_MS + 10_000) + 7 * JUDGE_MS, retries: 1 },
+    { file: 'test/skill-e2e-qa-callers.test.ts', attemptMs: 5 * (CAPTURE_MS + 15_000), retries: 1 },
+    { file: 'test/skill-e2e-shared-libs-paths.test.ts', attemptMs: 3 * CAPTURE_LONG_MS, retries: 1 },
+    { file: 'test/skill-e2e-ship-docsync.test.ts', attemptMs: 5 * CAPTURE_LONG_MS + 8 * CAPTURE_MS, retries: 1 },
+    // Seventeen workflow judges include their 10s recording grace; the other
+    // seven judges retain 120s. Supervise all 24 and the existing one retry.
+    { file: 'test/skill-llm-eval.test.ts', attemptMs: 17 * (JUDGE_MS + 10_000) + 7 * JUDGE_MS, retries: 1 },
     { file: 'test/skill-e2e-auq-matrix.test.ts', attemptMs: 6 * CAPTURE_MS, retries: 1 },
     { file: 'test/skill-e2e-plan-format.test.ts', attemptMs: 4 * (CAPTURE_MS + 10_000), retries: 1 },
     { file: 'test/skill-e2e-auto-decide-preserved.test.ts', attemptMs: PTY_MS, retries: 1 },

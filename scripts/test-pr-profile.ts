@@ -8,10 +8,18 @@ export const PR_PROFILE_CASE_IDS = [
   'hermetic-canary', 'hermetic-sentinel',
   'browse-basic', 'browse-snapshot', 'skillmd-setup-discovery',
   'qa-bootstrap', 'review-sql-injection', 'review-coverage-audit',
+  'qa-functional-cli-report', 'qa-functional-webhook-report',
+  'qa-functional-cli-fix', 'qa-functional-webhook-fix',
+  'review-exploratory-small-cli', 'ship-exploratory-small-cli', 'ship-exploratory-unavailable',
+  'ship-exploratory-plan-checks', 'ship-exploratory-late-input',
   'plan-ceo-review-benefits', 'plan-eng-coverage-audit', 'plan-review-report',
   'auq-format-gate', 'plan-design-review-no-ui-scope', 'office-hours-spec-review',
   'tpa-present', 'tpa-absent-linux',
   'ship-local-workflow', 'ship-coverage-audit', 'docsync-spawned',
+  'ship-docsync', 'ship-docsync-completion', 'ship-docsync-current', 'ship-docsync-failure', 'ship-docsync-store',
+  'ship-docsync-missing-marker', 'ship-docsync-missing-asset', 'ship-docsync-launch-failure',
+  'ship-docsync-timeout-unsettled', 'ship-docsync-late-result', 'ship-docsync-stale-before',
+  'ship-docsync-stale-after', 'ship-docsync-recovery',
   'ship-managed-hook-refresh', 'ship-unmanaged-hook-consent', 'ship-local-hook-preservation',
   'setup-deploy-workflow', 'context-restore-loads-latest', 'plan-tune-inspect',
   'skillify-provenance-refusal', 'diagram-triplet', 'learnings-show',
@@ -26,6 +34,9 @@ export const PR_PROFILE_FILES: Record<string, readonly string[]> = {
   'test/skill-e2e-hermetic-canary.test.ts': ['hermetic-canary', 'hermetic-sentinel'],
   'test/skill-e2e-bws.test.ts': ['browse-basic', 'browse-snapshot', 'skillmd-setup-discovery'],
   'test/skill-e2e-qa-workflow.test.ts': ['qa-bootstrap'],
+  'test/skill-e2e-qa-functional.test.ts': ['qa-functional-cli-report', 'qa-functional-webhook-report'],
+  'test/skill-e2e-qa-functional-fix.test.ts': ['qa-functional-cli-fix', 'qa-functional-webhook-fix'],
+  'test/skill-e2e-qa-callers.test.ts': ['review-exploratory-small-cli', 'ship-exploratory-small-cli', 'ship-exploratory-unavailable', 'ship-exploratory-plan-checks', 'ship-exploratory-late-input'],
   'test/skill-e2e-review.test.ts': ['review-sql-injection'],
   'test/skill-e2e-coverage-audit.test.ts': ['review-coverage-audit', 'plan-eng-coverage-audit'],
   'test/skill-e2e-plan.test.ts': ['plan-ceo-review-benefits', 'plan-review-report', 'office-hours-spec-review'],
@@ -36,6 +47,7 @@ export const PR_PROFILE_FILES: Record<string, readonly string[]> = {
   'test/skill-e2e-ship-hook-refresh.test.ts': ['ship-managed-hook-refresh'],
   'test/skill-e2e-ship-hook-consent.test.ts': ['ship-unmanaged-hook-consent', 'ship-local-hook-preservation'],
   'test/skill-e2e-docsync-spawned.test.ts': ['docsync-spawned'],
+  'test/skill-e2e-ship-docsync.test.ts': ['ship-docsync', 'ship-docsync-completion', 'ship-docsync-current', 'ship-docsync-failure', 'ship-docsync-store', 'ship-docsync-missing-marker', 'ship-docsync-missing-asset', 'ship-docsync-launch-failure', 'ship-docsync-timeout-unsettled', 'ship-docsync-late-result', 'ship-docsync-stale-before', 'ship-docsync-stale-after', 'ship-docsync-recovery'],
   'test/skill-e2e-deploy.test.ts': ['setup-deploy-workflow'],
   'test/skill-e2e-session-intelligence.test.ts': ['context-restore-loads-latest'],
   'test/skill-e2e-plan-tune.test.ts': ['plan-tune-inspect'],
@@ -103,6 +115,11 @@ export const FREE_ONLY_PR_FILES = [
   'test/helpers/auq-parallel-worker.ts',
 ] as const;
 
+const FULL_GATE_PR_FILES = [
+  'package.json', 'bun.lock', '.github/docker/Dockerfile.ci',
+  'scripts/host-config.ts', 'scripts/discover-skills.ts', 'hosts/index.ts',
+] as const;
+
 function knownNonBehaviorFile(file: string): boolean {
   // A mapped dependency still wins over these exemptions. New helper/fixture,
   // runtime, dependency, or workflow files are deliberately not exempted.
@@ -157,7 +174,8 @@ export function selectPrProfile(options: {
   ])];
   const unknownFiles = files.filter(file => file !== TOUCHFILES_DATA_PATH
     && !depends(file, dependencyPatterns) && !knownNonBehaviorFile(file));
-  const fallback = unknownFiles.length > 0;
+  const sharedInputs = files.filter(file => depends(file, FULL_GATE_PR_FILES));
+  const fallback = unknownFiles.length > 0 || sharedInputs.length > 0;
   const candidates = fallback ? Object.keys(maps.e2eTouchfiles).sort() : selectedE2E;
   const e2e = candidates.filter(id => maps.tiers[id] === 'gate' && (fallback || profile.includes(id)));
   const judges = fallback ? Object.keys(maps.judgeTouchfiles).sort() : selectedJudges;
@@ -177,9 +195,10 @@ export function selectPrProfile(options: {
   const deferredPromptFiles = noQuickCoverage.filter(file => !hasQuickDependency(file)
     && Object.values(maps.e2eTouchfiles).some(patterns => depends(file, patterns)));
   const missingCoverage = noQuickCoverage.filter(file => !deferredPromptFiles.includes(file));
-  const reasons = fallback
-    ? [`Unknown dependencies restore every gate case and judge: ${unknownFiles.join(', ')}`]
-    : ['Changed-input selection intersected with the fast PR profile; selected judges retained'];
+  const reasons: string[] = [];
+  if (unknownFiles.length) reasons.push(`Unknown dependencies restore every gate case and judge: ${unknownFiles.join(', ')}`);
+  if (sharedInputs.length) reasons.push(`Shared runtime/build inputs restore every gate case and judge: ${sharedInputs.join(', ')}`);
+  if (!fallback) reasons.push('Changed-input selection intersected with the fast PR profile; selected judges retained');
   if (deferred.length) reasons.push(`${deferred.length} selected behaviors remain scheduled/release coverage, not PR passes`);
   if (deferredPromptFiles.length) reasons.push(`No quick live coverage; known broad prompt checks deferred: ${deferredPromptFiles.join(', ')}`);
   if (missingCoverage.length) reasons.push(`Full validation required for prompts without a relevant PR check: ${missingCoverage.join(', ')}`);

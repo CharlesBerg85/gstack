@@ -21,21 +21,53 @@
  * Each test lists the file patterns that, if changed, require the test to run.
  */
 export const E2E_TOUCHFILES: Record<string, string[]> = {
+  'ship-skipped-queued-finding': [
+    'package.json', 'bun.lock', '.github/docker/Dockerfile.ci',
+    'scripts/resolvers/review.ts', 'scripts/resolvers/sections.ts', 'scripts/resolvers/index.ts',
+    'scripts/resolvers/types.ts', 'scripts/gen-skill-docs.ts', 'scripts/host-config.ts',
+    'scripts/discover-skills.ts', 'hosts/claude.ts', 'hosts/index.ts', 'hosts/define-host.ts',
+    'ship/sections/review-army.md*', 'ship/sections/adversarial.md*', 'ship/sections/manifest.json',
+    'review/checklist.md', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree',
+    'bin/gstack-slug', 'bin/gstack-config', 'bin/gstack-brain-enqueue',
+    'lib/review-evidence.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts',
+    'test/helpers/ship-skip-actor.ts',  
+    'test/helpers/scratch-repo.ts',
+    'test/skill-e2e-ship-skip.test.ts', 'test/helpers/shared-libs-eval-fixture.ts',
+    'test/helpers/agent-sdk-runner.ts', 'test/helpers/hermetic-env.ts',
+    'test/helpers/e2e-gate.ts', 'test/helpers/eval-budgets.ts'
+  ],
   'investigate-owned-completion': ['investigate/**', 'freeze/**', 'guard/**', 'unfreeze/**', 'careful/bin/hook-extract.sh', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/workflow-boundaries-fixture.ts',  'test/skill-e2e-investigate-owned-completion.test.ts', 'test/helpers/e2e-gate.ts'],
   'investigate-owned-abort': ['investigate/**', 'freeze/**', 'guard/**', 'unfreeze/**', 'careful/bin/hook-extract.sh', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/workflow-boundaries-fixture.ts',  'test/skill-e2e-investigate-owned-termination.test.ts', 'test/helpers/e2e-gate.ts'],
   'investigate-owned-ending-error': ['investigate/**', 'freeze/**', 'guard/**', 'unfreeze/**', 'careful/bin/hook-extract.sh', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/workflow-boundaries-fixture.ts',  'test/skill-e2e-investigate-owned-termination.test.ts', 'test/helpers/e2e-gate.ts'],
-  'shared-libs-review-path-eligibility': ['review/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs-paths.test.ts', 'test/helpers/shared-libs-path-fixture.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json',   'test/fixtures/shared-libs-resolved-reads-public.json'],
-  'shared-libs-review-index-flags': ['review/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs-paths.test.ts', 'test/helpers/shared-libs-path-fixture.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json',  'test/fixtures/shared-libs-paths-max-turns-public.json',  'test/fixtures/shared-libs-resolved-reads-public.json'],
-  'shared-libs-review-prior-coverage': ['review/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs-paths.test.ts', 'test/helpers/shared-libs-path-fixture.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json',   'test/fixtures/shared-libs-resolved-reads-public.json'],
+  'shared-libs-review-path-eligibility': ['review/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs-paths.test.ts', 'test/helpers/shared-libs-path-fixture.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json',   'test/fixtures/shared-libs-resolved-reads-public.json', 'test/helpers/shared-libs-review-start-evidence.ts'],
+  'shared-libs-review-index-flags': ['review/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs-paths.test.ts', 'test/helpers/shared-libs-path-fixture.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json',  'test/fixtures/shared-libs-paths-max-turns-public.json',  'test/fixtures/shared-libs-resolved-reads-public.json', 'test/helpers/shared-libs-review-start-evidence.ts'],
+  'shared-libs-review-prior-coverage': ['review/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs-paths.test.ts', 'test/helpers/shared-libs-path-fixture.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json',   'test/fixtures/shared-libs-resolved-reads-public.json', 'test/helpers/shared-libs-review-start-evidence.ts'],
   'shared-libs-codex-read-only': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'test/helpers/codex-session-runner.ts', 'test/helpers/skill-fixture.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/eval-budgets.ts', 'test/codex-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'hosts/codex.ts', 'hosts/define-host.ts', 'scripts/resolvers/constants.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts'],
   // Shared-code audit and scoped review lifecycle
-  'shared-libs-read-only': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-review-start-evidence.ts'],
-  'shared-libs-unsupported-git': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-review-start-evidence.ts'],
-  'shared-libs-review-lifecycle': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json', 'test/helpers/shared-libs-review-start-evidence.ts'],
-  'shared-libs-review-revalidation': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/helpers/shared-libs-review-start-evidence.ts',  'test/fixtures/shared-libs-review-start-public.json',  'test/fixtures/shared-libs-revalidation-max-turns-public.json', 'test/fixtures/shared-libs-index-flags-*.json'],
-  'shared-libs-opportunity-judgment': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs-periodic.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/llm-judge.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-plan-actor.ts', 'test/helpers/shared-libs-plan-excerpt.ts'],
-  'shared-libs-pr-coverage': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'test/skill-e2e-shared-libs-periodic.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/llm-judge.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-plan-actor.ts', 'test/helpers/shared-libs-plan-excerpt.ts'],
-  'shared-libs-plan-callers': ['test/helpers/shared-libs-plan-actor.ts',  'scripts/resolvers/confidence.ts', 'test/helpers/shared-libs-plan-excerpt.ts',  'scripts/resolvers/preamble/generate-ask-user-format.ts', 'deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts', 'plan-eng-review/**', 'test/skill-e2e-shared-libs-periodic.test.ts',   'test/fixtures/plan-scope-recovery-av.json',  'scripts/resolvers/preamble/generate-preamble-bash.ts', 'scripts/resolvers/preamble/generate-completion-status.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/llm-judge.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts'],
+  'shared-libs-read-only': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-review-start-evidence.ts', 'test/helpers/shared-libs-path-fixture.ts'],
+  'shared-libs-unsupported-git': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-review-start-evidence.ts', 'test/helpers/shared-libs-path-fixture.ts'],
+  'shared-libs-review-lifecycle': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-index-flags-*.json', 'test/helpers/shared-libs-path-fixture.ts',  'test/fixtures/shared-libs-lifecycle-r59-stage-scope-public.json',  'test/helpers/shared-libs-review-start-evidence.ts'],
+  'shared-libs-review-revalidation': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'lib/review-evidence.ts', 'bin/gstack-review-log', 'bin/gstack-review-read', 'bin/gstack-wtree', 'test/skill-e2e-shared-libs.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/helpers/shared-libs-review-start-evidence.ts',  'test/fixtures/shared-libs-review-start-public.json',  'test/fixtures/shared-libs-revalidation-max-turns-public.json', 'test/fixtures/shared-libs-index-flags-*.json',  'test/helpers/shared-libs-path-fixture.ts' ],
+  'shared-libs-opportunity-judgment': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs-periodic.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/llm-judge.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-plan-actor.ts', 'test/helpers/shared-libs-plan-excerpt.ts'],
+  'shared-libs-pr-coverage': ['deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'test/skill-e2e-shared-libs-periodic.test.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/llm-judge.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts', 'test/fixtures/shared-libs-readonly-substitution-ci16358.json', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/shared-libs-plan-actor.ts', 'test/helpers/shared-libs-plan-excerpt.ts'],
+  'shared-libs-plan-callers': ['test/helpers/shared-libs-plan-actor.ts',  'scripts/resolvers/confidence.ts', 'test/helpers/shared-libs-plan-excerpt.ts',  'scripts/resolvers/preamble/generate-ask-user-format.ts', 'deslop-shared-libs/**', 'scripts/resolvers/shared-libs.ts', 'scripts/resolvers/index.ts', 'test/helpers/shared-libs-eval-fixture.ts',  'plan-eng-review/**', 'test/skill-e2e-shared-libs-periodic.test.ts',   'test/fixtures/plan-scope-recovery-av.json',  'scripts/resolvers/preamble/generate-preamble-bash.ts', 'scripts/resolvers/preamble/generate-completion-status.ts',  'test/helpers/e2e-gate.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/llm-judge.ts', 'lib/claude-bin.ts', 'lib/eval-model.ts'],
+  'ship-docsync-missing-marker': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-missing-asset': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-launch-failure': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-timeout-unsettled': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-late-result': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-stale-before': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-stale-after': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'ship-docsync-recovery': ['ship/**', 'document-release/**', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/testing.ts', 'scripts/gen-skill-docs.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/docsync-*.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'review-exploratory-small-cli': ['bin/gstack-qa-evidence', 'lib/qa-evidence.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',    'bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',   'review/**', 'ship/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-callers-fixture.ts', 'test/helpers/qa-functional-observer.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/qa-functional-fixture.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/session-runner.ts',  'test/skill-e2e-qa-callers.test.ts', 'scripts/resolvers/testing.ts', 'test/helpers/skill-census.ts'],
+  'ship-exploratory-small-cli': ['bin/gstack-qa-evidence', 'lib/qa-evidence.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',    'bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',   'review/**', 'ship/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-callers-fixture.ts', 'test/helpers/qa-functional-observer.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/qa-functional-fixture.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/session-runner.ts',  'test/skill-e2e-qa-callers.test.ts', 'scripts/resolvers/testing.ts', 'test/helpers/skill-census.ts'],
+  'ship-exploratory-unavailable': ['bin/gstack-qa-evidence', 'lib/qa-evidence.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',    'bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',   'review/**', 'ship/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-callers-fixture.ts', 'test/helpers/qa-functional-observer.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/qa-functional-fixture.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/session-runner.ts',  'test/skill-e2e-qa-callers.test.ts', 'scripts/resolvers/testing.ts', 'test/helpers/skill-census.ts'],
+  'ship-exploratory-plan-checks': ['bin/gstack-qa-evidence', 'lib/qa-evidence.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',    'bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',   'review/**', 'ship/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-callers-fixture.ts', 'test/helpers/qa-functional-observer.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/qa-functional-fixture.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/session-runner.ts',  'test/skill-e2e-qa-callers.test.ts', 'scripts/resolvers/testing.ts', 'test/helpers/skill-census.ts'],
+  'ship-exploratory-late-input': ['bin/gstack-qa-evidence', 'lib/qa-evidence.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',    'bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',   'review/**', 'ship/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-callers-fixture.ts', 'test/helpers/qa-functional-observer.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/qa-functional-fixture.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/session-runner.ts',  'test/skill-e2e-qa-callers.test.ts', 'scripts/resolvers/testing.ts', 'test/helpers/skill-census.ts'],
+  'qa-functional-cli-report': ['bin/gstack-qa-evidence', 'bin/gstack-qa-deadline', 'lib/qa-evidence.ts', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',      'qa/**', 'qa-only/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/utility.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/fixtures/qa-functional-cli-learning-ci-36516246523.json', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/skill-fixture.ts', 'test/skill-e2e-qa-functional.test.ts', 'test/helpers/office-hours-attempt.ts'],
+  'qa-functional-webhook-report': ['bin/gstack-qa-evidence', 'bin/gstack-qa-deadline', 'lib/qa-evidence.ts', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',      'qa/**', 'qa-only/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/utility.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/fixtures/qa-webhook-r85-checkpoints.json', 'test/fixtures/qa-functional-ci-36505065023.json', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/skill-fixture.ts', 'test/skill-e2e-qa-functional.test.ts', 'test/helpers/office-hours-attempt.ts'],
+  'qa-functional-cli-fix': ['bin/gstack-qa-evidence', 'bin/gstack-qa-deadline', 'lib/qa-evidence.ts', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',      'qa/**', 'qa-only/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/utility.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/skill-fixture.ts', 'test/skill-e2e-qa-functional-fix.test.ts', 'test/helpers/office-hours-attempt.ts'],
+  'qa-functional-webhook-fix': ['bin/gstack-qa-evidence', 'bin/gstack-qa-deadline', 'lib/qa-evidence.ts', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts', 'lib/fs-atomic.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-evidence.ts',      'qa/**', 'qa-only/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/utility.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/qa-functional-*.ts', 'test/helpers/qa-checkpoint-evidence.ts',  'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'test/helpers/skill-fixture.ts', 'test/skill-e2e-qa-functional-fix.test.ts', 'test/helpers/office-hours-attempt.ts'],
   // Browse core (+ test-server dependency)
   'browse-basic':    [ 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-bws.test.ts'],
   'browse-snapshot': [ 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-bws.test.ts'],
@@ -44,8 +76,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // primary browser (test/skill-e2e-aside.test.ts self-skips without a running Aside)
   'aside-browse-basic':  [ 'browse/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts', 'test/helpers/e2e-gate.ts'],
   'aside-browse-flow':   [ 'browse/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/forms.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts', 'test/helpers/e2e-gate.ts'],
-  'aside-qa-quick':      [ 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/e2e-gate.ts'],
+  'aside-qa-quick': [ 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts', 'test/helpers/e2e-gate.ts'],
   'aside-scrape-json':   [ 'scrape/**', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts', 'test/helpers/e2e-gate.ts'],
   'aside-canary-quick':  [ 'canary/**', 'scripts/resolvers/aside.ts', 'browse/test/test-server.ts', 'browse/test/fixtures/basic.html', 'test/helpers/aside-available.ts', 'test/skill-e2e-aside.test.ts', 'test/helpers/e2e-gate.ts'],
 
@@ -70,23 +101,21 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 
   // QA (+ test-server dependency). /qa drives Aside first (the resolver) and
   // the browse binary as fallback (browse/src), so both are deps.
-  'qa-quick':       [ 'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts'],
-  'qa-b6-static':   [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval.html', 'test/fixtures/qa-eval-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts'],
-  'qa-b7-spa':      [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-spa.html', 'test/fixtures/qa-eval-spa-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts'],
-  'qa-b8-checkout': [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-checkout.html', 'test/fixtures/qa-eval-checkout-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts'],
-  'qa-only-no-fix': [  'qa-only/**', 'qa/templates/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts', 'test/helpers/aside-available.ts'],
-  'qa-fix-loop':    [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts',
-     'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts'],
-  'qa-bootstrap':   [ 'qa/**', 'ship/**', 'test/skill-e2e-qa-workflow.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts'],
+  'qa-quick': ['bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',    'qa/**', 'scripts/resolvers/browse.ts', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts', 'test/helpers/aside-available.ts', 'test/fixtures/qa-only-browser-probe.ts', 'test/helpers/bootstrap-retention.ts', 'test/helpers/qa-browser-deadline-evidence.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-only-cleanup.ts'],
+  'qa-b6-static': [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval.html', 'test/fixtures/qa-eval-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',  'test/helpers/aside-available.ts'],
+  'qa-b7-spa': [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-spa.html', 'test/fixtures/qa-eval-spa-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',  'test/helpers/aside-available.ts'],
+  'qa-b8-checkout': [ 'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/helpers/llm-judge.ts', 'browse/test/fixtures/qa-eval-checkout.html', 'test/fixtures/qa-eval-checkout-ground-truth.json', 'test/skill-e2e-qa-bugs.test.ts',  'test/helpers/aside-available.ts'],
+  'qa-only-no-fix': ['test/helpers/qa-only-cleanup.ts',  'test/helpers/qa-checkpoint-evidence.ts',  'test/fixtures/qa-only-observation-public.json', 'test/fixtures/qa-only-charter-public.json', 'test/fixtures/qa-only-browser-probe.ts', 'browse/test/fixtures/qa-only.html',  'test/helpers/qa-browser-deadline-evidence.ts',  'bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',      'qa-only/**', 'qa/sections/**', 'qa/templates/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts', 'test/helpers/aside-available.ts', 'test/helpers/bootstrap-retention.ts', 'test/helpers/qa-evidence-producer.ts'],
+  'qa-fix-loop': ['bin/gstack-qa-deadline', 'lib/qa-deadline.ts', 'lib/claude-code-windows-job.ts',    'qa/**', 'scripts/resolvers/aside.ts', 'browse/src/**', 'browse/test/test-server.ts', 'test/skill-e2e-qa-workflow.test.ts',
+     'test/helpers/aside-available.ts', 'test/fixtures/qa-only-browser-probe.ts', 'test/helpers/bootstrap-retention.ts', 'test/helpers/qa-browser-deadline-evidence.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-only-cleanup.ts'],
+  'qa-bootstrap':   ['test/helpers/bootstrap-retention.ts',     'qa/**', 'ship/**', 'test/skill-e2e-qa-workflow.test.ts',
+    'scripts/resolvers/testing.ts', 'test/helpers/aside-available.ts', 'test/fixtures/qa-only-browser-probe.ts', 'test/helpers/qa-browser-deadline-evidence.ts', 'test/helpers/qa-checkpoint-evidence.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-only-cleanup.ts'],
 
   // Review
-  'review-sql-injection':     [ 'review/**', 'test/fixtures/review-eval-vuln.rb', 'test/skill-e2e-review.test.ts', 'test/fixtures/fake-impeccable.ts', 'test/helpers/fake-impeccable.ts'],
-  'review-enum-completeness': [ 'review/**', 'test/fixtures/review-eval-enum*.rb', 'test/skill-e2e-review.test.ts', 'test/fixtures/fake-impeccable.ts', 'test/helpers/fake-impeccable.ts'],
+  'review-sql-injection':     [ 'review/**', 'test/fixtures/review-eval-vuln.rb', 'test/skill-e2e-review.test.ts',
+      'test/fixtures/review-browse-error-ci-36516246523.json', 'test/fixtures/fake-impeccable.ts', 'test/helpers/fake-impeccable.ts'],
+  'review-enum-completeness': [ 'review/**', 'test/fixtures/review-eval-enum*.rb', 'test/skill-e2e-review.test.ts', 
+     'test/fixtures/fake-impeccable.ts', 'test/helpers/fake-impeccable.ts'],
   'review-base-branch':       [ 'review/**', 'test/skill-e2e-review-attribution.test.ts'],
   'review-design-lite':       [ 'review/**', 'test/fixtures/review-eval-design-slop.*', 'test/helpers/fake-impeccable.ts', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/impeccable-detect-sample.json', 'lib/design-catalog.ts', 'lib/design-detect-contract.ts', 'bin/gstack-design-detect.ts', 'scripts/resolvers/design-checklist.ts', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review.test.ts'
     
@@ -96,14 +125,15 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   'review-army-migration-safety': [ 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
   'review-army-perf-n-plus-one':  [ 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts',   'test/fixtures/review-n-plus-one-dispatch.json', 'test/helpers/office-hours-attempt.ts'],
   'review-army-delivery-audit':   [ 'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
-  'review-army-quality-score':    [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
+  'review-army-quality-score':    [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts',  'test/helpers/office-hours-attempt.ts'],
   'review-army-json-findings':    [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
   'review-army-red-team':         [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts',
     'test/helpers/office-hours-attempt.ts'  
   ],
   'review-army-simplification':   [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/fixtures/review-army-overbuild.js', 'test/fixtures/review-army-lean-complete.js', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
   'review-army-simplification-precision': [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/fixtures/review-army-overbuild.js', 'test/fixtures/review-army-lean-complete.js', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
-  'review-army-consensus':        [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
+  'review-army-consensus':        [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 
+     'test/helpers/office-hours-attempt.ts'],
 
   // Office Hours
   'office-hours-spec-review':     [  'office-hours/**', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-plan.test.ts',
@@ -130,14 +160,14 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     "test/fixtures/plan-scope-recovery-av.json",  'plan-eng-review/**', 'test/skill-e2e-plan.test.ts',
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts', 'test/helpers/codex-offering-fixture.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts', 'test/helpers/office-hours-completion.ts', 'test/helpers/workflow-judge-input.ts'],
+    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'test/helpers/codex-offering-fixture.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts', 'test/helpers/office-hours-completion.ts', 'test/helpers/workflow-judge-input.ts'],
   'plan-eng-review-artifact':  [ 
     
     'scripts/resolvers/learnings.ts',
     
     "test/fixtures/plan-scope-recovery-av.json",  'plan-eng-review/**', 'test/skill-e2e-plan.test.ts',
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts', 'test/helpers/codex-offering-fixture.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts', 'test/helpers/office-hours-completion.ts', 'test/helpers/workflow-judge-input.ts'],
+    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'test/helpers/codex-offering-fixture.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts', 'test/helpers/office-hours-completion.ts', 'test/helpers/workflow-judge-input.ts'],
   'plan-review-report':        [ 
     
     'test/helpers/office-hours-attempt.ts', 
@@ -146,7 +176,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     "test/fixtures/plan-scope-recovery-av.json",  'plan-eng-review/**', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-plan.test.ts',
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts', 'test/helpers/codex-offering-fixture.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-completion.ts', 'test/helpers/workflow-judge-input.ts'],
+    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'test/helpers/codex-offering-fixture.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-completion.ts', 'test/helpers/workflow-judge-input.ts'],
 
   // Plan-mode smoke tests — gate-tier safety regression tests. Each test file
   // contains TWO test cases as of v1.21: the baseline plan-mode case and the
@@ -159,25 +189,25 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     'test/helpers/plan-count-fixture.ts',
     
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
 
     "test/fixtures/plan-scope-target-aw.json",
 
-'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-ceo-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-ceo-plan-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json','test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts','test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
-
-'test/fixtures/design-scope-announcement-ao.json',
+     'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-ceo-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-ceo-plan-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json',  'test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts',  'test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
+    
+     'test/fixtures/design-scope-announcement-ao.json',
     'test/fixtures/design-scope-declaration-ak.json',
-
+    
     "test/fixtures/eng-option-b-scope-al.json",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
   'plan-eng-review-plan-mode':    [
     'lib/claude-public-transcript.ts',
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
 
      'test/fixtures/autoplan-public-narration-ad.json',
@@ -185,22 +215,22 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'scripts/resolvers/learnings.ts',
     "test/fixtures/plan-scope-target-aw.json",
 
-
+    
     "test/fixtures/plan-scope-recovery-av.json",  
-'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-eng-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-eng-plan-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/fixtures/design-plan-scope-ag.json','test/fixtures/design-scope-selection-aj.json', 'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json','test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts','test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
-
-'test/fixtures/design-scope-announcement-ao.json',
+     'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-eng-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-eng-plan-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/fixtures/design-plan-scope-ag.json',  'test/fixtures/design-scope-selection-aj.json', 'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json',  'test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts',  'test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
+    
+     'test/fixtures/design-scope-announcement-ao.json',
     'test/fixtures/design-scope-declaration-ak.json',
-
+    
     "test/fixtures/eng-option-b-scope-al.json",
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
-     'test/fixtures/pty-companion-cli.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/helpers/owned-claude-transcript.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/testing.ts', 'test/helpers/plan-mode-evidence.ts',  'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
-  'plan-design-review-plan-mode': [
+     'test/fixtures/pty-companion-cli.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/helpers/owned-claude-transcript.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/testing.ts', 'test/helpers/plan-mode-evidence.ts',  'lib/redact-engine.ts', 'lib/redact-patterns.ts',  'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
+  'plan-design-review-plan-mode': [ 
     'lib/claude-public-transcript.ts',
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
 
      'test/fixtures/autoplan-public-narration-ad.json',
@@ -209,34 +239,34 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     "test/fixtures/plan-scope-target-aw.json",
 
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json",
-'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-design-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-design-plan-mode.test.ts', 'test/skill-e2e-design.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/fixtures/design-plan-scope-ag.json','test/fixtures/design-scope-selection-aj.json', 'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json','test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts','test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
-
-'test/fixtures/design-scope-announcement-ao.json',
+     'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-design-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-design-plan-mode.test.ts', 'test/skill-e2e-design.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/fixtures/design-plan-scope-ag.json',  'test/fixtures/design-scope-selection-aj.json', 'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json',  'test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts',  'test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
+    
+     'test/fixtures/design-scope-announcement-ao.json',
     'test/fixtures/design-scope-declaration-ak.json',
-
+    
     "test/fixtures/eng-option-b-scope-al.json",
-
+    
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
-     'test/fixtures/pty-companion-cli.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/helpers/owned-claude-transcript.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/plan-mode-evidence.ts',  'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
+     'test/fixtures/pty-companion-cli.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/helpers/owned-claude-transcript.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/plan-mode-evidence.ts',  'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
   'plan-devex-review-plan-mode':  [
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
 
     "test/fixtures/plan-scope-target-aw.json",
 
-'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-devex-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-devex-plan-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json','test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts','test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
-
-'test/fixtures/design-scope-announcement-ao.json',
+     'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-devex-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-devex-plan-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json',  'test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts',  'test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
+    
+     'test/fixtures/design-scope-announcement-ao.json',
     'test/fixtures/design-scope-declaration-ak.json',
-
+    
     "test/fixtures/eng-option-b-scope-al.json",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
   // Covers ceo (preamble misfire) + eng/design (scope-gate bypass must not
   // fire outside plan mode) + the named-target exception case. 4 PTY runs;
   // in CI these run CONCURRENT with the rest of the pty-plan-smoke suite
@@ -244,27 +274,27 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // pass of each, sharing the API budget with sibling tests — not the
   // sequential ~+10min a local read suggests.
   'plan-mode-no-op':              [
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
 
     'scripts/resolvers/learnings.ts',
     "test/fixtures/plan-scope-target-aw.json",
 
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", 
-'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-ceo-review/**', 'plan-eng-review/**', 'plan-design-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-mode-no-op.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json','test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts','test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
-
-'test/fixtures/design-scope-announcement-ao.json',
+     'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-ceo-review/**', 'plan-eng-review/**', 'plan-design-review/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-mode-no-op.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-scope-selection.ts',  'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json',  'test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts',  'test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log', 'bin/gstack-question-preference',   'test/helpers/fake-plan-seed.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
+    
+     'test/fixtures/design-scope-announcement-ao.json',
     'test/fixtures/design-scope-declaration-ak.json',
-
+    
     "test/fixtures/eng-option-b-scope-al.json",
-
+    
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
-     'test/fixtures/pty-companion-cli.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/helpers/owned-claude-transcript.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
+     'test/fixtures/pty-companion-cli.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/helpers/owned-claude-transcript.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts'],
 
   // v1.21+ AskUserQuestion-blocked regression tests — Conductor launches
   // claude with `--disallowedTools AskUserQuestion --permission-mode default`
@@ -275,12 +305,12 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // transitively by the entries above). Two new standalone files exist for
   // skills with no prior plan-mode test:
   'office-hours-auto-mode':       [
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
-  'test/fixtures/native-auto-decide-ag.json', 'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json', 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'office-hours/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-office-hours-auto-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
+  'test/fixtures/native-auto-decide-ag.json', 'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json', 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'office-hours/**', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-office-hours-auto-mode.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
   'office-hours-phase4-fork':     [ 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'office-hours/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/question-tuning.ts', 'test/helpers/llm-judge.ts', 'test/skill-e2e-office-hours-phase4.test.ts' ],
   'llm-judge-recommendation':     ['codex/**', 'test/helpers/llm-judge.ts', 'test/llm-judge-recommendation.test.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'codex/SKILL.md.tmpl', 'scripts/resolvers/review.ts'],
   // v1.21+ AUTO_DECIDE preserve eval (periodic). Verifies the Tool resolution
@@ -290,18 +320,18 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // infrastructure plus the resolvers that own the AUTO_DECIDE preamble.
   'auto-decide-preserved':        [
     'lib/claude-public-transcript.ts',
-
+    
     'test/fixtures/auto-decide-recommendation-361c.json',
-
+    
     'test/fixtures/auto-decide-target-361c.json',
 
      'test/fixtures/autoplan-public-narration-ad.json',
     'test/fixtures/auto-decide-completed-mode-f359.json',
     'test/helpers/plan-count-transcript.ts',  'test/fixtures/plan-count-cross-cwd-ancestry-0bcd.json', 
-'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'bin/gstack-session-kind', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-preamble-bash.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'plan-ceo-review/**', 'bin/gstack-question-preference', 'bin/gstack-config', 'bin/gstack-slug', 'hosts/claude/hooks/question-preference-hook.ts', 'hosts/claude/hooks/spawned-directive.ts', 'lib/is-conductor.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-auto-decide-preserved.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/native-auto-decide.ts','test/fixtures/auto-decide-current-declaration-6aef.json','test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json','test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts','test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log',   'test/helpers/fake-plan-seed.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
+     'test/fixtures/auto-decide-saved-ai.json', 'test/fixtures/auto-decide-retry-ai.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'bin/gstack-session-kind', 'scripts/resolvers/question-tuning.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-preamble-bash.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'plan-ceo-review/**', 'bin/gstack-question-preference', 'bin/gstack-config', 'bin/gstack-slug', 'hosts/claude/hooks/question-preference-hook.ts', 'hosts/claude/hooks/spawned-directive.ts', 'lib/is-conductor.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-auto-decide-preserved.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/native-auto-decide.ts',  'test/fixtures/auto-decide-current-declaration-6aef.json',  'test/fixtures/auto-decide-explanatory-mode-043a.json', 'test/fixtures/auto-decide-explanatory-mode-749df.json',  'test/fixtures/auto-decide-structured-77.json', 'test/helpers/auto-decision-state.ts',  'test/fixtures/auto-decide-state-cab3.json', 'bin/gstack-question-log',   'test/helpers/fake-plan-seed.ts', 'test/helpers/plan-seed-submission.ts',  'test/fixtures/plan-seed-cli.ts', 'test/fixtures/native-auto-decide-ag.json',  'test/fixtures/eng-seeded-completion-ai.json', 'test/helpers/plan-count-pending-exit.ts',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**',
     
     'test/helpers/plan-count-fixture.ts', 
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',  'test/fixtures/auto-decide-mode-selector-749df.json', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/ceo-finding-fixture.ts',  'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts'],
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',  'test/fixtures/auto-decide-mode-selector-749df.json', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/ceo-finding-fixture.ts',  'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',     'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts'],
 
   // Conductor → prose decision brief (Conductor signal makes prose the default;
   // the PreToolUse hook denies the flaky tool). Touches the resolver that owns
@@ -317,8 +347,8 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'scripts/resolvers/tasks-section.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/plan-skill-question-events.ts', 'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/plan-skill-questions.ts', 'test/helpers/pty-screen.ts', 'test/helpers/pty-trust-dialog.ts', 'test/helpers/skill-census.ts'],
   'plan-ceo-mode-routing':       [
     'lib/claude-public-transcript.ts',
-
-
+    
+    
 
      'test/fixtures/ceo-expansion-pacing-fb10.json', 'test/helpers/ceo-hold-posture-review.ts',  'test/fixtures/ceo-hold-proof-fb10.json', 'test/helpers/plan-review-decisions.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts',
     'test/fixtures/ceo-hold-preservation-f359.json',
@@ -328,23 +358,24 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
      'test/fixtures/ceo-mode-pending-submit.json',
      "test/fixtures/plan-count-cross-cwd-ancestry-0bcd.json", 
 
-"test/fixtures/ceo-mode-colon-at.json", 'plan-ceo-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/helpers/ceo-mode-option.ts',  'test/fixtures/ceo-expansion-disposition-77.json',   'test/helpers/plan-count-transcript.ts',  'test/fixtures/autoplan-public-narration-ad.json',  'test/helpers/plan-count-fixture.ts',   'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json', 'test/skill-e2e-plan-ceo-mode-routing.test.ts',  'test/fixtures/ceo-hold-posture-l.json',  'test/fixtures/ceo-mode-labels-l.json',  'test/fixtures/ceo-checkbox-l.screen.txt',  'test/fixtures/ceo-mode-prerequisite-o-calls.json', 'test/fixtures/ceo-mode-prerequisite-q-call.json',  'test/fixtures/ceo-preview-u-call.json', 'test/fixtures/ceo-preview-u-screen.txt',  'test/fixtures/design-preview-v-screen.txt',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/fixtures/ceo-mode-preview-aa-screen.txt', 'test/fixtures/ceo-count-mode-preview-aa-screen.txt',  'test/fixtures/ceo-expansion-auq-ac.json', 'test/helpers/plan-count-pending-question.ts',    'test/fixtures/ceo-barless-submit-ac.json',  'test/fixtures/pending-question-completion-ad.json','test/fixtures/ceo-mode-posture-ad.json','test/fixtures/ceo-mode-full-ad.json','test/fixtures/ceo-prerequisite-ad-v2.json','test/fixtures/ceo-hold-posture-ag.json',
-"test/fixtures/ceo-hold-commitment-ar.json",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',  'test/helpers/ceo-finding-fixture.ts',   'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/owned-claude-transcript.ts', 'scripts/resolvers/tasks-section.ts',
+     "test/fixtures/ceo-mode-colon-at.json", 'plan-ceo-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/helpers/ceo-mode-option.ts',  'test/fixtures/ceo-expansion-disposition-77.json',   'test/helpers/plan-count-transcript.ts',  'test/fixtures/autoplan-public-narration-ad.json',  'test/helpers/plan-count-fixture.ts',   'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json', 'test/skill-e2e-plan-ceo-mode-routing.test.ts',  'test/fixtures/ceo-hold-posture-l.json',  'test/fixtures/ceo-mode-labels-l.json',  'test/fixtures/ceo-checkbox-l.screen.txt',  'test/fixtures/ceo-mode-prerequisite-o-calls.json', 'test/fixtures/ceo-mode-prerequisite-q-call.json',  'test/fixtures/ceo-preview-u-call.json', 'test/fixtures/ceo-preview-u-screen.txt',  'test/fixtures/design-preview-v-screen.txt',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/fixtures/ceo-mode-preview-aa-screen.txt', 'test/fixtures/ceo-count-mode-preview-aa-screen.txt',  'test/fixtures/ceo-expansion-auq-ac.json', 'test/helpers/plan-count-pending-question.ts',    'test/fixtures/ceo-barless-submit-ac.json',  'test/fixtures/pending-question-completion-ad.json',  'test/fixtures/ceo-mode-posture-ad.json',  'test/fixtures/ceo-mode-full-ad.json',  'test/fixtures/ceo-prerequisite-ad-v2.json',  'test/fixtures/ceo-hold-posture-ag.json',
+     "test/fixtures/ceo-hold-commitment-ar.json",
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',  'test/helpers/ceo-finding-fixture.ts',   'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/owned-claude-transcript.ts',    'scripts/resolvers/tasks-section.ts',
     'test/fixtures/ceo-expansion-pacing-77.json', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
-  'plan-design-with-ui-scope':   [
+  'plan-design-with-ui-scope':   [ 'test/helpers/pty-screen.ts',
     'lib/claude-public-transcript.ts',
      'test/fixtures/autoplan-public-narration-ad.json',
     'test/helpers/plan-count-fixture.ts', 
      'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json',
     'test/helpers/plan-count-transcript.ts',  'test/fixtures/plan-count-cross-cwd-ancestry-0bcd.json', 
-
+      
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json",'plan-design-review/**', 'test/fixtures/plans/ui-heavy-feature.md', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/skill-e2e-plan-design-with-ui.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',
     
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',  'test/helpers/ceo-finding-fixture.ts', 'test/helpers/plan-review-cases.ts', 'test/helpers/plan-review-board-feedback.ts',  'test/fixtures/design-board-questions.json', 'test/fixtures/design-outside-voices-question.json', 'design/src/daemon-state.ts', 'design/src/daemon.ts', 'design/test/daemon-tests-fixtures.ts', 'design/src/daemon-client.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/preamble/generate-ask-user-format.ts', 'bin/gstack-paths', 'bin/gstack-slug', 'scripts/resolvers/design.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',  'test/helpers/ceo-finding-fixture.ts', 'test/helpers/plan-review-cases.ts', 'test/helpers/plan-review-board-feedback.ts',  'test/fixtures/design-board-questions.json', 'test/fixtures/design-outside-voices-question.json', 'design/src/daemon-state.ts', 'design/src/daemon.ts', 'design/test/daemon-tests-fixtures.ts', 'design/src/daemon-client.ts', 'test/helpers/owned-claude-transcript.ts',     'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/preamble/generate-ask-user-format.ts', 'bin/gstack-paths', 'bin/gstack-slug', 'scripts/resolvers/design.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
   'tpa-present':                 [ 'scripts/resolvers/third-party-actions.ts', 'ship/SKILL.md.tmpl', 'ship/sections/apple-release.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/helpers/session-runner.ts', 'test/skill-e2e-third-party-actions.test.ts', 'test/helpers/third-party-actions.ts',
      'lib/eval-model.ts'
   ],
@@ -363,8 +394,8 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   'ship-section-loading':        [ 'ship/**', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts',  'test/skill-e2e-ship-section-loading.test.ts',
       'scripts/resolvers/testing.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/auq-native-capture.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/llm-judge.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/plan-skill-question-events.ts', 'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/plan-skill-questions.ts', 'test/helpers/pty-screen.ts', 'test/helpers/pty-trust-dialog.ts', 'test/helpers/skill-census.ts'],
   'plan-ceo-section-loading':    [
-    'test/fixtures/ceo-fill-lifetime.json', 'plan-ceo-review/**',  'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts',  'test/helpers/ceo-section-loading-fixture.ts',  'test/skill-e2e-plan-ceo-review-section-loading.test.ts', 'test/fixtures/ceo-section-loading-l-report.md', 'test/fixtures/ceo-section-loading-q-report.md', 'test/fixtures/ceo-section-r-rejected-report.md', 'test/fixtures/ceo-section-s-trace-report.md', 'test/fixtures/ceo-section-u-report.md', 'test/fixtures/ceo-section-y-report.md', 'test/fixtures/ceo-section-aa-report.md','test/fixtures/sdk-stale-table-ad-v3.json','test/fixtures/sdk-ordering-ae.json','test/fixtures/sdk-columnar-af.json','test/fixtures/sdk-order-b-ag.json','test/fixtures/sdk-schedule-continuation-ah.json','test/fixtures/sdk-original-order-ai.json','test/fixtures/sdk-compact-sequence-aj.json',
-"test/fixtures/sdk-reported-coordination-ar.md","test/fixtures/sdk-ordered-schedule-ar.md",
+    'test/fixtures/ceo-fill-lifetime.json', 'plan-ceo-review/**',  'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts',  'test/helpers/ceo-section-loading-fixture.ts',  'test/skill-e2e-plan-ceo-review-section-loading.test.ts', 'test/fixtures/ceo-section-loading-l-report.md', 'test/fixtures/ceo-section-loading-q-report.md', 'test/fixtures/ceo-section-r-rejected-report.md', 'test/fixtures/ceo-section-s-trace-report.md', 'test/fixtures/ceo-section-u-report.md', 'test/fixtures/ceo-section-y-report.md', 'test/fixtures/ceo-section-aa-report.md',  'test/fixtures/sdk-stale-table-ad-v3.json',  'test/fixtures/sdk-ordering-ae.json',  'test/fixtures/sdk-columnar-af.json',  'test/fixtures/sdk-order-b-ag.json',  'test/fixtures/sdk-schedule-continuation-ah.json',  'test/fixtures/sdk-original-order-ai.json',  'test/fixtures/sdk-compact-sequence-aj.json',
+     "test/fixtures/sdk-reported-coordination-ar.md",  "test/fixtures/sdk-ordered-schedule-ar.md",
      'scripts/resolvers/review.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/tasks-section.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/auq-native-capture.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/llm-judge.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/plan-skill-question-events.ts', 'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/plan-skill-questions.ts', 'test/helpers/pty-screen.ts', 'test/helpers/pty-trust-dialog.ts', 'test/helpers/skill-census.ts'],
   // Data-driven behavioral guard for the 'plan'/'prompt' carves (eng, design,
   // devex, office-hours + future PR2 carves). One file iterating CARVE_GUARDS;
@@ -375,13 +406,13 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'bin/gstack-slug', 'bin/gstack-wtree', 'bin/gstack-config', 'bin/gstack-brain-enqueue',
      'test/fixtures/autoplan-amend-input-77.json',
      'test/fixtures/autoplan-phase-handoff-6714.json','scripts/resolvers/learnings.ts', 
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", 'scripts/resolvers/composition.ts',   'design-html/**', 'design-shotgun/**', 'qa/**', 'browse/**', 'retro/**', 'autoplan/**', 'spec/**', 'setup-gbrain/**', 'review/**', 'codex/**', 'land-and-deploy/**', 'plan-eng-review/**', 'plan-design-review/**', 'plan-devex-review/**', 'document-release/**', 'design-consultation/**', 'test/helpers/carve-guards.ts', 'scripts/resolvers/sections.ts', 'scripts/resolvers/redact-doc.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/auq-sdk-capture.ts', 'test/helpers/session-runner.ts',  'bin/gstack-autoplan-snapshot.ts',    'test/fixtures/autoplan/t-ceo-omitted-obligations.json', 'test/fixtures/autoplan/u-ceo-original-loss.json', 'test/fixtures/autoplan/v-ceo-dangling-references.json',
     
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-     'test/carve-section-loading*.test.ts', 'test/helpers/carve-section-case.ts',   'test/carve-section-loading-browse.test.ts', 'test/carve-section-loading-codex.test.ts', 'test/carve-section-loading-design-consultation.test.ts', 'test/carve-section-loading-design-html.test.ts', 'test/carve-section-loading-design-shotgun.test.ts', 'test/carve-section-loading-document-release.test.ts', 'test/carve-section-loading-land-and-deploy.test.ts', 'test/carve-section-loading-plan-design-review.test.ts', 'test/carve-section-loading-plan-devex-review.test.ts', 'test/carve-section-loading-plan-eng-review.test.ts', 'test/carve-section-loading-qa.test.ts', 'test/carve-section-loading-retro.test.ts', 'test/carve-section-loading-review.test.ts', 'test/carve-section-loading-setup-gbrain.test.ts', 'test/carve-section-loading-spec.test.ts',  'test/fixtures/design-html-section-complete.md', 'scripts/resolvers/testing.ts', 'test/helpers/carve-plan-fixture.ts',  'test/fixtures/carve-existing-repository/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/auq-native-capture.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/capture-parity-baseline.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/llm-judge.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/parity-harness.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/plan-skill-question-events.ts', 'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/plan-skill-questions.ts', 'test/helpers/pty-screen.ts', 'test/helpers/pty-trust-dialog.ts', 'test/helpers/skill-census.ts'],
+     'test/carve-section-loading*.test.ts', 'test/helpers/carve-section-case.ts',   'test/carve-section-loading-browse.test.ts', 'test/carve-section-loading-codex.test.ts', 'test/carve-section-loading-design-consultation.test.ts', 'test/carve-section-loading-design-html.test.ts', 'test/carve-section-loading-design-shotgun.test.ts', 'test/carve-section-loading-document-release.test.ts', 'test/carve-section-loading-land-and-deploy.test.ts', 'test/carve-section-loading-plan-design-review.test.ts', 'test/carve-section-loading-plan-devex-review.test.ts', 'test/carve-section-loading-plan-eng-review.test.ts', 'test/carve-section-loading-qa.test.ts', 'test/carve-section-loading-retro.test.ts', 'test/carve-section-loading-review.test.ts', 'test/carve-section-loading-setup-gbrain.test.ts', 'test/carve-section-loading-spec.test.ts',  'test/fixtures/design-html-section-complete.md', 'scripts/resolvers/testing.ts', 'test/helpers/carve-plan-fixture.ts',  'test/fixtures/carve-existing-repository/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts',  'test/helpers/agent-sdk-runner.ts', 'test/helpers/auq-native-capture.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/capture-parity-baseline.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/llm-judge.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/parity-harness.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/plan-skill-question-events.ts', 'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/plan-skill-questions.ts', 'test/helpers/pty-screen.ts', 'test/helpers/pty-trust-dialog.ts', 'test/helpers/skill-census.ts'],
 
   // Per-finding AskUserQuestion count + review-report-at-bottom assertion.
   // Each test drives its skill end-to-end; touchfiles include preamble +
@@ -393,7 +424,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // review-phase AskUserQuestion). Uses runPlanSkillFloorCheck — minimal
   // "did agent fire ANY AUQ?" observer that exits early on first non-permission
   // numbered-option render. ~1-3 min typical wall time per test, ~$2-6 total.
-  'plan-eng-finding-floor':      [
+  'plan-eng-finding-floor':      [ 'test/helpers/pty-screen.ts',
     'lib/claude-public-transcript.ts',  'test/fixtures/plan-create-prepublication-491.json',  'test/fixtures/plan-create-combined-permission-70b.json', 'test/fixtures/plan-floor-quote-70b.json',
     
     'test/fixtures/plan-create-permission-361c.json',
@@ -401,15 +432,15 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     'test/fixtures/plan-floor-routing-361c.json',
 
-    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json','test/fixtures/design-crop-gutter-ap.json','test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json',
+    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json',  'test/fixtures/design-crop-gutter-ap.json',  'test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json',
     'scripts/resolvers/learnings.ts',
     
-    "test/fixtures/plan-scope-recovery-av.json",  'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-eng-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-eng-finding-floor.test.ts','test/fixtures/eng-batching-t-calls.json','test/fixtures/eng-scope-y-calls.json',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt','test/fixtures/eng-binding-z-calls.json',  'test/fixtures/eng-binding-retry-z-calls.json', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
-"test/fixtures/eng-injected-export-aq.json","test/fixtures/eng-library-hooks-aq.json",
+    "test/fixtures/plan-scope-recovery-av.json",  'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-eng-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-eng-finding-floor.test.ts',  'test/fixtures/eng-batching-t-calls.json',  'test/fixtures/eng-scope-y-calls.json',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',  'test/fixtures/eng-binding-z-calls.json',  'test/fixtures/eng-binding-retry-z-calls.json', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
+     "test/fixtures/eng-injected-export-aq.json",  "test/fixtures/eng-library-hooks-aq.json",
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/testing.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
-  'plan-ceo-finding-floor':      [
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/testing.ts',  'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
+  'plan-ceo-finding-floor':      [ 'test/helpers/pty-screen.ts',
     'lib/claude-public-transcript.ts',  'test/fixtures/plan-create-prepublication-491.json',  'test/fixtures/plan-create-combined-permission-70b.json', 'test/fixtures/plan-floor-quote-70b.json',
     
     'test/fixtures/plan-create-permission-361c.json',
@@ -417,11 +448,11 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     'test/fixtures/plan-floor-routing-361c.json',
 
-    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json','test/fixtures/design-crop-gutter-ap.json','test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json', 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-ceo-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-ceo-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
-
-
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
-  'plan-design-finding-floor':   [
+    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json',  'test/fixtures/design-crop-gutter-ap.json',  'test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json', 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-ceo-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-ceo-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
+     
+       
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
+  'plan-design-finding-floor':   [ 'test/helpers/pty-screen.ts',
     
     'lib/claude-public-transcript.ts',  'test/fixtures/plan-create-prepublication-491.json',  'test/fixtures/plan-create-combined-permission-70b.json', 'test/fixtures/plan-floor-quote-70b.json',
     
@@ -430,15 +461,15 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     'test/fixtures/plan-floor-routing-361c.json',
 
-    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json','test/fixtures/design-crop-gutter-ap.json','test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json',
-
+    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json',  'test/fixtures/design-crop-gutter-ap.json',  'test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json',
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json",'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-design-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-design-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
     
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/ceo-finding-fixture.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
-  'plan-devex-finding-floor':    [
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/ceo-finding-fixture.ts',   'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
+  'plan-devex-finding-floor':    [ 'test/helpers/pty-screen.ts',
      'test/fixtures/plan-floor-dx-custom-491.json', 'test/fixtures/plan-floor-dx-editor-hint.json',
     
     'lib/claude-public-transcript.ts',  'test/fixtures/plan-create-prepublication-491.json',  'test/fixtures/plan-create-combined-permission-70b.json', 'test/fixtures/plan-floor-quote-70b.json', 'test/fixtures/plan-floor-product-type-70b.json',
@@ -448,8 +479,8 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     'test/fixtures/plan-floor-routing-361c.json',
 
-    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json','test/fixtures/design-crop-gutter-ap.json','test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-devex-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-devex-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/pty-screen.ts'],
+    'test/fixtures/ceo-report-permission-fb10.json',  'test/fixtures/plan-floor-permission-fb10.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-permission-target-ad-v2.json',  'test/fixtures/design-crop-gutter-ap.json',  'test/fixtures/plan-count-crop-ak.json',  'test/fixtures/plan-count-long-edit-0bcd.json',  'test/fixtures/plan-count-cropped-wrap-6714.json','bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-devex-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json', 'test/helpers/hermetic-skill-runtime.ts',  'test/helpers/pty-trust-dialog.ts',  'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-devex-finding-floor.test.ts',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt', 'test/helpers/plan-floor-target.ts',  'test/helpers/plan-count-fixture.ts',  'test/helpers/plan-count-artifacts.ts', 
+     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts',    'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
 
   // Multi-finding batching regression — periodic tier complement to the
   // gate-tier finding-floor. Catches the May 2026 transcript shape where
@@ -460,10 +491,13 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'lib/claude-public-transcript.ts',  'test/fixtures/plan-create-prepublication-491.json',  'test/fixtures/plan-create-combined-permission-70b.json',
     
     'test/fixtures/plan-create-permission-361c.json',
-
-
+    
+    
 
     'test/fixtures/ceo-report-permission-fb10.json',
+      
+    
+    
     'test/fixtures/eng-batching-prefixed-ledger-f359.json',
      'test/fixtures/eng-batching-saved-ledger-b176.json',
      'test/fixtures/review-count-markdown-6f.json',
@@ -475,29 +509,29 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
      'test/fixtures/eng-batching-native-8525.json',
      'test/fixtures/eng-batching-saved-ledger-dacc.json',
     'scripts/resolvers/learnings.ts',
-    'test/helpers/eng-seeded-coverage.ts', 'test/fixtures/eng-a689-retry-public.json', 
+    'test/helpers/eng-seeded-coverage.ts',     'test/fixtures/eng-a689-retry-public.json', 
     
      "test/fixtures/plan-count-cross-cwd-ancestry-0bcd.json", 
 
     
     "test/fixtures/plan-scope-recovery-av.json",
-"test/fixtures/batching-permission-at.json",
-"test/fixtures/eng-declared-retry-at.json",'test/fixtures/design-crop-gutter-ap.json',  'bin/gstack-config', 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-eng-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**', 'test/helpers/hermetic-skill-runtime.ts',   'test/helpers/pty-trust-dialog.ts',  'test/helpers/plan-count-transcript.ts',  'test/fixtures/autoplan-public-narration-ad.json', 'test/helpers/plan-count-pending-exit.ts',   'test/helpers/plan-count-artifacts.ts',  'test/helpers/eval-store.ts', 'test/helpers/plan-count-fixture.ts',    'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json', 'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-eng-multi-finding-batching.test.ts',  'test/fixtures/ceo-checkbox-l.screen.txt',  'test/fixtures/eng-devex-s-first-calls.json', 'test/fixtures/eng-devex-s-retry-calls.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-edit-permission-t.json','test/fixtures/eng-batching-t-calls.json',  'test/fixtures/ceo-preview-u-call.json', 'test/fixtures/ceo-preview-u-screen.txt', 'test/fixtures/design-preview-v-screen.txt',  'test/fixtures/plan-count-owned-permission-v.json', 'test/fixtures/ceo-questionless-w-native.json','test/fixtures/eng-scope-y-calls.json',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt','test/fixtures/eng-binding-z-calls.json',  'test/fixtures/eng-binding-retry-z-calls.json','test/fixtures/plan-count-permission-ac.json', 'test/fixtures/plan-count-permission-ad.json', 'test/fixtures/plan-count-permission-ae.json', 'test/fixtures/plan-count-permission-target-ad-v2.json','test/fixtures/eng-count-ad-v2.json','test/fixtures/eng-first-category-af.json', 'test/fixtures/plan-count-permission-ah.json', 
-
+     "test/fixtures/batching-permission-at.json",
+     "test/fixtures/eng-declared-retry-at.json",  'test/fixtures/design-crop-gutter-ap.json',  'bin/gstack-config', 'bin/gstack-skill-start', 'bin/gstack-skill-end', 'plan-eng-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/review.ts', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**', 'test/helpers/hermetic-skill-runtime.ts',   'test/helpers/pty-trust-dialog.ts',  'test/helpers/plan-count-transcript.ts',  'test/fixtures/autoplan-public-narration-ad.json', 'test/helpers/plan-count-pending-exit.ts',   'test/helpers/plan-count-artifacts.ts',  'test/helpers/eval-store.ts', 'test/helpers/plan-count-fixture.ts',      'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json', 'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-eng-multi-finding-batching.test.ts',  'test/fixtures/ceo-checkbox-l.screen.txt',  'test/fixtures/eng-devex-s-first-calls.json', 'test/fixtures/eng-devex-s-retry-calls.json', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-edit-permission-t.json',  'test/fixtures/eng-batching-t-calls.json',  'test/fixtures/ceo-preview-u-call.json', 'test/fixtures/ceo-preview-u-screen.txt', 'test/fixtures/design-preview-v-screen.txt',  'test/fixtures/plan-count-owned-permission-v.json', 'test/fixtures/ceo-questionless-w-native.json',  'test/fixtures/eng-scope-y-calls.json',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',  'test/fixtures/eng-binding-z-calls.json',  'test/fixtures/eng-binding-retry-z-calls.json',  'test/fixtures/plan-count-permission-ac.json', 'test/fixtures/plan-count-permission-ad.json', 'test/fixtures/plan-count-permission-ae.json', 'test/fixtures/plan-count-permission-target-ad-v2.json',  'test/fixtures/eng-count-ad-v2.json',  'test/fixtures/eng-first-category-af.json',   'test/fixtures/plan-count-permission-ah.json',  
+    
     'test/fixtures/plan-count-crop-ak.json',
-
+    
     'test/fixtures/plan-count-quoted-frame-ak.json',
-"test/fixtures/eng-injected-export-aq.json","test/fixtures/eng-library-hooks-aq.json",
-"test/fixtures/eng-declarative-as.json", "test/helpers/eng-cache-writer-decision.ts","test/fixtures/eng-cache-writes-as.json",
+     "test/fixtures/eng-injected-export-aq.json",  "test/fixtures/eng-library-hooks-aq.json",
+     "test/fixtures/eng-declarative-as.json", "test/helpers/eng-cache-writer-decision.ts",  "test/fixtures/eng-cache-writes-as.json",
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts",
-     'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/owned-claude-transcript.ts',  'test/fixtures/webfetch-permission.json',  'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/ceo-finding-fixture.ts',  'test/helpers/plan-review-decisions.ts',  'test/helpers/plan-review-cases.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/skill-e2e-plan-decision-classification.test.ts', 'test/fixtures/plan-decision-classification.ts',  'scripts/resolvers/testing.ts', 'test/fixtures/eng-file-permission-repaint.json', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
+     'test/fixtures/pty-companion-cli.ts',   'lib/fs-atomic.ts', 'test/helpers/owned-claude-transcript.ts',    'test/fixtures/webfetch-permission.json',  'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/ceo-finding-fixture.ts',     'test/helpers/plan-review-decisions.ts',  'test/helpers/plan-review-cases.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/skill-e2e-plan-decision-classification.test.ts', 'test/fixtures/plan-decision-classification.ts',  'scripts/resolvers/testing.ts', 'test/fixtures/eng-file-permission-repaint.json', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
   'plan-ceo-split-overflow': [
     'lib/claude-public-transcript.ts',  'test/fixtures/plan-create-prepublication-491.json',  'test/fixtures/plan-create-combined-permission-70b.json',
     
     'test/fixtures/plan-create-permission-361c.json',
-
-
+    
+    
     'test/fixtures/ceo-split-padding-361c-public.json',
     'test/fixtures/ceo-split-edit-permission-361c-public.json',
 
@@ -506,27 +540,28 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'test/fixtures/plan-count-cropped-wrap-6714.json',
     
      "test/fixtures/plan-count-cross-cwd-ancestry-0bcd.json", 
-'test/fixtures/design-crop-gutter-ap.json', 'bin/gstack-config', 'plan-ceo-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'bin/gstack-question-preference', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**', 'test/helpers/hermetic-skill-runtime.ts',   'test/helpers/pty-trust-dialog.ts',  'test/helpers/plan-count-transcript.ts',  'test/fixtures/autoplan-public-narration-ad.json', 'test/helpers/plan-count-pending-exit.ts',   'test/helpers/plan-count-artifacts.ts',  'test/helpers/eval-store.ts', 'test/helpers/plan-count-fixture.ts',    'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json', 'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-ceo-split-overflow.test.ts',  'test/fixtures/ceo-checkbox-l.screen.txt', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-edit-permission-t.json',  'test/fixtures/plan-count-owned-permission-v.json', 'test/fixtures/ceo-questionless-w-native.json',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt','test/fixtures/plan-count-permission-ac.json', 'test/fixtures/plan-count-permission-ad.json', 'test/fixtures/plan-count-permission-ae.json', 'test/fixtures/plan-count-permission-target-ad-v2.json', 'test/fixtures/plan-count-permission-ah.json',
-
+  'test/fixtures/design-crop-gutter-ap.json', 'bin/gstack-config', 'plan-ceo-review/**', 'scripts/resolvers/preamble.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'bin/gstack-question-preference', 'test/helpers/claude-pty-runner.ts',  'test/fixtures/design-ui-boxed-question.json',  'test/helpers/pty-screen.ts',   'test/fixtures/pty-screen/**', 'test/helpers/hermetic-skill-runtime.ts',   'test/helpers/pty-trust-dialog.ts',  'test/helpers/plan-count-transcript.ts',  'test/fixtures/autoplan-public-narration-ad.json', 'test/helpers/plan-count-pending-exit.ts',   'test/helpers/plan-count-artifacts.ts',  'test/helpers/eval-store.ts', 'test/helpers/plan-count-fixture.ts',      'test/fixtures/ceo-prerequisite-n-call.json', 'test/fixtures/eng-prerequisite-77.json', 'test/fixtures/forcing-finding-seeds.ts', 'test/skill-e2e-plan-ceo-split-overflow.test.ts',  'test/fixtures/ceo-checkbox-l.screen.txt', 'test/helpers/plan-count-file-permission.ts',  'test/fixtures/plan-edit-cropped-permission-1579.json',  'test/fixtures/plan-count-edit-permission-t.json',  'test/fixtures/plan-count-owned-permission-v.json', 'test/fixtures/ceo-questionless-w-native.json',  'test/fixtures/eng-d2-truncated-border-0bcd.json',   'test/fixtures/eng-d1-clipped-elision-1579.json', 'test/fixtures/eng-d2-planning-prelude-4d.json', 'test/fixtures/ceo-approach-z-call.json', 'test/fixtures/ceo-approach-z-screen.txt',  'test/fixtures/plan-count-permission-ac.json', 'test/fixtures/plan-count-permission-ad.json', 'test/fixtures/plan-count-permission-ae.json', 'test/fixtures/plan-count-permission-target-ad-v2.json', 'test/fixtures/plan-count-permission-ah.json',
+    
     'test/fixtures/plan-count-crop-ak.json',
-
+    
     'test/fixtures/plan-count-quoted-frame-ak.json',
-    'docs/askuserquestion-split.md',  'bin/gstack-slug',   'test/fixtures/pty-companion-cli.ts', 'lib/fs-atomic.ts', 'test/helpers/ceo-finding-fixture.ts',  'test/helpers/owned-claude-transcript.ts',  'test/fixtures/webfetch-permission.json',  'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',  'test/helpers/plan-review-decisions.ts',  'test/helpers/plan-review-cases.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/skill-e2e-plan-decision-classification.test.ts', 'test/fixtures/plan-decision-classification.ts',  'test/helpers/ceo-split-question-policy.ts', 'test/fixtures/ceo-split-actor-6aef.json', 'test/helpers/ceo-mode-option.ts',   'test/fixtures/ceo-split-collection-0bcd.json',  'scripts/resolvers/review.ts', 'scripts/resolvers/tasks-section.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
+    'docs/askuserquestion-split.md',  'bin/gstack-slug',   'test/fixtures/pty-companion-cli.ts',   'lib/fs-atomic.ts', 'test/helpers/ceo-finding-fixture.ts',  'test/helpers/owned-claude-transcript.ts',    'test/fixtures/webfetch-permission.json',  'test/helpers/plan-skill-questions.ts', 'test/fixtures/eng-auq-validation-error.json', 'test/fixtures/bash-directory-permission.json', 'test/fixtures/design-tasks-bash-permission.json',  'test/fixtures/read-permission.json',  'test/fixtures/ceo-split-e5-numbered-description-491.json',  'test/helpers/plan-skill-question-events.ts',  'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/skill-census.ts',     'test/helpers/plan-review-decisions.ts',  'test/helpers/plan-review-cases.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/skill-e2e-plan-decision-classification.test.ts', 'test/fixtures/plan-decision-classification.ts',  'test/helpers/ceo-split-question-policy.ts', 'test/fixtures/ceo-split-actor-6aef.json', 'test/helpers/ceo-mode-option.ts',   'test/fixtures/ceo-split-collection-0bcd.json',  'scripts/resolvers/review.ts', 'scripts/resolvers/tasks-section.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts'],
 
   // /setup-gbrain Path 4 (Remote MCP) — happy + bad-token end-to-end via
   // Agent SDK. Gate-tier (deterministic stub server, fixed inputs); fires
   // when the skill template, the verify helper, the artifacts-init helper,
   // or the detect script changes.
   'setup-gbrain-remote':          [
-     'test/helpers/setup-gbrain-sandbox.ts', 'test/helpers/office-hours-attempt.ts',  'test/helpers/eval-store.ts', 'test/helpers/e2e-helpers.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'lib/eval-model.ts','setup-gbrain/sections/brain-init.md.tmpl', 'setup-gbrain/sections/claude-md-persist.md.tmpl', 'setup-gbrain/sections/manifest.json', 'test/helpers/setup-gbrain-fixture.ts', 'setup-gbrain/SKILL.md.tmpl', 'bin/gstack-gbrain-mcp-verify', 'bin/gstack-artifacts-init', 'bin/gstack-gbrain-detect', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-setup-gbrain-remote.test.ts', 'test/helpers/e2e-gate.ts'],
+     'test/helpers/setup-gbrain-sandbox.ts', 'test/helpers/office-hours-attempt.ts',  'test/helpers/eval-store.ts', 'test/helpers/e2e-helpers.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'lib/eval-model.ts','setup-gbrain/sections/brain-init.md.tmpl', 'setup-gbrain/sections/claude-md-persist.md.tmpl', 'setup-gbrain/sections/manifest.json', 'test/helpers/setup-gbrain-fixture.ts', 'setup-gbrain/SKILL.md.tmpl', 'bin/gstack-gbrain-mcp-verify', 'bin/gstack-artifacts-init', 'bin/gstack-gbrain-detect', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-setup-gbrain-remote.test.ts',
+     'test/helpers/e2e-gate.ts'],
   'setup-gbrain-bad-token':       [ 'setup-gbrain/sections/brain-init.md.tmpl', 'setup-gbrain/sections/manifest.json', 'test/helpers/setup-gbrain-fixture.ts', 'setup-gbrain/SKILL.md.tmpl', 'bin/gstack-gbrain-mcp-verify', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-setup-gbrain-bad-token.test.ts',
-     'test/helpers/setup-gbrain-sandbox.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/setup-gbrain-fixture-command.ts',  'bin/gstack-gbrain-detect', 'lib/gbrain-local-status.ts', 'lib/gbrain-exec.ts', 'bin/gstack-gbrain-lib.sh', 'bin/gstack-egress-lib.sh', 'bin/gstack-egress-receipt', 'test/helpers/office-hours-attempt.ts', 'test/helpers/e2e-gate.ts'],
+     'test/helpers/setup-gbrain-sandbox.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/setup-gbrain-fixture-command.ts',  'bin/gstack-gbrain-detect', 'lib/gbrain-local-status.ts', 'lib/gbrain-exec.ts', 'bin/gstack-gbrain-lib.sh', 'bin/gstack-egress-lib.sh', 'bin/gstack-egress-receipt', 'test/helpers/office-hours-attempt.ts',  'test/helpers/e2e-gate.ts'],
   // v1.34.0.0 split-engine Path 4 + Step 4.5 Yes (local PGLite for code).
   // Periodic-tier per codex #12 (AgentSDK harness is non-deterministic).
   // Fires when the setup-gbrain template, install/verify/init helpers, or
   // the agent-sdk-runner harness changes.
   'setup-gbrain-path4-local-pglite': [ 'setup-gbrain/sections/brain-init.md.tmpl', 'setup-gbrain/sections/claude-md-persist.md.tmpl', 'setup-gbrain/sections/manifest.json', 'test/helpers/setup-gbrain-fixture.ts', 'setup-gbrain/SKILL.md.tmpl', 'bin/gstack-gbrain-mcp-verify', 'bin/gstack-gbrain-install', 'bin/gstack-gbrain-detect', 'lib/gbrain-local-status.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-setup-gbrain-path4-local-pglite.test.ts', 
-     'test/helpers/setup-gbrain-sandbox.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/setup-gbrain-fixture-command.ts',  'lib/gbrain-exec.ts', 'bin/gstack-gbrain-lib.sh', 'bin/gstack-egress-lib.sh', 'bin/gstack-egress-receipt', 'test/helpers/office-hours-attempt.ts', 'test/helpers/e2e-gate.ts'],
+     'test/helpers/setup-gbrain-sandbox.ts', 'lib/redact-engine.ts', 'lib/redact-patterns.ts', 'test/helpers/setup-gbrain-fixture-command.ts',  'lib/gbrain-exec.ts', 'bin/gstack-gbrain-lib.sh', 'bin/gstack-egress-lib.sh', 'bin/gstack-egress-receipt', 'test/helpers/office-hours-attempt.ts',  'test/helpers/e2e-gate.ts'],
 
   // AskUserQuestion format regression (RECOMMENDATION + Completeness: N/10)
   // Fires when either template OR the two preamble resolvers change.
@@ -555,7 +590,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // Dependencies: same as format-mode + the 4 plan-review templates + overlay.
   // All periodic-tier (non-deterministic Opus 4.7 behavior).
   'plan-ceo-review-prosons-cadence':  [ 
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", 'plan-ceo-review/**', 'plan-eng-review/**', 'plan-design-review/**', 'plan-devex-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'model-overlays/opus-4-7.md', 'test/skill-e2e-plan-prosons.test.ts',
     
@@ -564,7 +599,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'scripts/resolvers/testing.ts', 'test/helpers/office-hours-attempt.ts',  'scripts/resolvers/review.ts',  'scripts/resolvers/tasks-section.ts'
   ],
   'plan-review-prosons-format':       [ 
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", 'plan-ceo-review/**', 'plan-eng-review/**', 'plan-design-review/**', 'plan-devex-review/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/preamble.ts', 'model-overlays/opus-4-7.md', 'test/skill-e2e-plan-prosons.test.ts',
     
@@ -597,7 +632,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   'codex-offered-design-review': [ 
     'test/helpers/codex-offering-fixture.ts',  'test/fixtures/codex-offering-cdd-public.json', 'test/fixtures/codex-offering-timeout-public.json',
     'test/helpers/workflow-judge-input.ts',  'test/helpers/workflow-excerpt.ts',
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json",'plan-design-review/**', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-plan.test.ts',
     
@@ -611,18 +646,21 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     "test/fixtures/plan-scope-recovery-av.json",  'plan-eng-review/**', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-plan.test.ts',
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts', 'test/helpers/office-hours-completion.ts'],
+    'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts', 'test/helpers/office-hours-completion.ts'],
 
   // Ship
   'ship-managed-hook-refresh': ['ship/**', 'bin/gstack-redact', 'bin/gstack-config', 'scripts/gen-skill-docs.ts',
     'test/helpers/ship-hook-actor.ts',  
-    'test/helpers/workflow-excerpt.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-ship-hook-refresh.test.ts', 'test/helpers/e2e-gate.ts'],
+    'test/helpers/workflow-excerpt.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-ship-hook-refresh.test.ts',
+     'test/helpers/e2e-gate.ts'],
   'ship-unmanaged-hook-consent': ['ship/**', 'bin/gstack-redact', 'bin/gstack-config', 'scripts/gen-skill-docs.ts',
     'test/helpers/ship-hook-actor.ts',  
-    'test/helpers/workflow-excerpt.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-ship-hook-consent.test.ts', 'test/helpers/e2e-gate.ts'],
+    'test/helpers/workflow-excerpt.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-ship-hook-consent.test.ts',
+     'test/helpers/e2e-gate.ts'],
   'ship-local-hook-preservation': ['ship/**', 'bin/gstack-redact', 'bin/gstack-config', 'scripts/gen-skill-docs.ts',
     'test/helpers/ship-hook-actor.ts',  
-    'test/helpers/workflow-excerpt.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-ship-hook-consent.test.ts', 'test/helpers/e2e-gate.ts'],
+    'test/helpers/workflow-excerpt.ts', 'test/helpers/agent-sdk-runner.ts', 'test/skill-e2e-ship-hook-consent.test.ts',
+     'test/helpers/e2e-gate.ts'],
   'ship-base-branch': [ 'ship/**', 'bin/gstack-repo-mode', 'test/skill-e2e-review-attribution.test.ts',
     'scripts/resolvers/testing.ts'
   ],
@@ -683,15 +721,16 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'scripts/gen-skill-docs.ts', 'scripts/resolvers/index.ts', 'scripts/resolvers/outside-voice.ts',
     'scripts/resolvers/constants.ts', 'scripts/resolvers/review.ts',
     'bin/gstack-claude-code', 'lib/claude-code.ts', 'lib/claude-code-windows-job.ts', 'lib/claude-bin.ts', 'lib/outside-review-result.ts', 'test/helpers/codex-session-runner.ts',
-    'test/helpers/skill-fixture.ts', 'test/helpers/outside-voice-fixture.ts',  'test/helpers/outside-voice-evidence.ts', 'test/fixtures/outside-async-task-m-events.json', 'test/skill-e2e-outside-voice.test.ts',
-    'test/helpers/outside-voice-receipt.ts', 'test/helpers/e2e-gate.ts'],
+    'test/helpers/skill-fixture.ts', 'test/helpers/outside-voice-fixture.ts',  'test/helpers/outside-voice-evidence.ts',   'test/fixtures/outside-async-task-m-events.json', 'test/skill-e2e-outside-voice.test.ts',
+    'test/helpers/outside-voice-receipt.ts', 
+     'test/helpers/e2e-gate.ts'],
   'outside-voice-claude-code-to-codex': [
     'review/**', 'codex/**', 'hosts/claude.ts', 'hosts/define-host.ts',
     'scripts/gen-skill-docs.ts', 'scripts/resolvers/index.ts', 'scripts/resolvers/outside-voice.ts',
     'scripts/resolvers/constants.ts', 'scripts/resolvers/review.ts',
     'bin/gstack-codex-probe', 'lib/outside-review-result.ts', 'test/helpers/session-runner.ts',
-'test/fixtures/outside-background-ai.json',
-    'test/helpers/skill-fixture.ts', 'test/helpers/outside-voice-fixture.ts',  'test/helpers/outside-voice-evidence.ts', 'test/fixtures/outside-async-task-m-events.json', 'test/skill-e2e-outside-voice.test.ts', 'test/helpers/codex-session-runner.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/outside-voice-receipt.ts'],
+     'test/fixtures/outside-background-ai.json',
+    'test/helpers/skill-fixture.ts', 'test/helpers/outside-voice-fixture.ts',  'test/helpers/outside-voice-evidence.ts',   'test/fixtures/outside-async-task-m-events.json', 'test/skill-e2e-outside-voice.test.ts', 'test/helpers/codex-session-runner.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/outside-voice-receipt.ts'],
 
   // Disabled means no extra plan review, including a native Agent fallback.
   'outside-plan-disabled-no-fallback': [
@@ -724,39 +763,39 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     
     "test/fixtures/coverage-audit-aw.json",
 
-
+    
     "test/fixtures/coverage-checkbox-tail-av.json",
     'test/helpers/coverage-audit-evidence.ts',
     
     'test/fixtures/ship-coverage-audit-af.json','ship/**', 'test/fixtures/coverage-audit-fixture.ts', 'bin/gstack-repo-mode', 'test/skill-e2e-workflow.test.ts',
-"test/fixtures/coverage-shell-display-aq.json",
+     "test/fixtures/coverage-shell-display-aq.json",
     'test/helpers/coverage-audit.ts', 'test/helpers/office-hours-attempt.ts',  'scripts/resolvers/testing.ts'
   ],
   'review-coverage-audit': [
     'test/fixtures/coverage-audit-ci-diagrams.json',
-
+    
     "test/fixtures/coverage-audit-aw.json",
 
-
+    
     "test/fixtures/coverage-checkbox-tail-av.json",
-"test/fixtures/coverage-audit-shell-legend-at.json",'review/**', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-coverage-audit.test.ts', 'test/helpers/coverage-audit-evidence.ts',  'test/fixtures/coverage-audit-ae.json','test/fixtures/coverage-audit-af.json',
-"test/fixtures/coverage-shell-display-aq.json",
-"test/fixtures/coverage-diagram-legend-as.json",
+     "test/fixtures/coverage-audit-shell-legend-at.json",'review/**', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-coverage-audit.test.ts', 'test/helpers/coverage-audit-evidence.ts',  'test/fixtures/coverage-audit-ae.json',  'test/fixtures/coverage-audit-af.json',
+     "test/fixtures/coverage-shell-display-aq.json",
+     "test/fixtures/coverage-diagram-legend-as.json",
     'test/helpers/coverage-audit.ts', 'test/helpers/office-hours-attempt.ts' 
   ],
   'plan-eng-coverage-audit': [
     'scripts/resolvers/learnings.ts',
     'test/fixtures/coverage-audit-ci-diagrams.json',
-
+    
     "test/fixtures/coverage-audit-aw.json",
 
-
+    
     "test/fixtures/coverage-checkbox-tail-av.json",
     
     "test/fixtures/plan-scope-recovery-av.json",
-"test/fixtures/coverage-audit-shell-legend-at.json", 'plan-eng-review/**', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-coverage-audit.test.ts', 'test/helpers/coverage-audit-evidence.ts',  'test/fixtures/coverage-audit-ae.json','test/fixtures/coverage-audit-af.json',
-"test/fixtures/coverage-shell-display-aq.json",
-"test/fixtures/coverage-diagram-legend-as.json",
+     "test/fixtures/coverage-audit-shell-legend-at.json", 'plan-eng-review/**', 'test/fixtures/coverage-audit-fixture.ts', 'test/skill-e2e-coverage-audit.test.ts', 'test/helpers/coverage-audit-evidence.ts',  'test/fixtures/coverage-audit-ae.json',  'test/fixtures/coverage-audit-af.json',
+     "test/fixtures/coverage-shell-display-aq.json",
+     "test/fixtures/coverage-diagram-legend-as.json",
 
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
     'test/helpers/coverage-audit.ts', 'test/helpers/office-hours-attempt.ts',  'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts' 
@@ -765,29 +804,36 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'scripts/resolvers/testing.ts'
   ],
   'ship-docsync': [ 'ship/**', 'document-release/**', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/sections.ts', 'test/skill-e2e-ship-docsync.test.ts',
-    'scripts/resolvers/testing.ts', 'test/helpers/e2e-gate.ts'],
+    'scripts/resolvers/testing.ts', 'test/helpers/docsync-*.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts',  'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
+  'ship-docsync-completion': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
+  'ship-docsync-current': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
+  'ship-docsync-failure': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
+  'ship-docsync-store': ['ship/**', 'document-release/**', 'test/skill-e2e-ship-docsync.test.ts', 'test/helpers/docsync-*.ts', 'test/helpers/session-runner.ts', 'test/helpers/hermetic-env.ts', 'bin/gstack-skill-start', 'bin/gstack-session-kind', 'scripts/resolvers/sections.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/gen-skill-docs.ts', 'scripts/resolvers/testing.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
   // #2733 behavioral proof: the JSON contract survives a firing gate inside a
   // spawned-marked subagent. Deps name every behavior under test — the
   // session-kind override, the skill-start gates, both hooks + the shared
   // directive, and the AUQ prose rule — so changing any of them selects it.
   'docsync-spawned': [
-    'document-release/**',
     'ship/sections/pr-body.md',
+    'document-release/**',
+    'ship/sections/documentation.md',
+    'ship/sections/documentation.md.tmpl',
+    'test/helpers/docsync-*.ts',
     'bin/gstack-session-kind',
     'bin/gstack-skill-start',
     'hosts/claude/hooks/question-preference-hook.ts',
     'hosts/claude/hooks/auq-error-fallback-hook.ts',
     'hosts/claude/hooks/spawned-directive.ts',
     'scripts/resolvers/preamble/generate-ask-user-format.ts',
-    'test/skill-e2e-docsync-spawned.test.ts', 'test/helpers/e2e-gate.ts'],
+    'test/skill-e2e-docsync-spawned.test.ts', 'test/helpers/qa-checkpoint-evidence.ts',    'test/helpers/qa-functional-observer.ts',  'test/helpers/e2e-gate.ts', 'test/helpers/qa-evidence-producer.ts', 'test/helpers/qa-functional-fixture.ts'],
 
   // Design
-  'design-consultation-core':       [ 'design-consultation/**', 'lib/design-catalog.ts', 'lib/design-md.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/llm-judge.ts', 'test/skill-e2e-design.test.ts', 'scripts/resolvers/design.ts', 'scripts/resolvers/outside-voice.ts', 'design-consultation/sections/**', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/office-hours-attempt.ts'],
+  'design-consultation-core':       [ 'design-consultation/**', 'lib/design-catalog.ts', 'lib/design-md.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/llm-judge.ts', 'test/skill-e2e-design.test.ts', 'scripts/resolvers/design.ts', 'scripts/resolvers/outside-voice.ts', 'design-consultation/sections/**',  'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/office-hours-attempt.ts'],
   'design-consultation-existing':   [ 'design-consultation/**', 'lib/design-md.ts', 'bin/gstack-design-md.ts', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-design.test.ts', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts'],
-  'design-consultation-research':   [ 'design-consultation/**', 'scripts/resolvers/aside.ts', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-design.test.ts', 'test/helpers/skill-fixture.ts',  'scripts/resolvers/design.ts', 'scripts/resolvers/outside-voice.ts', 'design-consultation/sections/**', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts'],
-  'design-consultation-preview':    [ 'design-consultation/**', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-design.test.ts', 'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts'],
+  'design-consultation-research':   [ 'design-consultation/**', 'scripts/resolvers/aside.ts', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-design.test.ts', 'test/helpers/skill-fixture.ts',  'scripts/resolvers/design.ts', 'scripts/resolvers/outside-voice.ts', 'design-consultation/sections/**',  'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts'],
+  'design-consultation-preview':    [ 'design-consultation/**', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-design.test.ts',  'test/fixtures/fake-impeccable.ts', 'test/fixtures/review-eval-design-slop.html', 'test/helpers/aside-available.ts', 'test/helpers/fake-impeccable.ts', 'test/helpers/llm-judge.ts', 'test/helpers/office-hours-attempt.ts'],
   'plan-design-review-no-ui-scope': [
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json",'plan-design-review/**', 'lib/design-catalog.ts', 'scripts/gen-skill-docs.ts', 'test/skill-e2e-design.test.ts',
     
@@ -832,10 +878,10 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
     'test/fixtures/autoplan-dual-false-positive-6bd.json',
     'test/helpers/autoplan-method-read-audit.ts', 
     'test/fixtures/autoplan-method-read-aa-events.json',
-    'test/helpers/outside-voice-evidence.ts', 
+    'test/helpers/outside-voice-evidence.ts',  
     'test/fixtures/outside-async-task-m-events.json',
      'test/fixtures/autoplan-amend-input-77.json',
-     'test/fixtures/autoplan-phase-handoff-6714.json','scripts/resolvers/learnings.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/preamble/generate-preamble-bash.ts',  'test/fixtures/plan-scope-recovery-av.json', 'test/fixtures/design-scope-checkpoint-at.json',  'scripts/resolvers/composition.ts',   'autoplan/**', 'codex/**', 'bin/gstack-codex-probe', 'scripts/resolvers/review.ts', 'scripts/resolvers/design.ts', 'test/skill-e2e-autoplan-dual-voice.test.ts', 'bin/gstack-autoplan-snapshot.ts',    'test/fixtures/autoplan/t-ceo-omitted-obligations.json', 'test/fixtures/autoplan/u-ceo-original-loss.json', 'test/fixtures/autoplan/v-ceo-dangling-references.json',
+     'test/fixtures/autoplan-phase-handoff-6714.json','scripts/resolvers/learnings.ts', 'scripts/resolvers/preamble/generate-completion-status.ts', 'scripts/resolvers/preamble/generate-preamble-bash.ts',  'test/fixtures/plan-scope-recovery-av.json',   'test/fixtures/design-scope-checkpoint-at.json',  'scripts/resolvers/composition.ts',   'autoplan/**', 'codex/**', 'bin/gstack-codex-probe', 'scripts/resolvers/review.ts', 'scripts/resolvers/design.ts', 'test/skill-e2e-autoplan-dual-voice.test.ts', 'bin/gstack-autoplan-snapshot.ts',    'test/fixtures/autoplan/t-ceo-omitted-obligations.json', 'test/fixtures/autoplan/u-ceo-original-loss.json', 'test/fixtures/autoplan/v-ceo-dangling-references.json',
     'scripts/resolvers/design-doc-discovery.ts', 'plan-ceo-review/**', 'plan-eng-review/**', 'plan-design-review/**', 'plan-devex-review/**', 'scripts/resolvers/testing.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts',  'scripts/resolvers/tasks-section.ts', 'test/helpers/autoplan-phase-observer.ts'],
 
   // Multi-provider benchmark adapters — live API smoke against real claude/codex/gemini CLIs
@@ -872,7 +918,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // Skill routing — journey-stage tests (depend on ALL skill descriptions)
   'journey-ideation':       [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -881,7 +927,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-plan-eng':       [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -890,7 +936,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-debug':          [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -899,7 +945,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-qa':             [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -908,7 +954,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-code-review':    [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -917,7 +963,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-ship':           [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -926,7 +972,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-docs':           [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -935,7 +981,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-retro':          [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -944,7 +990,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-design-system':  [
     
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -953,16 +999,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   ],
   'journey-visual-qa':      [
     
-
-    "test/fixtures/plan-scope-recovery-av.json",
-    "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
-
-     "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts"
-  ],
-  'journey-negatives':      [
-    
-
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
     
@@ -970,6 +1007,10 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts"
   ],
 
+  // Opus 4.7 behavior evals — keys match testName: values in the test file.
+  // Routing sub-tests use template literal `routing-${c.name}` testNames,
+  // which the touchfile completeness scanner skips; they inherit selection
+  // from the file-level touchfile entry via GLOBAL_TOUCHFILES.
 
   // Overlay efficacy harness (SDK) — measures whether overlay nudges change
   // behavior under @anthropic-ai/claude-agent-sdk (closer to real Claude Code
@@ -977,10 +1018,19 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
   // completeness scanner doesn't require them; these entries exist for
   // diff-based selection accuracy.
 
+  // /ios-qa — agent flow E2E. Daemon + stub StateServer + codegen
+  // exercised end-to-end. The no-device path is gate-tier; the with-device
+  // path requires GSTACK_HAS_IOS_DEVICE=1 and is periodic-tier.
+  // Swift-build invariant test — requires the Swift toolchain. Compiles the
+  // fixture SPM package + runs the XCTest suite that validates the real
+  // Swift StateServer implementation (loopback bind, boot token rotation,
+  // session lock). Periodic-tier — Swift build is heavier than TS unit tests.
   // Real-device path — only runs with GSTACK_HAS_IOS_DEVICE=1 + a paired
   // iPhone. Validates the CoreDevice agent + iOS SDK toolchain. Periodic-tier.
   'ios-qa-device':    ['ios-qa/templates/**', 'test/fixtures/ios-qa/FixtureApp/**', 'test/skill-e2e-ios-device.test.ts'],
 
+  // /spec end-to-end via PTY — exercises the full Phase 1→5 pipeline
+  // including --execute spawn. Periodic-tier — paid + non-deterministic.
 
   // /office-hours brain-writeback path under fake gbrain CLI (v1.50.0.0
   // T7). Drives /office-hours with a regenerated SKILL.md that has the
@@ -1044,18 +1094,27 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 
   'office-hours-section-loading': [ 'office-hours/**', 'bin/gstack-office-hours-review', 'lib/office-hours-review.ts', 'lib/fs-atomic.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/sections.ts', 'scripts/gen-skill-docs.ts', 'test/helpers/carve-guards.ts', 'test/helpers/auq-sdk-capture.ts',  'test/helpers/office-hours-completion.ts', 'test/helpers/llm-judge.ts', 'test/helpers/session-runner.ts', 'test/skill-e2e-office-hours-section-loading.test.ts', 'test/helpers/agent-sdk-runner.ts', 'test/helpers/auq-native-capture.ts', 'test/helpers/auto-decision-state.ts', 'test/helpers/autoplan-artifact-digest.ts', 'test/helpers/autoplan-artifact-permission.ts', 'test/helpers/autoplan-artifact-recorder.ts', 'test/helpers/capture-parity-baseline.ts', 'test/helpers/claude-pty-runner.ts', 'test/helpers/dx-selected-navigation.ts', 'test/helpers/e2e-gate.ts', 'test/helpers/eng-cache-writer-decision.ts', 'test/helpers/hermetic-skill-runtime.ts', 'test/helpers/native-auto-decide.ts', 'test/helpers/owned-claude-transcript.ts', 'test/helpers/parity-harness.ts', 'test/helpers/plan-count-artifacts.ts', 'test/helpers/plan-count-file-permission.ts', 'test/helpers/plan-count-fixture.ts', 'test/helpers/plan-count-pending-exit.ts', 'test/helpers/plan-count-pending-question.ts', 'test/helpers/plan-count-transcript.ts', 'test/helpers/plan-floor-review.ts', 'test/helpers/plan-floor-target.ts', 'test/helpers/plan-scope-selection.ts', 'test/helpers/plan-seed-submission.ts', 'test/helpers/plan-skill-question-events.ts', 'test/helpers/plan-skill-question-hook-scope.ts', 'test/helpers/plan-skill-questions.ts', 'test/helpers/pty-screen.ts', 'test/helpers/pty-trust-dialog.ts', 'test/helpers/skill-census.ts'],
   'plan-devex-peer-comparison-classification': [
-
-
+    
+    
 'test/skill-e2e-plan-devex-peer-comparison-classification.test.ts', 'test/fixtures/devex-peer-comparison-classification.ts',  'test/helpers/plan-review-decisions.ts',  'test/helpers/plan-review-cases.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/helpers/e2e-helpers.ts', 'test/helpers/eval-store.ts', 'test/helpers/eval-budgets.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'docs/askuserquestion-split.md', 'plan-devex-review/SKILL.md.tmpl', 'plan-devex-review/sections/review-sections.md.tmpl'],
   'plan-decision-classification': [
-
-
+    
+    
 'test/skill-e2e-plan-decision-classification.test.ts', 'test/fixtures/plan-decision-classification.ts',  'test/helpers/plan-review-decisions.ts',  'test/helpers/plan-review-cases.ts',  'test/helpers/llm-judge.ts', 'lib/eval-model.ts', 'test/helpers/e2e-helpers.ts', 'test/helpers/eval-store.ts', 'test/helpers/eval-budgets.ts', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'docs/askuserquestion-split.md', 'plan-ceo-review/SKILL.md.tmpl', 'plan-ceo-review/sections/review-sections.md.tmpl', 'scripts/resolvers/tasks-section.ts'],
   'health-reporting': ['health/**', 'test/skill-e2e-health.test.ts', 'test/helpers/health-eval-fixture.ts', 'test/helpers/e2e-gate.ts'],
   'overlay-harness-claude-dedicated-tools-vs-bash': ['model-overlays/**', 'test/fixtures/overlay-nudges.ts', 'test/helpers/agent-sdk-runner.ts',  'scripts/resolvers/model-overlay.ts', 'test/skill-e2e-overlay-harness-claude-dedicated-tools-vs-bash.test.ts', 'test/helpers/overlay-measurement.ts', 'test/helpers/overlay-workspace.ts', 'test/helpers/overlay-attempt.ts',  'test/helpers/overlay-case.ts', 'test/helpers/overlay-case-policy.ts', 'test/helpers/overlay-lifecycle.ts',     'test/fixtures/overlay-admission-child.ts', 'test/helpers/e2e-gate.ts'],
   'overlay-harness-opus-4-7-effort-match-trivial': ['model-overlays/**', 'test/fixtures/overlay-nudges.ts', 'test/helpers/agent-sdk-runner.ts',  'scripts/resolvers/model-overlay.ts', 'test/skill-e2e-overlay-harness-opus-4-7-effort-match-trivial.test.ts', 'test/helpers/overlay-measurement.ts', 'test/helpers/overlay-workspace.ts', 'test/helpers/overlay-attempt.ts',  'test/helpers/overlay-case.ts', 'test/helpers/overlay-case-policy.ts', 'test/helpers/overlay-lifecycle.ts',     'test/fixtures/overlay-admission-child.ts', 'test/helpers/e2e-gate.ts'],
   'overlay-harness-opus-4-7-literal-interpretation': ['model-overlays/**', 'test/fixtures/overlay-nudges.ts', 'test/helpers/agent-sdk-runner.ts',  'scripts/resolvers/model-overlay.ts', 'test/skill-e2e-overlay-harness-opus-4-7-literal-interpretation.test.ts', 'test/helpers/overlay-measurement.ts', 'test/helpers/overlay-workspace.ts', 'test/helpers/overlay-attempt.ts',  'test/helpers/overlay-case.ts', 'test/helpers/overlay-case-policy.ts', 'test/helpers/overlay-lifecycle.ts',     'test/fixtures/overlay-admission-child.ts', 'test/helpers/e2e-gate.ts'],
   'overlay-harness-claude-dedicated-tools-vs-bash-sonnet': ['model-overlays/**', 'test/fixtures/overlay-nudges.ts', 'test/helpers/agent-sdk-runner.ts',  'scripts/resolvers/model-overlay.ts', 'test/skill-e2e-overlay-harness-claude-dedicated-tools-vs-bash-sonnet.test.ts', 'test/helpers/overlay-measurement.ts', 'test/helpers/overlay-workspace.ts', 'test/helpers/overlay-attempt.ts',  'test/helpers/overlay-case.ts', 'test/helpers/overlay-case-policy.ts', 'test/helpers/overlay-lifecycle.ts',     'test/fixtures/overlay-admission-child.ts', 'test/helpers/e2e-gate.ts'],
+  'journey-negatives':      [
+    
+
+    "test/fixtures/plan-scope-recovery-av.json",
+    "test/fixtures/design-scope-checkpoint-at.json", '*/SKILL.md.tmpl', 'SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-routing-e2e.test.ts',
+    
+
+     "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts"
+  ],
 };
 
 /**
@@ -1063,6 +1122,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
  * Must have exactly the same keys as E2E_TOUCHFILES.
  */
 export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
+  'ship-skipped-queued-finding': 'gate',
   'investigate-owned-completion': 'gate',
   'investigate-owned-abort': 'gate',
   'investigate-owned-ending-error': 'gate',
@@ -1112,6 +1172,15 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'qa-only-no-fix': 'gate',     // CRITICAL guardrail: Edit tool forbidden
   'qa-fix-loop': 'periodic',
   'qa-bootstrap': 'gate',
+  'review-exploratory-small-cli': 'gate',
+  'ship-exploratory-small-cli': 'gate',
+  'ship-exploratory-unavailable': 'gate',
+  'ship-exploratory-plan-checks': 'gate',
+  'ship-exploratory-late-input': 'gate',
+  'qa-functional-cli-report': 'gate',
+  'qa-functional-webhook-report': 'gate',
+  'qa-functional-cli-fix': 'gate',
+  'qa-functional-webhook-fix': 'gate',
 
   // Review — gate for functional/guardrails, periodic for quality
   'review-sql-injection': 'gate',     // Security guardrail
@@ -1186,6 +1255,7 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'auq-format-gate':                         'gate',       // ~$0.50/run, native SDK question capture, single skill probe
   'plan-ceo-mode-routing':     'periodic',   // ~$3/run, deep navigation through 8-12 prior AskUserQuestions
   'plan-design-with-ui-scope': 'gate',       // ~$0.80/run
+// ~$3/run, real /ship in plan mode
   'tpa-present':               'gate',       // consent/credential safety guardrail; deterministic shims + grep asserts
   'tpa-absent-linux':          'gate',       // consent/credential safety guardrail; deterministic shims + grep asserts
   'tpa-broken':                'gate',       // consent/credential safety guardrail; deterministic shims + grep asserts
@@ -1195,6 +1265,7 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'ship-section-loading':      'periodic',   // ~$3/run, real /ship; asserts section reads
   'plan-ceo-section-loading':  'periodic',   // ~$3-5/run, real /plan-ceo-review; asserts section read
   'carve-section-loading':     'periodic',   // ~$1-2/skill, data-driven; GSTACK_CARVE_SKILL scopes to one
+// ~$8/run, full native CEO → Design → DX → Eng sequence; outside disabled
 
   // Per-finding count + review-report-at-bottom — periodic because each
   // run drives a full skill end-to-end (~25 min, ~$5/run). Sequential
@@ -1278,6 +1349,18 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'ship-coverage-audit': 'gate',
   'ship-triage': 'gate',
   'ship-docsync': 'gate',
+  'ship-docsync-missing-marker': 'gate',
+  'ship-docsync-missing-asset': 'gate',
+  'ship-docsync-launch-failure': 'gate',
+  'ship-docsync-timeout-unsettled': 'gate',
+  'ship-docsync-late-result': 'gate',
+  'ship-docsync-stale-before': 'gate',
+  'ship-docsync-stale-after': 'gate',
+  'ship-docsync-recovery': 'gate',
+  'ship-docsync-completion': 'gate',
+  'ship-docsync-current': 'gate',
+  'ship-docsync-failure': 'gate',
+  'ship-docsync-store': 'gate',
   'docsync-spawned': 'gate',   // #2733 JSON-contract-through-a-firing-gate proof (deterministic safety)
   // (merge note: main's side also re-added ship-plan-completion /
   // ship-plan-verification here — phantom keys with no declaring test,
@@ -1368,7 +1451,6 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'journey-retro': 'periodic',
   'journey-design-system': 'periodic',
   'journey-visual-qa': 'periodic',
-  'journey-negatives': 'periodic',
 
   // Opus 4.7 overlay evals — periodic (non-deterministic LLM behavior + Opus cost)
 
@@ -1399,25 +1481,27 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic'> = {
   'overlay-harness-opus-4-7-effort-match-trivial': 'periodic',
   'overlay-harness-opus-4-7-literal-interpretation': 'periodic',
   'overlay-harness-claude-dedicated-tools-vs-bash-sonnet': 'periodic',
+  'journey-negatives': 'periodic',
 };
 
 /**
  * LLM-judge test touchfiles — keyed by test description string.
  */
 export const LLM_JUDGE_TOUCHFILES: Record<string, string[]> = {
+  'review/SKILL.md workflow': ['review/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review-army.ts', 'scripts/resolvers/review.ts', 'scripts/resolvers/sections.ts', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts'],
   'setup-browser-cookies/SKILL.md workflow': ['setup-browser-cookies/SKILL.md.tmpl', 'setup-browser-cookies/SKILL.md', 'BROWSER.md', 'test/helpers/cookie-workflow-judge-input.ts',  'test/helpers/cookie-workflow-manual-review.ts',  'test/helpers/manual-judge-review-fixture.ts', '.github/cookie-workflow-manual-review.json', 'test/helpers/workflow-judge-input.ts', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts'],
-  'browse/SKILL.md reference':        ['browse/sections/**', 'browse/SKILL.md', 'browse/SKILL.md.tmpl', 'browse/src/**', 'SKILL.md', 'SKILL.md.tmpl', 'gstack/llms.txt', 'test/fixtures/eval-baselines.json', 'test/skill-llm-eval.test.ts', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
+  'browse/SKILL.md reference':        ['browse/sections/**', 'browse/SKILL.md', 'browse/SKILL.md.tmpl', 'browse/src/**', 'test/skill-llm-eval.test.ts', 'SKILL.md', 'SKILL.md.tmpl', 'gstack/llms.txt', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
   'setup block':                      ['browse/SKILL.md', 'browse/SKILL.md.tmpl', 'scripts/resolvers/aside.ts', 'scripts/resolvers/browse.ts', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
-  'qa/SKILL.md workflow':             ['qa/sections/**', 'qa/SKILL.md', 'qa/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
+  'qa/SKILL.md workflow':             ['qa/**', 'qa/sections/**', 'qa/SKILL.md', 'qa/SKILL.md.tmpl', 'scripts/resolvers/qa.ts', 'scripts/resolvers/utility.ts', 'scripts/resolvers/sections.ts', 'test/helpers/workflow-judge-input.ts', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts'],
   'qa/SKILL.md health rubric':        ['qa/sections/**', 'qa/SKILL.md', 'qa/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
   'qa/SKILL.md anti-refusal':         ['qa/sections/**', 'qa/SKILL.md', 'qa/SKILL.md.tmpl', 'qa-only/SKILL.md', 'qa-only/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
   'cross-skill greptile consistency': ['review/SKILL.md', 'review/SKILL.md.tmpl', 'ship/SKILL.md', 'ship/SKILL.md.tmpl', 'review/greptile-triage.md', 'retro/SKILL.md', 'retro/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
 
   // Ship & Release
-  'ship/SKILL.md workflow':               ['ship/SKILL.md', 'ship/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts',
-     'scripts/resolvers/review.ts',
-    'scripts/resolvers/testing.ts', 'ship/sections/**', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
-  'document-release/SKILL.md workflow':   ['document-release/SKILL.md', 'document-release/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
+  'ship/SKILL.md workflow':               ['ship/SKILL.md', 'ship/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',   'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts',
+       'scripts/resolvers/review.ts',
+    'scripts/resolvers/testing.ts', 'ship/sections/**', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/review-army.ts',  'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
+  'document-release/SKILL.md workflow':   ['document-release/**', 'document-release/SKILL.md', 'document-release/SKILL.md.tmpl', 'scripts/resolvers/sections.ts', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
 
   // Plan Reviews
   'plan-ceo-review/SKILL.md modes':       ['plan-ceo-review/sections/**', 'plan-ceo-review/SKILL.md', 'plan-ceo-review/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts',
@@ -1428,11 +1512,11 @@ export const LLM_JUDGE_TOUCHFILES: Record<string, string[]> = {
     
     "test/fixtures/plan-scope-recovery-av.json",  'plan-eng-review/SKILL.md', 'plan-eng-review/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts',
      "scripts/resolvers/preamble/generate-preamble-bash.ts", "scripts/resolvers/preamble/generate-completion-status.ts",
-    'scripts/resolvers/testing.ts', 'plan-eng-review/sections/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
+    'scripts/resolvers/testing.ts', 'plan-eng-review/sections/**', 'scripts/resolvers/preamble/generate-ask-user-format.ts', 'scripts/resolvers/review.ts',  'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
 
   // /spec authored-spec quality (paid LLM-judge — periodic-tier).
   'plan-design-review/SKILL.md passes':   [
-
+    
     "test/fixtures/plan-scope-recovery-av.json",
     "test/fixtures/design-scope-checkpoint-at.json",'plan-design-review/SKILL.md', 'plan-design-review/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts',
     
@@ -1442,7 +1526,7 @@ export const LLM_JUDGE_TOUCHFILES: Record<string, string[]> = {
 
   // Design skills
   'design-review/SKILL.md fix loop':      ['design-review/SKILL.md', 'design-review/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
-  'design-consultation/SKILL.md research': ['design-consultation/SKILL.md', 'design-consultation/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'scripts/resolvers/design.ts', 'scripts/resolvers/outside-voice.ts', 'design-consultation/sections/**', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
+  'design-consultation/SKILL.md research': ['design-consultation/SKILL.md', 'design-consultation/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'scripts/resolvers/design.ts', 'scripts/resolvers/outside-voice.ts', 'design-consultation/sections/**',  'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
 
   // Deploy skills
   'land-and-deploy/SKILL.md workflow':    ['land-and-deploy/SKILL.md', 'land-and-deploy/SKILL.md.tmpl', 'land-and-deploy/sections/**', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
@@ -1452,9 +1536,9 @@ export const LLM_JUDGE_TOUCHFILES: Record<string, string[]> = {
 
   // Other skills
   'retro/SKILL.md instructions':          ['retro/sections/**', 'retro/SKILL.md', 'retro/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
-  'qa-only/SKILL.md workflow':            ['qa-only/SKILL.md', 'qa-only/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
+  'qa-only/SKILL.md workflow':            ['qa-only/**', 'qa-only/SKILL.md', 'qa-only/SKILL.md.tmpl', 'qa/**', 'scripts/resolvers/qa.ts', 'scripts/resolvers/utility.ts', 'scripts/resolvers/sections.ts', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
   'gstack-upgrade/SKILL.md upgrade flow': ['gstack-upgrade/SKILL.md', 'gstack-upgrade/SKILL.md.tmpl', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/helpers/workflow-excerpt.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts'],
-  'sync-gbrain/SKILL.md read-only readiness': ['sync-gbrain/SKILL.md', 'sync-gbrain/SKILL.md.tmpl', 'bin/gstack-gbrain-read-capability.ts', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts'],
+  'sync-gbrain/SKILL.md read-only readiness': ['sync-gbrain/SKILL.md', 'sync-gbrain/SKILL.md.tmpl', 'bin/gstack-gbrain-read-capability.ts', 'test/skill-llm-eval.test.ts', 'test/helpers/workflow-judge-input.ts', 'test/helpers/workflow-judge-cache.ts',  'scripts/eval-input-cache.ts',   'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts'],
 
   // Voice directive
   'voice directive tone':                 ['scripts/resolvers/preamble.ts', 'review/SKILL.md', 'review/SKILL.md.tmpl', 'scripts/gen-skill-docs.ts', 'test/skill-llm-eval.test.ts', 'test/fixtures/eval-baselines.json', 'test/helpers/cookie-workflow-judge-input.ts', 'test/helpers/cookie-workflow-manual-review.ts', 'test/helpers/llm-judge.ts', 'test/helpers/workflow-excerpt.ts', 'test/helpers/workflow-judge-cache.ts', 'test/helpers/workflow-judge-input.ts'],
@@ -1475,6 +1559,7 @@ export const GLOBAL_TOUCHFILES = [
   'test/helpers/eval-budgets.ts',
 
   'test/helpers/session-runner.ts',  // All E2E tests use this runner
+  'test/helpers/session-drain-policy.ts',
   'test/helpers/hermetic-env.ts',    // Changes every E2E child's environment
   'test/helpers/eval-store.ts',      // All E2E tests store results here
   'test/helpers/test-selection.ts',  // Selection logic itself — a bug here mis-selects every test

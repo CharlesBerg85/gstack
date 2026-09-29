@@ -59,7 +59,9 @@ Store conventions as prose context for use in Step 7. **Skip the rest of bootstr
 
 Absent config files and absent `tests/` directories are NOT evidence of "no tests": Django keeps tests in `<app>/tests.py`, Go in `*_test.go` beside the source, Rust in `#[test]` blocks inside `src/`. A green `python manage.py test` with no `pytest.ini` is a tested project, not a bootstrap candidate.
 
-**If BOOTSTRAP_DECLINED** appears: Print "Test bootstrap previously declined — skipping." **Skip the rest of bootstrap.**
+**If BOOTSTRAP_DECLINED** appears:
+- Step 5's explicit Add tests choice overrides that marker for this invocation only: continue to runtime detection and B2–B3, including framework approval.
+- Otherwise print "Test bootstrap previously declined — skipping" and **skip the rest of bootstrap**.
 
 **If NO ecosystem marker matched:** Use AskUserQuestion:
 "I couldn't detect your project's language. What runtime are you using?"
@@ -195,6 +197,15 @@ Only commit if there are changes. Stage all bootstrap files (config, test direct
 ## Step 5: Run tests (on merged code)
 
 Use the project's test commands discovered in Step 4 or documented in CLAUDE.md/AGENTS.md. Run every applicable suite; do not assume Rails or Vitest. The commands below are examples only for repositories that actually provide them. Use the same lane labels and exact commands again in Step 16.
+
+**If no applicable test suite exists:** Name the untested scope. AskUserQuestion:
+A) Add tests (recommended), B) Ship with this named testing
+gap, or C) Stop. Reuse an actual prior B answer only for the same scope and
+content; declining bootstrap alone is not that approval. B continues with the
+gap recorded, not passing tests. Independent build, eval, review and QA gates
+still apply. A declared but unavailable suite is a blocker, not an absent suite.
+A runs Step 4 with this new bootstrap choice, then returns here to run the tests.
+C stops this attempt.
 
 **For Rails projects using `bin/test-lane`, do NOT run `RAILS_ENV=test bin/rails db:migrate`** — `bin/test-lane` already calls
 `db:test:prepare` internally, which loads the schema into the correct lane database.

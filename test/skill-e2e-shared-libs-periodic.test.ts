@@ -76,7 +76,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
         const instructions = standaloneInstructions(f);
         const before = snapshotFixture(f.root);
         await judgedCapture(attempt, 'empty', 'shared-libs-opportunity-judgment', () => runSharedCapture(f, 'shared-libs-opportunity-judgment',
-          `Run /deslop-shared-libs using ${instructions} and return the report.`), async result => {
+          `Run /deslop-shared-libs using ${instructions} and return the report.`, attempt), async result => {
           assertReadOnly(f, before, result);
           await assertJudgment(result.output, {
             valid_empty: 'There is only README, .gitignore and a unique one-line src/version.ts, and successful empty PR results. It reports no worthwhile sharing opportunities and does not fabricate callers or blame unavailable history/API access.',
@@ -109,7 +109,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
       const instructions = standaloneInstructions(f);
       const before = snapshotFixture(f.root);
       await judgedCapture(attempt, 'opportunity', 'shared-libs-opportunity-judgment', () => runSharedCapture(f, 'shared-libs-opportunity-judgment',
-        `Run /deslop-shared-libs using ${instructions}. Review the active TypeScript and Python areas and return the requested report.`), async result => {
+        `Run /deslop-shared-libs using ${instructions}. Review the active TypeScript and Python areas and return the requested report.`, attempt), async result => {
         assertReadOnly(f, before, result);
         expect(result.output).toContain(f.tip.slice(0, 7));
         expect(result.output).toContain('lib/retry-after.ts');
@@ -142,7 +142,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
       const instructions = standaloneInstructions(f);
       const before = snapshotFixture(f.root);
       await judgedCapture(attempt, 'audit', 'shared-libs-pr-coverage', () => runSharedCapture(f, 'shared-libs-pr-coverage',
-        `Run /deslop-shared-libs using ${instructions}. Recent PR 7 mentions https://github.com/fixture/shared-libs/pull/42 as related work. Return the report after checking coordination within the skill's budget.`), async result => {
+        `Run /deslop-shared-libs using ${instructions}. Recent PR 7 mentions https://github.com/fixture/shared-libs/pull/42 as related work. Return the report after checking coordination within the skill's budget.`, attempt), async result => {
         assertReadOnly(f, before, result);
         const requests = readRequests(f).filter(row => row.tool === 'gh' || row.tool === 'curl');
         const endpoints = requests.map(row => row.endpoint || '');
@@ -189,7 +189,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
       let questions: any[] = [];
       await judgedCapture(attempt, 'plan', 'shared-libs-plan-callers', async () => {
         const capture = await runSharedInteractive(f, 'shared-libs-plan-callers',
-          `Run only the generated engineering Code Quality section and its supplied decision prerequisites in ${instructions}. The selected target and report file are ${plan}; you may update that file with the decision ledger and approved plan amendments. Review the two proposed callers' parser source under the fixed current scheduler contract, including necessary shared-contract and caller integration proof. Inspect src/scheduler.ts, its parser dependency and their tests; read other source only if needed to establish that compatibility. Do not run a repository-wide opportunity sweep. The fixture user can answer the parser-reuse choice under that unchanged contract, including its required tests and wiring; independent helper hardening or existing-caller migrations are outside this actor's interface. Report any such concerns as limitations instead of opening new decisions. Use the actual AskUserQuestion approval flow; the user will answer. After applying and reading back the approved resolution and plan amendments, return the section's findings and stop. Do not run startup or other review sections, or implement the proposed source files.`, createSharedPlanReuseSelector());
+          `Run only the generated engineering Code Quality section and its supplied decision prerequisites in ${instructions}. The selected target and report file are ${plan}; you may update that file with the decision ledger and approved plan amendments. Review the two proposed callers' parser source under the fixed current scheduler contract, including necessary shared-contract and caller integration proof. Inspect src/scheduler.ts, its parser dependency and their tests; read other source only if needed to establish that compatibility. Do not run a repository-wide opportunity sweep. The fixture user can answer the parser-reuse choice under that unchanged contract, including its required tests and wiring; independent helper hardening or existing-caller migrations are outside this actor's interface. Report any such concerns as limitations instead of opening new decisions. Use the actual AskUserQuestion approval flow; the user will answer. After applying and reading back the approved resolution and plan amendments, return the section's findings and stop. Do not run startup or other review sections, or implement the proposed source files.`, createSharedPlanReuseSelector(), { attempt });
         questions = capture.questions;
         return capture.result;
       }, async result => {

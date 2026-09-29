@@ -13,7 +13,10 @@ import {
 const read = (file: string) => readFileSync(join(import.meta.dir, '..', file), 'utf8');
 const newBudgets = FILE_RETRY_BUDGETS.filter(row => !FINDING_RETRY_BUDGETS.some(old => old.file === row.file));
 const expectedWalls = {
-  'test/skill-llm-eval.test.ts': 5_960_000,
+  'test/skill-e2e-qa-callers.test.ts': 3_270_000,
+  'test/skill-e2e-shared-libs-paths.test.ts': 3_720_000,
+  'test/skill-e2e-ship-docsync.test.ts': 10_920_000,
+  'test/skill-llm-eval.test.ts': 6_220_000,
   'test/skill-e2e-auq-consistency.test.ts': 2_040_000,
   'test/skill-e2e-auq-matrix.test.ts': 3_720_000,
   'test/skill-e2e-plan-format.test.ts': 2_600_000,
@@ -29,9 +32,9 @@ const expectedWalls = {
   'test/skill-e2e-plan.test.ts': 7_320_000,
 };
 
-test('registration covers exactly the fourteen demonstrated full-file retry gaps', () => {
+test('registration covers exactly the seventeen demonstrated full-file retry gaps', () => {
   expect(Object.fromEntries(newBudgets.map(row => [row.file, row.shardMs]))).toEqual(expectedWalls);
-  expect(new Set(FILE_RETRY_BUDGETS.map(row => row.file)).size).toBe(16);
+  expect(new Set(FILE_RETRY_BUDGETS.map(row => row.file)).size).toBe(19);
   expect(STRICT_RETRY_CASE_BUDGETS.map(row => row.file)).toEqual([
     ...FINDING_RETRY_BUDGETS.map(row => row.file), AUQ_CONSISTENCY_RETRY_BUDGET.file,
   ]);
@@ -44,6 +47,14 @@ const timeoutExpressions = (file: string) => [...read(file).matchAll(
 )].map(match => match[1]!.replace(/\s+/g, ' '));
 
 test('source allowances retain all captures, cases, and finalization grace', () => {
+  const paths = read('test/skill-e2e-shared-libs-paths.test.ts');
+  expect(paths.match(/\btest\.serial\s*\(/g)).toHaveLength(3);
+  expect([...paths.matchAll(/test\.serial\('([^']+)',\s*\(\)\s*=>\s*exerciseEligibility\(\s*'([^']+)'[\s\S]*?\),\s*(CAPTURE_LONG_MS)\s*\);/g)]
+    .map(match => match.slice(1))).toEqual([
+      ['shared-libs-review-path-eligibility', 'shared-libs-review-path-eligibility', 'CAPTURE_LONG_MS'],
+      ['shared-libs-review-index-flags', 'shared-libs-review-index-flags', 'CAPTURE_LONG_MS'],
+      ['shared-libs-review-prior-coverage', 'shared-libs-review-prior-coverage', 'CAPTURE_LONG_MS'],
+    ]);
   const auq = read(AUQ_CONSISTENCY_RETRY_BUDGET.file);
   expect(auq).toContain("const N_RUNS = Number(process.env.AUQ_CONSISTENCY_RUNS ?? '3')");
   expect(auq).toContain('Promise.allSettled(Array.from({ length: N_RUNS },');
@@ -137,15 +148,15 @@ test('quality judge supervision includes the added judge without changing ordina
   expect(ALL_TIERS).toEqual({ JUDGE_MS: 120000, CAPTURE_MS: 300000, CAPTURE_LONG_MS: 600000, PTY_MS: 900000, PTY_LONG_MS: 1200000 });
   const quality = 'test/skill-llm-eval.test.ts';
   const qualityBudget = FILE_RETRY_BUDGETS.find(row => row.file === quality)!;
-  expect(resolvePaidShardBudget([quality])).toEqual({ timeoutMs: 5_960_000, source: 'registered', policyId: qualityBudget.id });
+  expect(resolvePaidShardBudget([quality])).toEqual({ timeoutMs: 6_220_000, source: 'registered', policyId: qualityBudget.id });
   expect(retriesForFiles([quality])).toBe(1);
   const qualitySource = read(quality);
   const judgeTimeouts = [...qualitySource.matchAll(/}\s*,\s*(JUDGE_MS|WORKFLOW_JUDGE_TEST_MS)\s*\);/g)].map(match => match[1]);
   expect(judgeTimeouts.filter(timeout => timeout === 'JUDGE_MS')).toHaveLength(7);
-  expect(judgeTimeouts.filter(timeout => timeout === 'WORKFLOW_JUDGE_TEST_MS')).toHaveLength(16);
+  expect(judgeTimeouts.filter(timeout => timeout === 'WORKFLOW_JUDGE_TEST_MS')).toHaveLength(17);
   expect(qualitySource).toContain('WORKFLOW_JUDGE_TEST_MS = JUDGE_MS + 10_000');
   expect(qualitySource).toContain('const workDeadline = started + JUDGE_MS');
-  expect(qualityBudget.shardMs).toBe((7 * ALL_TIERS.JUDGE_MS + 16 * (ALL_TIERS.JUDGE_MS + 10_000)) * 2 + 120_000);
+  expect(qualityBudget.shardMs).toBe((7 * ALL_TIERS.JUDGE_MS + 17 * (ALL_TIERS.JUDGE_MS + 10_000)) * 2 + 120_000);
   expect(FINDING_RETRY_BUDGETS.map(row => [row.cases, row.testMs, row.retries, row.shardMs])).toEqual([
     ...Array(2).fill([1, 1500000, 1, 3120000]),
   ]);
@@ -168,18 +179,33 @@ test('detached PR fallback and release commands cover their actual default worke
   expect(fallback.prCoverage?.mode).toBe('full-fallback');
   const files = fallback.entries.filter(row => row.status === 'planned').map(row => row.file);
   const prWall = Number(scripts['eval:bg:pr'].match(/--timeout (\d+)/)?.[1]) * 1000;
+  const fullGateFiles = buildRunManifest({ tier: 'gate', sliceCount: 1, evalsAll: true, env: { EVALS_ALL: '1' } })
+    .entries.filter(row => row.status === 'planned').map(row => row.file);
+  const prFloor = Math.ceil((Math.ceil(fullGateFiles.length / prWorkers) * 1_800_000 + fullGateFiles.reduce(
+    (total, file) => total + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - 1_800_000), 0,
+  )) / 1000 * 1.05);
+  expect(prFloor).toBe(74_981);
+  expect(prWall).toBe(92_820_000);
   expect(prWall).toBeGreaterThanOrEqual(paidShardWallUpperBoundMs(files, prWorkers) + 120_000);
 
   expect(scripts['eval:bg:release']).toContain('-- bun run test:release');
   const releaseCommands = scripts['test:release'].split(' && ');
   expect(releaseCommands).toHaveLength(2);
   let releaseWall = 0;
+  const releaseFloors: number[] = [];
   for (const [index, tier] of (['gate', 'periodic'] as const).entries()) {
     expect(releaseCommands[index]).toBe(`EVALS_ALL=1 EVALS_FRESH=1 EVALS_CACHE_PURPOSE=release bun run scripts/test-paid-shards.ts --tier ${tier} --profile full`);
     const census = buildRunManifest({ tier, profile: 'full', sliceCount: 1, evalsAll: true, env: { EVALS_ALL: '1' } });
-    releaseWall += paidShardWallUpperBoundMs(census.entries.filter(row => row.status === 'planned').map(row => row.file), DEFAULT_JOBS);
+    const files = census.entries.filter(row => row.status === 'planned').map(row => row.file);
+    releaseWall += paidShardWallUpperBoundMs(files, DEFAULT_JOBS);
+    releaseFloors.push(Math.ceil((Math.ceil(files.length / DEFAULT_JOBS) * 1_800_000 + files.reduce(
+      (total, file) => total + Math.max(0, resolvePaidShardBudget([file]).timeoutMs - 1_800_000), 0,
+    )) / 1000 * 1.05));
   }
   const detachedReleaseWall = Number(scripts['eval:bg:release'].match(/--timeout (\d+)/)?.[1]) * 1000;
+  expect(releaseFloors).toEqual([42_851, 37_727]);
+  expect(releaseFloors.reduce((total, floor) => total + floor, 0)).toBe(80_578);
+  expect(detachedReleaseWall).toBe(116_700_000);
   expect(detachedReleaseWall).toBeGreaterThanOrEqual(releaseWall + 120_000);
 });
 
@@ -194,7 +220,7 @@ const cliOptions = (step: { run: string; env?: Record<string, string> }) => {
 test('both gate executors cover the complete census without increasing aggregate workers', () => {
   const periodic: any = Bun.YAML.parse(read('.github/workflows/evals-periodic.yml'));
   const main: any = Bun.YAML.parse(read('.github/workflows/evals.yml'));
-  for (const [workflow, jobName, workers, slices] of [[main, 'eval-slices', 2, 6], [periodic, 'gate-census', 1, 7]] as const) {
+  for (const [workflow, jobName, workers, slices] of [[main, 'eval-slices', 2, 7], [periodic, 'gate-census', 1, 7]] as const) {
     const planner = workflow.jobs['plan-slices'];
     const executor = workflow.jobs[jobName];
     const emit = planner.steps.filter((step: any) => step.run?.includes('EVALS_TIER=gate ') && step.run.includes('--emit-plan '));
@@ -210,15 +236,18 @@ test('both gate executors cover the complete census without increasing aggregate
     expect(executor.strategy.matrix.slice).toEqual(Array.from({ length: slices }, (_, i) => i + 1));
     expect(planned.slices).toBe(slices);
     const manifest = buildRunManifest({ tier: 'gate', sliceCount: planned.slices, evalsAll: true, env: { EVALS_ALL: '1' } });
-    expect(manifest.entries.filter(row => row.status === 'planned')).toHaveLength(42);
+    expect(manifest.entries.filter(row => row.status === 'planned')).toHaveLength(46);
     const files = manifest.entries.filter(row => row.status === 'planned').map(row => row.file);
-    expect(new Set(files).size).toBe(42);
+    expect(new Set(files).size).toBe(46);
+    expect(files).toContain('test/skill-e2e-ship-skip.test.ts');
     expect(files.sort()).toEqual(selectPaidTestFiles(collectPaidTestFiles(), 'gate').selected.sort());
     const walls = executor.strategy.matrix.slice.map((slice: number) => paidShardWallUpperBoundMs(
       manifest.entries.filter(row => row.status === 'planned' && row.slice === slice).map(row => row.file), workers,
     ));
     expect(executor['timeout-minutes'] * 60_000).toBeGreaterThanOrEqual(Math.max(...walls) + 20 * 60_000);
     if (jobName === 'gate-census') {
+      expect(Math.max(...walls)).toBe(16_440_000);
+      expect(executor['timeout-minutes']).toBe(352);
       expect(emit[0].env.EVALS_ALL).toBe('1');
       expect(executor.strategy['max-parallel']).toBe(4);
       expect(executor.strategy['max-parallel'] * active.jobs).toBe(4);
@@ -226,6 +255,11 @@ test('both gate executors cover the complete census without increasing aggregate
       expect(execute[0].run).toContain('--plan /tmp/gate-census-plan/manifest.json --slice ${{ matrix.slice }}');
       expect(executor.steps.some((step: any) => step.with?.name === 'gate-census-plan')).toBe(true);
       expect(executor.steps.filter((step: any) => step.run?.includes('--emit-plan '))).toHaveLength(0);
+    } else {
+      expect(Math.max(...walls)).toBe(12_720_000);
+      expect(executor['timeout-minutes']).toBe(265);
+      expect(executor.strategy['max-parallel']).toBe(6);
+      expect(executor.strategy['max-parallel'] * active.jobs).toBe(12);
     }
   }
 });
@@ -246,11 +280,14 @@ test('the periodic executor supervises every actual case and retry within its CI
   const manifest = buildRunManifest({ tier: 'periodic', sliceCount: planned.slices,
     evalsAll: true, env: { EVALS_ALL: '1' } });
   const census = manifest.entries.filter(row => row.status === 'planned');
-  expect(census).toHaveLength(69);
-  expect(census.find(row => row.file === 'test/skill-llm-eval.test.ts')?.budget?.timeoutMs).toBe(5_960_000);
+  expect(census).toHaveLength(70);
+  expect(census.find(row => row.file === 'test/skill-llm-eval.test.ts')?.budget?.timeoutMs).toBe(6_220_000);
   const walls = executor.strategy.matrix.slice.map((slice: number) => paidShardWallUpperBoundMs(
     census.filter(row => row.slice === slice).map(row => row.file), active.jobs,
   ));
+  expect(Math.max(...walls)).toBe(14_680_000);
+  expect(executor.strategy['max-parallel']).toBe(8);
+  expect(executor['timeout-minutes']).toBe(360);
   expect(executor['timeout-minutes'] * 60_000).toBeGreaterThanOrEqual(Math.max(...walls) + 20 * 60_000);
 });
 

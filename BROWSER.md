@@ -25,7 +25,7 @@ second half of this document is its complete reference.
 ### The driver contract
 
 Source of truth: [`scripts/resolvers/aside.ts`](scripts/resolvers/aside.ts). It
-renders `{{ASIDE_SETUP}}` into every browser skill's generated SKILL.md, and
+renders `{{ASIDE_SETUP}}` into browser instructions (conditionally for QA), and
 `test/aside-driver.test.ts` pins its load-bearing sentences. If this page and
 the resolver ever disagree, the resolver wins. The contract in one screen:
 
@@ -1687,6 +1687,13 @@ skillify/SKILL.md.tmpl           # /skillify gstack skill — codify last /scrap
 ```
 
 ---
+
+## QA surfaces and setup
+
+QA uses this browser path only for selected browser surfaces. `/qa-only`, `/review`
+and `/ship` discovery never install the fallback browser or invoke cookie import;
+unavailable browser access blocks the affected probes. Standalone `/qa` may run
+setup or cookie import only after explicit approval.
 
 ## Development
 

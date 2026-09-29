@@ -116,6 +116,9 @@ export function codexPreflight(opts: { modeVar?: string; disabledBehavior: 'skip
   const disabledLine = opts.disabledBehavior === 'codex-only'
     ? 'Skip the Codex passes only; the Claude adversarial subagent below STILL runs (it is free and fast). Print: "Codex passes skipped (codex_reviews disabled) — running Claude adversarial only."'
     : 'Skip this section entirely; do NOT fall back to a Claude subagent — disabled means no extra review step. Print: "Codex review skipped (codex_reviews disabled). Re-enable: `gstack-config set codex_reviews enabled`."';
+  const nativeRoute = opts.disabledBehavior === 'codex-only'
+    ? 'Keep the required Claude adversarial pass; do not dispatch a duplicate.'
+    : 'Fall back to the Claude subagent path.';
   return `\`\`\`bash
 # Codex preflight: one block (functions sourced here don't persist to later blocks).
 _TEL=$(~/.claude/skills/gstack/bin/gstack-config get telemetry 2>/dev/null || echo off)
@@ -123,11 +126,6 @@ _CODEX_CFG=$(~/.claude/skills/gstack/bin/gstack-config get codex_reviews 2>/dev/
 source ~/.claude/skills/gstack/bin/gstack-codex-probe 2>/dev/null || true
 if [ "$_CODEX_CFG" = "disabled" ]; then
   ${m}="disabled"
-# Running-under-Codex presence probe (#2519): a live Codex session exports
-# CODEX_THREAD_ID / CODEX_SANDBOX into every shell it spawns (verified
-# against a live \`codex exec 'env | grep -i codex'\` capture, codex 0.147.0).
-# Nested codex spawns from inside a Codex host multiply token burn
-# (observed: one /review = 15M tokens). A stale own-harness artifact must stop.
 elif { [ -n "\${CODEX_THREAD_ID:-}" ] || [ -n "\${CODEX_SANDBOX:-}" ] || [ "\${GSTACK_ACTIVE_HOST:-}" = codex ]; }; then
   ${m}="under_codex"
 elif ! command -v codex >/dev/null 2>&1; then
@@ -151,11 +149,11 @@ echo "CODEX_MODE: $${m}"
 
 Branch on the echoed \`CODEX_MODE\`:
 - **\`disabled\`** — the user turned Codex reviews off (\`codex_reviews=disabled\`). ${disabledLine}
-- **\`not_installed\`** — Codex CLI absent. Print: "Codex not installed — falling back to a Claude subagent (fresh context, but the same harness; model identity is unknown). Install Codex for an actual outside-model read: \`npm install -g @openai/codex\`." Fall back to the Claude subagent path.
+- **\`not_installed\`** — Codex CLI absent. Print: "Codex not installed; outside coverage unavailable. Install: \`npm install -g @openai/codex\`." ${nativeRoute}
 - **\`under_codex\`** — stale artifact selected its own harness. Print: "Codex outside review unavailable: harness mismatch; no outside process started. Missing coverage. Repair: setup --host codex." Skip the outside invocation and follow the workflow's native-review instructions below. Conflicting inherited harness markers are not grounds to guess another provider.
-- **\`not_authed\`** — installed but no credentials. Print: "Codex installed but not authenticated — falling back to a Claude subagent (same harness; model identity is unknown). Run \`codex login\` or set \`$CODEX_API_KEY\`." Fall back to the Claude subagent path.
-- **\`broken_install\`** — the CLI is on PATH but cannot execute (spawn ENOENT, non-executable binary, missing vendor payload). Print: "Codex is installed but its binary cannot run — Codex passes skipped. Reinstall: \`npm install -g @openai/codex\`." Relay the probe's HINT lines and fall back to the Claude subagent path. This state exists because a missing binary used to land in the model probe's fail-open bucket and report \`ready\`, so every Codex pass was skipped silently (#2742).
-- **\`model_unusable\`** — authed but the account cannot use gstack's selected Codex model (#2477: HTTP 400 on every call). Relay the probe's HINT lines, tell the user the one-line fix (set \`GSTACK_CODEX_MODEL=<supported-model>\` or pass an explicit \`-c model=...\` override), and fall back to the Claude subagent path. The ~10s round trip is cached for 1h; timeouts fail open to \`ready\`.
+- **\`not_authed\`** — installed but no credentials. Print: "Codex not authenticated; outside coverage unavailable. Run \`codex login\` or set \`$CODEX_API_KEY\`." ${nativeRoute}
+- **\`broken_install\`** — the CLI is on PATH but cannot execute (spawn ENOENT, non-executable binary, missing vendor payload). Print: "Codex is installed but its binary cannot run — Codex passes skipped. Reinstall: \`npm install -g @openai/codex\`." Relay the probe's HINT lines. ${nativeRoute}
+- **\`model_unusable\`** — authed but the account cannot use gstack's selected Codex model (#2477: HTTP 400 on every call). Relay the probe's HINT lines and tell the user the one-line fix (set \`GSTACK_CODEX_MODEL=<supported-model>\` or pass an explicit \`-c model=...\` override). ${nativeRoute} The ~10s round trip is cached for 1h; timeouts fail open to \`ready\`.
 - **\`ready\`** — run the Codex pass below.`;
 }
 

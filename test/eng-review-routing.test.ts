@@ -41,11 +41,12 @@ describe('engineering review routing contracts', () => {
 
   test('preparation establishes permission and evidence before applying review rules', () => {
     const preparation = between(section, '## Review preparation', '## Review record and write policy');
-    ordered(preparation, ['1. Select the report file and permissions under **Review record and write policy**', '2. Run **Prior Learnings**',
-      '3. Run **Retrospective learning**', '4. Read **Confidence Calibration**', '**Decision procedure**',
-      '**Scope Challenge A → B → C**', 'Sections 1–4 in order']);
-    expect(compact(preparation)).toContain('Run **Prior Learnings** and resolve its configuration question');
-    expect(compact(preparation)).toContain('as rules, not review passes');
+    expect(compact(preparation)).toContain('Follow the blocks below in order after startup');
+    expect(compact(preparation)).toContain('Confidence Calibration and Decision procedure are reference rules, not additional review passes');
+    ordered(section, ['## Review record and write policy', '{{LEARNINGS_SEARCH}}',
+      '## Retrospective learning', '{{CONFIDENCE_CALIBRATION}}', '## Decision procedure',
+      '## Scope Challenge', '### A. Assess the target', '### B. Resolve complexity selectors',
+      '### C. Resolve findings', '### 1. Architecture review']);
     expect(entry).toContain('Keep the reviewed target fixed');
   });
 
@@ -72,7 +73,7 @@ describe('engineering review routing contracts', () => {
   });
 
   test('below-threshold route skips selectors, never findings or remedy approvals', () => {
-    expect(compact(complexity)).toContain("Below both thresholds, skip B's questions and go directly to **C. Resolve findings**");
+    expect(compact(complexity)).toContain("With fewer than 8 files AND fewer than 2 new classes/services, skip B's questions and go directly to **C. Resolve findings**");
     expect(findings).toContain('Run C whether B was completed or skipped');
     ordered(compact(findings), ['1. Present numbered Scope Challenge findings',
       '2. Resolve each remedy through Decision procedure',
@@ -109,16 +110,17 @@ describe('engineering review routing contracts', () => {
     expect(summary).toContain('Do not invent a pre-answer record afterward');
     expect(summary).toContain('A failed save or Read blocks advancement');
     expect(summary).toContain('on the permitted read-only route, present and verify it as **not persisted**');
-    expect(compact(section)).toContain('Scope Challenge B saves actual selector answers afterward, outside this remedy loop');
+    expect(compact(section)).toContain('Scope Challenge B also uses its own selectors and post-answer scope record');
+    expect(compact(section)).toContain('These selections approve no engineering remedy');
   });
 
   test('engineering remedies still require full save Read ask answer apply Read ordering', () => {
     const procedure = between(section, '## Decision procedure', '## Scope Challenge');
-    ordered(procedure, ['### 3. Compare one choice', '### 4. Save the pending record',
-      'use Read to fetch the entire saved record', '### 5. Ask and wait',
+    ordered(procedure, ['**Compare one choice.**', '**Pending-record checkpoint.**',
+      'use Read to fetch the entire saved record', '### Send once and wait',
       'AskUserQuestion({ questions: [currentDecision] })', '**STOP until the actual answer arrives.**',
-      '### 6. Apply and refresh', 'Read the entire resolution block, including State',
-      'Return to step 1 with the updated working plan and answer']);
+      '### Record the answer', 'Read the entire resolution block, including State',
+      'For the next choice, use the updated working plan and answer']);
     expect(compact(procedure)).toContain('An Investigate/Defer option must bound the investigation');
     expect(compact(procedure)).toContain('It approves no implementation, including a conditional fix');
     expect(compact(procedure)).toContain('Do not apply a remedy, make another call, start the next section or call ExitPlanMode while the choice awaits an answer');
@@ -160,11 +162,15 @@ describe('engineering review routing contracts', () => {
     expect(late).toContain('Refresh affected tests, tasks, dependencies and parallelization');
     expect(late).toContain('Unchanged saved outputs may reuse their successful Review Log');
     expect(late).toContain('If a final gate discovers stale evidence, follow **Blocked outcome** first');
-    const finish = between(section, '## Required outputs', '### Output reference');
+    const finish = section.slice(section.indexOf('## Required outputs'));
     expect(compact(finish)).toContain('A substantive change follows **Recovery routing → Late change or missing work** before navigation resumes');
-    expect(compact(finish)).toContain('Navigation grants no implementation authority');
-    ordered(finish, ['1. **Prepare the review body.**', '2. **Save and Read back.**',
-      '3. **Log the saved review.**', '4. **Publish.**', '5. **Choose navigation.**', '6. **Finish.**']);
+    expect(compact(finish)).toContain('A next-step answer approves no implementation change');
+    ordered(finish, ['{{TASKS_SECTION_EMIT:eng-review}}', '### Completion summary', '{{PLAN_FILE_REVIEW_REPORT}}',
+      '## Review Log', '{{REVIEW_DASHBOARD}}', '## Next Steps — Review Chaining', '## Learning hooks', '{{BRAIN_WRITE_BACK}}']);
+    const sequence = compact(finish.slice(0, finish.indexOf('### Output reference')));
+    ordered(sequence, ['1. **Prepare the review body.**', '2. **Save and Read back.**', '3. **Log the saved review.**',
+      '4. **Publish.**', '5. **Choose navigation.**', '6. **Finish.**',
+      "Run Learning hooks, including gated Brain Calibration Write-Back; then return to the entrypoint's Section self-check"]);
   });
 
   test('plan test diagrams cover proposed paths without inventing existing implementation', () => {

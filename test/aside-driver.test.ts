@@ -274,10 +274,11 @@ describe('Aside driver contract ({{ASIDE_SETUP}})', () => {
 
 describe('browser fallback ({{BROWSE_FALLBACK}})', () => {
   test('shell-probe consumers accept every non-READY status and optional research waives setup before the fallback', () => {
-    for (const file of ['browse/SKILL.md.tmpl', 'design-consultation/SKILL.md.tmpl', 'scripts/resolvers/utility.ts']) {
+    for (const file of ['browse/SKILL.md.tmpl', 'design-consultation/SKILL.md.tmpl']) {
       const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
       expect({ file, nonReady: text.includes('any non-READY') }).toEqual({ file, nonReady: true });
     }
+    expect(RESOLVERS.QA_METHODOLOGY(ctx)).toContain('Reuse the caller\'s BROWSER SETUP and owned artifact paths: Aside READY, otherwise `$B`');
     const consultation = fs.readFileSync(path.join(ROOT, 'design-consultation/SKILL.md.tmpl'), 'utf8');
     expect(consultation).toContain('do not build or offer a build');
     expect(consultation.indexOf('The browser is optional here.')).toBeLessThan(consultation.indexOf('{{BROWSE_FALLBACK}}'));
@@ -438,7 +439,16 @@ describe('web research ({{ASIDE_RESEARCH}})', () => {
 describe('browser consolidation tripwires', () => {
   test('every browsing skill carries the Aside contract followed by the $B fallback', () => {
     for (const skill of BROWSING_SKILLS) {
-      const md = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf-8');
+      let md = fs.readFileSync(path.join(ROOT, skill, 'SKILL.md'), 'utf-8');
+      if (skill === 'qa' || skill === 'qa-only') {
+        expect(md).toContain('sections/browser-setup.md');
+        expect(md).not.toContain('## BROWSER SETUP (Aside');
+        if (skill === 'qa-only') {
+          expect(md).toContain('Read `sections/browser-setup.md` relative to the installed `qa`');
+          expect(fs.existsSync(path.join(ROOT, skill, 'sections/browser-setup.md'))).toBe(false);
+        }
+        md += fs.readFileSync(path.join(ROOT, 'qa/sections/browser-setup.md'), 'utf8');
+      }
       const aside = md.indexOf('## BROWSER SETUP (Aside');
       const fb = md.indexOf("## Browser fallback: gstack's own headless browser");
       expect({ skill, hasAside: aside >= 0, hasFallback: fb >= 0, fallbackAfterAside: fb > aside }).toEqual({ skill, hasAside: true, hasFallback: true, fallbackAfterAside: true });

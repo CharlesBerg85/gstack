@@ -17,6 +17,8 @@ The test suite is smaller and every remaining test maps to a product contract: 2
 | Weekly gate-census files | 58 | 41 (LLM judges run in the periodic and PR lanes) |
 | Weekly periodic shard-minutes spent on files this release removes (09-21 run) | 235 of 462 | 0 |
 
+The table compares v1.91.6.0 with this branch before it merged v1.91.7.0, which adds its own functional-QA and documentation tests. With both, the free suite runs 914 files (2,066 recorded serial seconds), the paid census has 104 files (46 gate, 70 periodic), and the weekly gate census runs 45 files in seven slices. v1.91.7.0's new paid cases follow the same derived-touchfile rule, and its new helper-only tests are listed in the ratchet baseline.
+
 ### Removed
 - The never-green finding-count cluster: `skill-e2e-autoplan-chain` and `skill-e2e-plan-{ceo,eng,design,devex}-finding-count`, whose weekly failures were harness and budget failures, never skill behavior (triage in `docs/test-audit-2026-09.md`). No paid eval now proves a live model completes the full `/autoplan` chain or asks one question per finding; both gaps have TODOS entries with re-entry tests. The dedicated eighth periodic slice and `AUTOPLAN_CHAIN_BUDGET` go with them.
 - Paid files that asserted nothing or could not pass: `skill-llm-eval-spec`, `skill-e2e-spec-execute`, `gemini-e2e` (no Gemini CLI in CI), `skill-e2e-ship-idempotency`, `skill-e2e-conductor-prose`, `codex-e2e-plan-format`, `skill-e2e-brain-privacy-gate`, `skill-e2e-opus-47` (its negative routing controls moved into `skill-routing-e2e`) and two duplicate overlay wrappers; `test:gemini` scripts removed.
@@ -38,6 +40,37 @@ The test suite is smaller and every remaining test maps to a product contract: 2
   - `autoplan-phase-order`, `pty-current-screen`: never wired; the settings-overwrite card assertion moved to `test/helpers/claude-pty-runner.unit.test.ts`.
   - `ceo-paired-fixture`, `design-ui-scope`, `plan-skill-completion`, `required-reads`, `transcript-section-logger`, `eng-finding-fixture`, `eng-completion-handoff`, `eng-retained-corpus`, `captured-paths`, `gemini-session-runner`: no live cases.
 - `test/helpers/resolve-repo-path.ts` resolves specifiers and path literals for both the ratchet and the touchfile closure check. The full evidence (inventories, selection proof, security mapping, retained false positives) is in `docs/test-audit-2026-09.md`.
+
+## [1.91.7.0] - 2026-09-28
+QA can test APIs, CLIs, jobs, workers and webhooks with the project's own tools,
+without starting a browser. Review and ship now run bounded exploratory checks,
+and every ship audits relevant documentation before final verification and publication.
+
+### Added
+
+- Functional QA checks native outputs and durable effects, including invalid inputs, authorization, cancellation, retries, duplicate delivery, concurrency and recovery. Reports distinguish failures, blocked probes and untested contracts; browser and functional results stay separate.
+- Exploratory QA turns observations into targeted probes and proposed regression tests. Written evidence checkpoints connect each observed result to the next probe and are linked from the final report. Authorized repairs require a reproduced defect, a regression that fails before the repair, and successful regression, original-probe and adjacent-path checks when the native test infrastructure supports them.
+
+### Changed
+
+- `/qa` and `/qa-only` load instructions for the selected surface on each supported host. Functional and report-only runs never bootstrap a framework or inherit browser setup permission; `/qa-only` preserves product code, tests, configuration and Git state.
+- `/review` and `/ship` run bounded exploration even on small non-browser diffs without a plan or server. Required checks remain required when blocked or unfinished, and proposed tests retain the parent's approval gates.
+- Review collects checklist, specialist, QA and adversarial findings before one parent-owned fix phase. Re-review keeps the same three-cycle limit, reruns affected probes and records incomplete coverage honestly.
+- Every ship consumes a completed documentation audit before final checks and publication, including uncommitted changes and existing-PR or repeat runs. Failed, stale or unsettled child results cannot silently become a clean audit; the parent retains release metadata and Git ownership.
+
+### Fixed
+
+- Report-only QA completes its scope and method Reads before setup, and preserves exact public fixture paths in evidence instead of inventing redacted paths. Actual secrets and private payloads remain protected.
+- Ship's workflow quality judge uses a 64k streamed, structured response within its existing deadline; other judges retain their 8k allowance. Cache identity includes the actual cap, transport and response contract, and incomplete or malformed scores remain failures.
+- Repeated QA runs preserve prior reports, baselines and exploration notes. Browser techniques follow the same checkpointed probe order as functional QA, and mixed reports keep each surface's evidence and scores separate.
+- Ship's two-pass test-generation allowance includes the initial attempt, failures and zero-test results. Duplicate design findings share one action while retaining both reviewers' evidence, statistics and the stricter approval requirement.
+- Ship keeps repair and late-change instructions in the steps that own them. Nested repairs preserve their return destination, and release preparation requires matching review records before version or documentation writes.
+- Reusing skipped shared-code advice now relies on executable checks of the captured branch and eligible raw source evidence. Unsupported Git states, transformed paths and records without trusted coverage provenance cannot certify a previous decision.
+- Paid-test `--list` also stays read-only with a saved plan and selected slice: it validates and lists the selected work without API preflight, test launches or result files.
+- Functional-QA test fixtures enforce their declared foreground command boundary before execution, and shared native-event decoding rejects malformed or incomplete evidence while preserving caller-specific handoff rules.
+- Native plan fixtures accept byte-exact seeds inside Claude's paste envelope without accepting fused or changed content. QA fixture completion avoids duplicating its checkpoint ledger, and caller fixtures distinguish absolute deadlines from start times.
+- Free tests retain private full logs, fail when evidence cannot be saved, and give an actionable recovery step. Linux and Windows CI collect the retained logs. Refreshed timings make new fast regressions reachable through the existing quick lane without removing complete-suite coverage.
+- The Ubicloud wrapper retrieves retained free-test logs and any retry ledger before destroying its VM.
 
 ## [1.91.6.0] - 2026-09-28
 
