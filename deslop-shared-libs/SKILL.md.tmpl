@@ -109,6 +109,8 @@ the repo, traverse submodule worktrees, or execute filters. Note excluded symlin
 submodule, ignored, unavailable or unreadable source. Handle deletions explicitly.
 Do not call an absent or unreadable overlay clean. Current raw content may differ
 even when a clean filter would produce the same Git tree.
+Sessions have a bounded number of turns. Read related files together: parallel
+host reads or one read-only command per step, not one file per turn.
 
 ## Start with recent work
 
