@@ -17,7 +17,7 @@ import { describe, test, expect } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { getHermeticDirs, hermeticSkillsConfigDir } from './helpers/hermetic-env';
+import { buildHermeticEnv, getHermeticDirs, hermeticSkillsConfigDir } from './helpers/hermetic-env';
 
 const ROOT = path.resolve(import.meta.path, '..', '..');
 
@@ -85,6 +85,17 @@ describe('hermetic wiring tripwire', () => {
       expect(src).not.toContain('$SKILLS_DIR/gstack/.feature-prompted-');
       for (const marker of markers) expect(src).toContain(`$HOME/.gstack/${marker}`);
     }
+  });
+
+  test('both EVALS_HERMETIC branches pin DISABLE_AUTOUPDATER=1 over the workflow env', () => {
+    // The allowlist scrubs the workflow's own copy; without this pin every PTY
+    // screen carries "Auto-update failed: no write permission to npm prefix".
+    for (const EVALS_HERMETIC of ['1', '0']) {
+      const base = { PATH: '/usr/bin', EVALS_HERMETIC, DISABLE_AUTOUPDATER: '0' };
+      expect(buildHermeticEnv(base, {}).DISABLE_AUTOUPDATER, `EVALS_HERMETIC=${EVALS_HERMETIC}`).toBe('1');
+      expect(buildHermeticEnv(base, {}, { DISABLE_AUTOUPDATER: '0' }).DISABLE_AUTOUPDATER, 'per-test override stays last').toBe('0');
+    }
+    expect(read('test/helpers/hermetic-env.ts')).toContain('DISABLE_AUTOUPDATER=1 (pinned in both branches');
   });
 
   test('claude runners gate --strict-mcp-config on isHermeticEnabled()', () => {
