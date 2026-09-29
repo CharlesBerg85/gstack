@@ -44,3 +44,18 @@ export const PERIODIC_CI_EXCLUDE: Record<string, { reason: string; tracking: str
     tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
   },
 };
+
+/**
+ * Case-level exclusions for case-sharded files (`<file>#<case id>`), same
+ * contract as above: a case lands here only when a CI runner cannot execute it
+ * (it self-skips), with reason + tracking. The planner records each as an
+ * excluded manifest entry instead of an empty case shard, so the exact
+ * one-case check stays strict for every planned case. Pinned by
+ * test/periodic-exclude-policy.test.ts.
+ */
+export const CASE_CI_EXCLUDE: Record<string, { reason: string; tracking: string }> = {
+  'test/skill-e2e-design.test.ts#design-review-fix': {
+    reason: '/design-review drives the Aside browser; CI runners are Linux without Aside, so the case registers test.skip("needs Aside")',
+    tracking: 'TODOS.md "CI-unrunnable paid evals" (re-entry: the CLI/device is available in the CI image; review by 2026-12-28)',
+  },
+};

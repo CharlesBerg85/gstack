@@ -66,7 +66,7 @@ import {
   type ShardChildResult,
 } from './test-strict-output';
 import { PAID_TEST_GLOBS, isPaidTestFile } from '../test/helpers/paid-test-set';
-import { PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
+import { CASE_CI_EXCLUDE, PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
 import { FILE_RETRY_BUDGETS, SHORT_CASE_RETRY_FILES, STRICT_RETRY_CASE_BUDGETS } from '../test/helpers/eval-budgets';
 import { getProjectEvalDir, getClaudeCliVersion, isFinalizedEvalResultFile, evalEntryOutcome } from '../test/helpers/eval-store';
 import { manualReviewProblem } from '../test/helpers/cookie-workflow-manual-review';
@@ -178,6 +178,20 @@ export function expandCaseShards(files: string[], tier: PaidTier, rootDir = ROOT
     if (!known) throw new Error(`Case-sharded ${rel} needs a complete literal case registration`);
     return registered.filter(id => tiers[id] === tier).sort().map(id => `${rel}${CASE_KEY_SEPARATOR}${id}`);
   });
+}
+
+/**
+ * Split expanded shard keys into runnable keys and CI-unrunnable cases
+ * (CASE_CI_EXCLUDE), each with its surfaced reason; never an empty shard.
+ */
+export function partitionCaseExclusions(keys: string[]): { runnable: string[]; excluded: Array<{ file: string; reason: string }> } {
+  const excluded: Array<{ file: string; reason: string }> = [];
+  const runnable = keys.filter(key => {
+    const exclusion = CASE_CI_EXCLUDE[normalizeRelativePath(key)];
+    if (exclusion) excluded.push({ file: key, reason: `excluded: ${exclusion.reason} [${exclusion.tracking}]` });
+    return !exclusion;
+  });
+  return { runnable, excluded };
 }
 
 /** Compatibility helper for callers that only need the effective wall. */
@@ -1406,9 +1420,10 @@ export function buildRunManifest(opts: {
   const tierSelection = selectPaidTestFiles(discovered, opts.tier, rootDir, env);
   const judge = (file: string) => /^test\/skill-llm-eval[^/]*\.test\.ts$/.test(normalizeRelativePath(file));
   const selected = opts.skipJudges ? tierSelection.selected.filter(file => !judge(file)) : tierSelection.selected;
+  const caseKeys = partitionCaseExclusions(expandCaseShards(selected, opts.tier, rootDir));
   const excluded = [...tierSelection.excluded, ...(opts.skipJudges ? tierSelection.selected.filter(judge)
-    .map(file => ({ file, reason: 'skipped: LLM judges run in the periodic census and PR gate lanes' })) : [])];
-  const shards = planPaidShards(expandCaseShards(selected, opts.tier, rootDir), { maxFilesPerShard: 1 });
+    .map(file => ({ file, reason: 'skipped: LLM judges run in the periodic census and PR gate lanes' })) : []), ...caseKeys.excluded];
+  const shards = planPaidShards(caseKeys.runnable, { maxFilesPerShard: 1 });
   const cases = computePaidCaseSelection({ profile, env, rootDir, changedFiles: opts.changedFiles });
   const fast = cases.coverage?.mode === 'pr';
   const profileShards = fast ? shards.filter(files => prProfileFileSelected(files[0], cases.selection)) : shards;
@@ -2182,8 +2197,11 @@ async function main(): Promise<number> {
     return 0;
   }
 
-  const { selected, excluded } = selectPaidTestFiles(discovered, options.tier);
-  const shards = planPaidShards(expandCaseShards(selected, options.tier), { maxFilesPerShard: options.maxFilesPerShard });
+  const tierSelection = selectPaidTestFiles(discovered, options.tier);
+  const caseKeys = partitionCaseExclusions(expandCaseShards(tierSelection.selected, options.tier));
+  const selected = tierSelection.selected;
+  const excluded = [...tierSelection.excluded, ...caseKeys.excluded];
+  const shards = planPaidShards(caseKeys.runnable, { maxFilesPerShard: options.maxFilesPerShard });
 
   // Parent-side diff selection (D9): skip whole shards whose mapped tests are
   // all unselected. Fail-open everywhere — the child's self-skip stays
