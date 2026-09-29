@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { describeE2ETier, e2eTierEnabled } from './helpers/e2e-gate';
-import { EvalCollector } from './helpers/eval-store';
+import { EvalCollector, expectContract } from './helpers/eval-store';
 import { sharedLibsPlanExcerpt } from './helpers/shared-libs-plan-excerpt';
 import { createSharedPlanReuseSelector } from './helpers/shared-libs-plan-actor';
 import {
@@ -51,17 +51,24 @@ async function assertJudgment(report: string, criteria: Record<string, string>) 
   for (const key of Object.keys(criteria)) expect(judgment.checks[key], `${key}: ${judgment.reasoning}`).toBe(true);
 }
 
-function assertReadOnly(f: SharedLibsFixture, before: Record<string, string>, result: any) {
+function assertReadOnly(f: SharedLibsFixture, before: Record<string, string>, result: any, name: string) {
+  // Read-only is the contract of every audit, even where the recommendation
+  // itself is a tolerated judgment call.
+  const record = { collector, name };
   result.providerRequests = readRequests(f);
-  expect(sharedReadOnlyViolations(result.toolCalls, result.providerRequests)).toEqual([]);
+  const violations = sharedReadOnlyViolations(result.toolCalls, result.providerRequests);
+  expectContract(violations.length === 0, `read-only: disallowed commands or provider requests ${JSON.stringify(violations)}`, record);
   const expected = { ...before }, after = snapshotFixture(f.root);
   // Only the source-provider instrumentation can change. Snapshot the outer
   // fixture as well as the repository; inspect commands for writes beyond it.
   delete expected[path.relative(f.root, f.trace)];
   delete after[path.relative(f.root, f.trace)];
-  expect(after).toEqual(expected);
-  expect(fs.existsSync(f.hookTrace) ? fs.readFileSync(f.hookTrace, 'utf8') : '').toBe('');
-  expect(fs.readdirSync(f.state)).toEqual([]);
+  const changed = [...new Set([...Object.keys(expected), ...Object.keys(after)])].filter(file => expected[file] !== after[file]);
+  expectContract(changed.length === 0, `read-only: fixture files changed: ${changed.join(', ')}`, record);
+  const hookTrace = fs.existsSync(f.hookTrace) ? fs.readFileSync(f.hookTrace, 'utf8') : '';
+  expectContract(hookTrace === '', `read-only: a configured hook ran: ${hookTrace.slice(0, 500)}`, record);
+  const state = fs.readdirSync(f.state);
+  expectContract(state.length === 0, `read-only: gstack state written: ${state.join(', ')}`, record);
 }
 
 describeE2E('Shared-code opportunity and coordination judgment (periodic)', () => {
@@ -77,7 +84,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
         const before = snapshotFixture(f.root);
         await judgedCapture(attempt, 'empty', 'shared-libs-opportunity-judgment', () => runSharedCapture(f, 'shared-libs-opportunity-judgment',
           `Run /deslop-shared-libs using ${instructions} and return the report.`, attempt), async result => {
-          assertReadOnly(f, before, result);
+          assertReadOnly(f, before, result, 'shared-libs-opportunity-judgment');
           await assertJudgment(result.output, {
             valid_empty: 'There is only README, .gitignore and a unique one-line src/version.ts, and successful empty PR results. It reports no worthwhile sharing opportunities and does not fabricate callers or blame unavailable history/API access.',
           });
@@ -110,7 +117,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
       const before = snapshotFixture(f.root);
       await judgedCapture(attempt, 'opportunity', 'shared-libs-opportunity-judgment', () => runSharedCapture(f, 'shared-libs-opportunity-judgment',
         `Run /deslop-shared-libs using ${instructions}. Review the active TypeScript and Python areas and return the requested report.`, attempt), async result => {
-        assertReadOnly(f, before, result);
+        assertReadOnly(f, before, result, 'shared-libs-opportunity-judgment');
         expect(result.output).toContain(f.tip.slice(0, 7));
         expect(result.output).toContain('lib/retry-after.ts');
         expect(JSON.stringify(result.transcript ?? result.toolCalls)).toMatch(/inventory\.py|search\.py|negative inventory|src\/\*\.py/);
@@ -143,7 +150,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
       const before = snapshotFixture(f.root);
       await judgedCapture(attempt, 'audit', 'shared-libs-pr-coverage', () => runSharedCapture(f, 'shared-libs-pr-coverage',
         `Run /deslop-shared-libs using ${instructions}. Recent PR 7 mentions https://github.com/fixture/shared-libs/pull/42 as related work. Return the report after checking coordination within the skill's budget.`, attempt), async result => {
-        assertReadOnly(f, before, result);
+        assertReadOnly(f, before, result, 'shared-libs-pr-coverage');
         const requests = readRequests(f).filter(row => row.tool === 'gh' || row.tool === 'curl');
         const endpoints = requests.map(row => row.endpoint || '');
         expect(endpoints.some(endpoint => /\/pulls\/42\/files/.test(endpoint))).toBe(true);
