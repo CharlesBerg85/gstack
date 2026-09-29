@@ -229,6 +229,18 @@ export function createEvalCollector(suite: string): EvalCollector | null {
 }
 
 /** DRY helper to record an E2E test result into the eval collector. */
+/** Exit reasons for an API or transport failure (session-runner.ts). */
+const INFRA_EXIT_REASONS = new Set(['error_api', 'timeout_startup', 'error_output_stream']);
+
+/** API/transport error or CLI crash before the first model turn: INFRA, never a
+ *  verdict on the product. Any assistant event or counted turn means the model
+ *  ran, so its refusal, timeout or wrong answer stays an ordinary failure. */
+export function isPreTurnInfraFailure(result: Pick<SkillTestResult, 'exitReason' | 'transcript' | 'costEstimate'>): boolean {
+  return result.costEstimate.turnsUsed === 0
+    && (INFRA_EXIT_REASONS.has(result.exitReason) || /^exit_code_\d+$/.test(result.exitReason))
+    && !result.transcript.some(event => event?.type === 'assistant');
+}
+
 export function recordE2E(
   evalCollector: EvalCollector | null,
   name: string,
@@ -241,9 +253,11 @@ export function recordE2E(
     ? `${result.toolCalls[result.toolCalls.length - 1].tool}(${JSON.stringify(result.toolCalls[result.toolCalls.length - 1].input).slice(0, 60)})`
     : undefined;
 
+  const passed = extra?.passed ?? (result.exitReason === 'success' && result.browseErrors.length === 0);
   evalCollector?.addTest({
     name, suite, tier: 'e2e',
-    passed: result.exitReason === 'success' && result.browseErrors.length === 0,
+    passed,
+    ...(!passed && isPreTurnInfraFailure(result) ? { failure_class: 'infra' as const } : {}),
     duration_ms: result.duration,
     cost_usd: result.costEstimate.estimatedCost,
     transcript: result.transcript,
