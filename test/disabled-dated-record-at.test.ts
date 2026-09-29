@@ -247,3 +247,24 @@ test('b176 retained history cannot override actual current log completion or nat
   expect(disabledPlanReviewEvidence(item.result, 'codex invoked\n', item.reviewLog, item.priorRecord).passed).toBe(false);
   expect(disabledPlanReviewEvidence(sourceBoundB176.cases[1]!.result, '', sourceBoundB176.cases[1]!.reviewLog, item.priorRecord).passed).toBe(false);
 });
+
+describe('parenthesized field list of the retained record (census 36629958451)', () => {
+  const prior = fixture.cases[0]!.priorRecord as Record<string, string>;
+  const list = (items: string[]) => `One thing worth flagging: the fixture's review log already contained a prior entry (${items.map(item => '`' + item + '`').join(', ')}) that predates this run. I did not produce it and it does not count toward this review's coverage.`;
+  const exact = [prior.timestamp!, `status: ${prior.status}`, `source: ${prior.source}`, 'outside_status: completed'];
+  test('the exact timestamp and the record\'s own field values attribute the quotation to that record', () => {
+    expect(evaluate(0, list(exact))).toMatchObject({ passed: true, falseCompletion: false });
+  });
+  test.each([
+    ['a different timestamp', [prior.timestamp!.replace(/\d(?=Z$)/, d => String((Number(d) + 1) % 10)), ...exact.slice(1)]],
+    ['no timestamp', exact.slice(1)],
+    ['a field value the record lacks', [prior.timestamp!, 'status: completed', `source: ${prior.source}`, 'outside_status: completed']],
+    ['free prose inside the list', [prior.timestamp!, `status: ${prior.status}`, 'outside_status: completed and this run too']],
+  ])('%s is not attributed', (_name, items) => {
+    expect(evaluate(0, list(items as string[])).falseCompletion).toBe(true);
+  });
+  test('a current mutation or a separate current claim still fails', () => {
+    expect(evaluate(0, list(exact).replace('already contained', 'now appended')).falseCompletion).toBe(true);
+    expect(evaluate(0, `${list(exact)}\nThis run: outside_status: completed.`).falseCompletion).toBe(true);
+  });
+});

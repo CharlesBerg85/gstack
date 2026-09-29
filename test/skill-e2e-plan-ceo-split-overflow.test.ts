@@ -1,5 +1,5 @@
 /**
- * /plan-ceo-review split-overflow regression (periodic, paid, real-PTY).
+ * /plan-ceo-review split-overflow regression (marathon, paid, real-PTY).
  *
  * Catches the original failure mode the user complained about: when the
  * agent has 5+ options for ONE conceptual decision, it must split into N
@@ -50,7 +50,7 @@ import { ceoSplitDecisionFingerprints, isCeoSplitCandidateCall, isCeoSplitCollec
 import { CEO_SCOPE_CANDIDATES } from './helpers/plan-review-cases';
 import { evaluatePlanReviewDecisions } from './helpers/plan-review-decisions';
 
-const describeE2E = describeE2ETier('periodic');
+const describeE2E = describeE2ETier('marathon');
 
 const N = 5;
 const FLOOR = N - 1; // 4 — must fire at least one AUQ per non-dropped option
@@ -60,7 +60,7 @@ const FLOOR = N - 1; // 4 — must fire at least one AUQ per non-dropped option
  *  EVALS_JOBS>1, sibling worktrees) never share one /tmp artifact. */
 const FIXTURE_PLAN_PATH = '/tmp/gstack-test-plan-ceo-split-overflow.md';
 
-describeE2E('/plan-ceo-review split-overflow regression (periodic)', () => {
+describeE2E('/plan-ceo-review split-overflow regression (marathon)', () => {
   test(
     `5-option scope decision emits >= ${FLOOR} review-phase AskUserQuestions (no dropping)`,
     async () => {

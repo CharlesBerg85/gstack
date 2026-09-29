@@ -1276,7 +1276,7 @@ export const E2E_TIERS: Record<string, 'gate' | 'periodic' | 'marathon'> = {
   'plan-design-finding-floor': 'periodic',  // stochastic ask-first (see plan-mode-handshake note); periodic
   'plan-devex-finding-floor':  'gate',
   'plan-eng-multi-finding-batching': 'periodic',
-  'plan-ceo-split-overflow': 'periodic',
+  'plan-ceo-split-overflow': 'marathon', // Full /plan-ceo-review through split overflow (504–1188 s on 2.1.251)
 
   // Privacy gate for gstack-brain-sync — periodic (non-deterministic LLM call,
   // costs ~$0.30-$0.50 per run, not needed on every commit)

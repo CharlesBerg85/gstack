@@ -173,6 +173,24 @@ function withoutAttributedPriorRecordData(output: string, priorRecord?: Record<s
       spans.push({ start: match.index, end: match.index + match[0].length });
     }
   }
+  // A parenthesized field list right after a pre-existing-record owner is that
+  // record when it quotes the record's exact ISO timestamp and every other item
+  // is one of its own field values; a current mutation before the owner fails.
+  const owned = /\b(?:earlier|prior|previous|historical|old(?:er)?|pre[- ]existing)\s+(?:(?:review[- ]log|review|log)\s+)?(?:entry|record|line|row)\s*\(([^()\r\n]+)\)/gi;
+  for (const match of output.matchAll(owned)) {
+    const lineStart = output.lastIndexOf('\n', match.index) + 1;
+    const local = output.slice(lineStart, match.index).split(/(?<=[.!?;])\s+/).at(-1) ?? '';
+    if (/\b(?:now|currently|current|today|new|updat\w*|append\w*|chang\w*|mark\w*|set|write|wrote)\b/i.test(local.replace(/[*`]/g, ''))) continue;
+    const items = match[1]!.split(',').map(item => item.replace(/[*`]/g, '').trim());
+    const fieldsOk = items.every(item => {
+      if (item === priorRecord.timestamp) return true;
+      const field = /^["']?([a-z_]+)["']?\s*[:=]\s*["']?([a-z0-9_.:+-]+)["']?$/i.exec(item);
+      return !!field && fields.has(field[1]!) && field[1] !== 'timestamp' && priorRecord[field[1]!] === field[2];
+    });
+    if (!fieldsOk || !items.includes(String(priorRecord.timestamp)) || !items.some(item => /^["']?outside_status\b/i.test(item))) continue;
+    const start = match.index + match[0].length - match[1]!.length - 1;
+    spans.push({ start, end: start + match[1]!.length + 2 });
+  }
   for (const span of spans.sort((a, b) => b.start - a.start)) {
     output = output.slice(0, span.start) + output.slice(span.start, span.end).replace(/[^\r\n]/g, ' ') + output.slice(span.end);
   }
