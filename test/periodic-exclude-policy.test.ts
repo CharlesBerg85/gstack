@@ -9,9 +9,10 @@ import { describe, expect, test } from 'bun:test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-import { PERIODIC_CI_EXCLUDE } from './helpers/periodic-exclude-data';
+import { CASE_CI_EXCLUDE, PERIODIC_CI_EXCLUDE } from './helpers/periodic-exclude-data';
+import { E2E_TOUCHFILES } from './helpers/touchfiles';
 import { isPaidTestFile } from './helpers/paid-test-set';
-import { selectPaidTestFiles } from '../scripts/test-paid-shards';
+import { buildRunManifest, CASE_SHARDED_FILES, expandCaseShards, partitionCaseExclusions, selectPaidTestFiles, shardCaseId, shardFile } from '../scripts/test-paid-shards';
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -40,6 +41,34 @@ describe('periodic exclude policy', () => {
     const gate = selectPaidTestFiles(files, 'gate');
     for (const { reason } of gate.excluded) {
       expect(reason).not.toStartWith('excluded: ');
+    }
+  });
+
+  test('case exclusions name a registered case of a case-sharded file and carry reason + tracking', () => {
+    const entries = Object.entries(CASE_CI_EXCLUDE);
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [key, meta] of entries) {
+      const file = shardFile(key), id = shardCaseId(key);
+      expect(CASE_SHARDED_FILES, `${key}: not a case-sharded file`).toContain(file);
+      expect(id !== null && E2E_TOUCHFILES[id]?.includes(file), `${key}: not a registered case of ${file}`).toBe(true);
+      expect(meta.reason.length, `${key}: empty reason`).toBeGreaterThan(20);
+      expect(meta.tracking.length, `${key}: empty tracking pointer`).toBeGreaterThan(5);
+    }
+  });
+
+  test('an excluded case is an excluded manifest entry with its reason, never a planned empty case shard', () => {
+    for (const [key] of Object.entries(CASE_CI_EXCLUDE)) {
+      const tiers = (['gate', 'periodic', 'marathon'] as const).filter(tier => expandCaseShards([shardFile(key)], tier).includes(key));
+      expect(tiers.length, `${key} belongs to no tier`).toBeGreaterThan(0);
+      for (const tier of tiers) {
+        const { runnable, excluded } = partitionCaseExclusions(expandCaseShards([shardFile(key)], tier));
+        expect(runnable).not.toContain(key);
+        expect(excluded.find(entry => entry.file === key)?.reason).toStartWith('excluded: ');
+        const manifest = buildRunManifest({ tier, sliceBudgetMs: 540_000, jobs: 2, evalsAll: true, env: { EVALS_ALL: '1' } });
+        const entry = manifest.entries.find(entry => entry.file === key)!;
+        expect(entry).toMatchObject({ status: 'excluded', slice: 0 });
+        expect(entry.reason).toContain(CASE_CI_EXCLUDE[key]!.tracking);
+      }
     }
   });
 });
