@@ -108,3 +108,110 @@ describe('rule shards stay fail-closed through --report', () => {
     expect(r.out).toContain(`${RULE_B} planned for slice 2 but reported by slice 1`);
   });
 });
+
+describe('behavior and quarantined panels through --report', () => {
+  const FILE = 'test/skill-e2e-review.test.ts';
+  const ID = 'review-design-lite';
+  const key = (trial: number) => `${FILE}#${ID}~t${trial}`;
+  const plan = (quarantined = false) => manifest([
+    ...[1, 2, 3].map(trial => ({ file: key(trial), slice: trial, status: 'planned' as const,
+      trial: { kind: 'behavior' as const, panel: { n: 3, k: 2 }, quarantined } })),
+    { file: RULE_A, slice: 4, status: 'planned' },
+  ], 4);
+  type TrialResult = 'passed' | 'failed' | 'contract' | 'missing' | 'harness';
+  const trialOutcome = (trial: number, result: TrialResult, quarantined = false): Outcome | null => {
+    if (result === 'missing') return null;
+    const record = { case: ID, trial, kind: 'behavior' as const, panel: { n: 3, k: 2 }, quarantined, cost_usd: 0, duration_ms: 1_000 };
+    if (result === 'harness') return passed(key(trial), { status: 'never-started', exitCode: null, executedTests: null, skippedTests: null,
+      trial: { ...record, outcome: null, harness: 'never started' } });
+    if (result === 'passed') return passed(key(trial), { trial: { ...record, outcome: 'passed' } });
+    return passed(key(trial), { status: 'failed', exitCode: 1,
+      trial: { ...record, outcome: 'failed', failure_class: result === 'contract' ? 'contract' : 'timeout',
+        exit_reason: 'timeout', timeout_at_turn: 14, error: result === 'contract' ? 'handoff missing' : 'no posture match' } });
+  };
+  const run = (results: TrialResult[], quarantined = false, dropSlice?: number) => report(plan(quarantined), [1, 2, 3, 4]
+    .filter(index => index !== dropSlice)
+    .map(index => slice(index, 4, index === 4 ? [passed(RULE_A)]
+      : [trialOutcome(index, results[index - 1]!, quarantined)].filter((o): o is Outcome => o !== null))));
+
+  test('behavior 3/3: green', () => {
+    const r = run(['passed', 'passed', 'passed']);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain('VERDICT GREEN');
+  });
+
+  test('behavior 2/3: green, the failed trial shown with its cause', () => {
+    const r = run(['passed', 'failed', 'passed']);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(`⚠ ${ID}  behavior  PASS 2/3 (✓✗✓)`);
+    expect(r.out).toContain('t2: timeout at turn 14');
+    const summary = JSON.parse(fs.readFileSync(path.join(r.dir, 'collector-outcomes.json'), 'utf8'));
+    expect(summary.version).toBe(2);
+    expect(summary.panels[0]).toMatchObject({ case: ID, status: 'PASS', split: true, failsLane: false });
+    const history = fs.readFileSync(path.join(r.dir, 'trial-outcomes.jsonl'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    expect(history.map(h => [h.trial, h.outcome])).toEqual([[1, 'passed'], [2, 'failed'], [3, 'passed']]);
+  });
+
+  test('behavior 1/3: red', () => {
+    const r = run(['passed', 'failed', 'failed']);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`PANEL ${ID} FAIL 1/3`);
+  });
+
+  test('a missing trial record: INCOMPLETE, red', () => {
+    const r = run(['passed', 'missing', 'passed']);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`PANEL ${ID} INCOMPLETE`);
+  });
+
+  test('a trial the harness never started: red, machine-classified for one re-dispatch', () => {
+    const r = run(['passed', 'harness', 'passed']);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('no trial record (never started)');
+    expect(r.out).toContain('INFRA-ONLY RED');
+  });
+
+  test('a contract trial at 2/3: red', () => {
+    const r = run(['passed', 'passed', 'contract']);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain(`PANEL ${ID} FAIL 2/3`);
+    expect(r.out).toContain('contract violation');
+    expect(r.out).not.toContain('INFRA-ONLY RED');
+  });
+
+  test('quarantined 1/3: reported, does not fail the lane', () => {
+    const r = run(['passed', 'failed', 'failed'], true);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toContain(`◌ ${ID}  behavior (quarantined)  FAIL 1/3`);
+  });
+
+  test('quarantined 0/3: hard break, red', () => {
+    const r = run(['failed', 'failed', 'failed'], true);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('quarantined hard break');
+  });
+
+  test('quarantined contract violation: red', () => {
+    const r = run(['passed', 'passed', 'contract'], true);
+    expect(r.status).toBe(1);
+  });
+
+  test('a missing trial slice: red', () => {
+    const r = run(['passed', 'passed', 'passed'], false, 2);
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('slice 2/4 reported NO result');
+    expect(r.out).toContain(`PANEL ${ID} INCOMPLETE`);
+  });
+
+  test('a later run attempt never replaces the first attempt verdict', () => {
+    const r = run(['passed', 'failed', 'failed']);
+    expect(r.status).toBe(1);
+    const retry = slice(3, 4, [trialOutcome(3, 'passed')!]);
+    fs.mkdirSync(path.join(r.dir, 'paid-slice-3-a2'), { recursive: true });
+    fs.writeFileSync(path.join(r.dir, 'paid-slice-3-a2', 'slice-3.json'), JSON.stringify({ ...retry, attempt: 2 }));
+    const again = spawnSync(process.execPath, [path.join(ROOT, 'scripts/test-paid-shards.ts'), '--tier', 'periodic', '--report', r.dir],
+      { cwd: ROOT, encoding: 'utf8', timeout: 30_000 });
+    expect(again.status).toBe(1);
+    expect(again.stdout).toContain('attempt 1 (later attempts 2 reported, never replacing it)');
+  });
+});

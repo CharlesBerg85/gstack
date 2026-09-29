@@ -37,10 +37,15 @@ import {
   summarize,
   summaryExitCode,
   verifySliceResults,
+  expandTrialShards,
+  formatCapacityPreflight,
+  shardSlug,
   type PaidRunManifest,
   type ShardOutcome,
   type SliceResult,
 } from '../scripts/test-paid-shards';
+
+import { E2E_KINDS } from './helpers/touchfiles-data';
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -506,5 +511,100 @@ describe('retry parity', () => {
     expect(retriesForFiles(['test/skill-e2e-review.test.ts'])).toBe(0);
     expect(buildPaidShardArgs(['x'], 1000, 4, 2)).toContain('2');
     expect(buildPaidShardArgs(['x'], 1000, 4).join(' ')).toContain('--retry 0');
+  });
+});
+
+describe('trial planner (behavior and quarantined panels)', () => {
+  const REVIEW = 'test/skill-e2e-review.test.ts';
+  const budgetPlan = (tier: 'gate' | 'periodic', kinds: Record<string, 'rule' | 'behavior' | 'judge'>, quarantine: Record<string, unknown> = {}) =>
+    buildRunManifest({ tier, sliceBudgetMs: 540_000, jobs: 2, evalsAll: true, env: { EVALS_ALL: '1' },
+      kinds: { ...E2E_KINDS, ...kinds }, quarantine });
+
+  test('a behavior case becomes three trial shards on three different slices; its file shard runs the rest', () => {
+    const manifest = budgetPlan('gate', { 'review-sql-injection': 'behavior' });
+    const trials = manifest.entries.filter(entry => entry.file.startsWith(`${REVIEW}#review-sql-injection~t`));
+    expect(trials.map(entry => entry.file)).toEqual([1, 2, 3].map(n => `${REVIEW}#review-sql-injection~t${n}`));
+    expect(trials.every(entry => entry.status === 'planned')).toBe(true);
+    expect(new Set(trials.map(entry => entry.slice)).size).toBe(3);
+    expect(trials[0]!.trial).toEqual({ kind: 'behavior', panel: { n: 3, k: 2 }, quarantined: false });
+    const fileShard = manifest.entries.find(entry => entry.file === REVIEW)!;
+    expect(fileShard.excludeCases).toEqual(['review-sql-injection']);
+    const slugs = manifest.entries.map(entry => shardSlug([entry.file]));
+    expect(new Set(slugs).size).toBe(slugs.length);
+    expect(parseRunManifest(JSON.stringify(manifest))).toEqual(manifest);
+  });
+
+  test('a file whose only tier case is isolated drops its file shard', () => {
+    const manifest = budgetPlan('periodic', { 'review-design-lite': 'behavior' });
+    expect(manifest.entries.some(entry => entry.file === REVIEW)).toBe(false);
+    expect(manifest.entries.filter(entry => entry.file.startsWith(`${REVIEW}#`)).map(entry => entry.file))
+      .toEqual([1, 2, 3].map(n => `${REVIEW}#review-design-lite~t${n}`));
+  });
+
+  test('a quarantined rule case runs a full panel with k = n', () => {
+    const manifest = budgetPlan('gate', {}, { 'review-enum-completeness': { reason: 'r' } });
+    const trial = manifest.entries.find(entry => entry.file === `${REVIEW}#review-enum-completeness~t1`)!;
+    expect(trial.trial).toEqual({ kind: 'rule', panel: { n: 3, k: 3 }, quarantined: true });
+  });
+
+  test('slice-count plans keep trials on different slices too', () => {
+    const manifest = buildRunManifest({ tier: 'gate', sliceCount: 5, evalsAll: true, env: { EVALS_ALL: '1' },
+      kinds: { ...E2E_KINDS, 'review-sql-injection': 'behavior', 'review-enum-completeness': 'behavior' } });
+    for (const id of ['review-sql-injection', 'review-enum-completeness']) {
+      const slices = manifest.entries.filter(entry => entry.file.startsWith(`${REVIEW}#${id}~t`)).map(entry => entry.slice);
+      expect(new Set(slices).size).toBe(3);
+    }
+  });
+
+  test('judges and unknown ids cannot be isolated; unknown registrations throw', () => {
+    expect(() => budgetPlan('gate', { 'review/SKILL.md workflow': 'behavior' })).toThrow(/Only live E2E cases/);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'trial-unknown-'));
+    try {
+      fs.mkdirSync(path.join(dir, 'test'));
+      fs.writeFileSync(path.join(dir, 'test/skill-e2e-x.test.ts'), 'const name = pick(); runSkillTest({ testName: name });');
+      expect(() => expandTrialShards(['test/skill-e2e-x.test.ts'], 'gate', dir, {
+        kinds: { x: 'behavior' }, touchfiles: { x: ['test/skill-e2e-x.test.ts'] }, tiers: { x: 'gate' },
+      })).toThrow(/statically known case registration/);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  test('parse rejects partial panels, shared runners, forged plans and stray exclusions', () => {
+    const manifest = budgetPlan('gate', { 'review-sql-injection': 'behavior' });
+    const trialFiles = [1, 2, 3].map(n => `${REVIEW}#review-sql-injection~t${n}`);
+    const mutate = (fn: (m: PaidRunManifest) => void) => { const m = structuredClone(manifest); fn(m); return JSON.stringify(m); };
+    expect(() => parseRunManifest(mutate(m => { m.entries = m.entries.filter(e => e.file !== trialFiles[1]); })))
+      .toThrow(/exactly its 3 trials/);
+    expect(() => parseRunManifest(mutate(m => {
+      const [a, b] = trialFiles.map(f => m.entries.find(e => e.file === f)!);
+      b!.slice = a!.slice;
+    }))).toThrow(/share a slice/);
+    expect(() => parseRunManifest(mutate(m => { m.entries.find(e => e.file === trialFiles[0])!.trial!.panel.k = 1; })))
+      .toThrow(/fixed policy panel/);
+    expect(() => parseRunManifest(mutate(m => { m.entries.find(e => e.file === trialFiles[0])!.trial = undefined; })))
+      .toThrow(/fixed policy panel/);
+    expect(() => parseRunManifest(mutate(m => { m.entries.find(e => e.file === REVIEW)!.excludeCases = ['review-design-lite']; })))
+      .toThrow(/exclude only cases/);
+    expect(() => parseRunManifest(mutate(m => { m.entries.find(e => e.file === REVIEW)!.trial = m.entries.find(e => e.file === trialFiles[0])!.trial; })))
+      .toThrow(/Only trial shards/);
+  });
+
+  test('capacity preflight names slices, shards, waves and the longest indivisible trial', () => {
+    const manifest = budgetPlan('gate', { 'review-sql-injection': 'behavior' });
+    const lines = formatCapacityPreflight(manifest, 16).join('\n');
+    expect(lines).toContain(`${manifest.sliceCount} slice(s)`);
+    expect(lines).toContain('3 trial shard(s)');
+    expect(lines).toContain(`wave(s) at max-parallel 16: ${Math.ceil(manifest.sliceCount / 16)}`);
+    expect(lines).toMatch(/longest indivisible trial ~\d+\.\dm \(test\/skill-e2e-review\.test\.ts#review-sql-injection~t\d\)/);
+  });
+
+  test('durations: trials record their longest wall under the case key and seed their own estimate', () => {
+    const key = `${REVIEW}#review-sql-injection`;
+    const merged = mergePaidTestDurations({}, [{ version: 1, tier: 'gate', sliceIndex: 1, sliceCount: 1, outcomes: [1, 2, 3].map(n => ({
+      files: [`${key}~t${n}`], status: 'passed' as const, exitCode: 0, elapsedMs: n * 60_000, executedTests: 1, skippedTests: 0,
+    })) }]);
+    expect(merged).toEqual({ [key]: 180_000 });
+    const packed = packBySliceBudget([1, 2, 3].map(n => `${key}~t${n}`), 540_000, 2, merged);
+    expect(packed.slices).toHaveLength(3);
+    expect(Object.values(packed.estimates)).toEqual([180_000, 180_000, 180_000]);
   });
 });

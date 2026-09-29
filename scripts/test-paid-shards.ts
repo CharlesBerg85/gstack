@@ -66,9 +66,14 @@ import {
   type ShardChildResult,
 } from './test-strict-output';
 import { PAID_TEST_GLOBS, isPaidTestFile } from '../test/helpers/paid-test-set';
-import { CASE_CI_EXCLUDE, PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
+import { CASE_CI_EXCLUDE, CASE_QUARANTINE, EVAL_POLICY, PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
 import { FILE_RETRY_BUDGETS, STRICT_RETRY_CASE_BUDGETS } from '../test/helpers/eval-budgets';
-import { getProjectEvalDir, getClaudeCliVersion, isFinalizedEvalResultFile, evalEntryOutcome } from '../test/helpers/eval-store';
+import {
+  getProjectEvalDir, getClaudeCliVersion, isFinalizedEvalResultFile, evalEntryOutcome, failureClassOf, panelVerdict,
+  sanitizeTrialError, formatTrialOutcomes, CONTRACT_VIOLATIONS_FILE, TRIAL_ENV, TRIAL_OUTCOME_SCHEMA, TRIAL_OUTCOMES_FILE,
+  type EvalCaseKind, type PanelShape, type PanelVerdict, type TrialFailureClass, type TrialOutcome, type TrialOutcomeRecord,
+} from '../test/helpers/eval-store';
+import { E2E_KINDS } from '../test/helpers/touchfiles-data';
 import { manualReviewProblem } from '../test/helpers/cookie-workflow-manual-review';
 import { preflightAnthropicApi } from '../test/helpers/anthropic-preflight';
 import { OVERLAY_MIN_FILE_WALL_MS } from '../test/helpers/overlay-case-policy';
@@ -146,16 +151,60 @@ export const CASE_TEST_NAMES: Record<string, string> = {
 };
 
 const CASE_KEY_SEPARATOR = '#';
+const TRIAL_SUFFIX = /~t([1-9][0-9]*)$/;
 
-/** The test file behind a shard key (`<file>` or `<file>#<case id>`). */
+/** The test file behind a shard key (`<file>`, `<file>#<case id>` or `<file>#<case id>~t<N>`). */
 export function shardFile(key: string): string {
   return normalizeRelativePath(key).split(CASE_KEY_SEPARATOR)[0]!;
 }
 
-/** The E2E case id of a case shard key, else null. */
+/** The E2E case id of a case or trial shard key, else null. */
 export function shardCaseId(key: string): string | null {
   const [, id] = normalizeRelativePath(key).split(CASE_KEY_SEPARATOR);
-  return id ?? null;
+  return id === undefined ? null : id.replace(TRIAL_SUFFIX, '');
+}
+
+/** The 1-based trial index of an isolated trial shard key, else null. */
+export function shardTrial(key: string): number | null {
+  const [, id] = normalizeRelativePath(key).split(CASE_KEY_SEPARATOR);
+  const match = id === undefined ? null : TRIAL_SUFFIX.exec(id);
+  return match ? Number(match[1]) : null;
+}
+
+/** Shard key of one trial of an isolated case. */
+export function trialShardKey(file: string, id: string, trial: number): string {
+  return `${normalizeRelativePath(file)}${CASE_KEY_SEPARATOR}${id}~t${trial}`;
+}
+
+/** Trial policy of one case, fixed from the registries before the run. */
+export interface CaseTrialPlan { kind: EvalCaseKind; panel: PanelShape; quarantined: boolean }
+
+/**
+ * `behavior` cases run EVAL_POLICY.panel; a quarantined case runs a full panel
+ * whose k keeps its kind's meaning (k = n for rule); everything else runs one
+ * trial. Only behavior and quarantined cases are isolated into trial shards.
+ */
+export function caseTrialPlan(id: string, kinds: Record<string, EvalCaseKind> = E2E_KINDS,
+  quarantine: Record<string, unknown> = CASE_QUARANTINE): CaseTrialPlan {
+  const kind = kinds[id] ?? 'rule';
+  const quarantined = Object.hasOwn(quarantine, id);
+  if (kind === 'behavior') return { kind, panel: { ...EVAL_POLICY.panel }, quarantined };
+  if (quarantined) return { kind, panel: { n: EVAL_POLICY.panel.n, k: EVAL_POLICY.panel.n }, quarantined };
+  return { kind, panel: { n: 1, k: 1 }, quarantined };
+}
+
+export function isIsolatedCase(plan: CaseTrialPlan): boolean {
+  return plan.kind === 'behavior' || plan.quarantined;
+}
+
+function sameTrialPlan(a: CaseTrialPlan | undefined, b: CaseTrialPlan | undefined): boolean {
+  return !!a && !!b && a.kind === b.kind && a.quarantined === b.quarantined && a.panel?.n === b.panel?.n && a.panel?.k === b.panel?.k;
+}
+
+/** Bun name pattern that runs every case of a file except `ids` (their trial shards run them). */
+export function excludedCasesNamePattern(ids: string[]): string {
+  const escaped = ids.map(id => (CASE_TEST_NAMES[id] ?? id).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return `^(?!.*(?:^|\\s)(?:${escaped.join('|')})$)`;
 }
 
 /** Exact Bun name pattern for a set of case ids (labels where the test name differs). */
@@ -178,6 +227,61 @@ export function expandCaseShards(files: string[], tier: PaidTier, rootDir = ROOT
     if (!known) throw new Error(`Case-sharded ${rel} needs a complete literal case registration`);
     return registered.filter(id => tiers[id] === tier).sort().map(id => `${rel}${CASE_KEY_SEPARATOR}${id}`);
   });
+}
+
+export interface TrialExpansion {
+  keys: string[];
+  /** Trial policy per trial shard key. */
+  trials: Record<string, CaseTrialPlan>;
+  /** File shard key -> isolated case ids its name pattern excludes. */
+  excludeCases: Record<string, string[]>;
+}
+
+/**
+ * Isolate every behavior or quarantined case of `tier` into its panel of trial
+ * shards (`<file>#<id>~t1..tn`), each selected by EVALS_SELECTION_JSON=[id] and
+ * its exact test name. The file shard keeps the remaining ids of the tier and
+ * excludes the isolated ones by name; with none remaining it is dropped. A case
+ * may be isolated only when its file's registration is statically known.
+ */
+export function expandTrialShards(keys: string[], tier: PaidTier, rootDir = ROOT, opts: {
+  kinds?: Record<string, EvalCaseKind>; quarantine?: Record<string, unknown>;
+  touchfiles?: Record<string, string[]>; tiers?: Record<string, string>;
+} = {}): TrialExpansion {
+  const touchfiles = opts.touchfiles ?? E2E_TOUCHFILES;
+  const tiers = opts.tiers ?? E2E_TIERS;
+  const planOf = (id: string) => caseTrialPlan(id, opts.kinds, opts.quarantine);
+  const out: TrialExpansion = { keys: [], trials: {}, excludeCases: {} };
+  const addPanel = (file: string, id: string) => {
+    const plan = planOf(id);
+    for (let trial = 1; trial <= plan.panel.n; trial++) {
+      const key = trialShardKey(file, id, trial);
+      out.keys.push(key);
+      out.trials[key] = plan;
+    }
+  };
+  for (const key of keys) {
+    const file = shardFile(key);
+    const caseId = shardCaseId(key);
+    if (caseId !== null) {
+      if (isIsolatedCase(planOf(caseId))) addPanel(file, caseId);
+      else out.keys.push(key);
+      continue;
+    }
+    const { registered, known } = fileCaseRegistration(file, fs.readFileSync(path.join(rootDir, file), 'utf8'), touchfiles, tiers);
+    const inTier = registered.filter(id => tiers[id] === tier);
+    const isolated = inTier.filter(id => isIsolatedCase(planOf(id)));
+    if (isolated.length === 0) { out.keys.push(key); continue; }
+    if (!known) {
+      throw new Error(`${file}: behavior or quarantined case(s) ${isolated.join(', ')} need a statically known case registration`);
+    }
+    for (const id of isolated) addPanel(file, id);
+    if (inTier.length > isolated.length) {
+      out.keys.push(key);
+      out.excludeCases[normalizeRelativePath(key)] = [...isolated].sort();
+    }
+  }
+  return out;
 }
 
 /**
@@ -484,26 +588,27 @@ function packageVersionOnlySinceBase(rootDir: string, baseRef: string): boolean 
 
 /** Only audited per-case files, plus the separately selected judge, enter the fast profile. */
 /** The selected PR-profile case ids a shard key owns (a case key owns at most its own case). */
-function prProfileShardIds(key: string, selection: PaidCaseSelection): string[] {
+/** `exclude`: isolated case ids a file shard leaves to their trial shards. */
+function prProfileShardIds(key: string, selection: PaidCaseSelection, exclude: readonly string[] = []): string[] {
   const caseId = shardCaseId(key);
   return (PR_PROFILE_FILES[shardFile(key)] ?? [])
-    .filter(id => (caseId === null || id === caseId) && (selection.e2e === null || selection.e2e.includes(id)));
+    .filter(id => (caseId === null || id === caseId) && (selection.e2e === null || selection.e2e.includes(id)) && !exclude.includes(id));
 }
 
-export function prProfileFileSelected(file: string, selection: PaidCaseSelection): boolean {
+export function prProfileFileSelected(file: string, selection: PaidCaseSelection, exclude: readonly string[] = []): boolean {
   if (file === 'test/skill-llm-eval.test.ts') return selection.judges === null || selection.judges.length > 0;
-  return prProfileShardIds(file, selection).length > 0;
+  return prProfileShardIds(file, selection, exclude).length > 0;
 }
 
-export function expectedPrCaseCount(file: string, selection: PaidCaseSelection): number {
+export function expectedPrCaseCount(file: string, selection: PaidCaseSelection, exclude: readonly string[] = []): number {
   if (file === 'test/skill-llm-eval.test.ts') return selection.judges?.length ?? Object.keys(LLM_JUDGE_TOUCHFILES).length;
-  return prProfileShardIds(file, selection).length;
+  return prProfileShardIds(file, selection, exclude).length;
 }
 
-export function prProfileTestNamePattern(file: string, selection: PaidCaseSelection): string {
+export function prProfileTestNamePattern(file: string, selection: PaidCaseSelection, exclude: readonly string[] = []): string {
   const ids = file === 'test/skill-llm-eval.test.ts'
     ? selection.judges ?? Object.keys(LLM_JUDGE_TOUCHFILES)
-    : prProfileShardIds(file, selection);
+    : prProfileShardIds(file, selection, exclude);
   if (ids.length === 0) throw new Error(`No selected PR cases for ${file}`);
   return caseTestNamePattern(ids);
 }
@@ -527,6 +632,8 @@ export interface DiffSkipOptions {
   allNames?: string[];
   /** Injectable registration map (default: E2E_TOUCHFILES). */
   e2eTouchfiles?: Record<string, string[]>;
+  /** File shard -> isolated case ids its trial shards run instead. */
+  excludeCases?: Record<string, string[]>;
 }
 
 /**
@@ -569,7 +676,8 @@ export function diffSkipDecisionForFile(
   const touchfiles = options.e2eTouchfiles ?? E2E_TOUCHFILES;
   const quoted = knownTestNamesInSource(source, allNames);
   const registered = Object.keys(touchfiles).filter((k) => touchfiles[k].includes(rel));
-  const mapped = [...new Set([...quoted, ...registered])];
+  const isolated = options.excludeCases?.[rel] ?? [];
+  const mapped = [...new Set([...quoted, ...registered])].filter(name => !isolated.includes(name));
   if (mapped.length === 0) {
     return { file, kept: true, reason: 'no mappable test names — fail-open, child self-skip authoritative' };
   }
@@ -679,7 +787,8 @@ export function buildPaidShardArgs(
 export function shardSlug(files: string[]): string {
   return files
     .map((file) => path.basename(shardFile(file)).replace(/\.test\.(?:[cm]?[jt]s|tsx|jsx)$/, '')
-      + (shardCaseId(file) === null ? '' : `--${shardCaseId(file)}`))
+      + (shardCaseId(file) === null ? '' : `--${shardCaseId(file)}`)
+      + (shardTrial(file) === null ? '' : `.t${shardTrial(file)}`))
     .join('+')
     .replace(/[^a-zA-Z0-9._+-]/g, '-');
 }
@@ -715,6 +824,91 @@ export interface ShardOutcome {
   budget?: PaidShardBudget;
   /** Present when a verified receipt replaced execution (PR lane only). */
   reused?: { inputKey: string; runId: string; revision: string; completedAt: number };
+  /** The parent could not run the shard at all (a runner error, never a trial verdict). */
+  runnerError?: string;
+  /** Isolated trial shards only: the trial record this shard produced. */
+  trial?: ShardTrialRecord;
+}
+
+/**
+ * One isolated trial's record, derived from its shard status and the records
+ * in its own eval dir. `outcome` null means the harness produced no trial
+ * (never started, hollow, isolation broken, runner error): the panel is then
+ * INCOMPLETE and the slice exits non-zero. A failed, timed-out or crashed
+ * trial is a trial verdict; the slice still exits zero and the report decides.
+ */
+export interface ShardTrialRecord {
+  case: string;
+  trial: number;
+  kind: EvalCaseKind;
+  panel: PanelShape;
+  quarantined: boolean;
+  outcome: TrialOutcome | null;
+  harness?: string;
+  failure_class?: TrialFailureClass;
+  exit_reason?: string;
+  error?: string;
+  timeout_at_turn?: number;
+  cost_usd: number;
+  duration_ms: number;
+  model?: string;
+}
+
+/** Records and contract evidence an isolated shard left in its eval dir. */
+export function readTrialEvidence(evalDir: string | undefined): { records: any[]; contract: string | null } {
+  if (!evalDir || !fs.existsSync(evalDir)) return { records: [], contract: null };
+  const names = fs.readdirSync(evalDir);
+  const parse = (name: string) => { try { return JSON.parse(fs.readFileSync(path.join(evalDir, name), 'utf8')); } catch { return null; } };
+  const finalized = names.filter(name => isFinalizedEvalResultFile(name) && !name.startsWith('e2e-reused-')).map(parse).filter(Boolean);
+  const source = finalized.length ? finalized : names.filter(name => name.startsWith('_partial') && name.endsWith('.json')).map(parse).filter(Boolean);
+  const records = source.flatMap((result: any) => Array.isArray(result?.tests) ? result.tests.filter((t: any) => t && typeof t === 'object') : []);
+  let contract: string | null = records.find((t: any) => t.failure_class === 'contract')?.error ?? null;
+  if (records.some((t: any) => t.failure_class === 'contract') && contract === null) contract = 'contract violation';
+  try {
+    const line = fs.readFileSync(path.join(evalDir, CONTRACT_VIOLATIONS_FILE), 'utf8').split('\n').find(l => l.trim());
+    if (line) contract = String(JSON.parse(line).message ?? 'contract violation');
+  } catch { /* no sidecar */ }
+  return { records, contract };
+}
+
+/** Classify one isolated trial shard. Contract evidence always fails the trial. */
+export function classifyTrialShard(
+  outcome: Pick<ShardOutcome, 'status' | 'executedTests' | 'skippedTests' | 'elapsedMs' | 'runnerError'>,
+  caseId: string, trial: number, plan: CaseTrialPlan,
+  evidence: { records: any[]; contract: string | null },
+): ShardTrialRecord {
+  const failedRecord = evidence.records.find(record => record.passed === false) ?? evidence.records[0];
+  const base: ShardTrialRecord = {
+    case: caseId, trial, kind: plan.kind, panel: plan.panel, quarantined: plan.quarantined, outcome: null,
+    cost_usd: Math.round(evidence.records.reduce((sum, record) => sum + (Number(record.cost_usd) || 0), 0) * 100) / 100,
+    duration_ms: outcome.elapsedMs,
+    ...(typeof failedRecord?.model === 'string' ? { model: failedRecord.model } : {}),
+  };
+  const failed = (failureClass: TrialFailureClass, error?: string): ShardTrialRecord => ({
+    ...base, outcome: 'failed', failure_class: evidence.contract !== null ? 'contract' : failureClass,
+    ...(failedRecord?.exit_reason ? { exit_reason: String(failedRecord.exit_reason) } : {}),
+    ...(Number.isInteger(failedRecord?.timeout_at_turn) ? { timeout_at_turn: failedRecord.timeout_at_turn } : {}),
+    ...(sanitizeTrialError(evidence.contract ?? failedRecord?.error ?? error) ? { error: sanitizeTrialError(evidence.contract ?? failedRecord?.error ?? error) } : {}),
+  });
+  if (outcome.runnerError !== undefined) return { ...base, harness: `runner error: ${sanitizeTrialError(outcome.runnerError) ?? 'unknown'}` };
+  if (outcome.status === 'never-started') return { ...base, harness: 'never started' };
+  if (outcome.status === 'passed-empty') return { ...base, harness: 'hollow: executed no case' };
+  if (outcome.status === 'skipped-by-diff') return { ...base, harness: 'skipped by diff' };
+  const known = outcome.executedTests !== null && outcome.skippedTests !== null;
+  const ran = known ? outcome.executedTests! - outcome.skippedTests! : null;
+  if (outcome.status === 'timed-out') {
+    if (ran !== null && ran > 1) return { ...base, harness: `isolation broken: ${ran} cases ran` };
+    return failed('timeout', 'shard wall reached');
+  }
+  if (ran === null) return outcome.status === 'failed' ? failed('infra', 'crashed without a test summary') : { ...base, harness: 'no test summary' };
+  if (ran > 1) return { ...base, harness: `isolation broken: ${ran} cases ran` };
+  if (ran === 0) {
+    if (outcome.status === 'passed' && outcome.skippedTests! > 0 && evidence.contract === null) return { ...base, outcome: 'skipped' };
+    if (outcome.status === 'failed') return failed('infra', 'the case never ran (load or setup failure)');
+    return { ...base, harness: 'hollow: executed no case' };
+  }
+  if (outcome.status === 'passed') return evidence.contract !== null ? failed('contract') : { ...base, outcome: 'passed' };
+  return failed(failedRecord ? failureClassOf(failedRecord) : 'assertion');
 }
 
 /**
@@ -775,6 +969,8 @@ export interface RunShardsOptions {
   expectedCaseIds?: Record<string, string[]>;
   /** PR lane only: verified reuse for one shard's exact child environment and wall. */
   reuseFor?: (files: string[], env: NodeJS.ProcessEnv, budget: PaidShardBudget) => E2EShardReuse | null;
+  /** Isolated trial shards: key -> the case's fixed trial plan. */
+  trials?: Record<string, CaseTrialPlan>;
 }
 
 let shardLogSequence = 0;
@@ -832,6 +1028,23 @@ export async function runPaidShard(
   if (options.evalDirBase) {
     env.GSTACK_EVAL_DIR = path.join(options.evalDirBase, 'shards', shardSlug(files));
   }
+  const trialPlan = files.length === 1 ? options.trials?.[normalizeRelativePath(files[0]!)] : undefined;
+  const trialIndex = files.length === 1 ? shardTrial(files[0]!) : null;
+  if (trialPlan && trialIndex !== null && caseId !== null) {
+    // One case, one trial: the selection binds the child to exactly this id,
+    // and eval-store stamps every record with the trial identity.
+    Object.assign(env, {
+      [TRIAL_ENV.caseId]: caseId, [TRIAL_ENV.kind]: trialPlan.kind, [TRIAL_ENV.trial]: String(trialIndex),
+      [TRIAL_ENV.panelN]: String(trialPlan.panel.n), [TRIAL_ENV.panelK]: String(trialPlan.panel.k),
+      [TRIAL_ENV.policyVersion]: String(EVAL_POLICY.version),
+      EVALS_SELECTION_JSON: JSON.stringify({ version: 1, selected: [caseId], reason: `trial ${trialIndex}/${trialPlan.panel.n} of ${caseId}` }),
+    });
+  } else {
+    for (const name of Object.values(TRIAL_ENV)) delete env[name];
+  }
+  const withTrial = (outcome: ShardOutcome): ShardOutcome => trialPlan && trialIndex !== null && caseId !== null
+    ? { ...outcome, trial: classifyTrialShard(outcome, caseId, trialIndex, trialPlan, readTrialEvidence(env.GSTACK_EVAL_DIR)) }
+    : outcome;
   // Resolve `claude --version` ONCE in the parent (cached across shards) and
   // hand it to every child: eval-store's fallback is a synchronous spawn on
   // the same thread that polls PTY sessions, so children must never pay it.
@@ -859,9 +1072,9 @@ export async function runPaidShard(
       }, null, 2)}\n`);
     }
     log(`${label} REUSED ${files.join(' ')} — identical inputs passed in run ${reused.source.runId} at ${reusedFrom.completed_at}`);
-    return { shard: shardNumber, files, status: 'passed', exitCode: 0, elapsedMs: 0, groupPid: null,
+    return withTrial({ shard: shardNumber, files, status: 'passed', exitCode: 0, elapsedMs: 0, groupPid: null,
       executedTests: caseIds.length, skippedTests: 0, budget,
-      reused: { inputKey: reused.key, runId: reused.source.runId, revision: reused.source.revision, completedAt: reused.source.completedAt } };
+      reused: { inputKey: reused.key, runId: reused.source.runId, revision: reused.source.revision, completedAt: reused.source.completedAt } });
   }
   const { command, args } = options.commandFor
     ? options.commandFor(files)
@@ -872,8 +1085,11 @@ export async function runPaidShard(
         timeoutMs,
         options.withinShardConcurrency ?? DEFAULT_WITHIN_SHARD_CONCURRENCY,
         retriesForFiles(files),
-      ), ...(casePattern !== undefined ? ['--test-name-pattern', casePattern] : [])],
+      ), ...(casePattern !== undefined ? ['--test-name-pattern', casePattern] : []),
+      // Per-test outcomes for pass-rate history, keyed by Bun test name.
+      ...(env.GSTACK_EVAL_DIR ? ['--reporter=junit', '--reporter-outfile', path.join(env.GSTACK_EVAL_DIR, 'junit.xml')] : [])],
     };
+  if (env.GSTACK_EVAL_DIR) fs.mkdirSync(env.GSTACK_EVAL_DIR, { recursive: true });
   // Per-shard temp + Chromium-profile isolation — the free runner treats
   // this as mandatory (test-free-shards.ts: two concurrent shards on one
   // profile dir kill each other's browser; shared tmp cross-contaminates),
@@ -1057,7 +1273,7 @@ export async function runPaidShard(
     ? summary.terminalTestCounts.reduce((a, b) => a + b, 0)
     : null;
   const skippedTests = summary.terminalTestCounts.length > 0 ? summary.skippedTests : null;
-  return { shard: shardNumber, files, status, exitCode, elapsedMs, groupPid, executedTests, skippedTests, budget };
+  return withTrial({ shard: shardNumber, files, status, exitCode, elapsedMs, groupPid, executedTests, skippedTests, budget });
 }
 
 export interface RunSummary {
@@ -1166,7 +1382,8 @@ export async function runPaidShards(
       try {
         outcomes[index] = await runPaidShard(shards[index], index + 1, shards.length, { ...options, jobs });
       } catch (error) {
-        outcomes[index] = {
+        const runnerError = error instanceof Error ? error.message : String(error);
+        const failed: ShardOutcome = {
           shard: index + 1,
           files: shards[index],
           status: 'failed',
@@ -1175,7 +1392,13 @@ export async function runPaidShards(
           groupPid: null,
           executedTests: null,
           skippedTests: null,
+          runnerError,
         };
+        const key = shards[index].length === 1 ? normalizeRelativePath(shards[index][0]!) : '';
+        const plan = options.trials?.[key];
+        outcomes[index] = plan && shardCaseId(key) !== null && shardTrial(key) !== null
+          ? { ...failed, trial: classifyTrialShard(failed, shardCaseId(key)!, shardTrial(key)!, plan, { records: [], contract: null }) }
+          : failed;
         console.error(`[test:paid] shard ${index + 1} could not run: ${error instanceof Error ? error.message : String(error)}`);
       } finally {
         if (overlay) activeOverlayShards--;
@@ -1229,6 +1452,10 @@ export interface ManifestEntry {
   budget?: PaidShardBudget;
   /** Budget-mode packing weight (recorded wall, or the whole budget when unknown). */
   estimatedMs?: number;
+  /** Isolated trial shard (`<file>#<id>~t<N>`): the case's kind, fixed panel and quarantine at plan time. */
+  trial?: CaseTrialPlan;
+  /** File shard whose isolated cases run as trial shards: their ids, excluded by name here. */
+  excludeCases?: string[];
 }
 
 /** Budget-mode plan: per-executor estimate and the CI job timeout it needs. */
@@ -1293,16 +1520,46 @@ export function writePaidTestDurations(tier: PaidTier, durations: Record<string,
   fs.renameSync(temporary, target);
 }
 
-/** Merge a report's executed single-file outcomes into the seed; all-skipped shards carry no cost signal. */
+/** Seed key of a shard: trials of one case share their case key (`<file>#<id>`). */
+function durationKey(key: string): string {
+  const rel = normalizeRelativePath(key);
+  return shardTrial(rel) === null ? rel : `${shardFile(rel)}${CASE_KEY_SEPARATOR}${shardCaseId(rel)}`;
+}
+
+/** Recorded wall of a shard key; an unrecorded trial falls back to its whole file's wall. */
+export function recordedShardMs(recorded: Record<string, number>, key: string): number | undefined {
+  const rel = normalizeRelativePath(key);
+  return recorded[durationKey(rel)] ?? (shardTrial(rel) === null ? undefined : recorded[shardFile(rel)]);
+}
+
+/**
+ * Merge a report's executed single-file outcomes into the seed; all-skipped
+ * shards carry no cost signal. Trials of one case record their longest wall
+ * under the case key.
+ */
 export function mergePaidTestDurations(seed: Record<string, number>, results: SliceResult[]): Record<string, number> {
   const merged = { ...seed };
+  const fresh = new Map<string, number>();
   for (const result of results) {
     for (const outcome of result.outcomes) {
-      if (outcome.files.length !== 1 || outcome.elapsedMs < 1_000 || isAllSkippedPass(outcome)) continue;
-      merged[normalizeRelativePath(outcome.files[0])] = outcome.elapsedMs;
+      if (outcome.files.length !== 1 || outcome.elapsedMs < 1_000 || isAllSkippedPass(outcome) || outcome.reused) continue;
+      const key = durationKey(outcome.files[0]!);
+      fresh.set(key, Math.max(fresh.get(key) ?? 0, outcome.elapsedMs));
     }
   }
+  for (const [key, ms] of fresh) merged[key] = ms;
   return Object.fromEntries(Object.entries(merged).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
+/** Panel identity of a trial shard key (`<file>#<id>`), else null. */
+export function trialPanelKey(key: string): string | null {
+  return shardTrial(key) === null ? null : durationKey(key);
+}
+
+/** True when `key` is a trial whose panel already has a trial in `planned`. */
+function sharesPanel(planned: readonly string[], key: string): boolean {
+  const panel = trialPanelKey(key);
+  return panel !== null && planned.some(other => other !== key && trialPanelKey(other) === panel);
 }
 
 /** Setup, image pull and artifact upload allowance on top of a slice's supervised wall. */
@@ -1342,12 +1599,15 @@ export function packBySliceBudget(files: string[], budgetMs: number, jobs: numbe
   recorded: Record<string, number>, timeoutMs?: number): {
   slices: string[][]; estimates: Record<string, number>; estimatedSliceMs: number[]; ciTimeoutMinutes: number;
 } {
-  const estimates = Object.fromEntries(files.map(file => [file, recorded[normalizeRelativePath(file)] ?? budgetMs]));
+  const estimates = Object.fromEntries(files.map(file => [file, recordedShardMs(recorded, file) ?? budgetMs]));
   const weight = (file: string) => estimates[file]!;
   const slices: string[][] = [];
   for (const file of sliceExecutionOrder(files.filter(file => !isOverlayTestFile(file)).map(file => ({ file, estimatedMs: weight(file) }))).map(entry => entry.file)) {
     let best = -1, bestMs = -1;
     slices.forEach((planned, index) => {
+      // Trials of one case never share a runner: independent machines, and
+      // the panel's wall stays one trial long.
+      if (sharesPanel(planned, file)) return;
       const ms = estimatedSliceMs([...planned, file], weight, jobs);
       if (ms <= budgetMs && ms > bestMs) { best = index; bestMs = ms; }
     });
@@ -1396,6 +1656,9 @@ export function buildRunManifest(opts: {
   durations?: Record<string, number>;
   /** Weekly gate census only: LLM judges already run in the periodic census and PR gate lanes. */
   skipJudges?: boolean;
+  /** Injectable registries (default: E2E_KINDS and CASE_QUARANTINE). */
+  kinds?: Record<string, EvalCaseKind>;
+  quarantine?: Record<string, unknown>;
 }): PaidRunManifest {
   const budgetMode = opts.sliceBudgetMs !== undefined;
   if (budgetMode === (opts.sliceCount !== undefined)) throw new Error('Plan with exactly one of --slices or --slice-budget');
@@ -1413,27 +1676,38 @@ export function buildRunManifest(opts: {
   const tierSelection = selectPaidTestFiles(discovered, opts.tier, rootDir, env);
   const judge = (file: string) => /^test\/skill-llm-eval[^/]*\.test\.ts$/.test(normalizeRelativePath(file));
   const selected = opts.skipJudges ? tierSelection.selected.filter(file => !judge(file)) : tierSelection.selected;
+  const kinds = opts.kinds ?? E2E_KINDS;
+  const quarantine = opts.quarantine ?? CASE_QUARANTINE;
+  const notLive = [...Object.keys(kinds).filter(id => kinds[id] === 'behavior'), ...Object.keys(quarantine)].filter(id => !Object.hasOwn(E2E_TIERS, id));
+  if (notLive.length) throw new Error(`Only live E2E cases can be behavior or quarantined (judges sample their panel inside the case): ${notLive.join(', ')}`);
   const caseKeys = partitionCaseExclusions(expandCaseShards(selected, opts.tier, rootDir));
   const excluded = [...tierSelection.excluded, ...(opts.skipJudges ? tierSelection.selected.filter(judge)
     .map(file => ({ file, reason: 'skipped: LLM judges run in the periodic census and PR gate lanes' })) : []), ...caseKeys.excluded];
-  const shards = planPaidShards(caseKeys.runnable, { maxFilesPerShard: 1 });
+  const expansion = expandTrialShards(caseKeys.runnable, opts.tier, rootDir, { kinds, quarantine });
+  const excludeOf = (key: string) => expansion.excludeCases[normalizeRelativePath(key)] ?? [];
+  const shards = planPaidShards(expansion.keys, { maxFilesPerShard: 1 });
   const cases = computePaidCaseSelection({ profile, env, rootDir, changedFiles: opts.changedFiles });
   const fast = cases.coverage?.mode === 'pr';
-  const profileShards = fast ? shards.filter(files => prProfileFileSelected(files[0], cases.selection)) : shards;
+  const profileShards = fast ? shards.filter(files => prProfileFileSelected(files[0], cases.selection, excludeOf(files[0]!))) : shards;
   const { runnable, skipped } = partitionShardsByDiffSelection(profileShards,
-    cases.selection.e2e === null ? null : new Set(cases.selection.e2e), { rootDir });
+    cases.selection.e2e === null ? null : new Set(cases.selection.e2e), { rootDir, excludeCases: expansion.excludeCases });
   if (fast) for (const files of shards) {
-    if (!prProfileFileSelected(files[0], cases.selection)) skipped.push({ files, reason: 'Outside the fast PR profile; retained in broad gate/periodic coverage' });
+    if (!prProfileFileSelected(files[0], cases.selection, excludeOf(files[0]!))) skipped.push({ files, reason: 'Outside the fast PR profile; retained in broad gate/periodic coverage' });
   }
+  const extras = (key: string): Pick<ManifestEntry, 'trial' | 'excludeCases'> => {
+    const trial = expansion.trials[normalizeRelativePath(key)];
+    const exclude = expansion.excludeCases[normalizeRelativePath(key)];
+    return { ...(trial ? { trial } : {}), ...(exclude ? { excludeCases: exclude } : {}) };
+  };
 
   const entries: ManifestEntry[] = [];
   if (budgetMode) {
     const plan = packBySliceBudget(runnable.map(files => files[0]!), opts.sliceBudgetMs!, opts.jobs!,
       opts.durations ?? loadPaidTestDurations(rootDir, opts.tier), opts.timeoutMs);
     plan.slices.forEach((files, index) => files.forEach(file => entries.push({ file, slice: index + 1, status: 'planned',
-      estimatedMs: plan.estimates[file]!,
+      estimatedMs: plan.estimates[file]!, ...extras(file),
       ...(FILE_RETRY_BUDGETS.some(budget => budget.file === shardFile(file)) ? { budget: resolvePaidShardBudget([file], opts.timeoutMs) } : {}) })));
-    for (const s of skipped) entries.push({ file: s.files[0], slice: 0, status: 'skipped-by-diff', reason: s.reason });
+    for (const s of skipped) entries.push({ file: s.files[0], slice: 0, status: 'skipped-by-diff', reason: s.reason, ...extras(s.files[0]!) });
     for (const e of excluded) entries.push({ file: e.file, slice: 0, status: 'excluded', reason: e.reason });
     entries.sort((a, b) => (a.file < b.file ? -1 : 1));
     return parseRunManifest(JSON.stringify({
@@ -1464,15 +1738,28 @@ export function buildRunManifest(opts: {
     for (const files of [...registered].sort(byWall).concat(
       ordinary.filter(files => !registeredFiles.has(files[0])))) {
       const lanes = registeredFiles.has(files[0]) ? longLanes : ordinarySlices;
-      let lane = 0;
-      for (let index = 1; index < lanes; index++) if (loads[index] < loads[lane]) lane = index;
+      const laneKeys = (index: number) => [...allocations].filter(([, lane]) => lane === index + 1).map(([key]) => key);
+      let lane = -1;
+      for (let index = 0; index < lanes; index++) {
+        if (sharesPanel(laneKeys(index), files[0]!)) continue;
+        if (lane < 0 || loads[index] < loads[lane]) lane = index;
+      }
+      if (lane < 0) lane = loads.slice(0, lanes).indexOf(Math.min(...loads.slice(0, lanes)));
       allocations.set(files[0], lane + 1);
       loads[lane] += resolvePaidShardTimeoutMs(files, opts.timeoutMs);
     }
   }
   let ordinaryIndex = 0;
   for (const files of ordinary) {
-    if (!allocations.has(files[0])) allocations.set(files[0], (ordinaryIndex++ % ordinarySlices) + 1);
+    if (allocations.has(files[0])) continue;
+    // Round-robin, skipping a lane that already holds a trial of the same panel.
+    let lane = ordinaryIndex % ordinarySlices;
+    for (let step = 0; step < ordinarySlices; step++) {
+      const candidate = (ordinaryIndex + step) % ordinarySlices;
+      if (!sharesPanel([...allocations].filter(([, l]) => l === candidate + 1).map(([key]) => key), files[0]!)) { lane = candidate; break; }
+    }
+    ordinaryIndex++;
+    allocations.set(files[0], lane + 1);
   }
   const packed = packByRecordedDuration();
   function packByRecordedDuration(): Map<string, number> | null {
@@ -1483,10 +1770,10 @@ export function buildRunManifest(opts: {
       ordinary.filter(files => allocations.get(files[0]) === lane + 1).map(files => files[0]));
     const caps = SUPERVISED_WORKER_COUNTS.map(jobs => Math.max(...lanes.map(files => bound(files, jobs))));
     const fits = (files: string[]) => SUPERVISED_WORKER_COUNTS.every((jobs, k) => bound(files, jobs) <= caps[k]);
-    const known = ordinary.map(files => recorded[normalizeRelativePath(files[0])])
+    const known = ordinary.map(files => recordedShardMs(recorded, files[0]!))
       .filter((ms): ms is number => ms !== undefined).sort((a, b) => a - b);
     const fallback = known.length ? known[Math.min(known.length - 1, Math.floor(known.length * 0.75))] : 1;
-    const weight = (file: string) => recorded[normalizeRelativePath(file)] ?? fallback;
+    const weight = (file: string) => recordedShardMs(recorded, file) ?? fallback;
     const load = (files: string[]) => files.reduce((sum, file) => sum + weight(file), 0);
     const registeredFiles = new Set(registered.map(files => files[0]));
     // Local search from the supervised baseline: move or swap a file out of
@@ -1510,6 +1797,7 @@ export function buildRunManifest(opts: {
             const heavyAfter = lanes[heavy].filter(file => file !== a).concat(b === null ? [] : [b]);
             const otherAfter = lanes[other].filter(file => file !== b).concat([a]);
             if (!fits(heavyAfter) || !fits(otherAfter)) continue;
+            if (sharesPanel(otherAfter, a) || (b !== null && sharesPanel(heavyAfter, b))) continue;
             const [h, o] = [heavy, other];
             best = { gain, apply: () => { lanes[h] = heavyAfter; lanes[o] = otherAfter; } };
           }
@@ -1522,11 +1810,11 @@ export function buildRunManifest(opts: {
   }
   runnable.forEach((files) => {
     const slice = files.some(isOverlayTestFile) ? overlaySlice : (packed ?? allocations).get(files[0])!;
-    entries.push({ file: files[0], slice, status: 'planned',
+    entries.push({ file: files[0], slice, status: 'planned', ...extras(files[0]!),
       ...(FILE_RETRY_BUDGETS.some(budget => budget.file === shardFile(files[0]!))
         ? { budget: resolvePaidShardBudget(files, opts.timeoutMs) } : {}) });
   });
-  for (const s of skipped) entries.push({ file: s.files[0], slice: 0, status: 'skipped-by-diff', reason: s.reason });
+  for (const s of skipped) entries.push({ file: s.files[0], slice: 0, status: 'skipped-by-diff', reason: s.reason, ...extras(s.files[0]!) });
   for (const e of excluded) entries.push({ file: e.file, slice: 0, status: 'excluded', reason: e.reason });
   entries.sort((a, b) => (a.file < b.file ? -1 : 1));
 
@@ -1603,18 +1891,57 @@ export function parseRunManifest(raw: string): PaidRunManifest {
     if (entry.estimatedMs !== undefined && (entry.status !== 'planned' || !Number.isSafeInteger(entry.estimatedMs) || entry.estimatedMs < 0)) {
       throw new Error(`manifest entry ${entry.file} has an invalid estimate`);
     }
-    if (entry.status === 'planned' && parsed.prCoverage?.mode === 'pr' && !prProfileFileSelected(entry.file, parsed.selection!)) {
+    if (entry.status === 'planned' && parsed.prCoverage?.mode === 'pr' && !prProfileFileSelected(entry.file, parsed.selection!, entry.excludeCases ?? [])) {
       throw new Error(`manifest file is outside its PR case selection: ${entry.file}`);
     }
   }
   for (const entry of parsed.entries) {
     const caseId = shardCaseId(entry.file);
-    if (caseId === null ? entry.status === 'planned' && CASE_SHARDED_FILES.includes(shardFile(entry.file))
+    const trial = shardTrial(entry.file);
+    if (trial !== null) {
+      const plan = entry.trial;
+      const expected = plan && ['rule', 'behavior', 'judge'].includes(plan.kind) && typeof plan.quarantined === 'boolean'
+        ? caseTrialPlan(caseId!, { [caseId!]: plan.kind }, plan.quarantined ? { [caseId!]: true } : {}) : undefined;
+      if (!Object.hasOwn(E2E_TOUCHFILES, caseId!) || !E2E_TOUCHFILES[caseId!]!.includes(shardFile(entry.file))
+        || !plan || !expected || !isIsolatedCase(expected) || !sameTrialPlan(plan, expected) || trial > plan.panel.n) {
+        throw new Error(`Trial shard must name a registered isolated case of its file with its fixed policy panel: ${entry.file}`);
+      }
+    } else if (entry.trial !== undefined) {
+      throw new Error(`Only trial shards carry a trial plan: ${entry.file}`);
+    } else if (caseId === null ? entry.status === 'planned' && CASE_SHARDED_FILES.includes(shardFile(entry.file))
       : !CASE_SHARDED_FILES.includes(shardFile(entry.file)) || !(caseId in E2E_TOUCHFILES)) {
       throw new Error(`Case-sharded files plan one registered case per shard: ${entry.file}`);
     }
+    if (entry.excludeCases !== undefined && (caseId !== null || !Array.isArray(entry.excludeCases) || entry.excludeCases.length === 0
+      || entry.excludeCases.some(id => !parsed.entries.some(other => shardTrial(other.file) !== null
+        && shardFile(other.file) === shardFile(entry.file) && shardCaseId(other.file) === id)))) {
+      throw new Error(`A file shard may exclude only cases that run as its trial shards: ${entry.file}`);
+    }
     if (caseId !== null && entry.status === 'planned' && parsed.selection?.e2e && !parsed.selection.e2e.includes(caseId)) {
       throw new Error(`Planned case shard is outside the manifest selection: ${entry.file}`);
+    }
+  }
+  // Panels are whole: exactly n trial entries per isolated case with one plan
+  // and one status, and planned trials on distinct slices when the ordinary
+  // slices allow it.
+  const panels = new Map<string, ManifestEntry[]>();
+  for (const entry of parsed.entries) {
+    const panel = trialPanelKey(entry.file);
+    if (panel !== null) panels.set(panel, [...(panels.get(panel) ?? []), entry]);
+  }
+  const reservedOverlay = parsed.sliceCount > 1 && parsed.entries.some(entry => entry.status === 'planned' && isOverlayTestFile(entry.file));
+  const ordinarySliceCount = parsed.sliceCount - Number(reservedOverlay);
+  for (const [panel, trials] of panels) {
+    const n = trials[0]!.trial!.panel.n;
+    const indices = trials.map(entry => shardTrial(entry.file)!).sort((a, b) => a - b);
+    if (indices.length !== n || indices.some((index, i) => index !== i + 1)
+      || trials.some(entry => !sameTrialPlan(entry.trial, trials[0]!.trial) || entry.status !== trials[0]!.status)
+      || parsed.entries.some(entry => normalizeRelativePath(entry.file) === panel)) {
+      throw new Error(`Isolated case ${panel} must plan exactly its ${n} trials together`);
+    }
+    const slices = trials.filter(entry => entry.status === 'planned').map(entry => entry.slice);
+    if (ordinarySliceCount >= n && new Set(slices).size !== slices.length) {
+      throw new Error(`Trials of ${panel} share a slice; each trial needs its own runner`);
     }
   }
   if (parsed.prCoverage?.mode === 'pr') {
@@ -1622,7 +1949,12 @@ export function parseRunManifest(raw: string): PaidRunManifest {
     const required: string[][] = Object.entries(PR_PROFILE_FILES).flatMap(([file, ids]) => {
       const selected = ids.filter(id => parsed.selection!.e2e!.includes(id));
       if (!selected.length) return [];
-      return [CASE_SHARDED_FILES.includes(file) ? selected.map(id => `${file}#${id}`) : [file]];
+      const owners = new Set(selected.flatMap(id => {
+        const trials = parsed.entries.filter(entry => shardTrial(entry.file) !== null && shardFile(entry.file) === file && shardCaseId(entry.file) === id);
+        if (trials.length) return trials.map(entry => normalizeRelativePath(entry.file));
+        return [CASE_SHARDED_FILES.includes(file) ? `${file}#${id}` : file];
+      }));
+      return [[...owners]];
     });
     if (parsed.selection!.judges!.length) required.push(['test/skill-llm-eval.test.ts']);
     for (const owners of required) {
@@ -1644,6 +1976,14 @@ export function parseRunManifest(raw: string): PaidRunManifest {
   }
   const keys = parsed.entries.map(entry => normalizeRelativePath(entry.file));
   if (new Set(keys).size !== keys.length) throw new Error('Duplicate manifest entry');
+  // Unique result slugs: shard artifacts merge by path, so a shared slug would
+  // let one trial's records overwrite another's.
+  const slugs = new Map<string, string>();
+  for (const entry of parsed.entries) {
+    const slug = shardSlug([entry.file]);
+    if (slugs.has(slug)) throw new Error(`Shards ${slugs.get(slug)} and ${entry.file} share the result slug ${slug}`);
+    slugs.set(slug, entry.file);
+  }
   const overlaySlice = parsed.sliceCount;
   const plannedOverlays = parsed.entries.filter(entry => entry.status === 'planned' && isOverlayTestFile(entry.file));
   if (plannedOverlays.some(entry => entry.slice !== overlaySlice)) {
@@ -1655,7 +1995,9 @@ export function parseRunManifest(raw: string): PaidRunManifest {
   }
   for (const budget of FILE_RETRY_BUDGETS) {
     const entries = parsed.entries.filter(entry => shardFile(entry.file) === budget.file);
-    if (entries.length > 1 && entries.some(entry => shardCaseId(entry.file) === null)) throw new Error(`Duplicate registered manifest entry: ${budget.file}`);
+    const fileKeys = entries.filter(entry => shardCaseId(entry.file) === null).length;
+    const caseKeys = entries.filter(entry => shardCaseId(entry.file) !== null && shardTrial(entry.file) === null).length;
+    if (fileKeys > 1 || (fileKeys === 1 && caseKeys > 0)) throw new Error(`Duplicate registered manifest entry: ${budget.file}`);
     for (const entry of entries.filter(entry => entry.status === 'planned')) {
       if (!entry.budget) throw new Error(`Registered manifest needs an explicit budget record: ${budget.file}`);
       const expected = resolvePaidShardBudget([entry.file], entry.budget.source === 'explicit' ? entry.budget.timeoutMs : undefined);
@@ -1673,7 +2015,31 @@ export interface SliceResult {
   sliceIndex: number;
   sliceCount: number;
   timeoutOverrideMs?: number;
-  outcomes: Array<Pick<ShardOutcome, 'files' | 'status' | 'exitCode' | 'elapsedMs' | 'executedTests' | 'skippedTests' | 'budget' | 'reused'>>;
+  /** CI run attempt (github.run_attempt) that produced this slice; absent means 1. */
+  attempt?: number;
+  /** Epoch ms bounds of the slice's shard execution (lane wall time). */
+  startedAt?: number;
+  finishedAt?: number;
+  outcomes: Array<Pick<ShardOutcome, 'files' | 'status' | 'exitCode' | 'elapsedMs' | 'executedTests' | 'skippedTests' | 'budget' | 'reused' | 'runnerError' | 'trial'>>;
+}
+
+/**
+ * Slice exit = execution completeness, never the semantic verdict. A rule
+ * shard that did not pass fails the slice (unchanged fail-closed rule); an
+ * isolated trial shard fails it only when the harness produced no trial
+ * record. Failed, timed-out or crashed trials are verdict input for the
+ * report's panelVerdict(), so a 2/3 PASS panel never reds its runner.
+ */
+export function sliceExitCode(outcomes: ReadonlyArray<Pick<ShardOutcome, 'status' | 'trial'>>): number {
+  return outcomes.every(outcome => outcome.trial !== undefined
+    ? outcome.trial.outcome !== null
+    : outcome.status === 'passed' || outcome.status === 'skipped-by-diff') ? 0 : 1;
+}
+
+/** A hollow-guarded trial shard has no trial record: the guard's verdict is a harness problem. */
+export function guardTrialRecords<T extends Pick<ShardOutcome, 'status' | 'trial'>>(outcomes: T[]): T[] {
+  return outcomes.map(outcome => outcome.trial && outcome.status === 'passed-empty' && outcome.trial.outcome !== null
+    ? { ...outcome, trial: { ...outcome.trial, outcome: null, harness: 'hollow: executed no case' } } : outcome);
 }
 
 /**
@@ -1704,20 +2070,34 @@ export function verifySliceResults(
     if (!byIndex.has(index)) problems.push(`slice ${index}/${manifest.sliceCount} reported NO result — cancelled/crashed executor, not a pass`);
   }
 
-  const reported = new Map<string, { slice: number; status: ShardStatus }>();
+  const reported = new Map<string, { slice: number; status: ShardStatus; trial?: ShardTrialRecord }>();
+  const planned = new Map(manifest.entries.map(entry => [normalizeRelativePath(entry.file), entry]));
   for (const result of results) {
     for (const outcome of result.outcomes) {
       if (outcome.files.some(file => FILE_RETRY_BUDGETS.some(budget => budget.file === shardFile(file)) || shardCaseId(file) !== null) && outcome.files.length !== 1) {
         problems.push('Registered result must report its own shard');
       }
       const file = normalizeRelativePath(outcome.files[0] ?? '');
+      const trialPlan = planned.get(file)?.trial;
       if (manifest.prCoverage?.mode === 'pr') {
-        const expected = expectedPrCaseCount(file, manifest.selection!);
+        const expected = expectedPrCaseCount(file, manifest.selection!, planned.get(file)?.excludeCases);
         const executed = outcome.executedTests === null || outcome.skippedTests === null
           ? -1 : outcome.executedTests - outcome.skippedTests;
-        if (outcome.exitCode !== 0 || expected < 1 || executed !== expected) {
+        // A trial's exit status is its verdict (panelVerdict decides); its
+        // completeness is the trial record checked below.
+        if ((!trialPlan && outcome.exitCode !== 0) || expected < 1 || (!trialPlan && executed !== expected)) {
           problems.push(`PR profile expected ${expected} executed cases in ${file}, received ${executed}`);
         }
+      }
+      if (trialPlan) {
+        const t = outcome.trial;
+        if (!t || t.case !== shardCaseId(file) || t.trial !== shardTrial(file) || !sameTrialPlan(t, trialPlan)
+          || !(t.outcome === null || ['passed', 'failed', 'skipped'].includes(t.outcome))
+          || (t.outcome === 'failed') !== (t.failure_class !== undefined)) {
+          problems.push(`${file}: trial record missing or does not match its planned trial`);
+        }
+      } else if (outcome.trial !== undefined) {
+        problems.push(`${file}: an unplanned trial record`);
       }
       if (shardCaseId(file) !== null && outcome.status === 'passed'
         && (outcome.executedTests === null || outcome.skippedTests === null || outcome.executedTests - outcome.skippedTests !== 1)) {
@@ -1732,7 +2112,7 @@ export function verifySliceResults(
         }
       }
       if (reported.has(file)) problems.push(`${file} reported by two slices`);
-      reported.set(file, { slice: result.sliceIndex, status: outcome.status });
+      reported.set(file, { slice: result.sliceIndex, status: outcome.status, ...(outcome.trial ? { trial: outcome.trial } : {}) });
       const registered = FILE_RETRY_BUDGETS.find(budget => budget.file === shardFile(file));
       const finding = STRICT_RETRY_CASE_BUDGETS.find(budget => budget.file === file);
       if (finding) {
@@ -1762,7 +2142,10 @@ export function verifySliceResults(
       continue; // the missing-slice problem above already covers it
     }
     if (got.slice !== entry.slice) problems.push(`${entry.file} planned for slice ${entry.slice} but reported by slice ${got.slice}`);
-    if (got.status !== 'passed') problems.push(`${entry.file}: ${got.status}`);
+    // Isolated trial shards: harness health only; the panel verdict gates.
+    if (entry.trial) {
+      if (got.trial?.outcome === null) problems.push(`${entry.file}: no trial record (${got.trial.harness ?? 'unknown'})`);
+    } else if (got.status !== 'passed') problems.push(`${entry.file}: ${got.status}`);
   }
   return { ok: problems.length === 0, problems };
 }
@@ -1783,6 +2166,27 @@ export function formatSlicePlan(manifest: PaidRunManifest): string[] {
   return lines;
 }
 
+/**
+ * Capacity preflight (E-A10): what the plan asks of the runner pool and the
+ * API. Sessions are planned shard processes; at most jobs of them run per
+ * slice at once. Waves > 1 mean slices queue behind the matrix cap and the
+ * lane wall grows by whole slices.
+ */
+export function formatCapacityPreflight(manifest: PaidRunManifest, maxParallel?: number): string[] {
+  const planned = manifest.entries.filter(entry => entry.status === 'planned');
+  const trials = planned.filter(entry => entry.trial);
+  const jobs = manifest.plan?.jobs ?? DEFAULT_JOBS;
+  const longest = [...trials].sort((a, b) => (b.estimatedMs ?? 0) - (a.estimatedMs ?? 0))[0];
+  const waves = maxParallel ? Math.ceil(manifest.sliceCount / maxParallel) : null;
+  return [
+    `[test:paid] capacity: ${manifest.sliceCount} slice(s), ${planned.length} planned shard(s) (${planned.length - trials.length} rule/judge, ${trials.length} trial shard(s) in ${new Set(trials.map(entry => trialPanelKey(entry.file))).size} panel(s)); `
+      + `peak ${Math.min(manifest.sliceCount, maxParallel ?? manifest.sliceCount) * jobs} concurrent shard process(es)`
+      + (waves !== null ? `; wave(s) at max-parallel ${maxParallel}: ${waves}` : ''),
+    ...(longest ? [`[test:paid] capacity: longest indivisible trial ~${((longest.estimatedMs ?? 0) / 60_000).toFixed(1)}m (${longest.file})`] : []),
+    ...(waves !== null && waves > 1 ? [`[test:paid] capacity: ⚠ ${manifest.sliceCount} slices exceed max-parallel ${maxParallel}; later slices queue for a second wave`] : []),
+  ];
+}
+
 export function formatProfileCoverage(manifest: PaidRunManifest): string[] {
   const coverage = manifest.prCoverage;
   return [
@@ -1791,25 +2195,453 @@ export function formatProfileCoverage(manifest: PaidRunManifest): string[] {
   ];
 }
 
-/** Final outcomes use each case's last attempt; the attempt total stays visible. */
+/** Every collector record counts: paid evals never retry, so a later record never replaces an earlier one. */
 export function collectorOutcomeCounts(results: Array<{ tests?: Array<{
   name: string; suite?: string; passed: boolean; execution?: string; manual_review?: unknown;
 }> }>): { executed: number; reused: number; passed: number; failed: number; manual_accepted: number; attempts: number } {
   const counts = { executed: 0, reused: 0, passed: 0, failed: 0, manual_accepted: 0, attempts: 0 };
   for (const result of results) {
-    const cases = new Map<string, NonNullable<typeof result.tests>[number]>();
     for (const entry of result.tests ?? []) {
       if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || typeof entry.passed !== 'boolean') continue;
       counts.attempts++;
-      cases.set(`${entry.suite ?? ''}\0${entry.name}`, entry);
-    }
-    for (const entry of cases.values()) {
       counts[entry.execution === 'reused' ? 'reused' : 'executed']++;
       const outcome = evalEntryOutcome(entry);
       counts[outcome === 'manual-review' ? 'manual_accepted' : outcome]++;
     }
   }
   return counts;
+}
+
+
+// ─── Report: verdicts, history records and the human readout ───────────────
+
+/** One Bun JUnit testcase (`--reporter=junit`). */
+export interface JUnitCase { name: string; classname: string; outcome: TrialOutcome; timeMs: number; failureType?: string; message?: string }
+
+const xmlUnescape = (text: string) => text.replace(/&(lt|gt|quot|apos|amp|#(\d+)|#x([0-9a-f]+));/gi, (_, name: string, dec?: string, hex?: string) =>
+  dec ? String.fromCodePoint(Number(dec)) : hex ? String.fromCodePoint(parseInt(hex, 16))
+    : ({ lt: '<', gt: '>', quot: '"', apos: "'", amp: '&' } as Record<string, string>)[name.toLowerCase()]!);
+
+function xmlAttributes(tag: string): Record<string, string> {
+  return Object.fromEntries([...tag.matchAll(/([\w:-]+)="([^"]*)"/g)].map(match => [match[1]!, xmlUnescape(match[2]!)]));
+}
+
+/** Per-test outcomes from a Bun JUnit report; unparseable input yields []. */
+export function parseJUnitCases(xml: string): JUnitCase[] {
+  const cases: JUnitCase[] = [];
+  for (const match of xml.matchAll(/<testcase\b([^>]*?)(\/>|>([\s\S]*?)<\/testcase>)/g)) {
+    const attrs = xmlAttributes(match[1]!);
+    const body = match[3] ?? '';
+    const failure = /<(failure|error)\b([^>]*?)(?:\/>|>)/.exec(body);
+    const failureAttrs = failure ? xmlAttributes(failure[2]!) : {};
+    cases.push({
+      name: attrs.name ?? '', classname: attrs.classname ?? '',
+      outcome: failure ? 'failed' : /<skipped\b/.test(body) ? 'skipped' : 'passed',
+      timeMs: Math.round(Number(attrs.time ?? 0) * 1000) || 0,
+      ...(failure ? { failureType: failureAttrs.type ?? failure[1]!, message: failureAttrs.message } : {}),
+    });
+  }
+  return cases;
+}
+
+/** Registry id of a Bun test name: the id itself or its CASE_TEST_NAMES label, else null (unattributed). */
+export function caseIdForTestName(name: string): string | null {
+  if (Object.hasOwn(E2E_TIERS, name) || Object.hasOwn(LLM_JUDGE_TOUCHFILES, name)) return name;
+  return Object.keys(CASE_TEST_NAMES).find(id => CASE_TEST_NAMES[id] === name) ?? null;
+}
+
+interface ReportArtifact { root: string; result: SliceResult }
+
+/** Every slice result under the report dir: flat (merged) or one directory per attempt-scoped artifact. */
+export function loadSliceArtifacts(reportDir: string): ReportArtifact[] {
+  const found: ReportArtifact[] = [];
+  for (const name of fs.readdirSync(reportDir, { recursive: true }) as string[]) {
+    const rel = normalizeRelativePath(name);
+    if (!/^slice-\d+\.json$/.test(path.basename(rel)) || rel.split('/').includes('shards') || rel.split('/').includes('receipts')) continue;
+    found.push({ root: path.join(reportDir, path.dirname(rel)), result: JSON.parse(fs.readFileSync(path.join(reportDir, rel), 'utf8')) as SliceResult });
+  }
+  return found.sort((a, b) => (a.result.attempt ?? 1) - (b.result.attempt ?? 1) || a.result.sliceIndex - b.result.sliceIndex);
+}
+
+export interface PanelReport extends PanelVerdict {
+  file: string;
+  /** Slice per trial index (trial n -> slice), for the rerun/artifact pointer. */
+  slices: Record<number, number>;
+}
+
+/** Panel verdicts of one run attempt: exactly the planned trials, each from its reported record. */
+export function panelReports(manifest: PaidRunManifest, results: SliceResult[], attempt: number): PanelReport[] {
+  const reported = new Map<string, { slice: number; outcome: SliceResult['outcomes'][number] }>();
+  for (const result of results.filter(r => (r.attempt ?? 1) === attempt)) {
+    for (const outcome of result.outcomes) reported.set(normalizeRelativePath(outcome.files[0] ?? ''), { slice: result.sliceIndex, outcome });
+  }
+  const panels = new Map<string, ManifestEntry[]>();
+  for (const entry of manifest.entries.filter(e => e.status === 'planned' && e.trial)) {
+    const key = trialPanelKey(entry.file)!;
+    panels.set(key, [...(panels.get(key) ?? []), entry]);
+  }
+  return [...panels.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, entries]) => {
+    const plan = entries[0]!.trial!;
+    const slices: Record<number, number> = {};
+    const trials = entries.flatMap(entry => {
+      const got = reported.get(normalizeRelativePath(entry.file));
+      const t = got?.outcome.trial;
+      if (!got || !t || t.outcome === null) return [];
+      slices[t.trial] = got.slice;
+      return [{ trial: t.trial, outcome: t.outcome, attempt, ...(t.failure_class ? { failure_class: t.failure_class } : {}),
+        ...(t.exit_reason ? { exit_reason: t.exit_reason } : {}), ...(t.error ? { error: t.error } : {}),
+        ...(got.outcome.reused ? { execution: 'reused' as const } : {}),
+        ...(t.timeout_at_turn !== undefined ? { timeout_at_turn: t.timeout_at_turn } : {}) }];
+    });
+    const verdict = panelVerdict({ case: shardCaseId(key)!, kind: plan.kind, panel: plan.panel, trials, quarantined: plan.quarantined });
+    return { ...verdict, file: shardFile(key), slices };
+  });
+}
+
+/** Why one failed trial failed, in one line: a case timeout names its turn. */
+function trialCause(trial: PanelVerdict['trials'][number] & { timeout_at_turn?: number }): string {
+  const cls = trial.failure_class ?? 'assertion';
+  const head = cls === 'timeout' || trial.exit_reason === 'timeout'
+    ? `timeout${trial.timeout_at_turn !== undefined ? ` at turn ${trial.timeout_at_turn}` : ''}`
+    : cls;
+  return `t${trial.trial}: ${head}${trial.exit_reason && trial.exit_reason !== 'timeout' ? ` (${trial.exit_reason})` : ''}${trial.error ? ` — ${trial.error}` : ''}`;
+}
+
+export function rerunCommand(tier: PaidTier, id: string, trials: number): string {
+  return `bun run scripts/test-paid-shards.ts --tier ${tier} --case ${id}${trials > 1 ? ` --trials ${trials}` : ''}`;
+}
+
+/** One line per non-PASS or split panel verdict. */
+export function formatPanelLine(panel: PanelReport, tier: PaidTier): string {
+  const mark = panel.status === 'PASS' ? '⚠' : panel.failsLane ? '✗' : '◌';
+  const label = panel.status === 'PASS' ? `PASS ${panel.passed}/${panel.panel.n}` : `${panel.status} ${panel.passed}/${panel.panel.n}`;
+  const causes = panel.trials.filter(t => t.outcome !== 'passed').map(t => trialCause(t as any));
+  const where = Object.entries(panel.slices).map(([trial, slice]) => `t${trial}@slice ${slice}`).join(', ');
+  return `${mark} ${panel.case}  ${panel.kind}${panel.quarantined ? ' (quarantined)' : ''}  ${label} (${panel.marks})`
+    + `${causes.length ? `  ${causes.join('; ')}` : ''}${panel.status === 'INCOMPLETE' ? `  [${panel.reason}]` : ''}`
+    + `${where ? `  [${where}, attempt ${panel.attempt}]` : ''}  rerun: ${rerunCommand(tier, panel.case, panel.panel.n)}`;
+}
+
+export interface ReportHeadline {
+  lane: string;
+  verdict: 'GREEN' | 'RED';
+  attempt: number;
+  counts: {
+    rule: { passed: number; total: number };
+    behavior: { passed: number; total: number; split: number };
+    judge: { passed: number; total: number };
+    quarantined: { total: number; failingLane: number };
+    skipped: number;
+    infra: number;
+    incomplete: number;
+    unattributed: number;
+  };
+  actionRequired: number;
+  wallMs: number | null;
+  costUsd: number;
+  redispatchEligible: boolean;
+}
+
+export function formatHeadline(h: ReportHeadline): string[] {
+  const c = h.counts;
+  const minutes = h.wallMs === null ? 'unknown' : `${Math.floor(h.wallMs / 60_000)}m${String(Math.round((h.wallMs % 60_000) / 1000)).padStart(2, '0')}s`;
+  return [
+    `[test:paid] VERDICT ${h.verdict} — lane ${h.lane}, attempt ${h.attempt}`,
+    `  rule ${c.rule.passed}/${c.rule.total} · behavior ${c.behavior.passed}/${c.behavior.total}${c.behavior.split ? ` (${c.behavior.split} split)` : ''}`
+      + ` · judge ${c.judge.passed}/${c.judge.total} · quarantined ${c.quarantined.total} (${c.quarantined.failingLane} failing the lane)`,
+    `  SKIPPED ${c.skipped} · INFRA ${c.infra} · INCOMPLETE ${c.incomplete} · unattributed ${c.unattributed} · ACTION REQUIRED ${h.actionRequired}`,
+    `  wall ${minutes} · cost $${h.costUsd.toFixed(2)}${h.redispatchEligible ? ' · every red is machine-classified INFRA/INCOMPLETE: eligible for ONE re-dispatch as a new run (EVAL_POLICY.infraRedispatch); report both runs' : ''}`,
+  ];
+}
+
+/** Problems a runner loss or an API/CLI failure before grading produces; nothing else qualifies for re-dispatch. */
+const INFRA_PROBLEMS = [
+  /^slice \d+\/\d+ reported NO result/,
+  /^planned .* was never reported$/,
+  /: never-started$/,
+  /: no trial record \((?:never started|runner error: .*|no test summary)\)$/,
+  /^PANEL \S+ INCOMPLETE /,
+  /^PANEL \S+ FAIL \(INFRA\)/,
+];
+export function infraOnly(problems: readonly string[]): boolean {
+  return problems.length > 0 && problems.every(problem => INFRA_PROBLEMS.some(re => re.test(problem)));
+}
+
+/**
+ * Report mode: reconcile slice artifacts against the manifest (fail-closed),
+ * compute every panel verdict with panelVerdict(), write collector-outcomes
+ * v2, trial-outcomes.jsonl and report-summary.md, and exit non-zero when the
+ * lane is red. Only the earliest run attempt decides the lane; later attempts
+ * are reported beside it and never replace it.
+ */
+export function runPaidReport(reportDir: string, options: { writeDurations?: boolean; env?: NodeJS.ProcessEnv; rootDir?: string } = {}): number {
+  const env = options.env ?? process.env;
+  const rootDir = options.rootDir ?? ROOT;
+  const summaryPath = path.join(reportDir, 'collector-outcomes.json');
+  const summaryMdPath = path.join(reportDir, 'report-summary.md');
+  const trialOutcomesPath = path.join(reportDir, TRIAL_OUTCOMES_FILE);
+  for (const file of [summaryPath, summaryMdPath, trialOutcomesPath]) fs.rmSync(file, { force: true });
+  const manifest = parseRunManifest(fs.readFileSync(path.join(reportDir, 'manifest.json'), 'utf-8'));
+  const artifacts = loadSliceArtifacts(reportDir);
+  const attempts = [...new Set(artifacts.map(a => a.result.attempt ?? 1))].sort((a, b) => a - b);
+  const primary = attempts[0] ?? 1;
+  const results = artifacts.filter(a => (a.result.attempt ?? 1) === primary).map(a => a.result);
+  const verdict = verifySliceResults(manifest, results);
+  const planned = manifest.entries.filter((e) => e.status === 'planned').length;
+  const lane = `${manifest.tier}/${manifest.profile ?? 'full'}${manifest.evalsAll ? ' census' : ''}`;
+  console.log(`[test:paid] report: ${results.length}/${manifest.sliceCount} slices, ${planned} planned shards, tier=${manifest.tier}, attempt ${primary}${attempts.length > 1 ? ` (later attempts ${attempts.slice(1).join(', ')} reported, never replacing it)` : ''}`);
+  for (const line of formatProfileCoverage(manifest)) console.log(line);
+  for (const result of [...results].sort((a, b) => a.sliceIndex - b.sliceIndex)) {
+    for (const outcome of result.outcomes) {
+      const shown = outcome.reused ? `reused (run ${outcome.reused.runId})` : outcome.trial
+        ? `trial ${outcome.trial.outcome ?? 'NO RECORD'}` : outcome.status;
+      console.log(`  slice ${result.sliceIndex}  ${shown.padEnd(15)} ${String(Math.round(outcome.elapsedMs / 1000)).padStart(5)}s  ${outcome.files.join(' ')}`);
+    }
+  }
+  if (options.writeDurations) {
+    const durations = mergePaidTestDurations(loadPaidTestDurations(rootDir, manifest.tier), results);
+    writePaidTestDurations(manifest.tier, durations, rootDir);
+    console.log(`[test:paid] wrote ${Object.keys(durations).length} ${manifest.tier} durations to ${PAID_TEST_DURATIONS_FILE}`);
+  }
+
+  // Which artifact root (attempt) and which shard (isolated or not) each file belongs to.
+  const roots = artifacts.map(a => ({ root: path.resolve(a.root), attempt: a.result.attempt ?? 1 }))
+    .sort((a, b) => b.root.length - a.root.length);
+  const attemptOf = (abs: string) => roots.find(r => abs === r.root || abs.startsWith(r.root + path.sep))?.attempt ?? primary;
+  const entryBySlug = new Map(manifest.entries.map(entry => [shardSlug([entry.file]), entry]));
+  const shardOf = (rel: string) => {
+    const parts = normalizeRelativePath(rel).split('/');
+    const at = parts.lastIndexOf('shards');
+    return at >= 0 && parts[at + 1] ? entryBySlug.get(parts[at + 1]!) ?? null : null;
+  };
+
+  const flaky: Array<{ name: string; attempts: number; file: string }> = [];
+  const collectors: Parameters<typeof collectorOutcomeCounts>[0] = [];
+  const files: Array<{ file: string; tier: string; shard: string | number; cost: number;
+    flaky: number; total: number; executed: number; reused: number; passed: number;
+    failed: number; manual_accepted: number; attempts: number }> = [];
+  const manualProblems: string[] = [];
+  const manualClaims = new Map<string, string>();
+  const recordsByShard = new Map<string, any[]>();
+  let costUsd = 0;
+  for (const name of fs.readdirSync(reportDir, { recursive: true }) as string[]) {
+    const rel = normalizeRelativePath(name);
+    if (!isFinalizedEvalResultFile(rel) || rel.split('/').includes('receipts') || rel === 'collector-outcomes.json') continue;
+    if (attemptOf(path.resolve(reportDir, rel)) !== primary) continue;
+    const shard = shardOf(rel);
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path.join(reportDir, rel), 'utf-8'));
+      if (!Array.isArray(parsed.tests)) {
+        if (Object.hasOwn(parsed, 'tests') || parsed.total_tests !== undefined || parsed.manual_review !== undefined) {
+          manualProblems.push(`${rel}: malformed collector tests[]`);
+        }
+        continue;
+      }
+      costUsd += Number(parsed.total_cost_usd) || 0;
+      if (shard) recordsByShard.set(shard.file, [...(recordsByShard.get(shard.file) ?? []), ...parsed.tests]);
+      // Trial records are verdict input for panelVerdict(), never collector gates.
+      if (shard?.trial) continue;
+      const seen = new Map<string, number>();
+      for (const [index, entry] of parsed.tests.entries()) {
+        if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name
+          || typeof entry.passed !== 'boolean') {
+          manualProblems.push(`${rel}: attempt ${index + 1}: malformed collector entry (name/passed required)`);
+          continue;
+        }
+        const key = `${entry.suite ?? ''}\0${entry.name}`;
+        const occurrence = (seen.get(key) ?? 0) + 1;
+        seen.set(key, occurrence);
+        if (Object.hasOwn(entry, 'manual_review') && occurrence !== 1) {
+          manualProblems.push(`${rel}: attempt ${index + 1}: manual review is only valid on the first case attempt`);
+        }
+        if (Object.hasOwn(entry, 'manual_review')) {
+          const previous = manualClaims.get(key);
+          if (previous && previous !== rel) manualProblems.push(`${rel}: duplicate manual-review claim for ${entry.name} (also in ${previous})`);
+          else manualClaims.set(key, rel);
+        }
+        const problem = manualReviewProblem(entry, rootDir);
+        if (problem) manualProblems.push(`${rel}: attempt ${index + 1}: ${problem}`);
+      }
+      collectors.push(parsed);
+      const counts = collectorOutcomeCounts([parsed]);
+      files.push({ file: rel, tier: parsed.tier ?? 'unknown', shard: parsed.shard ?? '-',
+        cost: parsed.total_cost_usd ?? 0, flaky: parsed.flaky_retries?.length ?? 0,
+        total: counts.passed + counts.failed + counts.manual_accepted, ...counts });
+      for (const f of parsed.flaky_retries ?? []) flaky.push({ ...f, file: rel });
+    } catch (error) {
+      manualProblems.push(`${rel}: malformed collector JSON (${error instanceof Error ? error.message : String(error)})`);
+    }
+  }
+  const evidence = collectorOutcomeCounts(collectors);
+  console.log(`[test:paid] collector final outcomes: ${evidence.executed} executed, ${evidence.reused} reused; ${evidence.passed} passed, ${evidence.failed} failed, ${evidence.manual_accepted} manual accepted (unscored; no score-cache credit) (${evidence.attempts} attempt records from ${collectors.length} collectors; every record counts)`);
+  if (flaky.length > 0) {
+    console.log(`[test:paid] report: ⚠ ${flaky.length} cases with multiple attempts this run: (paid evals never retry; each record counts)`);
+    for (const f of flaky) console.log(`  ⚠ ${f.name} (x${f.attempts}) — ${f.file}`);
+  }
+  const allSkipped = results.flatMap((r) => r.outcomes.filter(isAllSkippedPass));
+  if (allSkipped.length > 0) {
+    console.log(`[test:paid] report: ⚠ ${allSkipped.length} shard(s) passed with EVERY test skipped — they verified nothing:`);
+    for (const outcome of allSkipped) {
+      console.log(`  ⚠ ${outcome.files.join(' ')} (${outcome.executedTests} skipped — external service missing or tier mismatch)`);
+    }
+  }
+  if (manualProblems.length) verdict.problems.push(...manualProblems);
+  if (evidence.failed > 0) verdict.problems.push(`${evidence.failed} unapproved final collector failure(s)`);
+  if (files.reduce((sum, file) => sum + file.total, 0) !== evidence.passed + evidence.failed + evidence.manual_accepted
+    || files.reduce((sum, file) => sum + file.executed + file.reused, 0) !== evidence.executed + evidence.reused) {
+    verdict.problems.push('Collector summary totals are inconsistent');
+  }
+
+  // Panel verdicts: one function, computed here only.
+  const panels = panelReports(manifest, results, primary);
+  for (const panel of panels.filter(p => p.failsLane)) {
+    verdict.problems.push(`PANEL ${panel.case} ${panel.status}${panel.redClass === 'INFRA' ? ' (INFRA)' : ''} ${panel.passed}/${panel.panel.n} (${panel.marks}): ${panel.reason}`);
+  }
+  const laterPanels = attempts.slice(1).flatMap(attempt => panelReports(manifest, artifacts.map(a => a.result), attempt)
+    .filter(panel => panel.trials.length > 0));
+
+  // Quarantine policy checks on census runs: the per-tier cap and entry expiry.
+  if (manifest.evalsAll) {
+    const tierIds = Object.keys(E2E_TIERS).filter(id => E2E_TIERS[id] === manifest.tier);
+    const quarantined = Object.keys(CASE_QUARANTINE).filter(id => E2E_TIERS[id] === manifest.tier);
+    if (quarantined.length > EVAL_POLICY.quarantine.capFraction * tierIds.length) {
+      verdict.problems.push(`QUARANTINE over cap: ${quarantined.length} of ${tierIds.length} ${manifest.tier} cases (cap ${Math.round(EVAL_POLICY.quarantine.capFraction * 100)}%)`);
+    }
+    const expiryMs = EVAL_POLICY.quarantine.expiryWeeklyRuns * 7 * 24 * 60 * 60 * 1000;
+    for (const id of quarantined) {
+      const entered = Date.parse(CASE_QUARANTINE[id]!.enteredAt);
+      if (!Number.isFinite(entered) || Date.now() - entered > expiryMs) {
+        verdict.problems.push(`QUARANTINE expired: ${id} (entered ${CASE_QUARANTINE[id]!.enteredAt}; entries expire after ${EVAL_POLICY.quarantine.expiryWeeklyRuns} weekly runs)`);
+      }
+    }
+  }
+
+  // History: one trial-outcomes line per isolated trial and per JUnit rule/judge case.
+  const runId = env.GITHUB_RUN_ID;
+  const sha = env.GITHUB_SHA;
+  const history: TrialOutcomeRecord[] = [];
+  const common = (attempt: number) => ({ schema: TRIAL_OUTCOME_SCHEMA, tier: manifest.tier, attempt, policy_version: EVAL_POLICY.version,
+    ...(runId ? { run_id: runId } : {}), ...(sha ? { sha } : {}), lane, recorded_at: new Date().toISOString() });
+  for (const { result } of artifacts) {
+    const attempt = result.attempt ?? 1;
+    for (const outcome of result.outcomes) {
+      const t = outcome.trial;
+      if (!t || t.outcome === null) continue;
+      history.push({ ...common(attempt), case: t.case, file: shardFile(outcome.files[0]!), kind: t.kind, trial: t.trial, panel: t.panel,
+        outcome: t.outcome, ...(t.outcome === 'failed' ? { failure_class: t.failure_class ?? 'assertion' } : {}),
+        ...(t.exit_reason ? { exit_reason: t.exit_reason } : {}), ...(t.error ? { error: t.error } : {}),
+        duration_ms: t.duration_ms, cost_usd: t.cost_usd, ...(t.model ? { model: t.model } : {}),
+        ...(outcome.reused ? { input_identity: outcome.reused.inputKey } : {}),
+        quarantined: t.quarantined, execution: outcome.reused ? 'reused' : 'executed', source: 'shard' } as TrialOutcomeRecord);
+    }
+  }
+  const ruleCases: Array<{ id: string; kind: EvalCaseKind; outcome: TrialOutcome; line?: string }> = [];
+  const junitFailedShards = new Set<string>();
+  let unattributed = 0;
+  const cliVersion = env.GSTACK_CLAUDE_CLI_VERSION;
+  for (const { root, result } of artifacts.filter(a => (a.result.attempt ?? 1) === primary)) {
+    for (const outcome of result.outcomes) {
+      const key = normalizeRelativePath(outcome.files[0] ?? '');
+      if (outcome.trial || outcome.files.length !== 1) continue;
+      let xml = '';
+      try { xml = fs.readFileSync(path.join(root, 'shards', shardSlug([key]), 'junit.xml'), 'utf8'); } catch { continue; }
+      const records = recordsByShard.get(key) ?? [];
+      for (const tc of parseJUnitCases(xml)) {
+        const id = caseIdForTestName(tc.name);
+        if (id === null) { unattributed++; continue; }
+        const kind = (E2E_KINDS[id] ?? 'rule') as EvalCaseKind;
+        const mine = records.filter((r: any) => r?.name === id || r?.case_id === id);
+        const failedRecord = mine.find((r: any) => r.passed === false);
+        const failureClass: TrialFailureClass | undefined = tc.outcome !== 'failed' ? undefined
+          : tc.failureType === 'TimeoutError' ? 'timeout' : failedRecord ? failureClassOf(failedRecord) : 'assertion';
+        const error = sanitizeTrialError(failedRecord?.error ?? tc.message);
+        if (tc.outcome === 'failed') junitFailedShards.add(key);
+        ruleCases.push({ id, kind, outcome: tc.outcome,
+          ...(tc.outcome === 'failed' ? { line: `✗ ${id}  ${kind}  FAIL  ${failureClass}${failedRecord?.exit_reason === 'timeout' && failedRecord?.timeout_at_turn !== undefined ? ` at turn ${failedRecord.timeout_at_turn}` : ''}${error ? ` — ${error}` : ''}  [slice ${result.sliceIndex}, attempt ${primary}]  rerun: ${rerunCommand(manifest.tier, id, 1)}` } : {}) });
+        history.push({ ...common(primary), case: id, file: shardFile(key), kind, trial: 1, panel: { n: 1, k: 1 }, outcome: tc.outcome,
+          ...(failureClass ? { failure_class: failureClass } : {}), ...(failedRecord?.exit_reason ? { exit_reason: String(failedRecord.exit_reason) } : {}),
+          ...(error && tc.outcome === 'failed' ? { error } : {}), duration_ms: tc.timeMs,
+          cost_usd: Math.round(mine.reduce((sum: number, r: any) => sum + (Number(r.cost_usd) || 0), 0) * 100) / 100,
+          ...(typeof mine[0]?.model === 'string' ? { model: mine[0].model } : {}), ...(cliVersion ? { cli_version: cliVersion } : {}),
+          quarantined: false, execution: outcome.reused ? 'reused' : 'executed', source: 'junit' } as TrialOutcomeRecord);
+      }
+    }
+  }
+  fs.writeFileSync(trialOutcomesPath, formatTrialOutcomes(history));
+
+  // Headline and failure block (A4): one formatter for the log, the PR comment and the weekly issue.
+  const ruleShardFailures = manifest.entries.filter(entry => entry.status === 'planned' && !entry.trial).flatMap(entry => {
+    const got = results.flatMap(r => r.outcomes.map(o => ({ o, slice: r.sliceIndex }))).find(({ o }) => normalizeRelativePath(o.files[0] ?? '') === normalizeRelativePath(entry.file));
+    if (got && got.o.status === 'passed') return [];
+    if (got && junitFailedShards.has(normalizeRelativePath(entry.file))) return [];
+    const id = shardCaseId(entry.file);
+    return [`✗ ${entry.file}  rule shard ${got ? got.o.status : 'NOT REPORTED'}${got?.o.runnerError ? ` — ${sanitizeTrialError(got.o.runnerError)}` : ''}  [slice ${entry.slice}, attempt ${primary}]${id ? `  rerun: ${rerunCommand(manifest.tier, id, 1)}` : ''}`];
+  });
+  const behaviorPanels = panels.filter(p => !p.quarantined && p.kind === 'behavior');
+  const lanePanels = panels.filter(p => !p.quarantined);
+  const count = (kind: EvalCaseKind) => ({
+    passed: ruleCases.filter(c => c.kind === kind && c.outcome === 'passed').length
+      + lanePanels.filter(p => p.kind === kind && p.status === 'PASS').length,
+    total: ruleCases.filter(c => c.kind === kind).length + lanePanels.filter(p => p.kind === kind).length,
+  });
+  const primaryTrials = results.flatMap(r => r.outcomes.map(o => o.trial)).filter((t): t is ShardTrialRecord => !!t);
+  const wall = results.filter(r => Number.isSafeInteger(r.startedAt) && Number.isSafeInteger(r.finishedAt));
+  const failureLines = [
+    ...ruleShardFailures,
+    ...ruleCases.filter(c => c.line).map(c => c.line!),
+    ...panels.filter(p => p.status !== 'PASS' || p.split).map(p => formatPanelLine(p, manifest.tier)),
+  ];
+  const red = verdict.problems.length > 0;
+  const headline: ReportHeadline = {
+    lane, verdict: red ? 'RED' : 'GREEN', attempt: primary,
+    counts: {
+      rule: count('rule'),
+      behavior: { ...count('behavior'), split: behaviorPanels.filter(p => p.split).length },
+      judge: count('judge'),
+      quarantined: { total: panels.filter(p => p.quarantined).length, failingLane: panels.filter(p => p.quarantined && p.failsLane).length },
+      skipped: allSkipped.length + panels.filter(p => p.status === 'SKIPPED').length + ruleCases.filter(c => c.outcome === 'skipped').length,
+      infra: primaryTrials.filter(t => t.failure_class === 'infra').length
+        + results.flatMap(r => r.outcomes).filter(o => !o.trial && o.runnerError !== undefined).length,
+      incomplete: panels.filter(p => p.status === 'INCOMPLETE').length,
+      unattributed,
+    },
+    actionRequired: verdict.problems.length,
+    wallMs: wall.length ? Math.max(...wall.map(r => r.finishedAt!)) - Math.min(...wall.map(r => r.startedAt!)) : null,
+    costUsd: Math.round(costUsd * 100) / 100,
+    redispatchEligible: red && infraOnly(verdict.problems),
+  };
+  const headlineLines = formatHeadline(headline);
+  for (const line of headlineLines) console.log(line);
+  if (failureLines.length) {
+    console.log('[test:paid] failures and split verdicts:');
+    for (const line of failureLines) console.log(`  ${line}`);
+  }
+  for (const panel of laterPanels) console.log(`  attempt ${panel.attempt} (re-run; reported, never replacing attempt ${primary}): ${formatPanelLine(panel, manifest.tier)}`);
+  const fence = (lines: string[]) => ['```', ...lines.map(line => line.replace(/```/g, "'''")), '```'];
+  fs.writeFileSync(summaryMdPath, [
+    ...fence(headlineLines),
+    ...(failureLines.length ? ['', '**Failures and split verdicts**', '', ...fence(failureLines)] : []),
+    ...(verdict.problems.length ? ['', `**ACTION REQUIRED (${verdict.problems.length})**`, '', ...fence(verdict.problems.map(p => sanitizeTrialError(p) ?? p))] : []),
+  ].join('\n') + '\n');
+  if (!manualProblems.length) fs.writeFileSync(summaryPath, JSON.stringify({ version: 2, files, totals: {
+    ...evidence, total: evidence.passed + evidence.failed + evidence.manual_accepted,
+    flaky: files.reduce((sum, file) => sum + file.flaky, 0),
+  }, verdict: headline, headline: headlineLines,
+  panels: panels.map(p => ({ case: p.case, kind: p.kind, status: p.status, passed: p.passed, n: p.panel.n, k: p.panel.k,
+    marks: p.marks, split: p.split, quarantined: p.quarantined, failsLane: p.failsLane, redClass: p.redClass, reason: p.reason,
+    trials: p.trials.map(t => ({ trial: t.trial, outcome: t.outcome, ...(t.failure_class ? { failure_class: t.failure_class } : {}),
+      ...(t.exit_reason ? { exit_reason: t.exit_reason } : {}), ...(t.error ? { error: t.error } : {}) })) })),
+  failures: failureLines.map(line => sanitizeTrialError(line) ?? line) }, null, 2) + '\n');
+  if (verdict.problems.length) {
+    console.error(`[test:paid] report: ${verdict.problems.length} problem(s):`);
+    for (const problem of verdict.problems) console.error(`  ✗ ${problem}`);
+    if (headline.redispatchEligible) console.error('[test:paid] report: INFRA-ONLY RED — one re-dispatch as a new run is allowed; report both runs');
+    return 1;
+  }
+  console.log(evidence.manual_accepted
+    ? `[test:paid] report: every planned shard accounted; ${evidence.manual_accepted} manual acceptance(s), no automated-score credit`
+    : '[test:paid] report: every planned shard accounted and passed');
+  return 0;
 }
 
 type CliOptions = {
@@ -1838,6 +2670,8 @@ type CliOptions = {
   reportDir: string | null;
   /** Report mode: merge executed shard wall times into the duration seed. */
   writeDurations: boolean;
+  /** Planner: the workflow matrix cap, for the capacity preflight's wave count. */
+  maxParallel: number | null;
 };
 
 function parsePositiveInt(value: string | undefined, flag: string): number {
@@ -1892,6 +2726,7 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
     sliceIndex: null,
     reportDir: null,
     writeDurations: false,
+    maxParallel: null,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -1929,6 +2764,7 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
       options.reportDir = value; continue;
     }
     if (arg === '--write-durations') { options.writeDurations = true; continue; }
+    if (arg === '--max-parallel') { options.maxParallel = parsePositiveInt(argv[index += 1], '--max-parallel'); continue; }
     throw new Error(`Unknown argument: ${arg}`);
   }
   if (options.writeDurations && !options.reportDir) throw new Error('--write-durations requires --report');
@@ -1965,125 +2801,13 @@ async function main(): Promise<number> {
       + `${excludedCount} excluded (${manifest.selectionReason})`,
     );
     for (const line of formatSlicePlan(manifest)) console.log(line);
+    for (const line of formatCapacityPreflight(manifest, options.maxParallel ?? undefined)) console.log(line);
     return 0;
   }
 
   // ── Report mode: reconcile slice artifacts against the manifest. Fail-closed:
   // a slice whose artifact never landed is a FAILURE, not an absence.
-  const reportDir = options.reportDir;
-  if (reportDir) {
-    const summaryPath = path.join(reportDir, 'collector-outcomes.json');
-    fs.rmSync(summaryPath, { force: true });
-    const manifest = parseRunManifest(fs.readFileSync(path.join(reportDir, 'manifest.json'), 'utf-8'));
-    const results: SliceResult[] = fs.readdirSync(reportDir)
-      .filter((name) => /^slice-\d+\.json$/.test(name))
-      .map((name) => JSON.parse(fs.readFileSync(path.join(reportDir, name), 'utf-8')) as SliceResult);
-    const verdict = verifySliceResults(manifest, results);
-    const planned = manifest.entries.filter((e) => e.status === 'planned').length;
-    console.log(`[test:paid] report: ${results.length}/${manifest.sliceCount} slices, ${planned} planned shards, tier=${manifest.tier}`);
-    for (const line of formatProfileCoverage(manifest)) console.log(line);
-    for (const result of results.sort((a, b) => a.sliceIndex - b.sliceIndex)) {
-      for (const outcome of result.outcomes) {
-        const shown = outcome.reused ? `reused (run ${outcome.reused.runId})` : outcome.status;
-        console.log(`  slice ${result.sliceIndex}  ${shown.padEnd(15)} ${String(Math.round(outcome.elapsedMs / 1000)).padStart(5)}s  ${outcome.files.join(' ')}`);
-      }
-    }
-    if (options.writeDurations) {
-      const durations = mergePaidTestDurations(loadPaidTestDurations(ROOT, manifest.tier), results);
-      writePaidTestDurations(manifest.tier, durations);
-      console.log(`[test:paid] wrote ${Object.keys(durations).length} ${manifest.tier} durations to ${PAID_TEST_DURATIONS_FILE}`);
-    }
-    // Historical flaky_retries includes every case with multiple attempts,
-    // whether its final result passed or failed. Report attempts separately
-    // from the shard verdict; reconciliation above still controls gating.
-    // Source: the finalized eval-store JSONs inside the slice artifacts.
-    const flaky: Array<{ name: string; attempts: number; file: string }> = [];
-    const collectors: Parameters<typeof collectorOutcomeCounts>[0] = [];
-    const files: Array<{ file: string; tier: string; shard: string | number; cost: number;
-      flaky: number; total: number; executed: number; reused: number; passed: number;
-      failed: number; manual_accepted: number; attempts: number }> = [];
-    const manualProblems: string[] = [];
-    const manualClaims = new Map<string, string>();
-    for (const name of fs.readdirSync(reportDir, { recursive: true }) as string[]) {
-      if (!isFinalizedEvalResultFile(name)) continue;
-      try {
-        const parsed = JSON.parse(fs.readFileSync(path.join(reportDir, name), 'utf-8'));
-        if (!Array.isArray(parsed.tests)) {
-          if (Object.hasOwn(parsed, 'tests') || parsed.total_tests !== undefined || parsed.manual_review !== undefined) {
-            manualProblems.push(`${name}: malformed collector tests[]`);
-          }
-          continue;
-        }
-        const seen = new Map<string, number>();
-        for (const [index, entry] of parsed.tests.entries()) {
-          if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name
-            || typeof entry.passed !== 'boolean') {
-            manualProblems.push(`${name}: attempt ${index + 1}: malformed collector entry (name/passed required)`);
-            continue;
-          }
-          const key = `${entry.suite ?? ''}\0${entry.name}`;
-          const occurrence = (seen.get(key) ?? 0) + 1;
-          seen.set(key, occurrence);
-          if (Object.hasOwn(entry, 'manual_review') && occurrence !== 1) {
-            manualProblems.push(`${name}: attempt ${index + 1}: manual review is only valid on the first case attempt`);
-          }
-          if (Object.hasOwn(entry, 'manual_review')) {
-            const previous = manualClaims.get(key);
-            if (previous && previous !== name) manualProblems.push(`${name}: duplicate manual-review claim for ${entry.name} (also in ${previous})`);
-            else manualClaims.set(key, name);
-          }
-          const problem = manualReviewProblem(entry, ROOT);
-          if (problem) manualProblems.push(`${name}: attempt ${index + 1}: ${problem}`);
-        }
-        collectors.push(parsed);
-        const counts = collectorOutcomeCounts([parsed]);
-        files.push({ file: name, tier: parsed.tier ?? 'unknown', shard: parsed.shard ?? '-',
-          cost: parsed.total_cost_usd ?? 0, flaky: parsed.flaky_retries?.length ?? 0,
-          total: counts.passed + counts.failed + counts.manual_accepted, ...counts });
-        for (const f of parsed.flaky_retries ?? []) flaky.push({ ...f, file: name });
-      } catch (error) {
-        manualProblems.push(`${name}: malformed collector JSON (${error instanceof Error ? error.message : String(error)})`);
-      }
-    }
-    const evidence = collectorOutcomeCounts(collectors);
-    console.log(`[test:paid] collector final outcomes: ${evidence.executed} executed, ${evidence.reused} reused; ${evidence.passed} passed, ${evidence.failed} failed, ${evidence.manual_accepted} manual accepted (unscored; no score-cache credit) (${evidence.attempts} attempt records from ${collectors.length} collectors)`);
-    if (flaky.length > 0) {
-      console.log(`[test:paid] report: ⚠ ${flaky.length} cases with multiple attempts this run:`);
-      for (const f of flaky) console.log(`  ⚠ ${f.name} (x${f.attempts}) — ${f.file}`);
-    }
-
-    // Census honesty: a 'passed' shard whose every test skipped verified
-    // nothing (external-service binary absent on the runner). Not a failure —
-    // service availability is host state, not a repo regression — but the
-    // report must say so, or the weekly lane reads codex/gemini as covered
-    // on runners that never install them.
-    const allSkipped = results.flatMap((r) => r.outcomes.filter(isAllSkippedPass));
-    if (allSkipped.length > 0) {
-      console.log(`[test:paid] report: ⚠ ${allSkipped.length} shard(s) passed with EVERY test skipped — they verified nothing:`);
-      for (const outcome of allSkipped) {
-        console.log(`  ⚠ ${outcome.files.join(' ')} (${outcome.executedTests} skipped — external service missing or tier mismatch)`);
-      }
-    }
-    if (manualProblems.length) verdict.problems.push(...manualProblems);
-    if (evidence.failed > 0) verdict.problems.push(`${evidence.failed} unapproved final collector failure(s)`);
-    if (files.reduce((sum, file) => sum + file.total, 0) !== evidence.passed + evidence.failed + evidence.manual_accepted
-      || files.reduce((sum, file) => sum + file.executed + file.reused, 0) !== evidence.executed + evidence.reused) {
-      verdict.problems.push('Collector summary totals are inconsistent');
-    }
-    if (!manualProblems.length) fs.writeFileSync(summaryPath, JSON.stringify({ version: 1, files, totals: {
-      ...evidence, total: evidence.passed + evidence.failed + evidence.manual_accepted,
-      flaky: files.reduce((sum, file) => sum + file.flaky, 0),
-    } }, null, 2) + '\n');
-    if (verdict.problems.length) {
-      console.error(`[test:paid] report: ${verdict.problems.length} problem(s):`);
-      for (const problem of verdict.problems) console.error(`  ✗ ${problem}`);
-      return 1;
-    }
-    console.log(evidence.manual_accepted
-      ? `[test:paid] report: every planned shard accounted; ${evidence.manual_accepted} manual acceptance(s), no automated-score credit`
-      : '[test:paid] report: every planned shard accounted and passed');
-    return 0;
-  }
+  if (options.reportDir) return runPaidReport(options.reportDir, { writeDurations: options.writeDurations });
 
   const discovered = collectPaidTestFiles();
   if (discovered.length === 0) throw new Error('No paid test files were discovered.');
@@ -2119,28 +2843,36 @@ async function main(): Promise<number> {
     }
 
     const evalDirBase = process.env.GSTACK_EVAL_DIR || getProjectEvalDir();
+    const trials = Object.fromEntries(mine.filter(entry => entry.trial).map(entry => [normalizeRelativePath(entry.file), entry.trial!]));
+    const exclusionPatterns = Object.fromEntries(mine.filter(entry => entry.excludeCases).map(entry => [entry.file,
+      manifest.prCoverage?.mode === 'pr' ? prProfileTestNamePattern(entry.file, manifest.selection!, entry.excludeCases)
+        : excludedCasesNamePattern(entry.excludeCases!)]));
+    const startedAt = Date.now();
     let summary: RunSummary;
     if (shards.length === 0) {
       summary = summarize([]);
     } else {
       preflightAnthropicApi(process.env);
       summary = await runPaidShards(shards, {
+        trials,
+        casePatterns: exclusionPatterns,
         timeoutMs: options.timeoutExplicit ? options.timeoutMs : undefined,
         jobs: options.jobs,
         withinShardConcurrency: options.withinShardConcurrency,
         registeredBudgets: Object.fromEntries(mine.filter(entry => entry.budget).map(entry => [normalizeRelativePath(entry.file), entry.budget!])),
         ...(manifest.prCoverage?.mode === 'pr' ? {
-          expectedCases: Object.fromEntries(mine.map(entry => [entry.file, expectedPrCaseCount(entry.file, manifest.selection!)])),
-          casePatterns: Object.fromEntries(mine.map(entry => [entry.file, prProfileTestNamePattern(entry.file, manifest.selection!)])),
-          expectedCaseIds: Object.fromEntries(mine.map(entry => [entry.file, prProfileShardIds(entry.file, manifest.selection!)])),
+          expectedCases: Object.fromEntries(mine.map(entry => [entry.file, expectedPrCaseCount(entry.file, manifest.selection!, entry.excludeCases)])),
+          casePatterns: Object.fromEntries(mine.map(entry => [entry.file, prProfileTestNamePattern(entry.file, manifest.selection!, entry.excludeCases)])),
+          expectedCaseIds: Object.fromEntries(mine.map(entry => [entry.file, prProfileShardIds(entry.file, manifest.selection!, entry.excludeCases)])),
           reuseFor: e2eReuseLaneProblem(process.env, manifest.prCoverage.mode) !== null ? undefined : (files, env, budget) => {
             const key = files[0]!;
             const file = shardFile(key);
             if (files.length !== 1 || !/^test\/skill-e2e-/.test(file)) return null;
             const { registered, known } = fileCaseRegistration(file, fs.readFileSync(path.join(ROOT, file), 'utf8'));
-            return prepareE2EShardReuse({ root: ROOT, key, file, caseIds: prProfileShardIds(key, manifest.selection!),
+            const exclude = mine.find(entry => entry.file === key)?.excludeCases;
+            return prepareE2EShardReuse({ root: ROOT, key, file, caseIds: prProfileShardIds(key, manifest.selection!, exclude),
               registeredIds: registered, registrationKnown: known,
-              casePattern: prProfileTestNamePattern(key, manifest.selection!), expectedCases: expectedPrCaseCount(key, manifest.selection!),
+              casePattern: prProfileTestNamePattern(key, manifest.selection!, exclude), expectedCases: expectedPrCaseCount(key, manifest.selection!, exclude),
               retries: retriesForFiles(files), timeoutMs: budget.timeoutMs, withinShardConcurrency: options.withinShardConcurrency,
               tier: manifest.tier, profile, env });
           },
@@ -2161,8 +2893,9 @@ async function main(): Promise<number> {
         evalDirBase,
       });
     }
-    const guarded = applyHollowShardGuard(summary.outcomes, { evalsAll: manifest.evalsAll, requireExecuted: manifest.prCoverage?.mode === 'pr' });
+    const guarded = guardTrialRecords(applyHollowShardGuard(summary.outcomes, { evalsAll: manifest.evalsAll, requireExecuted: manifest.prCoverage?.mode === 'pr' }));
     summary = summarize(guarded);
+    const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
     const sliceResult: SliceResult = {
       version: 1,
       tier: manifest.tier,
@@ -2171,15 +2904,23 @@ async function main(): Promise<number> {
       sliceIndex: options.sliceIndex,
       sliceCount: manifest.sliceCount,
       ...(options.timeoutExplicit ? { timeoutOverrideMs: options.timeoutMs } : {}),
-      outcomes: guarded.map(({ files, status, exitCode, elapsedMs, executedTests, skippedTests, budget, reused }) =>
-        ({ files, status, exitCode, elapsedMs, executedTests, skippedTests, ...(budget ? { budget } : {}), ...(reused ? { reused } : {}) })),
+      attempt: Number.isSafeInteger(attempt) && attempt > 0 ? attempt : 1,
+      startedAt,
+      finishedAt: Date.now(),
+      outcomes: guarded.map(({ files, status, exitCode, elapsedMs, executedTests, skippedTests, budget, reused, runnerError, trial }) =>
+        ({ files, status, exitCode, elapsedMs, executedTests, skippedTests, ...(budget ? { budget } : {}), ...(reused ? { reused } : {}),
+          ...(runnerError !== undefined ? { runnerError } : {}), ...(trial ? { trial } : {}) })),
     };
     fs.mkdirSync(evalDirBase, { recursive: true });
     const sliceResultPath = path.join(evalDirBase, `slice-${options.sliceIndex}.json`);
     fs.writeFileSync(sliceResultPath, `${JSON.stringify(sliceResult, null, 2)}\n`);
     console.log(`[test:paid] slice result: ${sliceResultPath}`);
     for (const line of formatSummary(summary)) console.log(line);
-    return summaryExitCode(summary);
+    for (const outcome of guarded.filter(outcome => outcome.trial)) {
+      const t = outcome.trial!;
+      console.log(`  trial ${t.case} t${t.trial}/${t.panel.n}: ${t.outcome ?? `NO RECORD (${t.harness})`}${t.failure_class ? ` [${t.failure_class}]` : ''}`);
+    }
+    return sliceExitCode(guarded);
   }
 
   if (options.listOnly && options.sliceBudgetMs !== null) {

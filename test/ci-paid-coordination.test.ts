@@ -248,7 +248,8 @@ describe('dependency-free CI planner and report execution', () => {
       const red = run(['--report', reportDir], tier);
       expect(red.status).toBe(1);
       expect(red.stderr).toContain(`${failed.outcomes[0].files[0]}: failed`);
-      expect(red.stdout).toContain('3 executed, 0 reused; 1 passed, 2 failed, 0 manual accepted (unscored; no score-cache credit) (6 attempt records from 1 collectors)');
+      // Paid evals never retry: every record counts, a later pass never hides an earlier failure.
+      expect(red.stdout).toContain('6 executed, 0 reused; 2 passed, 4 failed, 0 manual accepted (unscored; no score-cache credit) (6 attempt records from 1 collectors');
       expect(red.stdout).toContain('3 cases with multiple attempts this run:');
       expect(red.stdout).not.toMatch(/passed only on retry|not blocking/);
 
