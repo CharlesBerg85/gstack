@@ -165,6 +165,39 @@ export function classifyPaidTestFile(source: string, tier: PaidTier): TierClassi
   return { included: true, reason: 'no whole-file tier guard — runtime E2E_TIERS filter decides' };
 }
 
+/**
+ * A file is skipped for a tier lane only when its registered E2E ids are fully
+ * known and none of them has that tier. Ids are the touchfile registrations that
+ * list the file plus literal registration arguments (testName, *IfSelected);
+ * quoted strings elsewhere (comments, skill paths) never count. Any computed
+ * registration, an id missing from the file's touchfile registration, or no id at
+ * all keeps today's scheduling (the child's runtime filter decides).
+ */
+export function tierSkipReason(
+  file: string, source: string, tier: PaidTier,
+  touchfiles: Record<string, string[]> = E2E_TOUCHFILES,
+  tiers: Record<string, string> = E2E_TIERS,
+): string | null {
+  const rel = normalizeRelativePath(file);
+  const registered = Object.keys(touchfiles).filter(key => touchfiles[key]!.includes(rel));
+  if (!registered.length) return null;
+  const computed = /testName\s*:\s*(?:`[^`]*\$\{|[A-Za-z_$])/.test(source)
+    || /\btest(?:Concurrent)?IfSelected\s*\(\s*(?:`[^`]*\$\{|[A-Za-z_$])/.test(source)
+    || /\bdescribeIfSelected\s*\([^,]*,(?!\s*\[)/.test(source)
+    || [...source.matchAll(/\bdescribeIfSelected\s*\([^,]*,\s*\[([^\]]*)\]/g)].some(m => m[1]!.split(',')
+      .map(item => item.trim()).some(item => item && !/^(['"`])[^'"`$]*\1$/.test(item)));
+  if (computed) return null;
+  const literal = [
+    ...[...source.matchAll(/testName\s*:\s*(['"`])([^'"`]+)\1/g)].map(m => m[2]!),
+    ...[...source.matchAll(/\btest(?:Concurrent)?IfSelected\s*\(\s*(['"`])([^'"`]+)\1/g)].map(m => m[2]!),
+    ...[...source.matchAll(/\bdescribeIfSelected\s*\([^,]*,\s*\[([^\]]*)\]/g)]
+      .flatMap(m => [...m[1]!.matchAll(/(['"`])([^'"`]+)\1/g)].map(n => n[2]!)),
+  ].filter(id => id in tiers);
+  if (literal.some(id => !registered.includes(id))) return null;
+  if (registered.some(id => tiers[id] === tier)) return null;
+  return `skipped: no E2E_TIERS id has tier ${tier}`;
+}
+
 export interface TierSelection {
   selected: string[];
   excluded: Array<{ file: string; reason: string }>;
@@ -198,8 +231,9 @@ export function selectPaidTestFiles(files: string[], tier: PaidTier, rootDir = R
     }
     const source = fs.readFileSync(path.join(rootDir, file), 'utf8');
     const classification = classifyPaidTestFile(source, tier);
-    if (classification.included) selected.push(file);
-    else excluded.push({ file, reason: classification.reason });
+    const skip = classification.included ? tierSkipReason(file, source, tier) : null;
+    if (classification.included && !skip) selected.push(file);
+    else excluded.push({ file, reason: skip ?? classification.reason });
   }
   return { selected, excluded };
 }
@@ -1063,6 +1097,8 @@ export function buildRunManifest(opts: {
   changedFiles?: string[];
   /** Recorded per-file durations; defaults to the committed seed under rootDir. */
   durations?: Record<string, number>;
+  /** Weekly gate census only: LLM judges already run in the periodic census and PR gate lanes. */
+  skipJudges?: boolean;
 }): PaidRunManifest {
   if (!Number.isInteger(opts.sliceCount) || opts.sliceCount <= 0) {
     throw new Error(`--slices needs a positive integer. Received: ${opts.sliceCount}`);
@@ -1072,7 +1108,11 @@ export function buildRunManifest(opts: {
   const profile = opts.profile ?? validatedProfile(env.EVALS_PROFILE, 'EVALS_PROFILE');
   if (profile === 'pr' && opts.tier !== 'gate') throw new Error('PR profile requires gate tier; use --profile full for periodic coverage');
   const discovered = opts.discovered ?? collectPaidTestFiles(rootDir);
-  const { selected, excluded } = selectPaidTestFiles(discovered, opts.tier, rootDir, env);
+  const tierSelection = selectPaidTestFiles(discovered, opts.tier, rootDir, env);
+  const judge = (file: string) => /^test\/skill-llm-eval[^/]*\.test\.ts$/.test(normalizeRelativePath(file));
+  const selected = opts.skipJudges ? tierSelection.selected.filter(file => !judge(file)) : tierSelection.selected;
+  const excluded = [...tierSelection.excluded, ...(opts.skipJudges ? tierSelection.selected.filter(judge)
+    .map(file => ({ file, reason: 'skipped: LLM judges run in the periodic census and PR gate lanes' })) : [])];
   const shards = planPaidShards(selected, { maxFilesPerShard: 1 });
   const cases = computePaidCaseSelection({ profile, env, rootDir, changedFiles: opts.changedFiles });
   const fast = cases.coverage?.mode === 'pr';
@@ -1382,6 +1422,7 @@ type CliOptions = {
   profile: PaidProfile;
   profileExplicit: boolean;
   listOnly: boolean;
+  skipJudges: boolean;
   timeoutMs: number;
   timeoutExplicit: boolean;
   jobs: number;
@@ -1431,6 +1472,7 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
     profile: validatedProfile(env.EVALS_PROFILE, 'EVALS_PROFILE'),
     profileExplicit: !!env.EVALS_PROFILE,
     listOnly: false,
+    skipJudges: false,
     timeoutExplicit: !!env.EVALS_SHARD_TIMEOUT_MS,
     timeoutMs: env.EVALS_SHARD_TIMEOUT_MS
       ? parsePositiveInt(env.EVALS_SHARD_TIMEOUT_MS, 'EVALS_SHARD_TIMEOUT_MS')
@@ -1474,6 +1516,7 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
       if (!value) throw new Error('--emit-plan needs a file path');
       options.emitPlanPath = value; continue;
     }
+    if (arg === '--skip-judges') { options.skipJudges = true; continue; }
     if (arg === '--slices') { options.slices = parsePositiveInt(argv[index += 1], '--slices'); continue; }
     if (arg === '--plan') {
       const value = argv[index += 1];
@@ -1490,6 +1533,7 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
     throw new Error(`Unknown argument: ${arg}`);
   }
   if (options.writeDurations && !options.reportDir) throw new Error('--write-durations requires --report');
+  if (options.skipJudges && (!options.emitPlanPath || options.tier !== 'gate')) throw new Error('--skip-judges applies only to an emitted gate census plan');
   if (options.profile === 'pr' && options.tier !== 'gate') throw new Error('PR profile requires gate tier');
   if (options.profile === 'pr' && options.maxFilesPerShard !== 1) throw new Error('PR profile requires one file per shard to preserve case accounting');
   return options;
@@ -1507,6 +1551,7 @@ async function main(): Promise<number> {
       sliceCount: options.slices,
       timeoutMs: options.timeoutExplicit ? options.timeoutMs : undefined,
       evalsAll: process.env.EVALS_ALL === '1',
+      skipJudges: options.skipJudges,
     });
     fs.mkdirSync(path.dirname(path.resolve(options.emitPlanPath)), { recursive: true });
     fs.writeFileSync(options.emitPlanPath, `${JSON.stringify(manifest, null, 2)}\n`);
