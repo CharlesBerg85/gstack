@@ -297,6 +297,12 @@ describe('isPermissionDialogVisible', () => {
     // post-merge follow-up. Flip this assertion once the regex tightens.
     expect(isPermissionDialogVisible(sample)).toBe(true);
   });
+
+  test('matches the captured Autoplan settings-overwrite card as a numbered permission dialog', () => {
+    const captured = JSON.parse(readFileSync(new URL('../fixtures/autoplan-settings-overwrite.json', import.meta.url), 'utf8'));
+    expect(isNumberedOptionListVisible(captured.frame.text)).toBe(true);
+    expect(isPermissionDialogVisible(captured.frame.text)).toBe(true);
+  });
 });
 
 describe('isNumberedOptionListVisible', () => {

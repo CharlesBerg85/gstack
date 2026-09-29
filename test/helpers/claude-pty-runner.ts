@@ -23,7 +23,6 @@
 
 import { resolveEvalModel } from '../../lib/eval-model';
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import { stripVTControlCharacters, isDeepStrictEqual } from 'node:util';
 import { hermeticChildEnv, hermeticSkillsConfigDir, isHermeticEnabled } from './hermetic-env';
@@ -227,11 +226,6 @@ export async function selectPtyNumberedOption(
   session.send(String(index));
   await Bun.sleep(500);
   session.send('\r');
-}
-
-/** Detect a complete, recognized workspace-trust menu. */
-export function isTrustDialogVisible(visible: string): boolean {
-  return trustDialogInput(visible) !== null;
 }
 
 /**
@@ -4344,58 +4338,6 @@ export async function launchClaudePty(
   };
 }
 
-/**
- * High-level: invoke a slash command and observe the response. Used by the
- * 5 plan-mode tests so each only has ~10 LOC of orchestration.
- *
- * The `expectations` object names the patterns the caller cares about.
- * Returns which one matched first (or throws on timeout).
- *
- * @example
- * const session = await launchClaudePty();
- * const result = await invokeAndObserve(session, '/plan-ceo-review', {
- *   askUserQuestion: /❯\s*1\./,
- *   planReady: /ready to execute/i,
- *   silentWrite: /⏺\s*Write\(/,
- *   silentEdit: /⏺\s*Edit\(/,
- *   exitedPlanMode: /Exiting plan mode/i,
- * });
- * await session.close();
- */
-export async function invokeAndObserve(
-  session: ClaudePtySession,
-  slashCommand: string,
-  expectations: Record<string, RegExp | string>,
-  opts?: { boot_grace_ms?: number; timeoutMs?: number },
-): Promise<{ matched: string; rawPattern: RegExp | string; visibleAtMatch: string }> {
-  // Brief grace period so the trust-dialog auto-press has time to clear and
-  // claude is back at the input prompt before we type the command.
-  const boot = opts?.boot_grace_ms ?? 6000;
-  await Bun.sleep(boot);
-
-  // Mark buffer position. All pattern matching scopes to text AFTER this point,
-  // so the trust-dialog residue and boot banner numbered options don't cause
-  // false positives.
-  const sinceMark = session.mark();
-
-  // Type and submit.
-  session.send(slashCommand + '\r');
-
-  const patterns = Object.entries(expectations);
-  const result = await session.waitForAny(
-    patterns.map(([, p]) => p),
-    { timeoutMs: opts?.timeoutMs ?? 240_000, since: sinceMark },
-  );
-  // Map back to the named key.
-  const idx = patterns.findIndex(([, p]) => p === result.matched);
-  const [name, rawPattern] = patterns[idx]!;
-  return {
-    matched: name,
-    rawPattern,
-    visibleAtMatch: session.visibleText(),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // High-level skill-mode test contract
 // ---------------------------------------------------------------------------
@@ -4823,9 +4765,6 @@ export async function runPlanSkillObservation(opts: {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-/** Legacy caller outer finalization allowance; native counting reserves cleanup internally. */
-export const PLAN_SKILL_COUNT_FINALIZE_MS = 10_000;
-
 // runPlanSkillCounting — drives a plan-* skill end-to-end through Step 0 then
 // counts completed review-phase AskUserQuestion calls. The actual
 // product asserted by the per-finding-count tests.

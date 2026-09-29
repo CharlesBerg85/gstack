@@ -961,7 +961,7 @@ coverage fill. Remaining, in rough priority order:
   semantics-preserving; keep the daemon path for remote callers), plus a
   namespace hint appended to read-commands.ts:313's error. Effort S.
 - **P2 — PTY boot-readiness wait.** The PTY tests' Bun.sleep(8000) preludes
-  and invokeAndObserve's 6s boot_grace_ms are blind waits; a real readiness
+  are blind waits; a real readiness
   waitFor needs empirical CLI 2.1.x ready-marker probing in a working
   terminal environment (this sandbox's PTY probe wedged). Effort S, needs a
   dev machine.
@@ -4102,9 +4102,9 @@ makes live agents start skipping a section. The canary is the only
 mechanism that catches that, from real usage.
 
 **Context:** Deferred from the carve-guard-hardening plan (D5→T2, codex
-outside-voice #7). `test/helpers/transcript-section-logger.ts` exists but
-is built for deterministic test transcripts + ship action fingerprints,
-NOT real-session drift — it needs rework before it can back this. Ship
+outside-voice #7). The deterministic `test/helpers/transcript-section-logger.ts`
+was deleted in the 2026-09 test audit (no paid or production caller; see
+docs/test-audit-2026-09.md); a real-session logger starts from scratch. Ship
 the deterministic guards first; add this once they've proven useful. The
 carved-skill set + each skill's `requiredReads` are already declared in
 `test/helpers/carve-guards.ts`, so the canary reads its expectations
@@ -4112,7 +4112,7 @@ from there.
 
 **Effort:** M (human ~2d, CC ~4h).
 
-**Depends on:** `transcript-section-logger.ts` real-session-drift rework.
+**Depends on:** a real-session section-read logger (none exists today).
 
 ### P2: Harden behavioral section-loading test hermeticity
 

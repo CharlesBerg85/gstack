@@ -6,7 +6,7 @@
  */
 
 import '../../lib/conductor-env-shim';
-import { describe, test, beforeAll, afterAll, expect } from 'bun:test';
+import { describe, test, afterAll, expect } from 'bun:test';
 import type { SkillTestResult } from './session-runner';
 import { EvalCollector, judgePassed } from './eval-store';
 import type { EvalTestEntry } from './eval-store';
@@ -14,7 +14,6 @@ import { judgeRecommendation, type RecommendationScore } from './llm-judge';
 import { selectTests, detectBaseBranch, getChangedFiles, E2E_TOUCHFILES, E2E_TIERS, GLOBAL_TOUCHFILES } from './touchfiles';
 import { WorktreeManager } from '../../lib/worktree';
 import type { HarvestResult } from '../../lib/worktree';
-import { spawnSync } from 'child_process';
 import { preflightAnthropicApi } from './anthropic-preflight';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -398,24 +397,6 @@ export function harvestAndCleanup(testName: string): HarvestResult | null {
   }
   mgr.cleanup(testName);
   return result;
-}
-
-/**
- * Convenience: describe block with automatic worktree isolation + harvest.
- * Any test file can use this to get real repo context instead of a tmpdir.
- * Note: tests with planted-bug fixtures should NOT use this — they need their fixture repos.
- */
-export function describeWithWorktree(
-  name: string,
-  testNames: string[],
-  fn: (getWorktreePath: () => string) => void,
-) {
-  describeIfSelected(name, testNames, () => {
-    let worktreePath: string;
-    beforeAll(() => { worktreePath = createTestWorktree(name); });
-    afterAll(() => { harvestAndCleanup(name); });
-    fn(() => worktreePath);
-  });
 }
 
 export { judgePassed } from './eval-store';

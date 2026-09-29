@@ -2,17 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import captured from './fixtures/eng-count-ad-v2.json';
 import { engFirstReviewAUQ, engSetupAUQ, engStep0Boundary, nativePlanCallFingerprint, planCountQuestionPhase } from './helpers/claude-pty-runner';
 import type { NativePlanQuestionCall } from './helpers/plan-count-transcript';
-import { isEngCompletionHandoff } from './helpers/eng-completion-handoff';
 import { E2E_TOUCHFILES, matchGlob } from './helpers/touchfiles';
-
 const firstCalls = captured.cases.first.calls as NativePlanQuestionCall[];
 const retryCalls = captured.cases.retry.calls as NativePlanQuestionCall[];
-const catalog = captured.reviewedTasks.lines.join('\n');
 const issue = () => structuredClone(retryCalls[3]!);
-const handoff = () => structuredClone(firstCalls.at(-1)!);
 const fp = (call: NativePlanQuestionCall) => nativePlanCallFingerprint(call, 0, true);
 const isFirst = (call: NativePlanQuestionCall) => engFirstReviewAUQ(fp(call));
-const isHandoff = (call: NativePlanQuestionCall, plan = catalog) => isEngCompletionHandoff(fp(call), plan);
 function setupPacket(): NativePlanQuestionCall {
   const c = issue();
   c.questions = [
@@ -32,8 +27,7 @@ function census(calls: NativePlanQuestionCall[]) {
   let reviewStarted = false;
   const counts = { setup: 0, review: 0, administrative: 0 };
   const phases = calls.map(call => {
-    const phase = planCountQuestionPhase(fp(call), reviewStarted, engStep0Boundary, engFirstReviewAUQ, engSetupAUQ,
-      current => isEngCompletionHandoff(current, catalog));
+    const phase = planCountQuestionPhase(fp(call), reviewStarted, engStep0Boundary, engFirstReviewAUQ, engSetupAUQ);
     reviewStarted = phase.reviewStarted;
     counts[phase.administrative ? 'administrative' : phase.preReview ? 'setup' : 'review']++;
     return phase;
@@ -78,17 +72,6 @@ describe('Eng AD v2 completed native count evidence', () => {
     expect(engStep0Boundary(fp(c))).toBe(false);
   });
 
-  test('first attempt retains seven substantive decisions and separates the completed D9 handoff', () => {
-    const { counts, phases } = census(firstCalls);
-    expect(counts).toEqual({ setup: 4, review: 7, administrative: 1 });
-    expect(phases.slice(4, 11).every(p => !p.preReview && !p.administrative)).toBe(true);
-    expect(firstCalls[9]!.questions[0]!.question).toContain('TODO 1');
-    expect(firstCalls[10]!.questions[0]!.question).toContain('TODO 2');
-    expect(phases[11]!.administrative).toBe('completion-handoff');
-    expect(captured.cases.first.actual.outcome).toBe('ceiling_reached');
-    expect(captured.cases.first.actual.reviewCount).toBe(8);
-  });
-
   test('retry ordinary Issue identity starts review without qids, retaining its later TODO', () => {
     const { counts, phases } = census(retryCalls);
     expect(counts).toEqual({ setup: 3, review: 6, administrative: 0 });
@@ -96,16 +79,6 @@ describe('Eng AD v2 completed native count evidence', () => {
     for (const call of retryCalls.slice(3, 8)) expect(isFirst(call)).toBe(true);
     expect(retryCalls[8]!.questions[0]!.question).toContain('TODO 1');
     expect(captured.cases.retry.actual.reviewCount).toBe(0);
-  });
-
-  test('the prior successful plan Write already contains the exact referenced task and regression step', () => {
-    expect(captured.reviewedTasks.isError).toBe(false);
-    expect(Date.parse(captured.reviewedTasks.replyAt)).toBeLessThan(Date.parse(handoff().answeredAt!));
-    expect(captured.reviewedTasks.lines).toHaveLength(10);
-    expect(captured.reviewedTasks.lines[2]).toContain('Record regression characterization fixtures before any change');
-    expect(isHandoff(handoff())).toBe(true);
-    // The menu's Tasks JSONL claim is not independently verified by this fixture.
-    expect(captured.provenance.privateThinkingInspected).toBe(false);
   });
 
   test('ordinary issue presentation can vary while completed identity and section number remain bound', () => {
@@ -157,9 +130,9 @@ describe('Eng AD v2 completed native count evidence', () => {
     expect(isFirst(c)).toBe(false);
   });
 
-  test('new first-finding and handoff paths require exact completed native identity and answer', () => {
-    for (const factory of [issue, handoff]) {
-      const classify = factory === issue ? isFirst : isHandoff;
+  test('new first-finding path requires exact completed native identity and answer', () => {
+    for (const factory of [issue]) {
+      const classify = isFirst;
       for (const mutate of [
         (c: NativePlanQuestionCall) => { c.answered = false; },
         (c: NativePlanQuestionCall) => { c.failed = true; },
@@ -177,7 +150,7 @@ describe('Eng AD v2 completed native count evidence', () => {
         (c: NativePlanQuestionCall) => { c.answers = { [c.questions[0]!.question]: 'Unoffered' }; },
         (c: NativePlanQuestionCall) => { c.answers!.foreign = 'Foreign'; },
       ]) { const c = factory(); mutate(c); expect(classify(c)).toBe(false); }
-      const classifyFp = factory === issue ? engFirstReviewAUQ : (f: ReturnType<typeof fp>) => isEngCompletionHandoff(f, catalog);
+      const classifyFp = engFirstReviewAUQ;
       expect(classifyFp({ ...fp(factory()), signature: 'foreign:call' })).toBe(false);
       expect(classifyFp({ ...fp(factory()), nativeCall: undefined })).toBe(false);
       expect(classifyFp({ ...fp(factory()), nativeQuestionIndex: 1 })).toBe(false);
@@ -186,50 +159,10 @@ describe('Eng AD v2 completed native count evidence', () => {
     }
   });
 
-  test('closed handoff accepts either offered action and order, but cannot start or satisfy a review', () => {
-    const call = handoff(); call.questions[0]!.options.reverse();
-    for (const option of call.questions[0]!.options) {
-      call.answers = { [call.questions[0]!.question]: option.label };
-      expect(isHandoff(call)).toBe(true);
-    }
-    expect(census([call]).counts).toEqual({ setup: 0, review: 0, administrative: 1 });
-    expect(census([call]).phases[0]!.reviewStarted).toBe(false);
-  });
-
-  test('new task references or a missing, contradicted, or incomplete reviewed catalog remain substantive', () => {
-    for (const plan of ['', catalog.replace('**T10 ', '**T11 '), catalog + '\n' + captured.reviewedTasks.lines[2],
-      catalog.replace('Record regression', 'Do not record regression'), catalog.replace('Record regression', 'Discuss regression')]) {
-      expect(isHandoff(handoff(), plan)).toBe(false);
-    }
-    for (const change of [
-      (s: string) => s.replace('T1–T10', 'T1–T11'),
-      (s: string) => s.replace('T1–T10', 'T2–T10'),
-      (s: string) => s.replace('record T3', 'record T4'),
-      (s: string) => s + ' Also add a new migration before shipping.',
-      (s: string) => s.replace('implement T1–T10', 'approve and implement T1–T10'),
-    ]) { const c = handoff(); c.questions[0]!.options[0]!.description = change(c.questions[0]!.options[0]!.description); expect(isHandoff(c)).toBe(false); }
-  });
-
-  test('conditional closure, extra decisions, appended new work and quoted navigation are never discounted', () => {
-    for (const change of [
-      (s: string) => s.replace('Eng Review is CLEAR', 'Eng Review will be CLEAR after fixing the race'),
-      (s: string) => s.replace('Eng Review is CLEAR', 'Eng Review is not CLEAR'),
-      (s: string) => s.replace('What next?', 'What next? Also approve deleting the migration?'),
-      (s: string) => s + '\nCreate another cache before the next review.',
-      (s: string) => '> ' + s,
-      (s: string) => '```text\n' + s + '\n```',
-    ]) expect(isHandoff(changeQuestion(handoff(), change))).toBe(false);
-    const c = handoff(); c.questions[0]!.options[1]!.description += ' Remove the CI gate first.'; expect(isHandoff(c)).toBe(false);
-    const label = handoff(); label.questions[0]!.options[0]!.label += ' and rewrite auth';
-    label.answers = { [label.questions[0]!.question]: label.questions[0]!.options[0]!.label }; expect(isHandoff(label)).toBe(false);
-    const header = handoff(); header.questions[0]!.header = 'Issue 9'; expect(isHandoff(header)).toBe(false);
-  });
-
   test('new evidence selects precisely its affected existing paid workflows', () => {
     const selected = (path: string) => Object.entries(E2E_TOUCHFILES).filter(([, patterns]) => patterns.some(p => matchGlob(path, p))).map(([name]) => name).sort();
     for (const path of ['test/eng-count-ad-v2.test.ts', 'test/fixtures/eng-count-ad-v2.json']) {
       expect(selected(path)).toEqual(['plan-eng-finding-count', 'plan-eng-multi-finding-batching']);
     }
-    expect(selected('test/helpers/eng-completion-handoff.ts')).toEqual(['plan-eng-finding-count']);
   });
 });

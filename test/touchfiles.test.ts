@@ -113,7 +113,7 @@ describe('selectTests', () => {
     },
   );
 
-  test.each(['test/helpers/owned-claude-transcript.ts', 'test/helpers/plan-skill-completion.ts'])(
+  test.each(['test/helpers/owned-claude-transcript.ts'])(
     'native completion changes select the Design UI gate: %s', (file) => {
       const result = selectTests([file], E2E_TOUCHFILES);
       expect(result.selected).toContain('plan-design-with-ui-scope');
