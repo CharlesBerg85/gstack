@@ -163,7 +163,7 @@ Refs are invalidated on navigation — run `snapshot` again after `goto`.
 ### Server
 | Command | Description |
 |---------|-------------|
-| `connect` | Launch headed Chromium with Chrome extension |
+| `connect [--supervise]` | Launch headed Chromium with Chrome extension; --supervise keeps the CLI attached and respawns a crashed server |
 | `disconnect` | Disconnect headed browser, return to headless mode |
 | `focus [@ref]` | Bring headed browser window to foreground (macOS) |
 | `handoff [message]` | Open visible Chrome at current page for user takeover |
