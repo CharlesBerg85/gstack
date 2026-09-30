@@ -138,7 +138,13 @@ const BASELINE = [
   'test/helpers-unit.test.ts',
   'test/helpers/budget-override.test.ts',
   'test/helpers/capture-parity-baseline.test.ts',
+  'test/helpers/claude-pty-runner.auq.unit.test.ts', // W4: moved from claude-pty-runner.unit.test.ts (exempt via its design SKILL.md.tmpl read), split along the pty/ module seams
+  'test/helpers/claude-pty-runner.classify.unit.test.ts', // W4: moved from claude-pty-runner.unit.test.ts (exempt via its design SKILL.md.tmpl read), split along the pty/ module seams
+  'test/helpers/claude-pty-runner.launch.unit.test.ts', // W4: moved from claude-pty-runner.unit.test.ts (exempt via its design SKILL.md.tmpl read), split along the pty/ module seams
+  'test/helpers/claude-pty-runner.plan-native.unit.test.ts', // W4: moved from claude-pty-runner.unit.test.ts (exempt via its design SKILL.md.tmpl read), split along the pty/ module seams
+  'test/helpers/claude-pty-runner.runners.unit.test.ts', // W4 fake-driver regressions: the PTY harness is itself the subject (plan-mode paid evals stand on it)
   'test/helpers/claude-pty-runner.scope-gate-floor.unit.test.ts',
+  'test/helpers/claude-pty-runner.screen.unit.test.ts', // W4: moved from claude-pty-runner.unit.test.ts (exempt via its design SKILL.md.tmpl read), split along the pty/ module seams
   'test/helpers/e2e-gate.unit.test.ts',
   'test/helpers/eval-store.test.ts',
   'test/helpers/hermetic-env.test.ts',
