@@ -7,6 +7,12 @@ import { readQACheckpointFiles, validateQACheckpoints } from './qa-checkpoint-ev
 import { nativeCalls } from './qa-checkpoint-evidence';
 import { qaNativeCapture } from './qa-evidence-producer';
 
+/** Webhook scenarios a run must observe, per mode; the verdict and the fixture's capture nudge share this list. */
+export const QA_WEBHOOK_REQUIRED_SCENARIOS: Record<QAMode, string[]> = {
+  'qa-only': ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba', 'cancel', 'dependency'],
+  qa: ['happy', 'cancel', 'dependency'],
+};
+
 const canonical = (value: any): string => JSON.stringify(value && typeof value === 'object'
   ? Array.isArray(value) ? value.map(item => JSON.parse(canonical(item)))
     : Object.fromEntries(Object.keys(value).sort().map(key => [key, JSON.parse(canonical(value[key]))])) : value) ?? 'null';
@@ -126,7 +132,7 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
   const cancellations = probes.filter(probe => fixture.family === 'cli' ? nativeCommand(probe) === 'bun cancel.ts' : probe.observed.scenario === 'cancel');
   if (!cancellations.length) failures.push('missing cancellation observation');
   if (fixture.family === 'webhook') {
-    for (const scenario of mode === 'qa-only' ? ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba'] : ['happy']) {
+    for (const scenario of QA_WEBHOOK_REQUIRED_SCENARIOS[mode].filter(scenario => !['cancel', 'dependency'].includes(scenario))) {
       if (!probes.some(probe => probe.observed.scenario === scenario)) failures.push(`missing native ${scenario} probe`);
     }
   } else if (!probes.some(probe => probe.observed.args?.[0] === 'apply' && qaProbeClassification(probe.observed) === 'pass')) failures.push('missing adjacent valid CLI apply');

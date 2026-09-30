@@ -333,3 +333,12 @@ test('materialize refuses evidence whose declared input snapshot predates the la
   f.json('annotations.json', { revision: 'fixture-revision', limits: ['Adverse coverage predates the input change.'], evidence: [{ ...rows[0], classification: 'superseded' }, rows[1]] });
   expect(f.run('materialize', f.root, 'annotations.json').status).toBe(0);
 });
+
+test('captures list declared-but-unrun required probes without judging them', () => {
+  const f = fixture();
+  const required = [`${process.execPath} -e console.log(JSON.stringify({step:1}))`, 'bun run probe -- reject'];
+  const result = spawnSync(process.execPath, [CLI, 'capture', f.root, '001', '--timeout-ms', '4000', '--', process.execPath, '-e', 'console.log(JSON.stringify({step:1}))'],
+    { cwd: f.root, encoding: 'utf8', timeout: 10_000, env: { ...process.env, GSTACK_QA_REQUIRED_PROBES: JSON.stringify(required) } });
+  expect(result.status, result.stderr).toBe(0);
+  expect(receipt(result.stdout).requiredRemaining).toEqual(['bun run probe -- reject']);
+});

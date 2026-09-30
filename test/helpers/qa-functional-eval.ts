@@ -10,7 +10,7 @@ import { runRecordedOfficeHoursAttempt, OFFICE_HOURS_BUN_GRACE_MS } from './offi
 import { resolveEvalModel } from '../../lib/eval-model';
 import { createQAFunctionalFixture, fixtureGit, ownedPath, qaFixtureActor, QA_TOOLS, type QAFamily, type QAMode } from './qa-functional-fixture';
 import { observeQAWrites, type QAWriteObservation } from './qa-functional-observer';
-import { qaFunctionalVerdict, verifyQANativeRegression, preserveQAArtifact, qaCaptureArtifacts } from './qa-functional-evidence';
+import { QA_WEBHOOK_REQUIRED_SCENARIOS, qaFunctionalVerdict, verifyQANativeRegression, preserveQAArtifact, qaCaptureArtifacts } from './qa-functional-evidence';
 import { QA_EVIDENCE_RUNTIME, qaEvidenceCommand, qaProducerReceipt, qaEvidenceHash } from './qa-evidence-producer';
 import { nativeCalls } from './qa-checkpoint-evidence';
 
@@ -115,7 +115,8 @@ export async function runQAFunctionalCase(entry: { id: string; family: QAFamily;
           workingDirectory: fixture.root, maxTurns: 40, allowedTools: QA_TOOLS, tools: QA_TOOLS,
           timeout, completionReserveMs: timeout / 4,
           testName: entry.id, runId, signal, env: { CLAUDE_CONFIG_DIR: fixture.config,
-            GIT_OPTIONAL_LOCKS: '0', QA_STATE_ROOT: path.join(fixture.root, '.qa-state') },
+            GIT_OPTIONAL_LOCKS: '0', QA_STATE_ROOT: path.join(fixture.root, '.qa-state'),
+            ...(entry.family === 'webhook' ? { GSTACK_QA_REQUIRED_PROBES: JSON.stringify(QA_WEBHOOK_REQUIRED_SCENARIOS[entry.mode].map(scenario => `bun run probe -- ${scenario}`)) } : {}) },
         });
         return result;
       },

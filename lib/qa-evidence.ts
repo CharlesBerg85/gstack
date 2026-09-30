@@ -131,6 +131,15 @@ function completeReceipts(root: string): Record<string, any>[] {
 const completeCaptures = (root: string): string[] => completeReceipts(root).map(receipt => receipt.id);
 const latestCompleteCapture = (root: string): string | undefined => completeCaptures(root).at(-1);
 
+/** Required native probes the caller declared (GSTACK_QA_REQUIRED_PROBES, a JSON array of child commands) that no complete capture has run yet. Informational only. */
+function requiredRemaining(root: string): { requiredRemaining?: string[] } {
+  let required: unknown;
+  try { required = JSON.parse(process.env.GSTACK_QA_REQUIRED_PROBES ?? 'null'); } catch { return {}; }
+  if (!Array.isArray(required) || !required.every(item => typeof item === 'string')) return {};
+  const run = new Set(completeReceipts(root).map(receipt => Array.isArray(receipt.argv) ? receipt.argv.join(' ') : ''));
+  return { requiredRemaining: required.filter(command => !run.has(command)) };
+}
+
 async function capture(root: string, captureId: string, publicOutput: boolean, option: string, budget: string, command: string, args: string[]) {
   id(captureId);
   if (!command || !['--deadline', '--timeout-ms'].includes(option)) throw new QaEvidenceError('Capture requires a deadline or finite command timeout');
@@ -210,7 +219,8 @@ async function capture(root: string, captureId: string, publicOutput: boolean, o
   const sha256 = publish(root, `.qa-evidence/${captureId}/receipt.json`, receipt);
   return { action: 'capture', id: captureId, status, sha256, exitCode, signal: result.signal, publicOutput,
     startedAt, completedAt, durationMs: Date.parse(completedAt) - Date.parse(startedAt), ...(remainingMs === undefined ? {} : { remainingMs }),
-    ...(status === 'complete' ? { next: `Another probe requires a checkpoint anchored on capture ${captureId} first; to stop exploring, publish none.` } : {}) };
+    ...(status === 'complete' ? { next: `Another probe requires a checkpoint anchored on capture ${captureId} first; to stop exploring, publish none.` } : {}),
+    ...requiredRemaining(root) };
 }
 
 function checkpoint(root: string, checkpointId: string, source: string | Record<string, string>) {
