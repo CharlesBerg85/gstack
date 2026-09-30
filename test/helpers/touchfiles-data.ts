@@ -1560,6 +1560,7 @@ export const LLM_JUDGE_TOUCHFILES: Record<string, string[]> = {
  */
 export const GLOBAL_TOUCHFILES = [
   'scripts/test-strict-output.ts',
+  'scripts/lib/shard-engine.ts',     // The shard engine test-strict-output.ts re-exports (moved there in the W2 refactor)
   // Canonical paid execution and its shared time allocations affect every paid test.
   'scripts/test-paid-shards.ts',
   'scripts/test-pr-profile.ts',
