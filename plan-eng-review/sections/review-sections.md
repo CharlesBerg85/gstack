@@ -585,7 +585,7 @@ Test step 2 adds user flows. Future paths remain proposals, not runnable code.
 
 Read the plan document. For each new feature, service, endpoint, or component described, trace how data will flow through the code — don't just list planned functions, actually follow the planned execution:
 
-1. **Read the plan.** For each planned component, understand what it does and how it connects to existing code. When grounded in concrete source and test files, read them in a dedicated tool call before drawing the diagram. Do not mix diff, grep, package/config, git, or commentary into that read; use separate calls for context. Base the diagram on that read.
+1. **Read the plan.** For each planned component, see how it connects to existing code. When grounded in concrete source and test files, read them in a dedicated tool call before drawing the diagram (`cat -n src/f && echo -- && cat -n test/f`). Do not mix diff, grep, config, git or commentary into that read; use separate calls for context. Base the diagram on that read.
 2. **Trace data flow.** Starting from each entry point (route handler, exported function, event listener, component render), follow the data through every branch:
    - Where does input come from? (request params, props, database, API call)
    - What transforms it? (validation, mapping, computation)

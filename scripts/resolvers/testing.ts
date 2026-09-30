@@ -304,7 +304,7 @@ Read the plan document. For each new feature, service, endpoint, or component de
 Read every changed file. For each one, trace how data flows through the code — don't just list functions, actually follow the execution:`;
 
   const traceStep1 = mode === 'plan'
-    ? `1. **Read the plan.** For each planned component, understand what it does and how it connects to existing code. When grounded in concrete source and test files, read them in a dedicated tool call before drawing the diagram. Do not mix diff, grep, package/config, git, or commentary into that read; use separate calls for context. Base the diagram on that read.`
+    ? `1. **Read the plan.** For each planned component, see how it connects to existing code. When grounded in concrete source and test files, read them in a dedicated tool call before drawing the diagram (\`cat -n src/f && echo -- && cat -n test/f\`). Do not mix diff, grep, config, git or commentary into that read; use separate calls for context. Base the diagram on that read.`
     : `1. **Read the diff.** For each changed file, read the full file (not just the diff hunk) to understand context.`;
 
   sections.push(`
