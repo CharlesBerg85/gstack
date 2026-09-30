@@ -52,7 +52,7 @@ test('native capture executes once, preserves exact JSON and stderr, and materia
   f.json('annotations.json', { revision: 'revision', runtime: 'runtime', cwd: f.root, evidence: [], learning: [] });
   const rejected = f.run('materialize', f.root, 'annotations.json');
   expect(rejected.status).toBe(2);
-  expect(receipt(rejected.stderr).message).toContain('limits (non-empty string array)');
+  expect(receipt(rejected.stderr).message).toContain('need limits (non-empty string array)');
   f.json('annotations.json', { revision: 'revision', runtime: 'runtime', cwd: f.root, limits: ['Only the declared contract was checked.'], evidence: [{ capture: '001', command: 'first native command', contract: 'README.md', expected: 'Declared exact result', classification: 'pass' }], learning: ['001'] });
   const report = f.run('materialize', f.root, 'annotations.json');
   expect(report.status, report.stderr).toBe(0);
@@ -251,4 +251,26 @@ test.skipIf(process.platform !== 'win32')('abrupt Windows evidence-wrapper exit 
     for (let index = 0; index < 100 && alive(); index++) await Bun.sleep(20);
     expect(alive()).toBe(false);
   } finally { child.kill('SIGKILL'); if (pid && alive()) process.kill(pid, 'SIGKILL'); await closed; }
+});
+
+test('a later capture requires a checkpoint anchored on the latest complete capture, and materialize fills metadata, learning and report links', () => {
+  const f = fixture();
+  expect(f.capture('001', 'console.log(JSON.stringify({ step: 1 }))').status).toBe(0);
+  const second = (id: string) => `bun gstack-qa-evidence capture ${f.root} ${id} --timeout-ms 4000 -- probe two`;
+  const refused = f.capture('002', 'console.log(JSON.stringify({ step: 2 }))');
+  expect(refused.status).toBe(2);
+  expect(receipt(refused.stderr).message).toContain('Checkpoint required before capture 002');
+  expect(fs.existsSync(path.join(f.root, '.qa-evidence/002'))).toBe(false);
+  const first = `bun gstack-qa-evidence capture ${f.root} 001 --timeout-ms 4000 -- probe one`;
+  expect(f.run('checkpoint', f.root, '001', '001', first, 'The first observation makes the second input the riskiest next probe.', second('002')).status).toBe(0);
+  const allowed = f.capture('002', 'console.log(JSON.stringify({ step: 2 }))');
+  expect(allowed.status, allowed.stderr).toBe(0);
+  expect(receipt(allowed.stdout).next).toContain('anchored on capture 002');
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Only two probes ran.'], evidence: [{ capture: '001', command: first, contract: 'README.md', expected: 'step 1', classification: 'pass' }] });
+  const report = f.run('materialize', f.root, 'annotations.json');
+  expect(report.status, report.stderr).toBe(0);
+  expect(receipt(report.stdout).reportLinks).toEqual(['[checkpoint 001](exploration-001.json)']);
+  const final = JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8'));
+  expect(final).toMatchObject({ runtime: `bun ${Bun.version}`, cwd: f.root });
+  expect(final.learning).toEqual([{ observationCommand: first, hypothesis: 'The first observation makes the second input the riskiest next probe.', nextCommand: second('002') }]);
 });

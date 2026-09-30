@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { atomicWriteSync } from './fs-atomic';
 import { qaDeadlineStatus, readQaDeadline, runQaDeadlineCommand, runQaWindowsWorker, startQaDeadline, withQaReceiptOutput } from './qa-deadline';
 import { scan } from './redact-engine';
@@ -9,6 +10,11 @@ const object = (value: unknown): value is Record<string, any> => value !== null 
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 const exact = (value: unknown, keys: string[]) => object(value) && Object.keys(value).sort().join(',') === keys.sort().join(',');
 class QaEvidenceError extends Error {}
+const currentRevision = () => {
+  const result = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+  if (result.status !== 0 || !/^[0-9a-f]{40,64}$/.test(result.stdout.trim())) throw new QaEvidenceError('Invalid report annotations: revision is required when git rev-parse HEAD is unavailable');
+  return result.stdout.trim();
+};
 
 function id(value: string): string {
   if (!/^\d{3}$/.test(value)) throw new QaEvidenceError('Capture and checkpoint IDs must be three digits');
@@ -108,9 +114,29 @@ export function readQaCapture(reportRoot: string, captureId: string, expectedHas
   return { receipt, sha256, stdout: out, stderr: err, observed, observationText };
 }
 
+const anchoredOn = (command: unknown, captureId: string) => typeof command === 'string' && new RegExp(`\\scapture\\s+\\S+\\s+${captureId}(?:\\s|$)`).test(command);
+const nativeCommand = (command: string) => command.slice(command.indexOf(' -- ') + 4).trim();
+
+function checkpointNotes(root: string): Record<string, any>[] {
+  return fs.readdirSync(root).filter(name => /^exploration-\d{3}\.json$/.test(name)).sort()
+    .map(name => ({ name, ...JSON.parse(decode(read(root, name))) }));
+}
+
+function latestCompleteCapture(root: string): string | undefined {
+  if (!fs.existsSync(path.join(root, '.qa-evidence'))) return undefined;
+  return fs.readdirSync(owned(root, '.qa-evidence')).filter(name => /^\d{3}$/.test(name) && fs.existsSync(path.join(root, '.qa-evidence', name, 'receipt.json')))
+    .map(name => JSON.parse(decode(read(root, `.qa-evidence/${name}/receipt.json`))))
+    .filter(receipt => receipt.status === 'complete')
+    .sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt)).at(-1)?.id;
+}
+
 async function capture(root: string, captureId: string, publicOutput: boolean, option: string, budget: string, command: string, args: string[]) {
   id(captureId);
   if (!command || !['--deadline', '--timeout-ms'].includes(option)) throw new QaEvidenceError('Capture requires a deadline or finite command timeout');
+  const previous = latestCompleteCapture(root);
+  if (previous && !checkpointNotes(root).some(note => anchoredOn(note.observationCommand, previous) && anchoredOn(note.nextCommand, captureId))) {
+    throw new QaEvidenceError(`Checkpoint required before capture ${captureId}: first publish a checkpoint whose observationCommand is capture ${previous}'s full command and whose nextCommand is this exact capture command (checkpoint ROOT NNN ${previous} 'capture ${previous} command' 'causal hypothesis' 'this command'), then rerun this command unchanged. To stop exploring instead, run no further probe.`);
+  }
   if (option === '--timeout-ms' && (!/^[1-9]\d*$/.test(budget) || !Number.isSafeInteger(Number(budget)) || Number(budget) > 2_147_483_647)) throw new QaEvidenceError('Invalid command timeout');
   privateDirectory(root, '.qa-evidence');
   const directory = privateDirectory(root, `.qa-evidence/${captureId}`, true);
@@ -182,7 +208,8 @@ async function capture(root: string, captureId: string, publicOutput: boolean, o
     ...streams };
   const sha256 = publish(root, `.qa-evidence/${captureId}/receipt.json`, receipt);
   return { action: 'capture', id: captureId, status, sha256, exitCode, signal: result.signal, publicOutput,
-    startedAt, completedAt, durationMs: Date.parse(completedAt) - Date.parse(startedAt), ...(remainingMs === undefined ? {} : { remainingMs }) };
+    startedAt, completedAt, durationMs: Date.parse(completedAt) - Date.parse(startedAt), ...(remainingMs === undefined ? {} : { remainingMs }),
+    ...(status === 'complete' ? { next: `Another probe requires a checkpoint anchored on capture ${captureId} first; to stop exploring, publish none.` } : {}) };
 }
 
 function checkpoint(root: string, checkpointId: string, source: string | Record<string, string>) {
@@ -204,11 +231,23 @@ function checkpoint(root: string, checkpointId: string, source: string | Record<
 function materialize(root: string, source: string) {
   const bytes = read(root, source);
   if (scan(decode(bytes)).findings.some(finding => finding.tier === 'HIGH')) throw new QaEvidenceError('Sensitive annotations cannot be published');
-  const annotations = JSON.parse(decode(bytes));
+  const supplied = JSON.parse(decode(bytes));
+  if (!object(supplied)) throw new QaEvidenceError('Invalid report annotations: need a JSON object');
+  const notes = checkpointNotes(root);
+  const annotations: Record<string, any> = {
+    revision: supplied.revision ?? currentRevision(),
+    runtime: supplied.runtime ?? `bun ${Bun.version}`,
+    cwd: supplied.cwd ?? process.cwd(),
+    limits: supplied.limits,
+    evidence: supplied.evidence,
+    learning: supplied.learning ?? notes.filter(note => typeof note.observationCommand === 'string' && typeof note.nextCommand === 'string'
+      && nativeCommand(note.observationCommand) !== nativeCommand(note.nextCommand)).map(note => note.name.slice(12, 15)),
+    ...Object.fromEntries(Object.entries(supplied).filter(([key]) => !['revision', 'runtime', 'cwd', 'limits', 'evidence', 'learning'].includes(key))),
+  };
   if (!exact(annotations, ['revision', 'runtime', 'cwd', 'limits', 'evidence', 'learning'])
     || !['revision', 'runtime', 'cwd'].every(key => typeof annotations[key] === 'string' && annotations[key].trim())
     || !Array.isArray(annotations.limits) || !annotations.limits.length || !annotations.limits.every((limit: unknown) => typeof limit === 'string' && limit.trim())
-    || !Array.isArray(annotations.evidence) || !Array.isArray(annotations.learning)) throw new QaEvidenceError('Invalid report annotations: need exactly revision, runtime and cwd (non-empty strings), limits (non-empty string array), evidence (row array) and learning (checkpoint ID array)');
+    || !Array.isArray(annotations.evidence) || !Array.isArray(annotations.learning)) throw new QaEvidenceError('Invalid report annotations: need limits (non-empty string array) and evidence (row array), no other keys; revision, runtime and cwd (non-empty strings) and learning (checkpoint ID array) are filled in when omitted');
   const captures = new Set<string>();
   const evidence = annotations.evidence.map((row: any) => {
     if (!exact(row, ['capture', 'command', 'contract', 'expected', 'classification'])
@@ -224,7 +263,9 @@ function materialize(root: string, source: string) {
     return { observationCommand: note.observationCommand, hypothesis: note.hypothesis, nextCommand: note.nextCommand };
   });
   const sha256 = publish(root, 'evidence.json', { ...annotations, evidence, learning });
-  return { action: 'materialize', status: 'complete', sha256, annotationsSha256: hash(bytes), exitCode: 0 };
+  return { action: 'materialize', status: 'complete', sha256, annotationsSha256: hash(bytes), exitCode: 0,
+    reportLinks: notes.map(note => `[checkpoint ${note.name.slice(12, 15)}](${note.name})`),
+    next: 'Include every reportLinks entry in the Markdown report.' };
 }
 
 export async function qaEvidenceMain(args: string[]): Promise<number> {
