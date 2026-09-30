@@ -1,0 +1,11 @@
+{
+  "recordedFrom": "96764e80 (before the W2 shard-engine move)",
+  "moves": {
+    "scripts/lib/shard-engine.ts": ["scripts/test-strict-output.ts", "scripts/test-free-shards.ts", "scripts/test-paid-shards.ts"]
+  },
+  "selections": {
+    "scripts/test-strict-output.ts": { "e2e": "global", "judges": "global" },
+    "scripts/test-free-shards.ts": { "e2e": [], "judges": [] },
+    "scripts/test-paid-shards.ts": { "e2e": "global", "judges": "global" }
+  }
+}
