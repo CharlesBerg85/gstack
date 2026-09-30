@@ -81,7 +81,7 @@ export function docsActorVerdict(state: DocsActorState, report: string, publishe
 }
 
 export function docsFaultPrompt(fixture: ReturnType<typeof fixtureDocs>, phase: string, report: string, scenario: DocsFault,
-  seed?: { completion: string }): string {
+  seed?: { candidate: string; completion: string }): string {
   const actorFile = path.join(import.meta.dir, 'docsync-fault-actor.ts');
   const stateFile = path.join(fixture.home, 'actor-state.json');
   const opening = seed
@@ -91,7 +91,7 @@ export function docsFaultPrompt(fixture: ReturnType<typeof fixtureDocs>, phase: 
 
 ${docsBoundedStageInterface(fixture)}
 
-This native-parent fixture supplies a deterministic child transport instead of Agent/Task. It is a host adapter, not a replacement workflow. Do not invoke real Agent/Task or execute the child's audit/lifecycle yourself. ${seed ? 'In one response, Read the actual phase, its installed documentation section, the invocation record, and attempt 1\'s saved candidate and output.' : 'Read the actual phase and its installed documentation section and child assets.'} The adapter returns child evidence; only you apply the loaded workflow's gates.
+This native-parent fixture supplies a deterministic child transport instead of Agent/Task. It is a host adapter, not a replacement workflow. Do not invoke real Agent/Task or execute the child's audit/lifecycle yourself. ${seed ? `In one response, natively Read the actual phase, its installed documentation section at ${path.join(fixture.skills, 'ship/sections/documentation.md')}, the invocation record, attempt 1's candidate at ${seed.candidate} and its saved output. No ls, cat or directory search is needed, and native Edit of the invocation record needs no second Read. Keep each journal entry to at most four short lines and the final report to at most fifteen lines: cite evidence by artifact path and name only changed paths and hashes.` : 'Read the actual phase and its installed documentation section and child assets.'} The adapter returns child evidence; only you apply the loaded workflow's gates.
 
 Declared transport interface (literal key=value arguments; quote file paths as needed):
 bun ${actorFile} prepare ${stateFile} audit_id=ID
