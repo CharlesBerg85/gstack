@@ -85,6 +85,21 @@ _gstack_config_rank() {
   esac
 }
 
+# gstack_legacy_root_select — sets _gstack_legacy_root to the second candidate
+# root merged privacy settings are also read from: $HOME/.gstack
+# (GSTACK_TEST_LEGACY_ROOT in tests), or "" when there is none or it is the
+# resolved root. Call after gstack_state_root_select.
+gstack_legacy_root_select() {
+  _gstack_legacy_root=""
+  if [ -n "${GSTACK_TEST_LEGACY_ROOT:-}" ]; then
+    _gstack_legacy_root="$GSTACK_TEST_LEGACY_ROOT"
+  elif [ -n "$_gstack_home_val" ]; then
+    _gstack_legacy_root="$_gstack_home_val/.gstack"
+  fi
+  [ "$_gstack_legacy_root" = "$_gstack_sr_root" ] && _gstack_legacy_root=""
+  return 0
+}
+
 # gstack_config_select KEY — sets _gstack_cfg_value and _gstack_cfg_root (the
 # root that supplied it; both "" when unset). Merged privacy keys (telemetry,
 # memorable_recall, codex_reviews, update_check) take the most restrictive
@@ -97,14 +112,9 @@ gstack_config_select() {
   [ -n "$_gstack_cfg_value" ] && _gstack_cfg_root="$_gstack_sr_root"
   _gstack_config_rank "$1" "x"
   [ -n "$_gstack_cfg_rank" ] || return 0
-  if [ -n "${GSTACK_TEST_LEGACY_ROOT:-}" ]; then
-    _gstack_cfg_legacy="$GSTACK_TEST_LEGACY_ROOT"
-  elif [ -n "$_gstack_home_val" ]; then
-    _gstack_cfg_legacy="$_gstack_home_val/.gstack"
-  else
-    return 0
-  fi
-  [ "$_gstack_cfg_legacy" = "$_gstack_sr_root" ] && return 0
+  gstack_legacy_root_select
+  [ -n "$_gstack_legacy_root" ] || return 0
+  _gstack_cfg_legacy="$_gstack_legacy_root"
   _gstack_config_from_root "$_gstack_cfg_legacy" "$1"
   [ -n "$_gstack_cfg_one" ] || return 0
   if [ -z "$_gstack_cfg_value" ]; then

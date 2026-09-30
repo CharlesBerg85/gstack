@@ -44,6 +44,7 @@ import { localEngineStatus, type LocalEngineStatus } from "../lib/gbrain-local-s
 import { buildGbrainEnv, spawnGbrain, execGbrainJson, NEEDS_SHELL_ON_WINDOWS, bashScriptInvocation } from "../lib/gbrain-exec";
 import { repoPolicyTier as sharedRepoPolicyTier } from "../lib/gbrain-repo-policy-client";
 import { checkOwnedStagingDir } from "../lib/staging-guard";
+import { resolveStateRoot } from "../lib/state-root";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,7 @@ interface StageResult {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const HOME = homedir();
-const GSTACK_HOME = process.env.GSTACK_HOME || join(HOME, ".gstack");
+const GSTACK_HOME = resolveStateRoot();
 const STATE_PATH = join(GSTACK_HOME, ".gbrain-sync-state.json");
 const LOCK_PATH = join(GSTACK_HOME, ".sync-gbrain.lock");
 const STALE_LOCK_MS = 5 * 60 * 1000;
@@ -118,7 +119,7 @@ const DREAM_MARKER_STALE_MS = DEFAULT_DREAM_TIMEOUT_MS;
  * module-load-time const captures the real ~/.gstack before a test can redirect.
  */
 export function dreamMarkerPath(): string {
-  return join(process.env.GSTACK_HOME || join(homedir(), ".gstack"), ".dream-in-progress");
+  return join(resolveStateRoot(), ".dream-in-progress");
 }
 
 // Default 35-minute timeout for code-walk + memory-ingest stages. Override via

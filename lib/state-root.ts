@@ -39,6 +39,13 @@ function legacyStateRoot(env: StateRootEnv, platform: NodeJS.Platform): string |
   return home ? `${home}/.gstack` : null;
 }
 
+/** Roots merged privacy settings are read from: the resolved root, then $HOME/.gstack when different. */
+export function mergedStateRoots(env: StateRootEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+  const resolved = resolveStateRoot(env, platform);
+  const legacy = legacyStateRoot(env, platform);
+  return legacy && legacy !== resolved ? [resolved, legacy] : [resolved];
+}
+
 /** Privacy and egress opt-outs: most restrictive first. Read from every candidate root. */
 export const MERGED_CONFIG_KEYS: Record<string, readonly string[]> = {
   telemetry: ['off', 'anonymous', 'community'],
@@ -75,11 +82,8 @@ export interface ConfigKeyReading {
  * resolved root only.
  */
 export function readConfigKeyWithRoot(key: string, env: StateRootEnv = process.env, platform: NodeJS.Platform = process.platform): ConfigKeyReading {
-  const resolved = resolveStateRoot(env, platform);
   const order = MERGED_CONFIG_KEYS[key];
-  const candidates = [resolved];
-  const legacy = order ? legacyStateRoot(env, platform) : null;
-  if (legacy && legacy !== resolved) candidates.push(legacy);
+  const candidates = order ? mergedStateRoots(env, platform) : [resolveStateRoot(env, platform)];
   let best: ConfigKeyReading = { value: null, root: null };
   let bestRank = Infinity;
   for (const root of candidates) {
