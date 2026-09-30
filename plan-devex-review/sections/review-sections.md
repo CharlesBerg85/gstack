@@ -455,9 +455,9 @@ This fence is the only external-provider output surface. Native fallback prints
 only its `OUTSIDE VOICE (...)` subagent report; never print both for one review.
 
 **Error handling:** All errors are non-blocking — the outside voice is informational.
-- Auth failure (stderr contains "auth", "login", "unauthorized"): "Codex auth failed. Run \`codex login\` to authenticate." Fall back to the Claude subagent below.
-- Timeout: "Codex timed out after 5 minutes." Fall back to the Claude subagent below.
-- Empty response: "Codex returned no response." Fall back to the Claude subagent below.
+- **Auth failure:** If stderr contains "auth", "login", "unauthorized", or "API key": "Codex authentication failed. Run \`codex login\` to authenticate." Fall back to the Claude subagent below.
+- **Timeout:** "Codex timed out after 5 minutes." Fall back to the Claude subagent below.
+- **Empty response:** "Codex returned no response." Fall back to the Claude subagent below.
 
 **Native fallback — provider unavailable or execution failed, with reviews enabled:**
 

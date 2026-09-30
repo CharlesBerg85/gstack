@@ -8,7 +8,8 @@
         "scripts/resolvers/plan-gates.ts",
         "scripts/resolvers/spec-review.ts",
         "scripts/resolvers/outside-voice-steps.ts",
-        "scripts/resolvers/review-scope.ts"
+        "scripts/resolvers/review-scope.ts",
+        "scripts/resolvers/outside-voice.ts"
       ],
       "e2e": [
         "autoplan-dual-voice",
@@ -59,6 +60,27 @@
         "plan-eng-review/SKILL.md sections",
         "review/SKILL.md workflow",
         "ship/SKILL.md workflow"
+      ],
+      "global": false
+    },
+    "scripts/resolvers/design.ts": {
+      "modules": [
+        "scripts/resolvers/outside-voice.ts"
+      ],
+      "e2e": [
+        "autoplan-dual-voice",
+        "design-consultation-core",
+        "design-consultation-research",
+        "design-html-slop-gate",
+        "design-review-detector-shim",
+        "design-review-detector-shim-dom",
+        "design-review-fix",
+        "design-review-plugin-handoff",
+        "plan-design-with-ui-scope"
+      ],
+      "llmJudge": [
+        "design-consultation/SKILL.md research",
+        "plan-design-review/SKILL.md passes"
       ],
       "global": false
     }
