@@ -126,7 +126,7 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
   const cancellations = probes.filter(probe => fixture.family === 'cli' ? nativeCommand(probe) === 'bun cancel.ts' : probe.observed.scenario === 'cancel');
   if (!cancellations.length) failures.push('missing cancellation observation');
   if (fixture.family === 'webhook') {
-    for (const scenario of ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba']) {
+    for (const scenario of mode === 'qa-only' ? ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba'] : ['happy']) {
       if (!probes.some(probe => probe.observed.scenario === scenario)) failures.push(`missing native ${scenario} probe`);
     }
   } else if (!probes.some(probe => probe.observed.args?.[0] === 'apply' && qaProbeClassification(probe.observed) === 'pass')) failures.push('missing adjacent valid CLI apply');

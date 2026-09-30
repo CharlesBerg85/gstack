@@ -188,6 +188,22 @@ describe('functional evidence and native regression controls', () => {
     } finally { fixture.cleanup(); }
   });
 
+  test('webhook scenario coverage binds the report-only run; the fix run needs the happy path and relies on the post-repair recheck of all eight', () => {
+    const fixture = createQAFunctionalFixture('webhook');
+    try {
+      const calls: NativeCall[] = [{ tool: 'Read', input: { file_path: 'qa/sections/system-functional.md' }, output: 'Functional QA native instruction read '.repeat(8) }];
+      for (const scenario of ['happy', 'concurrent-ab', 'concurrent-ab', 'cancel', 'dependency']) recordedProbe(fixture, calls, ['probe.ts', scenario]);
+      const result = nativeCapture(calls);
+      const section = { path: 'qa/sections/system-functional.md', content: calls[0]!.output };
+      const missing = (mode: 'qa' | 'qa-only') => qaFunctionalVerdict(fixture, mode, result, observation, {}, section)
+        .filter(failure => /^missing native [a-z-]+ probe$/.test(failure)).sort();
+      expect(missing('qa-only')).toEqual(['missing native duplicate probe', 'missing native partial probe', 'missing native reject probe', 'missing native concurrent-ba probe'].sort());
+      expect(missing('qa')).toEqual([]);
+      const noHappy = nativeCapture(calls.filter(call => !(call.tool === 'Bash' && call.input.command === 'bun run probe -- happy')));
+      expect(qaFunctionalVerdict(fixture, 'qa', noHappy, observation, {}, section)).toContain('missing native happy probe');
+    } finally { fixture.cleanup(); }
+  });
+
   test('native-shaped adverse receipts cannot hide stream, input, state or interruption failures', () => {
     const cli = createQAFunctionalFixture('cli', { healthy: true });
     const webhook = createQAFunctionalFixture('webhook', { healthy: true });
