@@ -48,7 +48,7 @@ describe('captured Design completion envelope', () => {
   });
   test('the actual runner branch recognizes the idle native envelope without answering an exit gate',()=>{
     const f=completedEnvelope();try {
-      const source=fs.readFileSync(path.join(import.meta.dir,'helpers/claude-pty-runner.ts'),'utf8');
+      const source=fs.readFileSync(path.join(import.meta.dir,'helpers/pty/runners/counting.ts'),'utf8');
       const expression=/const nativeSummary = ([\s\S]+?);\n      const terminalFrame/.exec(source)?.[1];expect(expression).toBeTruthy();
       const evaluate=new Function('opts','nativeCompletion','renderedFrame','visible','transcript','startedAt','administrative',
         'isNumberedOptionListVisible','isPermissionDialogVisible','isProseAUQVisible','hasNativePlanTerminal',`return (${expression});`);

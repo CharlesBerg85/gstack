@@ -144,7 +144,7 @@ test('count capture assembly retains exact prepublication input through refresh,
  try {
   f.hook();const expected=readPendingWriteInput(f.recorder.file,f.expected,f.cwd,f.config,f.startedAt);
   expect(expected).toBeDefined();
-  const source=fs.readFileSync(path.join(import.meta.dir,'helpers/claude-pty-runner.ts'),'utf8');
+  const source=fs.readFileSync(path.join(import.meta.dir,'helpers/pty/runners/counting.ts'),'utf8');
   const start=source.indexOf('  const capture = (observation: object) => {',source.indexOf('export async function runPlanSkillCounting('));
   const end=source.indexOf('\n  function snapshot(',start);
   expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);

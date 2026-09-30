@@ -23,7 +23,11 @@
  */
 
 import { describe, test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import {
   isPermissionDialogVisible,
   isNumberedOptionListVisible,
@@ -919,43 +923,53 @@ describe('runPlanSkillObservation env passthrough surface', () => {
   });
 });
 
-describe('launchClaudePty model pin (static tripwire)', () => {
-  // Why static-grep, not a behavioral assert: the spawn fires immediately
-  // inside launchClaudePty, so asserting the built args array would require
-  // extracting an arg-builder seam — which rewrites the exact region kyoto-v5's
-  // hermetic --strict-mcp-config insertion edits, reintroducing a merge
-  // conflict the placement deliberately avoids. The end-to-end behavioral proof
-  // is the live PTY smoke (skill-e2e-plan-*-plan-mode.test.ts) running under the
-  // pinned model. These grep-level guards stop a refactor from silently
-  // dropping the pin or reordering it past extraArgs.
-  const src = readFileSync(new URL('./claude-pty-runner.ts', import.meta.url), 'utf-8');
-
+describe('launchClaudePty model pin', () => {
+  // Behavioral: a fake CLI records the argv its real PTY launch received.
+  // Chain mirrors session-runner.ts: opts.model -> EVALS_MODEL ->
+  // resolveEvalModel('capture'); --model precedes extraArgs so a per-test
+  // --model wins (last flag wins). Per-runner forwarding of opts.model is
+  // asserted through the fake driver in claude-pty-runner.runners.unit.test.ts.
   test('ClaudePtyOptions exposes model?: string', () => {
     const opts: ClaudePtyOptions = { model: 'claude-sonnet-4-6' };
     expect(opts.model).toBe('claude-sonnet-4-6');
   });
 
-  test('spawn args push --model from the EVALS_MODEL fallback chain', () => {
-    expect(src).toContain("args.push('--model', model)");
-    // opts.model -> EVALS_MODEL -> resolveEvalModel('capture') (mirrors session-runner.ts)
-    expect(src).toMatch(
-      /opts\.model\s*\?\?\s*process\.env\.EVALS_MODEL\s*\?\?\s*resolveEvalModel\('capture'\)/,
-    );
-  });
-
-  test('--model is pushed BEFORE extraArgs so a per-test --model override wins', () => {
-    const modelPush = src.indexOf("args.push('--model', model)");
-    const extraArgsPush = src.indexOf('if (opts.extraArgs) args.push(...opts.extraArgs)');
-    expect(modelPush).toBeGreaterThan(-1);
-    expect(extraArgsPush).toBeGreaterThan(-1);
-    expect(modelPush).toBeLessThan(extraArgsPush);
-  });
-
-  test('all three plan-skill wrappers forward model to launchClaudePty', () => {
-    // Count must match the number of wrappers (observation, counting, floor).
-    const forwards = src.match(/^\s*model: opts\.model,$/gm) ?? [];
-    expect(forwards.length).toBe(3);
-  });
+  test.skipIf(process.platform === 'win32')('spawn args pin --model from the fallback chain, before extraArgs, with hermetic MCP gating', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'pty-model-pin-'));
+    try {
+      const fake = join(dir, 'fake-claude');
+      writeFileSync(fake, `#!${process.execPath}\nprocess.stdout.write('ARGV=' + JSON.stringify(process.argv.slice(2)) + '\\n');\nsetInterval(() => {}, 1000);\n`, { mode: 0o755 });
+      const runner = pathToFileURL(join(import.meta.dir, 'claude-pty-runner.ts')).href;
+      const worker = join(dir, 'worker.ts');
+      writeFileSync(worker, `import { launchClaudePty } from ${JSON.stringify(runner)};
+import { resolveEvalModel } from ${JSON.stringify(pathToFileURL(join(import.meta.dir, '../../lib/eval-model.ts')).href)};
+const argv = async (opts, evalsModel) => {
+  if (evalsModel === undefined) delete process.env.EVALS_MODEL; else process.env.EVALS_MODEL = evalsModel;
+  const session = await launchClaudePty({ cwd: ${JSON.stringify(dir)}, timeoutMs: 5000, ...opts });
+  try { await session.waitFor(/ARGV=\\[.*\\]/, { timeoutMs: 4000, pollMs: 20 }); return JSON.parse(/ARGV=(\\[.*\\])/.exec(session.visibleText())[1]); }
+  finally { await session.close(); }
+};
+process.stdout.write(JSON.stringify({ capture: resolveEvalModel('capture'),
+  fallback: await argv({}, undefined), env: await argv({}, 'env-model'), explicit: await argv({ model: 'opts-model' }, 'env-model'),
+  extra: await argv({ extraArgs: ['--model', 'override'] }, undefined) }));
+`);
+      const run = (hermetic: string) => {
+        const result = spawnSync(process.execPath, [worker], { cwd: join(import.meta.dir, '../..'), encoding: 'utf8', timeout: 30_000,
+          env: { ...process.env, BROWSE_TERMINAL_BINARY: fake, EVALS_HERMETIC: hermetic } });
+        expect(result.status, result.stderr).toBe(0);
+        return JSON.parse(result.stdout.trim().split('\n').at(-1)!);
+      };
+      const hermetic = run('1');
+      const model = (args: string[]) => args[args.indexOf('--model') + 1];
+      expect(model(hermetic.fallback)).toBe(hermetic.capture);
+      expect(model(hermetic.env)).toBe('env-model');
+      expect(model(hermetic.explicit)).toBe('opts-model');
+      expect(hermetic.extra.indexOf('--model')).toBeLessThan(hermetic.extra.lastIndexOf('--model'));
+      expect(hermetic.extra.slice(-2)).toEqual(['--model', 'override']);
+      expect(hermetic.fallback).toContain('--strict-mcp-config');
+      expect(run('0').fallback).not.toContain('--strict-mcp-config');
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  }, 60_000);
 });
 
 // ────────────────────────────────────────────────────────────────────────────

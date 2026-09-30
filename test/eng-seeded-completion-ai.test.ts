@@ -119,11 +119,10 @@ console.log(JSON.stringify(obs));
 async function mockedObservation(frames: string[], verdict: 'waiting' | 'working', seeded = true) {
   // Execute the unchanged observer function with its real classifiers, a
   // synthetic clock/session, and a stubbed judge. No CLI or judge is launched.
-  const source = fs.readFileSync(path.join(import.meta.dir, 'helpers/claude-pty-runner.ts'), 'utf8');
+  const source = fs.readFileSync(path.join(import.meta.dir, 'helpers/pty/runners/observation.ts'), 'utf8');
   const start = source.indexOf('export async function runPlanSkillObservation(');
-  const end = source.indexOf('\n// ─', start);
-  expect(start).toBeGreaterThan(0); expect(end).toBeGreaterThan(start);
-  const executable = source.slice(start, end).replace('export async function', 'async function') + '\nreturn runPlanSkillObservation;';
+  expect(start).toBeGreaterThan(0);
+  const executable = source.slice(start).replace(/^export /gm, '') + '\nreturn runPlanSkillObservation;';
   const js = new Bun.Transpiler({ loader: 'ts' }).transformSync(executable);
   let clock = 0, tick = -1, closed = 0, judged = 0, seedSubmittedAt: number | null = null;
   const current = () => frames[Math.min(Math.max(tick, 0), frames.length - 1)]!;

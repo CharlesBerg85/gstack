@@ -8,7 +8,8 @@
  * frames accumulate in the raw/visible history; the latest one is the
  * current viewport. Never import this from production helpers.
  */
-import type { ClaudePtyOptions, ClaudePtySession, PtyDriver } from '../claude-pty-runner';
+import type { ClaudePtyOptions, ClaudePtySession } from './launch';
+import type { PtyDriver } from './session';
 
 export interface FakeSessionContext {
   /** Options the runner passed to `driver.launch`. */
