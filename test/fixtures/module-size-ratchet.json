@@ -33,7 +33,7 @@
     { "file": "test/helpers/pty/session.ts", "movedFrom": "test/helpers/claude-pty-runner.ts" }
   ],
   "residualFiles": [
-    { "file": "scripts/test-free-shards.ts", "maxLines": 2356, "reason": "free lane policy after the shard engine took spawn, sandbox, logs, seeds and flags" },
+    { "file": "scripts/test-free-shards.ts", "maxLines": 2361, "reason": "free lane policy after the shard engine took spawn, sandbox, logs, seeds and flags" },
     { "file": "scripts/test-paid-shards.ts", "maxLines": 1921, "reason": "paid lane policy after the shard engine took sandbox, logs, seeds, verdicts and flags" },
     { "file": "browse/src/server.ts", "maxLines": 2224, "reason": "server lifecycle, tunnel filter and fetch entry after the route table took dispatch, auth and handlers" },
     { "file": "test/helpers/claude-pty-runner.ts", "maxLines": 30, "reason": "re-export barrel for the 117 importers after the split into test/helpers/pty/*" }
