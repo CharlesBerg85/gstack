@@ -20,6 +20,14 @@
   won't reach it; this needs a mechanism outside the prompt (a hook or a
   tool-result gate). The HOLD SCOPE routing case fails whenever the handoff is
   skipped and nothing else names the posture in time. Effort M.
+- **Pre-push hook tests hang behind some shard neighbors** — on the free-suite
+  plan for dfe5e733, `test/redact-prepush-hook.test.ts` timed out 6 of 28 tests
+  at 30 s in shard 12 on two attempts (the hook process was still running and
+  killed as dangling); it passes alone in 9 s and in the next plan's shard 12.
+  One of the 29 files that ran before it only in the failing plan (browse CDP/
+  stealth/tab tests, pty-workspace-trust, heredoc-pipe-deadlock among them)
+  leaves state the hook's blocking path waits on. Reproduce with that shard's
+  plan under xvfb and GSTACK_EXPECT_BINARIES=1. Effort S.
 - **Let pass-rate history decide the rest** — every census on this branch had
   a different handful of single-trial reds. Once `eval:pass-rates` has 10 weekly
   trials per case, apply the CASE_QUARANTINE entry rule instead of chasing one
