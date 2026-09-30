@@ -222,15 +222,8 @@ ${ship ? '- Plan file found but unreadable (permissions, encoding) → return an
 
 type PlanCompletionMode = 'ship' | 'review';
 
-function generatePlanCompletionAuditInner(mode: PlanCompletionMode, part: 'audit' | 'gate' = 'audit'): string {
-  const sections: string[] = [];
-  let gate = '';
-
-  // ── Plan file discovery (shared) ──
-  sections.push(generatePlanFileDiscovery(mode === 'ship'));
-
-  // ── Item extraction ──
-  sections.push(`
+function planItemExtraction(mode: PlanCompletionMode): string {
+  return `
 ### Actionable Item Extraction
 
 ${mode === 'ship' ? `**Separate deliverables from execution-only verification.** Audit implementation and test-creation requirements below.
@@ -270,10 +263,11 @@ Extract every actionable item into the appropriate list. Look for:`}
 
 For each item, note:
 - The item text (verbatim or concise summary)
-- Its category: CODE | TEST | MIGRATION | CONFIG | DOCS`);
+- Its category: CODE | TEST | MIGRATION | CONFIG | DOCS`;
+}
 
-  // ── Verification Mode (per PR #1302 — VAS-449 remediation) ──
-  sections.push(`
+function planVerificationMode(mode: PlanCompletionMode): string {
+  return `
 ### Verification Mode
 
 Classify how each item can be verified. The diff cannot prove work in another repo or external system.
@@ -297,10 +291,11 @@ Inspect the validator and its hooks before running it; verify read-only effects 
 If that cannot be established, leave the item UNVERIFIABLE and defer the command to Step 4.7's isolation/permission preflight.
 Do not start applications, exercise APIs or mutate state during this audit.` : ''} If found${mode === 'review' ? ' and verified safe above' : ''}, invoke it with the relevant path argument (e.g., \`npm run validate-wiki -- <path>\`). For multi-target validators (e.g., \`validate-wiki --all\`), run once and reconcile per-item from the output. A passing validator promotes the item from UNVERIFIABLE to DONE; a failing one demotes to NOT DONE.
 
-**Honesty rule.** Do NOT classify an item as DONE just because related code shipped. Code that *handles* a deliverable is not the deliverable. Shipping a markdown-extraction library is not the same as shipping the markdown file. When in doubt between DONE and UNVERIFIABLE, prefer UNVERIFIABLE — better to surface a confirmation prompt than silently miss a deliverable.`);
+**Honesty rule.** Do NOT classify an item as DONE just because related code shipped. Code that *handles* a deliverable is not the deliverable. Shipping a markdown-extraction library is not the same as shipping the markdown file. When in doubt between DONE and UNVERIFIABLE, prefer UNVERIFIABLE — better to surface a confirmation prompt than silently miss a deliverable.`;
+}
 
-  // ── Cross-reference against diff ──
-  sections.push(`
+function planDiffCrossReference(mode: PlanCompletionMode): string {
+  return `
 ### Cross-Reference Against Diff
 
 Run \`git diff origin/<base>${mode === 'ship' ? '' : '...HEAD'}\` and \`git log origin/<base>..HEAD --oneline\` to understand what was implemented.
@@ -315,10 +310,11 @@ For each ${mode === 'review' ? 'audited deliverable' : 'extracted plan item'}, r
 
 **Be conservative with DONE** — require clear evidence. A file being touched is not enough; the specific functionality described must be present.
 **Be generous with CHANGED** — if the goal is met by different means, that counts as addressed.
-**Be honest with UNVERIFIABLE** — better to surface 5 items the user must manually confirm than silently classify them DONE.`);
+**Be honest with UNVERIFIABLE** — better to surface 5 items the user must manually confirm than silently classify them DONE.`;
+}
 
-  // ── Output format ──
-  sections.push(`
+function planCompletionOutputFormat(): string {
+  return `
 ### Output Format
 
 \`\`\`
@@ -347,11 +343,11 @@ Plan: {plan file path}
 ────────────────────
 COMPLETION: 4/10 DONE, 1 PARTIAL, 2 NOT DONE, 1 CHANGED, 2 UNVERIFIABLE
 ────────────────────
-\`\`\``);
+\`\`\``;
+}
 
-  // ── Gate logic (mode-specific) ──
-  if (mode === 'ship') {
-    gate = `
+function planShipGateLogic(): string {
+  return `
 ### Gate Logic
 
 The parent evaluates the completion checklist in priority order, including after an inline fallback:
@@ -393,9 +389,10 @@ The parent evaluates the completion checklist in priority order, including after
 **No plan file found:** Skip only the plan completion audit. Continue with Step 8.1, Scope Drift and Prior Learnings; Step 9 QA still runs.
 
 **Include in PR body (Step 19):** Add a \`## Plan Completion\` section with the checklist summary.`;
-  } else {
-    // review mode — enhanced Delivery Integrity (Release 2: Review Army)
-    sections.push(`
+}
+
+function planReviewDeliveryIntegrity(): string {
+  return `
 ### Fallback Intent Sources (when no plan file found)
 
 When no plan file is detected, use these secondary intent sources:
@@ -477,7 +474,34 @@ Plan items: N DONE, M PARTIAL, K NOT DONE
 
 **No plan file found:** Use commit messages and TODOS.md as fallback sources (see above).
 Emit Step 1.5's Scope Check once without plan fields. If no intent sources exist, state
-"No intent sources detected — skipping completion audit." rather than claiming requirements were verified.`);
+"No intent sources detected — skipping completion audit." rather than claiming requirements were verified.`;
+}
+
+function generatePlanCompletionAuditInner(mode: PlanCompletionMode, part: 'audit' | 'gate' = 'audit'): string {
+  const sections: string[] = [];
+  let gate = '';
+
+  // ── Plan file discovery (shared) ──
+  sections.push(generatePlanFileDiscovery(mode === 'ship'));
+
+  // ── Item extraction ──
+  sections.push(planItemExtraction(mode));
+
+  // ── Verification Mode (per PR #1302 — VAS-449 remediation) ──
+  sections.push(planVerificationMode(mode));
+
+  // ── Cross-reference against diff ──
+  sections.push(planDiffCrossReference(mode));
+
+  // ── Output format ──
+  sections.push(planCompletionOutputFormat());
+
+  // ── Gate logic (mode-specific) ──
+  if (mode === 'ship') {
+    gate = planShipGateLogic();
+  } else {
+    // review mode — enhanced Delivery Integrity (Release 2: Review Army)
+    sections.push(planReviewDeliveryIntegrity());
   }
 
   return part === 'gate' ? gate : sections.join('\n');
