@@ -96,8 +96,8 @@ with their failing contract and expected assertion; never create tests or freeze
 ## 4. Final report
 
 Use the surface report template; link each checkpoint. Separate browser scores, functional outcomes and proposed/executed tests.
-For evidence.json, Write R/annotations.json: {revision, runtime, cwd, evidence: [{capture, command, contract, expected, classification}], learning: [checkpoint IDs], limits}.
-Run `bun Q materialize R annotations.json` before Markdown; Q fills observed/learning, not classifications. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
+Write R/annotations.json: {revision, runtime, cwd, evidence: [{capture, command, contract, expected, classification}], learning: [checkpoint IDs], limits}.
+Before Markdown, `bun Q materialize R annotations.json` builds evidence.json from it; Q fills observed/learning, not classifications. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
 Evidence is invocation-local.
 Missing prerequisites/expectations/observations, timeouts and refusal never pass.
 Pass requires all required current-input contracts to pass with no required remainder.
