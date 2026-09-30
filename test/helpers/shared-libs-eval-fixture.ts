@@ -923,7 +923,7 @@ ${resumed.actorCommand}
 \`\`\`
 4. All prior receipts are preserved. Source-changing cycles invalidate earlier results: after edits, repeat the core review and invoke the actor again on the new zero-edit pass before final persistence. Never refresh an old receipt's hashes or relabel it as a new invocation. Missing, failed, stale or wrong-state results require noncompletion. The actor cannot complete core/checklist review, approve edits, answer decision questions or establish convergence for you. Apply the production COMPLETED/CONVERGED rules to your own work plus the current supplied results: only a current settled:true actor result from the final pass supplies the replaced Step 4.7 QA and Step 4.8 native adversarial prerequisites for those rules. It does not complete your own remaining work, and the no-credit disclosure below is a reporting label, not a missing stage. Never ask the question actor to override completion.
 5. In the final QA/verification summary, identify the actor results as simulated fixture-stage interactions, not actual QA or native adversarial execution; they receive no actual native coverage credit. Report any real post-fix verification separately. Separate genuine QA/native evaluations remain required; this component replay cannot satisfy them.`
-    : resumed ? `This is a bounded, no-edit resumed-stage fixture. The completed maintainability result is supplied in ${specialistInput}; verify its findings against real source. Read ${resumed.input}: it supplies clearly labeled SYNTHETIC settled Step 4.7 QA and Step 4.8 native adversarial prerequisite results for this isolated fixture state, not evidence that this model executed those stages and never actual native coverage credit. Other specialists and outside providers are not dispatched in this fixture. Do not dispatch or rerun them.
+    : resumed ? `This is a bounded, no-edit resumed-stage fixture. The completed maintainability result is supplied in ${specialistInput}; verify its findings against real source. Read ${resumed.input}: it supplies clearly labeled SYNTHETIC settled Step 4.7 QA and Step 4.8 native adversarial prerequisite results for this isolated fixture state, not evidence that this model executed those stages and never actual native coverage credit. Other specialists and outside providers are not dispatched in this fixture. Do not dispatch or rerun them. These supplied results also replace Step 4's early QA selection and method-loading prerequisites and Step 5.8's exploratory QA section, so read no QA scope or method assets under ../qa/sections/.
 Execute the core/checklist, merge, Fix-First decisions, source/identity/snapshot checks and final persistence yourself. Do not edit target source or Git index flags. A finding that requires edits blocks this bounded replay: report it honestly, without suppressing it or claiming completion. Before final persistence, after your final source checks, run this fixture prerequisite check as the sole command in its Bash call and inspect the entire JSON result:
 \`\`\`sh
 ${resumed.checkCommand}
@@ -960,7 +960,9 @@ export function reviewRevalidationPrompt(f: SharedLibsFixture, instructions: str
 Revalidation fixture execution contract:
 The runtime allows ${SHARED_INTERACTIVE_MAX_TURNS} assistant turns. Batch independent required source reads and other Git/configuration/attribute inspections only outside the receipt commands below. Preserve every required evidence check and dependency. This is a closed transport interface, not permission to omit workflow stages.
 
-1. Gather base metadata first. From the target repo, run the following as the sole command in its Bash call. Its stdout must contain only the token: no echo, labels, status, diff or other commands. Do not read the diff until step 2 verifies the start record; preserve Step 3's start-before-diff order.
+0. Your first response holds, together: native Reads of the workflow, the checklist, the supplied finding, any supplied prerequisite file and ${SHARED_LIBS_ROOT}/review/sections/shared-code-reuse.md (Step 5.0 requires it for the supplied prior Skip), plus one Bash call gathering base metadata: fetch, merge base, HEAD, branch, index entries and flags, local config and attributes, but not the diff.
+
+1. Gather base metadata first. Then, from the target repo, run the following as the sole command in its Bash call. Its stdout must contain only the token: no echo, labels, status, diff or other commands. Do not read the diff until step 2 verifies the start record; preserve Step 3's start-before-diff order.
 
 \`\`\`bash
 ${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'))} --start review
@@ -989,7 +991,8 @@ GSTACK_REVALIDATION_FINDING
 ${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'))} 'FINAL_REVIEW_JSON' --finish REVIEW_START && ${shellQuote(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-read'))}
 \`\`\`
 
-- Failed persistence or verification remains a failure. Late source changes still require the workflow's normal re-review; never skip checks, questions, or convergence rules to finish within the bound.`;
+- Failed persistence or verification remains a failure. Late source changes still require the workflow's normal re-review; never skip checks, questions, or convergence rules to finish within the bound.
+- Keep the final review summary to at most twelve lines: counts, the supplied advisory's decision with its fingerprint and checker result, the source-boundary evidence, the prerequisite source and anything blocked.`;
 }
 
 /** Seed a real, bound skipped advisory in an earlier review; never fabricate a verified binding. */
