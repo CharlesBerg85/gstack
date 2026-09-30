@@ -294,10 +294,23 @@ function materialize(root: string, source: string) {
     }
     return { observationCommand: note.observationCommand, hypothesis: note.hypothesis, nextCommand: note.nextCommand };
   });
-  const sha256 = publish(root, 'evidence.json', { ...annotations, evidence, learning });
-  return { action: 'materialize', status: 'complete', sha256, annotationsSha256: hash(bytes), exitCode: 0,
+  const classes = annotations.evidence.map((row: any) => String(row.classification).toLowerCase());
+  const open = [
+    ...annotations.evidence.filter((row: any) => String(row.classification).toLowerCase() === 'superseded').map((row: any) => `capture ${row.capture} superseded`),
+    ...completeCaptures(root).filter(capture => !captures.has(capture)).map(capture => `capture ${capture} withheld`),
+    ...(requiredRemaining(root).requiredRemaining ?? []).map(command => `required probe not run: ${command}`),
+    ...(annotations.evidence.length ? [] : ['no evidence rows']),
+  ];
+  const verdict = {
+    status: classes.some((value: string) => /fail|defect/.test(value)) ? 'fail'
+      : classes.some((value: string) => /block/.test(value)) ? 'blocked'
+        : open.length || classes.some((value: string) => !['pass', 'superseded'].includes(value)) ? 'inconclusive' : 'pass',
+    open,
+  };
+  const sha256 = publish(root, 'evidence.json', { ...annotations, evidence, learning, verdict });
+  return { action: 'materialize', status: 'complete', sha256, annotationsSha256: hash(bytes), exitCode: 0, verdict,
     reportLinks: notes.map(note => `[checkpoint ${note.name.slice(12, 15)}](${note.name})`),
-    next: 'Include every reportLinks entry in the Markdown report.' };
+    next: `Include every reportLinks entry in the Markdown report, and report the overall status as ${verdict.status}${verdict.open.length ? ` (open: ${verdict.open.join('; ')})` : ''}; rerun what is open first if a pass is required.` };
 }
 
 const QA_EVIDENCE_USAGE = 'capture ROOT ID [--public] --deadline FILE|--timeout-ms MS -- COMMAND ARGS | checkpoint ROOT ID CAPTURE OBSERVATION_COMMAND HYPOTHESIS NEXT_COMMAND | checkpoint ROOT ID INTENT_FILE | materialize ROOT ANNOTATIONS (annotations: {evidence: [{capture, command, contract, expected, classification}], limits: [..]}; revision, runtime, cwd and learning are filled in)';

@@ -331,7 +331,10 @@ test('materialize refuses evidence whose declared input snapshot predates the la
   expect(stale.status).toBe(2);
   expect(receipt(stale.stderr).message).toContain('capture 001 observed an older input snapshot than the latest capture 002');
   f.json('annotations.json', { revision: 'fixture-revision', limits: ['Adverse coverage predates the input change.'], evidence: [{ ...rows[0], classification: 'superseded' }, rows[1]] });
-  expect(f.run('materialize', f.root, 'annotations.json').status).toBe(0);
+  const materialized = f.run('materialize', f.root, 'annotations.json');
+  expect(materialized.status).toBe(0);
+  expect(receipt(materialized.stdout).verdict).toEqual({ status: 'inconclusive', open: ['capture 001 superseded'] });
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8')).verdict.status).toBe('inconclusive');
 });
 
 test('captures list declared-but-unrun required probes without judging them', () => {
