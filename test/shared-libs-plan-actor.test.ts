@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test';
 import { createSharedPlanReuseSelector } from './helpers/shared-libs-plan-actor';
 import { createSharedInteractiveToolHandler } from './helpers/shared-libs-eval-fixture';
 import capturedNoHardening from './fixtures/shared-libs-plan-callers-no-hardening-36633323521.json';
+import capturedParity from './fixtures/shared-libs-plan-callers-parity-36776104571.json';
 
 // Exact native R1 from the September 22 timeout. R2 was saved in an Edit, but
 // never sent as a native AUQ; its public draft fields are reconstructed below.
@@ -348,4 +349,39 @@ describe('bounded shared-code planning actor', () => {
     expect(run.answers).toEqual([]);
     expect(run.controller.signal.aborted).toBe(true);
   });
+
+  test('actual census parity wording preserves the contract; an unchanged-scope list is an exclusion', async () => {
+    // Exact native question from census 36776104571: "behaving exactly like the scheduler",
+    // "scheduler parity holds by construction", "Existing copies and helper hardening stay unchanged".
+    const run = actor();
+    const result = await run.callback('AskUserQuestion', capturedParity);
+    expect(result.updatedInput.answers).toEqual({ [capturedParity.questions[0].question]: capturedParity.questions[0].options[0].label });
+    expect(run.refusals).toEqual([]);
+  });
+
+  test.each([
+    ['exactly like the scheduler', 'not exactly like the scheduler', 'scheduler parity holds', 'breaks scheduler parity'],
+    ['exactly as src/scheduler.ts does', 'differently from src/scheduler.ts', 'scheduler parity holds', 'without scheduler parity'],
+  ] as const)('negated parity wording cannot supply preservation: %s', async (a, b, c, d) => {
+    const input = structuredClone(capturedParity);
+    const q = input.questions[0];
+    q.question = q.question.replaceAll('behaving exactly like the scheduler', 'behaving ' + b.replace('exactly as src/scheduler.ts does', '')).replaceAll(a, b).replaceAll(c, d).replaceAll('guaranteed scheduler parity', 'lost scheduler parity');
+    for (const option of q.options) option.description = option.description.replaceAll(a, b).replaceAll(c, d);
+    const run = actor();
+    await expect(run.callback('AskUserQuestion', input)).rejects.toThrow('shared-libs-plan-callers actor:');
+    expect(run.answers).toEqual([]);
+  });
+
+  test.each([
+    'Harden helper parsing so behavior stays unchanged.',
+    'Existing copies stay unchanged and tighten helper validation.',
+    'Migrate existing retry-worker.ts; helper hardening stays unchanged.',
+  ])('an unchanged-scope clause cannot hide an expansion: %s', async extra => {
+    const input = structuredClone(capturedParity);
+    input.questions[0].options[0].description += '\n' + extra;
+    const run = actor();
+    await expect(run.callback('AskUserQuestion', input)).rejects.toThrow('question expands');
+    expect(run.answers).toEqual([]);
+  });
 });
+
