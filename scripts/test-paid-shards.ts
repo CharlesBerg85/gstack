@@ -74,6 +74,7 @@ import {
   zeroExecutionVerdict,
   type LanePolicy,
   type ShardChildResult,
+  type ShardLog,
 } from './lib/shard-engine';
 import { PAID_TEST_GLOBS, isPaidTestFile } from '../test/helpers/paid-test-set';
 import { PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
@@ -696,6 +697,80 @@ function readLogTail(logPath: string, maxBytes = FAILURE_TAIL_BYTES): string {
   }
 }
 
+function paidShardCommand(files: string[], rootDir: string, timeoutMs: number, options: RunShardsOptions): ShardCommand {
+  return {
+    command: process.execPath,
+    args: [...buildPaidShardArgs(
+      exactTestFileSelectors(files, rootDir),
+      timeoutMs,
+      options.withinShardConcurrency ?? DEFAULT_WITHIN_SHARD_CONCURRENCY,
+      retriesForFiles(files),
+    ), ...(options.casePatterns ? ['--test-name-pattern', options.casePatterns[files[0]]] : [])],
+  };
+}
+
+/** Print the last FAILURE_TAIL_BYTES of a failed shard's log to stdout. */
+function printLogTail(label: string, logPath: string): void {
+  const tail = readLogTail(logPath);
+  if (tail.length === 0) return;
+  process.stdout.write(`${label} last ${Math.min(tail.length, FAILURE_TAIL_BYTES)} bytes of ${logPath}:\n`);
+  process.stdout.write(tail.endsWith('\n') ? tail : `${tail}\n`);
+}
+
+/** Acknowledge bootstrap dependency retention; an unconfirmed scope keeps the shard state. */
+async function settleBootstrapRetention(
+  scope: NonNullable<ReturnType<typeof createBootstrapRetentionScope>>,
+  deadlineMs: number,
+  label: string,
+  log: (line: string) => void,
+): Promise<{ failed: boolean; removable: boolean }> {
+  try {
+    const retained = await scope.cleanup(deadlineMs);
+    if (!retained.complete) log(`${label} bootstrap retention incomplete; qualification failed`);
+    return { failed: !retained.complete, removable: retained.removable };
+  } catch {
+    log(`${label} bootstrap retention acknowledgment failed; preserving shard state`);
+    return { failed: true, removable: false };
+  }
+}
+
+/**
+ * End the shard's log spool within the shard's own deadline. An error, a
+ * premature close or the deadline marks the spool failed (and logs once);
+ * returns true when the deadline expired first.
+ */
+function settleShardSpool(spool: ShardLog, deadlineMs: number, onIncomplete: () => void): Promise<boolean> {
+  const logStream = spool.stream;
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let expired = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (complete: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      logStream.off('error', onError);
+      logStream.off('close', onClose);
+      if (!complete) {
+        spool.failed = true;
+        logStream.destroy();
+        onIncomplete();
+      }
+      resolve(expired);
+    };
+    const onError = () => finish(false);
+    const onClose = () => finish(logStream.writableFinished && !spool.failed);
+    const expire = () => { expired = true; finish(false); };
+    logStream.once('error', onError);
+    logStream.once('close', onClose);
+    if (Date.now() >= deadlineMs) { expire(); return; }
+    if (spool.failed || logStream.destroyed) { finish(false); return; }
+    timer = setTimeout(expire, deadlineMs - Date.now());
+    try { logStream.end(() => finish(logStream.writableFinished && !spool.failed)); }
+    catch { finish(false); }
+  });
+}
+
 export async function runPaidShard(
   files: string[],
   shardNumber: number,
@@ -712,17 +787,7 @@ export async function runPaidShard(
   const log = options.log ?? ((line: string) => console.log(line));
   const label = `[test:paid] shard ${shardNumber}/${totalShards}`;
 
-  const { command, args } = options.commandFor
-    ? options.commandFor(files)
-    : {
-      command: process.execPath,
-      args: [...buildPaidShardArgs(
-        exactTestFileSelectors(files, rootDir),
-        timeoutMs,
-        options.withinShardConcurrency ?? DEFAULT_WITHIN_SHARD_CONCURRENCY,
-        retriesForFiles(files),
-      ), ...(options.casePatterns ? ['--test-name-pattern', options.casePatterns[files[0]]] : [])],
-    };
+  const { command, args } = options.commandFor ? options.commandFor(files) : paidShardCommand(files, rootDir, timeoutMs, options);
 
   const baseEnv = { ...(options.env ?? process.env) };
   if (options.evalDirBase) {
@@ -763,7 +828,6 @@ export async function runPaidShard(
   // Printed at START so a wedged shard is inspectable live, mid-run.
   const logPath = nextShardLogPath(options.logDir ?? os.tmpdir(), `gstack-paid-shard-${shardSlug(files)}`);
   const spool = openShardLog(logPath, label);
-  const logStream = spool.stream;
   log(`${label} full log: ${logPath}`);
 
   const classifier = new BunTestOutputClassifier();
@@ -814,45 +878,10 @@ export async function runPaidShard(
     throw error;
   } finally {
     if (incompleteCapture) log(`${label} incomplete child capture: ${JSON.stringify(incompleteCapture)}; retained log prefix: ${logPath}`);
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const finish = (complete: boolean) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        logStream.off('error', onError);
-        logStream.off('close', onClose);
-        if (!complete) {
-          spool.failed = true;
-          logStream.destroy();
-          log(`${label} incomplete log capture; retained prefix: ${logPath}`);
-        }
-        resolve();
-      };
-      const onError = () => finish(false);
-      const onClose = () => finish(logStream.writableFinished && !spool.failed);
-      const expire = () => { timedOut = true; finish(false); };
-      logStream.once('error', onError);
-      logStream.once('close', onClose);
-      if (Date.now() >= shardDeadline) { expire(); return; }
-      if (spool.failed || logStream.destroyed) { finish(false); return; }
-      timer = setTimeout(expire, shardDeadline - Date.now());
-      try { logStream.end(() => finish(logStream.writableFinished && !spool.failed)); }
-      catch { finish(false); }
-    });
+    if (await settleShardSpool(spool, shardDeadline, () => log(`${label} incomplete log capture; retained prefix: ${logPath}`))) timedOut = true;
     let retentionRemovable = true;
     if (bootstrapRetention) {
-      try {
-        const retained = await bootstrapRetention.cleanup(shardDeadline);
-        retentionFailed = !retained.complete;
-        retentionRemovable = retained.removable;
-        if (retentionFailed) log(`${label} bootstrap retention incomplete; qualification failed`);
-      } catch {
-        retentionFailed = true;
-        retentionRemovable = false;
-        log(`${label} bootstrap retention acknowledgment failed; preserving shard state`);
-      }
+      ({ failed: retentionFailed, removable: retentionRemovable } = await settleBootstrapRetention(bootstrapRetention, shardDeadline, label, log));
     }
     // Async, best-effort backstop: group-SIGKILLed tests never clean up.
     if (retentionRemovable) await removeShardSandbox(stateDir);
@@ -860,14 +889,9 @@ export async function runPaidShard(
 
   const summary = classifier.end();
 
-  // Pass expectedFiles so a shard whose bun child ran fewer files than planned
-  // (or zero, all self-skipped) with exit 0 is NOT recorded 'passed' — the
-  // invisible-non-execution class this runner exists to kill. bun prints
-  // "Ran N tests across M files" with M = selected files even when every test
-  // self-skips, so terminalFileCounts must include files.length. Enforced for
-  // injected commandFor (tests) too, matching the free runner — fake passing
-  // commands must print a synthetic `Ran N tests across M files. [Xms]` line,
-  // so tests can pin the summary-missing => failure backstop.
+  // expectedFiles: a shard whose bun child ran fewer files than planned with
+  // exit 0 is NOT 'passed' (bun counts self-skipped files, so M = planned).
+  // Fake commandFor children must print a synthetic `Ran N tests across M files`.
   const expectedFiles = files.length;
   let status: ShardStatus = strictShardStatus({
     timedOut, exitCode, summary, expectedFiles,
@@ -885,13 +909,7 @@ export async function runPaidShard(
 
   // Failure debuggability without the RAM cost: read back only the log's
   // tail. Live mode already streamed everything, so no re-print there.
-  if (status !== 'passed' && !streamLive) {
-    const tail = readLogTail(logPath);
-    if (tail.length > 0) {
-      process.stdout.write(`${label} last ${Math.min(tail.length, FAILURE_TAIL_BYTES)} bytes of ${logPath}:\n`);
-      process.stdout.write(tail.endsWith('\n') ? tail : `${tail}\n`);
-    }
-  }
+  if (status !== 'passed' && !streamLive) printLogTail(label, logPath);
   const logSuffix = status === 'passed' ? '' : ` — full log: ${logPath}`;
   log(`${label} ${status.toUpperCase()} in ${Math.round(elapsedMs / 1000)}s (exit ${exitCode ?? 'signal'})${logSuffix}`);
 

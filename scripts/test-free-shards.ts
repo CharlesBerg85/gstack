@@ -1757,6 +1757,86 @@ function trackShardBrowser(stateDir: string, env: NodeJS.ProcessEnv) {
   };
 }
 
+/**
+ * Drain one child pipe into `onChunk`. Capture failures are recorded as data
+ * in `failures`, never thrown: the caller still waits for the child's real exit.
+ */
+function captureFreeStream(
+  stream: NodeJS.ReadableStream | null,
+  origin: StreamOrigin,
+  failures: Map<StreamOrigin, Error>,
+  onChunk: (chunk: Buffer | string) => void,
+): Promise<void> {
+  return new Promise<void>((resolve) => {
+    if (!stream) {
+      failures.set(origin, new Error('configured pipe is missing'));
+      resolve();
+      return;
+    }
+    const readable = stream as NodeJS.ReadableStream & { readableEnded: boolean; destroyed: boolean; errored: Error | null };
+    let ended = readable.readableEnded;
+    const incomplete = (error?: Error | null): void => {
+      // A delayed error replaces the initial destroyed-stream diagnostic
+      // with its original cause.
+      if (error) failures.set(origin, error);
+      else if (!failures.has(origin)) failures.set(origin, new Error('stream closed before end'));
+      resolve();
+    };
+    // Even an already-destroyed pipe can emit error on the next tick.
+    stream.on('error', incomplete);
+    stream.once('end', () => { ended = true; resolve(); });
+    stream.once('close', () => {
+      if (!ended) incomplete(readable.errored);
+      else resolve();
+    });
+    stream.on('data', onChunk);
+    if (ended) resolve();
+    else if (readable.destroyed) incomplete(readable.errored);
+  });
+}
+
+/** Why a shard did not pass, on stderr (the epilogue repeats the names). */
+function explainFreeVerdict(label: string, status: FreeShardStatus, facts: {
+  cleanupError: string | null; stateDir: string; evidenceComplete: boolean; exitCode: number | null;
+  summary: ReturnType<BunTestOutputClassifier['end']>; expectedFiles: number; wallTimeoutMs: number;
+}): void {
+  const { summary, exitCode } = facts;
+  if (facts.cleanupError) console.error(`${label} browser cleanup failed: ${facts.cleanupError}; retained ${facts.stateDir}`);
+  if (status === 'timed-out') {
+    console.error(
+      `${label} exceeded the ${Math.round(facts.wallTimeoutMs / 1000)}s wall-clock deadline — `
+      + 'killed the process group. Reporting as TIMED-OUT (distinct from failed).',
+    );
+  } else if (status === 'failed' && facts.evidenceComplete && (exitCode ?? 1) === 0) {
+    const reason = summary.failedTests > 0 || summary.unhandledBetweenTests > 0
+      ? `reported ${summary.failedTests} failing test(s) and ${summary.unhandledBetweenTests} unhandled error(s) between tests`
+      : summary.terminalFileCounts.length === 0
+        ? "never printed bun's terminal summary — the run was truncated (a process.exit fired mid-suite)"
+        : `bun's summary reported ${summary.terminalFileCounts.join(', ')} file(s), expected ${facts.expectedFiles}`;
+    console.error(`${label} exited 0 but ${reason}. Treating as FAILED.`);
+  } else if (status === 'failed' && (exitCode ?? 1) !== 0) {
+    console.error(`${label} failed with exit code ${exitCode ?? 'signal'}`);
+  }
+}
+
+/** The recovery step and, only when the failure scope is complete, a focused rerun. */
+function logFreeRecovery(log: (line: string) => void, outcome: FreeShardOutcome, facts: {
+  cleanupError: string | null; logWriteFailed: boolean; captureIncomplete: boolean; rootDir: string;
+}): void {
+  const problem = facts.cleanupError ? 'Owned-process cleanup is unconfirmed; inspect the retained state before another run.'
+    : facts.logWriteFailed ? 'The evidence log could not be retained; repair the log destination before another run.'
+      : facts.captureIncomplete ? 'Evidence capture is incomplete; repair the stream or early exit before another run.'
+        : outcome.status === 'timed-out' ? 'Execution exceeded its deadline; inspect the last completed step before changing code or rerunning.'
+          : 'A test or module failed; the root cause is not established. Inspect the full log and repair the cause first.';
+  log(`[test:free] Recovery: ${problem} See docs/TESTING_INTERNALS.md.`);
+  const focused = outcome.failingFiles.filter(file => outcome.files.includes(file) && fs.existsSync(path.resolve(facts.rootDir, file)));
+  if (!outcome.unattributedFailures && focused.length) {
+    log(`[test:free] After repair, focused check: bun test ${focused.map(file => `'${file.replaceAll("'", "'\\''")}'`).join(' ')}`);
+  } else {
+    log('[test:free] No complete narrower failure scope is available; do not treat a subset rerun as complete coverage.');
+  }
+}
+
 /** One line per shard, printed after the run: `[test:free] shard i/N: M files, XXs, pass|fail|timed-out`. */
 function shardEpilogue(outcome: FreeShardOutcome, totalShards: number): string {
   return `[test:free] shard ${outcome.shard}/${totalShards}: ${outcome.files.length} files, `
@@ -1822,10 +1902,8 @@ export async function runFreeShard(
 
   // realpath: the browser tracker refuses a state dir whose path resolves elsewhere.
   const { stateDir, env } = createShardSandbox('gstack-free-shard-', options.env ?? process.env, { realpath: true });
-  // CLI renders otherwise attach to the repo's shared .gstack/browse.json,
-  // even with distinct Chromium profiles. Concurrent shards and surviving
-  // daemons from prior runs can then replace or remove each other's state.
-  // Override inherited state too; the shard owns this directory's cleanup.
+  // CLI renders otherwise share the repo's .gstack/browse.json, where concurrent
+  // shards and prior daemons replace each other's state; override inherited state.
   env.BROWSE_STATE_FILE = path.join(stateDir, '.gstack', 'browse.json');
   env.GSTACK_FREE_SHARD_ID = randomUUID();
 
@@ -1849,37 +1927,11 @@ export async function runFreeShard(
   const captureFailures = new Map<StreamOrigin, Error>();
   const drained = new Set<StreamOrigin>();
   const consumeStream = (stream: NodeJS.ReadableStream | null, origin: StreamOrigin): Promise<void> =>
-    new Promise<void>((resolve) => {
-      if (!stream) {
-        captureFailures.set(origin, new Error('configured pipe is missing'));
-        resolve();
-        return;
-      }
-      const readable = stream as NodeJS.ReadableStream & { readableEnded: boolean; destroyed: boolean; errored: Error | null };
-      let ended = readable.readableEnded;
-      const incomplete = (error?: Error | null): void => {
-        // A delayed error replaces the initial destroyed-stream diagnostic
-        // with its original cause. Failures are data, never early rejections
-        // while the caller is still waiting for the child's real exit.
-        if (error) captureFailures.set(origin, error);
-        else if (!captureFailures.has(origin)) captureFailures.set(origin, new Error('stream closed before end'));
-        resolve();
-      };
-      // Even an already-destroyed pipe can emit error on the next tick.
-      stream.on('error', incomplete);
-      stream.once('end', () => { ended = true; resolve(); });
-      stream.once('close', () => {
-        if (!ended) incomplete(readable.errored);
-        else resolve();
-      });
-      stream.on('data', (chunk: Buffer | string) => {
-        classifier.write(chunk, origin); // strict verdict ALWAYS sees the full stream
-        shardLog.write(chunk);
-        reporter.write(chunk, origin);
-        if (options.verbose) emitToConsole(typeof chunk === 'string' ? chunk : chunk.toString('utf8'), origin);
-      });
-      if (ended) resolve();
-      else if (readable.destroyed) incomplete(readable.errored);
+    captureFreeStream(stream, origin, captureFailures, (chunk) => {
+      classifier.write(chunk, origin); // strict verdict ALWAYS sees the full stream
+      shardLog.write(chunk);
+      reporter.write(chunk, origin);
+      if (options.verbose) emitToConsole(typeof chunk === 'string' ? chunk : chunk.toString('utf8'), origin);
     }).then(() => { drained.add(origin); });
 
   let child: ShardChildResult = { exitCode: null, timedOut: false, groupPid: null };
@@ -1932,23 +1984,10 @@ export async function runFreeShard(
     status = 'failed';
   }
 
-  if (cleanupError) console.error(`${label} browser cleanup failed: ${cleanupError}; retained ${stateDir}`);
-
-  if (status === 'timed-out') {
-    console.error(
-      `${label} exceeded the ${Math.round(wallTimeoutMs / 1000)}s wall-clock deadline — `
-      + 'killed the process group. Reporting as TIMED-OUT (distinct from failed).',
-    );
-  } else if (status === 'failed' && !cleanupError && !logWriteFailed && captureFailures.size === 0 && (exitCode ?? 1) === 0) {
-    const reason = summary.failedTests > 0 || summary.unhandledBetweenTests > 0
-      ? `reported ${summary.failedTests} failing test(s) and ${summary.unhandledBetweenTests} unhandled error(s) between tests`
-      : summary.terminalFileCounts.length === 0
-        ? "never printed bun's terminal summary — the run was truncated (a process.exit fired mid-suite)"
-        : `bun's summary reported ${summary.terminalFileCounts.join(', ')} file(s), expected ${files.length}`;
-    console.error(`${label} exited 0 but ${reason}. Treating as FAILED.`);
-  } else if (status === 'failed' && (exitCode ?? 1) !== 0) {
-    console.error(`${label} failed with exit code ${exitCode ?? 'signal'}`);
-  }
+  explainFreeVerdict(label, status, {
+    cleanupError, stateDir, exitCode, summary, expectedFiles: files.length, wallTimeoutMs,
+    evidenceComplete: !cleanupError && !logWriteFailed && captureFailures.size === 0,
+  });
 
   const report = reporter.report();
   const failingFiles = status === 'passed' ? [] : [...new Set([
@@ -1970,18 +2009,9 @@ export async function runFreeShard(
   log(shardEpilogue(outcome, totalShards));
   for (const line of buildRunEpilogue(status, report, outcome.elapsedMs, logPath)) log(line);
   if (status !== 'passed') {
-    const problem = cleanupError ? 'Owned-process cleanup is unconfirmed; inspect the retained state before another run.'
-      : logWriteFailed ? 'The evidence log could not be retained; repair the log destination before another run.'
-        : captureFailures.size || !report.sawTerminalSummary ? 'Evidence capture is incomplete; repair the stream or early exit before another run.'
-          : status === 'timed-out' ? 'Execution exceeded its deadline; inspect the last completed step before changing code or rerunning.'
-            : 'A test or module failed; the root cause is not established. Inspect the full log and repair the cause first.';
-    log(`[test:free] Recovery: ${problem} See docs/TESTING_INTERNALS.md.`);
-    const focused = failingFiles.filter(file => files.includes(file) && fs.existsSync(path.resolve(rootDir, file)));
-    if (!unattributedFailures && focused.length) {
-      log(`[test:free] After repair, focused check: bun test ${focused.map(file => `'${file.replaceAll("'", "'\\''")}'`).join(' ')}`);
-    } else {
-      log('[test:free] No complete narrower failure scope is available; do not treat a subset rerun as complete coverage.');
-    }
+    logFreeRecovery(log, outcome, {
+      cleanupError, logWriteFailed, rootDir, captureIncomplete: captureFailures.size > 0 || !report.sawTerminalSummary,
+    });
   }
   return outcome;
 }
