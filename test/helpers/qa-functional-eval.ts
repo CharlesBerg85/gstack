@@ -103,7 +103,7 @@ export async function runQAFunctionalCase(entry: { id: string; family: QAFamily;
     fixtureGit(fixture.root, ['commit', '-m', 'Bind current QA instructions to fixture']);
     fixture.revision = fixtureGit(fixture.root, ['rev-parse', 'HEAD']);
     if (fixtureGit(fixture.root, ['status', '--porcelain'])) throw new Error('QA fixture must start clean');
-    observer = await observeQAWrites(fixture.root, { evidenceProducer: true });
+    observer = await observeQAWrites(fixture.root, { evidenceProducer: true, atomicWriteMode: entry.mode });
     await runRecordedOfficeHoursAttempt({
       collector, name: entry.id, suite: 'Functional QA native E2E',
       model: process.env.EVALS_MODEL ?? resolveEvalModel('capture'),

@@ -14,11 +14,11 @@ function fixture() {
   return root;
 }
 
-async function atomicPublication(directory: string, declared?: string, atomicTargets?: string[]) {
+async function atomicPublication(directory: string, declared?: string, atomicTargets?: string[], atomicWriteMode?: 'qa' | 'qa-only') {
   const root = fixture();
   const temporary = path.join(root, directory, 'exploration-004.json.tmp.2644.340bb6ad0afe');
   const target = path.join(root, directory, 'exploration-004.json');
-  const observer = await observeQAWrites(root, { reportDirectory: declared, atomicTargets });
+  const observer = await observeQAWrites(root, { reportDirectory: declared, atomicTargets, atomicWriteMode });
   const stat = fs.lstatSync;
   let renamedAtWatch = false;
   let stopped = false;
@@ -81,6 +81,15 @@ async function atomicPublication(directory: string, declared?: string, atomicTar
     expect(result.observation.failures).toEqual([]);
     expect(result.observation.complete).toBe(true);
     expect(result.observation.events).toContainEqual(expect.objectContaining({ path: result.target, mask: 0x80 }));
+  });
+
+  test('fix mode treats an atomic temp for an authorized source/test write as transient; report-only mode stays strict', async () => {
+    const fix = await atomicPublication('src', undefined, undefined, 'qa');
+    expect(fix.renamedAtWatch).toBe(false);
+    expect(fix.observation.failures).toEqual([]);
+    const reportOnly = await atomicPublication('src', undefined, undefined, 'qa-only');
+    expect(reportOnly.renamedAtWatch).toBe(true);
+    expect(reportOnly.observation.complete).toBe(false);
   });
 
   test('supports an explicitly selected nested report directory, not an implicit reports name', async () => {
