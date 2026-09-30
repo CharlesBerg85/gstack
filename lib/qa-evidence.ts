@@ -12,8 +12,7 @@ const exact = (value: unknown, keys: string[]) => object(value) && Object.keys(v
 class QaEvidenceError extends Error {}
 const currentRevision = () => {
   const result = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
-  if (result.status !== 0 || !/^[0-9a-f]{40,64}$/.test(result.stdout.trim())) throw new QaEvidenceError('Invalid report annotations: revision is required when git rev-parse HEAD is unavailable');
-  return result.stdout.trim();
+  return result.status === 0 && /^[0-9a-f]{40,64}$/.test(result.stdout.trim()) ? result.stdout.trim() : undefined;
 };
 
 function id(value: string): string {
@@ -234,10 +233,17 @@ function materialize(root: string, source: string) {
   const supplied = JSON.parse(decode(bytes));
   if (!object(supplied)) throw new QaEvidenceError('Invalid report annotations: need a JSON object');
   const notes = checkpointNotes(root);
+  const measured: Record<string, string | undefined> = { revision: currentRevision(), runtime: `bun ${Bun.version}`, cwd: process.cwd() };
+  for (const [key, value] of Object.entries(measured)) {
+    if (value !== undefined && supplied[key] !== undefined && supplied[key] !== value) {
+      throw new QaEvidenceError(`Invalid report annotations: ${key} must be ${JSON.stringify(value)}; omit it and Q fills it`);
+    }
+  }
+  if (!measured.revision && supplied.revision === undefined) throw new QaEvidenceError('Invalid report annotations: revision is required when git rev-parse HEAD is unavailable');
   const annotations: Record<string, any> = {
-    revision: supplied.revision ?? currentRevision(),
-    runtime: supplied.runtime ?? `bun ${Bun.version}`,
-    cwd: supplied.cwd ?? process.cwd(),
+    revision: measured.revision ?? supplied.revision,
+    runtime: measured.runtime,
+    cwd: measured.cwd,
     limits: supplied.limits,
     evidence: supplied.evidence,
     learning: supplied.learning ?? notes.filter(note => typeof note.observationCommand === 'string' && typeof note.nextCommand === 'string'
@@ -260,6 +266,9 @@ function materialize(root: string, source: string) {
     if (typeof name !== 'string') throw new QaEvidenceError('Invalid checkpoint reference');
     const note = JSON.parse(decode(read(root, `exploration-${id(name)}.json`)));
     if (!exact(note, ['observationCommand', 'observed', 'hypothesis', 'nextCommand'])) throw new QaEvidenceError('Invalid referenced checkpoint');
+    if (nativeCommand(note.observationCommand) === nativeCommand(note.nextCommand)) {
+      throw new QaEvidenceError(`Invalid learning: checkpoint ${name} replays the same probe; name checkpoints whose next probe differs, or omit learning and Q selects them`);
+    }
     return { observationCommand: note.observationCommand, hypothesis: note.hypothesis, nextCommand: note.nextCommand };
   });
   const sha256 = publish(root, 'evidence.json', { ...annotations, evidence, learning });

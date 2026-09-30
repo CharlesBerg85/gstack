@@ -72,7 +72,7 @@ export interface QAWriteObservation {
   limits: string[];
 }
 
-export async function observeQAWrites(root: string, options: { reportDirectory?: string; evidenceProducer?: boolean } = {}) {
+export async function observeQAWrites(root: string, options: { reportDirectory?: string; evidenceProducer?: boolean; atomicTargets?: string[] } = {}) {
   if (process.platform !== 'linux') throw new Error('QA write observer unavailable: Linux inotify required');
   if (fs.realpathSync(root) !== root) throw new Error('Observer root must be canonical');
   let reportDirectory: string | undefined;
@@ -82,7 +82,8 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
     reportDirectory = path.relative(root, directory);
   }
   const transientFile = (relative: string) => qaWriteAllowed(relative, 'qa-only')
-    || (reportDirectory !== undefined && relative.startsWith(reportDirectory + path.sep));
+    || (reportDirectory !== undefined && relative.startsWith(reportDirectory + path.sep))
+    || (options.atomicTargets ?? []).some(target => relative.startsWith(target + '.tmp.') && /^\.tmp\.[1-9]\d*\.[0-9a-f]{12}$/.test(relative.slice(target.length)));
   const before = qaTreeSnapshot(root);
   const { dlopen, FFIType, ptr } = await import('bun:ffi');
   const libc = dlopen('libc.so.6', {

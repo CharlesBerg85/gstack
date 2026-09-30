@@ -14,11 +14,11 @@ function fixture() {
   return root;
 }
 
-async function atomicPublication(directory: string, declared?: string) {
+async function atomicPublication(directory: string, declared?: string, atomicTargets?: string[]) {
   const root = fixture();
   const temporary = path.join(root, directory, 'exploration-004.json.tmp.2644.340bb6ad0afe');
   const target = path.join(root, directory, 'exploration-004.json');
-  const observer = await observeQAWrites(root, { reportDirectory: declared });
+  const observer = await observeQAWrites(root, { reportDirectory: declared, atomicTargets });
   const stat = fs.lstatSync;
   let renamedAtWatch = false;
   let stopped = false;
@@ -74,6 +74,14 @@ async function atomicPublication(directory: string, declared?: string) {
       expect(qaWriteVerdict(result.observation, 'qa-only')).toContain(`forbidden qa-only write: ${result.target}`);
     });
   }
+
+  test('an authorized atomic target outside the report directory publishes without the per-file watch race', async () => {
+    const result = await atomicPublication('foreign/reports', undefined, ['foreign/reports/exploration-004.json']);
+    expect(result.renamedAtWatch).toBe(false);
+    expect(result.observation.failures).toEqual([]);
+    expect(result.observation.complete).toBe(true);
+    expect(result.observation.events).toContainEqual(expect.objectContaining({ path: result.target, mask: 0x80 }));
+  });
 
   test('supports an explicitly selected nested report directory, not an implicit reports name', async () => {
     const result = await atomicPublication('foreign/reports', 'foreign/reports');

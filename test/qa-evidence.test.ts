@@ -49,11 +49,11 @@ test('native capture executes once, preserves exact JSON and stderr, and materia
   expect(JSON.parse(fs.readFileSync(path.join(f.root, 'exploration-001.json'), 'utf8'))).toEqual({
     observationCommand: 'first native command', observed, hypothesis: 'The successful boundary suggests testing the rejected input next.', nextCommand: 'second native command',
   });
-  f.json('annotations.json', { revision: 'revision', runtime: 'runtime', cwd: f.root, evidence: [], learning: [] });
+  f.json('annotations.json', { revision: 'revision', evidence: [], learning: [] });
   const rejected = f.run('materialize', f.root, 'annotations.json');
   expect(rejected.status).toBe(2);
   expect(receipt(rejected.stderr).message).toContain('need limits (non-empty string array)');
-  f.json('annotations.json', { revision: 'revision', runtime: 'runtime', cwd: f.root, limits: ['Only the declared contract was checked.'], evidence: [{ capture: '001', command: 'first native command', contract: 'README.md', expected: 'Declared exact result', classification: 'pass' }], learning: ['001'] });
+  f.json('annotations.json', { revision: 'revision', limits: ['Only the declared contract was checked.'], evidence: [{ capture: '001', command: 'first native command', contract: 'README.md', expected: 'Declared exact result', classification: 'pass' }], learning: ['001'] });
   const report = f.run('materialize', f.root, 'annotations.json');
   expect(report.status, report.stderr).toBe(0);
   const final = JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8'));
@@ -273,4 +273,24 @@ test('a later capture requires a checkpoint anchored on the latest complete capt
   const final = JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8'));
   expect(final).toMatchObject({ runtime: `bun ${Bun.version}`, cwd: f.root });
   expect(final.learning).toEqual([{ observationCommand: first, hypothesis: 'The first observation makes the second input the riskiest next probe.', nextCommand: second('002') }]);
+});
+
+test('materialize rejects placeholder metadata and same-probe learning with the fix in the message', () => {
+  const f = fixture();
+  expect(f.capture('001', 'console.log(JSON.stringify({ step: 1 }))').status).toBe(0);
+  const command = (id: string) => `bun gstack-qa-evidence capture ${f.root} ${id} --timeout-ms 4000 -- probe same`;
+  expect(f.run('checkpoint', f.root, '001', '001', command('001'), 'Replaying the identical probe checks whether the first result is deterministic.', command('002')).status).toBe(0);
+  const row = { capture: '001', command: command('001'), contract: 'README.md', expected: 'step 1', classification: 'pass' };
+  f.json('annotations.json', { revision: 'fixture-revision', runtime: 'bun', limits: ['One probe.'], evidence: [row] });
+  const placeholder = f.run('materialize', f.root, 'annotations.json');
+  expect(placeholder.status).toBe(2);
+  expect(receipt(placeholder.stderr).message).toContain(`runtime must be "bun ${Bun.version}"`);
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['One probe.'], evidence: [row], learning: ['001'] });
+  const replay = f.run('materialize', f.root, 'annotations.json');
+  expect(replay.status).toBe(2);
+  expect(receipt(replay.stderr).message).toContain('checkpoint 001 replays the same probe');
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['One probe.'], evidence: [row] });
+  const selected = f.run('materialize', f.root, 'annotations.json');
+  expect(selected.status, selected.stderr).toBe(0);
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8')).learning).toEqual([]);
 });
