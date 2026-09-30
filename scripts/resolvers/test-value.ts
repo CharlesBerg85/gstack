@@ -118,8 +118,8 @@ const EXAMPLE_CARD = renderValueCard({
 const EXAMPLE_REJECTED = 'Rejected (covered_elsewhere): "checkout renders"; checkout.e2e.ts:15 covers it, so extend that test.';
 
 function questionList(mode: TestValueBarMode): string {
-  const numbered = QUESTIONS.map((question, index) => `${index + 1}. ${question}`);
-  return mode === 'qa' ? numbered.slice(2).join('\n') : numbered.join('\n');
+  const questions = mode === 'qa' ? QUESTIONS.slice(2) : QUESTIONS;
+  return questions.map((question, index) => `${index + 1}. ${question}`).join('\n');
 }
 
 function cardRules(mode: TestValueBarMode): string {
@@ -154,7 +154,7 @@ export function generateTestValueBar(_ctx: TemplateContext, args?: string[]): st
   const mode = args?.[0] as TestValueBarMode;
   if (!TEST_VALUE_BAR_MODES.includes(mode)) throw new Error(MESSAGES.unknownMode.message.replace('<x>', String(args?.[0])));
   const parts = [
-    `**Test value bar.** ${mode === 'qa' ? 'Before writing the test (the reproduced bug answers what it protects and what makes it fail):' : 'Propose or write a test only with all four answers; otherwise extend an existing test or drop it:'}`,
+    `**Test value bar.** ${mode === 'qa' ? 'Before writing or proposing a test, the reproduced bug already answers what it protects and what makes it fail; also answer:' : 'Propose or write a test only with all four answers; otherwise extend an existing test or drop it:'}`,
     questionList(mode),
     cardRules(mode),
   ];

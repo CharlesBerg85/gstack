@@ -643,10 +643,10 @@ and unclear contracts never authorize repair.
 
 ### 8a.5. Regression test before repair
 
-**Test value bar.** Before writing the test (the reproduced bug answers what it protects and what makes it fail):
+**Test value bar.** Before writing or proposing a test, the reproduced bug already answers what it protects and what makes it fail; also answer:
 
-3. Why does existing coverage not already catch that? Prefer adding a row to an existing table-driven test or shared fixture over a near-duplicate.
-4. Does it need a production seam (export, flag, wrapper, injection hook) that no production caller needs? If yes, test at the real boundary instead.
+1. Why does existing coverage not already catch that? Prefer adding a row to an existing table-driven test or shared fixture over a near-duplicate.
+2. Does it need a production seam (export, flag, wrapper, injection hook) that no production caller needs? If yes, test at the real boundary instead.
 
 Value card: `Value: protects=<...>; fails_when=<...>; why_new=<...>; seam=none` (seam: `none` or its name); each field at most 160 UTF-8 bytes here (clamp to 157 plus `...`; JSON keeps full values). Put it in the 8e.5 record (/qa) or under each proposed test (/qa-only). A missing upstream card never blocks: derive it; ignore unknown fields.
 
