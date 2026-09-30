@@ -228,7 +228,8 @@ describe('selectTests', () => {
     }
   });
 
-  test.each(['scripts/resolvers/design.ts', 'scripts/resolvers/review.ts'])(
+  test.each(['scripts/resolvers/design.ts', 'scripts/resolvers/review-dashboard.ts', 'scripts/resolvers/plan-gates.ts',
+    'scripts/resolvers/spec-review.ts', 'scripts/resolvers/outside-voice-steps.ts', 'scripts/resolvers/review-scope.ts'])(
     'Design rendering source selects its workflow judge: %s', (file) => {
       const result = selectTests([file], LLM_JUDGE_TOUCHFILES);
       expect(result.reason).toBe('diff');

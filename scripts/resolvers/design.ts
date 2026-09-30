@@ -1,4 +1,4 @@
-import { outsideVoiceFor, outsideVoiceInvocation, outsideVoicePreflight, outsideVoiceProvenance } from './outside-voice';
+import { outsideVoiceFailurePolicy, outsideVoiceFor, outsideVoiceInvocation, outsideVoicePreflight, outsideVoiceProvenance } from './outside-voice';
 import { type TemplateContext, toShellPath } from './types';
 import { AI_SLOP_BLACKLIST, OPENAI_HARD_REJECTIONS, OPENAI_LITMUS_CHECKS, CC_BACKGROUND_DEFAULT_SINCE } from './constants';
 import { OVERUSED_FONTS_DISPLAY, BANNED_FONTS, FONTS_BODY_UI_OK, FONTS_MONO_OK, FONTS_VERIFIED_FREE, HANDOFF_COMMANDS, selectCatalog, catalogEntries, renderCatalog, detectorSlopEntries, judgmentTellEntries } from '../../lib/design-catalog';
@@ -852,9 +852,7 @@ ${outsideVoiceInvocation(ctx, { timeoutMs: 300000, reasoningEffort, ...(isDesign
 "${subagentPrompt}"
 
 **Error handling (all non-blocking):**
-- **Auth failure:** If stderr contains "auth", "login", "unauthorized", or "API key": "${outsideVoiceFor(ctx).label} authentication failed. Run \`${outsideVoiceFor(ctx).id === 'codex' ? 'codex login' : 'claude auth login'}\` to authenticate."
-- **Timeout:** "${outsideVoiceFor(ctx).label} timed out after 5 minutes."
-- **Empty response:** "${outsideVoiceFor(ctx).label} returned no response."
+${outsideVoiceFailurePolicy(ctx, { timeoutMinutes: 5, onTimeout: 'fallback', stderrOnEmpty: false, fallback: 'none', escape: 0 })}
 - On any ${outsideVoiceFor(ctx).label} error: proceed with ${outsideVoiceFor(ctx).nativeLabel} subagent output only${isDesignConsultation ? '; identify it as the only completed independent proposal' : ', tagged \`[single-model]\`'}.
 - If ${outsideVoiceFor(ctx).nativeLabel} subagent also fails: "Outside voices unavailable — ${isDesignConsultation ? 'continuing to Q2 with my draft direction' : 'continuing with primary review'}."
 

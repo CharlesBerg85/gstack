@@ -2503,7 +2503,7 @@ Present the full output verbatim. An unavailable outside challenge does not bloc
 
 **Error handling:** Only this optional outside adversarial pass is non-blocking; native completion and structured-review decisions still apply.
 - **Auth failure:** If stderr contains "auth", "login", "unauthorized", or "API key": "Claude Code authentication failed. Run \`claude auth login\` to authenticate."
-- **Timeout:** "Claude Code exceeded 9 minutes and was terminated; this pass produced NO findings." A timed-out pass is MISSING COVERAGE, not a clean bill — say so explicitly rather than continuing as if Claude Code had reviewed.
+- **Timeout:** "Claude Code timed out after 9 minutes and was terminated; this pass produced NO findings." A timed-out pass is MISSING COVERAGE, not a clean bill — say so explicitly rather than continuing as if Claude Code had reviewed.
 - **Empty response:** "Claude Code returned no response. Stderr: <paste relevant error>."
 
 
