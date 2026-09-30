@@ -697,7 +697,7 @@ Before source Reads, use Bash to run exactly \`date -u +%Y-%m-%dT%H:%M:%SZ\`. Af
 
   // Cost from result line (exact) or estimate from chars
   const turnsUsed = resultLine?.num_turns
-    || new Set(transcript.filter(event => event.type === 'assistant' && !event.parent_tool_use_id).map(event => event.message?.id)).size;
+    || new Set(transcript.filter(event => event?.type === 'assistant' && !event.parent_tool_use_id).map(event => event.message?.id)).size;
   const estimatedCost = resultLine?.total_cost_usd || 0;
   const inputChars = prompt.length;
   const outputChars = (resultLine?.result || '').length;
