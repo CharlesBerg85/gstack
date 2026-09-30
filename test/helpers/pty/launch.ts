@@ -175,14 +175,73 @@ export async function launchClaudePty(
   const timeoutMs = opts.timeoutMs ?? 240_000;
   const wallDeadline = performance.now() + timeoutMs;
   const screenAbort = new AbortController();
+  const launch = prepareLaunch(opts);
 
-  let buffer = '';
-  let exited = false;
-  let closing = false;
-  let exitCodeCaptured: number | null = null;
-  const outputWaiters = new Set<() => void>();
-  const notifyOutput = () => { for (const done of outputWaiters) done(); };
+  // Construction must succeed before any CLI can be spawned.
+  const screen = opts.observeScreen ? await createPtyScreen(cols, rows, {
+    deadlineAt: Math.min(opts.screenDeadlineAt ?? wallDeadline, wallDeadline), signal: screenAbort.signal,
+  }) : undefined;
+  const pty: PtyProcess = { buffer: '', exited: false, closing: false, exitCode: null, outputWaiters: new Set(),
+    screen, screenAbort, screenClosing: undefined, screenFailure: undefined, proc: undefined,
+    exitedPromise: Promise.resolve(), wallDeadline, recorders: { pendingFiles: [] } };
 
+  try {
+    createLaunchRecorders(opts, cwd, launch, pty.recorders);
+    pty.proc = (Bun as any).spawn([claudePath, ...launch.args], {
+    terminal: {
+      cols,
+      rows,
+      data(_t: unknown, chunk: Buffer) {
+        const text = chunk.toString('utf-8');
+        pty.buffer += text;
+        if (screen && !pty.screenClosing) screen.write(text);
+        notifyOutput(pty);
+      },
+    },
+    cwd,
+    env: launch.childEnv,
+  }); } catch (error) { screenAbort.abort(error); disposeRecorders(pty.recorders); await disposeScreen(pty); throw error; }
+
+  // Track exit so waitForAny can fail fast if claude crashes.
+  if (pty.proc.exited && typeof pty.proc.exited.then === 'function') {
+    pty.exitedPromise = pty.proc.exited
+      .then((code: number | null) => {
+        pty.exitCode = code;
+        pty.exited = true;
+        notifyOutput(pty);
+        void disposeScreen(pty);
+      })
+      .catch(() => {
+        pty.exited = true;
+        notifyOutput(pty);
+        void disposeScreen(pty);
+      });
+  }
+
+  // Top-level timeout. If a test forgets to close, this kills it eventually.
+  const wallTimer = setTimeout(() => {
+    screenAbort.abort(new Error('PTY work deadline exceeded.'));
+    try {
+      pty.proc.kill?.('SIGKILL');
+    } catch {
+      /* ignore */
+    }
+  }, Math.max(0, wallDeadline - performance.now()));
+  const trust = watchTrustDialog(pty);
+  return sessionHandle(pty, launch, wallTimer, trust);
+}
+
+/** Arguments, child environment and owned state roots, decided before any spawn. */
+interface LaunchSetup {
+  args: string[];
+  childEnv: Record<string, string>;
+  hermetic: boolean;
+  hermeticSkillStateRoot: string | undefined;
+  autoplanArtifactStateRoot: string | undefined;
+  autoplanEngTestPlanStateRoot: string | undefined;
+}
+
+function prepareLaunch(opts: ClaudePtyOptions): LaunchSetup {
   const args: string[] = [];
   // Pin the model so smokes don't inherit the operator's settings.json model
   // (see ClaudePtyOptions.model). Chain mirrors session-runner.ts so PTY and
@@ -236,275 +295,253 @@ export async function launchClaudePty(
 
   const autoplanEngTestPlanStateRoot = opts.approveAutoplanArtifactEdits && opts.autoplanArtifactState !== undefined
     ? hermeticSkillStateRoot : undefined;
+  return { args, childEnv, hermetic, hermeticSkillStateRoot, autoplanArtifactStateRoot, autoplanEngTestPlanStateRoot };
+}
 
-  // Construction must succeed before any CLI can be spawned.
-  const screen = opts.observeScreen ? await createPtyScreen(cols, rows, {
-    deadlineAt: Math.min(opts.screenDeadlineAt ?? wallDeadline, wallDeadline), signal: screenAbort.signal,
-  }) : undefined;
-  let screenClosing: Promise<void> | undefined;
-  let screenFailure: unknown;
-  const disposeScreen = () => screenClosing ??= (screen?.dispose() ?? Promise.resolve()).catch(error => { screenFailure = error; });
+interface LaunchRecorders {
+  pendingExit?: ReturnType<typeof createPendingExitRecorder>;
+  pendingQuestion?: ReturnType<typeof createPendingQuestionRecorder>;
+  pendingArtifact?: ReturnType<typeof createAutoplanArtifactRecorder>;
+  pendingFiles: Array<{ expected: string; recorder: NonNullable<ReturnType<typeof createFilePermissionRecorder>> }>;
+}
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let proc: any;
-  let pendingExit: ReturnType<typeof createPendingExitRecorder> | undefined;
-  let pendingQuestion: ReturnType<typeof createPendingQuestionRecorder> | undefined;
-  let pendingArtifact: ReturnType<typeof createAutoplanArtifactRecorder> | undefined;
-  const pendingFiles: Array<{ expected: string; recorder: NonNullable<ReturnType<typeof createFilePermissionRecorder>> }> = [];
-  try {
-    if (opts.observePlanReady && hermetic && childEnv.CLAUDE_CONFIG_DIR) {
-      pendingExit = createPendingExitRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR);
-    }
-    if (opts.observeSetupQuestions && hermetic && childEnv.CLAUDE_CONFIG_DIR) {
-      pendingQuestion = createPendingQuestionRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR);
-    }
-    if (opts.observeAutoplanArtifacts && hermetic && childEnv.CLAUDE_CONFIG_DIR && autoplanArtifactStateRoot) {
-      pendingArtifact = createAutoplanArtifactRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR, autoplanArtifactStateRoot,
-        opts.approveAutoplanArtifactEdits === true, opts.engTestPlanArtifactOnly === true, autoplanEngTestPlanStateRoot);
-    }
-    if (opts.observeFilePermissions && hermetic && childEnv.CLAUDE_CONFIG_DIR) {
-      for (const expected of new Set(opts.observeFilePermissions)) {
-        const recorder = createFilePermissionRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR, expected);
-        if (recorder) pendingFiles.push({ expected, recorder });
-      }
-    }
-    if (pendingFiles.length || pendingQuestion || pendingArtifact) {
-      const hooks = pendingExit ? JSON.parse(pendingExit.settings).hooks : {};
-      for (const recorder of [...pendingFiles.map(p => p.recorder), ...(pendingQuestion ? [pendingQuestion] : []), ...(pendingArtifact ? [pendingArtifact] : [])]) for (const [event, entries] of Object.entries(recorder.hooks))
-        hooks[event] = [...(hooks[event] ?? []), ...entries];
-      args.push('--settings', JSON.stringify({hooks}));
-    } else if (pendingExit) args.push('--settings', pendingExit.settings);
-    proc = (Bun as any).spawn([claudePath, ...args], {
-    terminal: {
-      cols,
-      rows,
-      data(_t: unknown, chunk: Buffer) {
-        const text = chunk.toString('utf-8');
-        buffer += text;
-        if (screen && !screenClosing) screen.write(text);
-        notifyOutput();
-      },
-    },
-    cwd,
-    env: childEnv,
-  }); } catch (error) { screenAbort.abort(error); pendingFiles.forEach(({ recorder }) => recorder.dispose()); pendingExit?.dispose(); pendingQuestion?.dispose(); pendingArtifact?.dispose(); await disposeScreen(); throw error; }
-
-  // Track exit so waitForAny can fail fast if claude crashes.
-  let exitedPromise: Promise<void> = Promise.resolve();
-  if (proc.exited && typeof proc.exited.then === 'function') {
-    exitedPromise = proc.exited
-      .then((code: number | null) => {
-        exitCodeCaptured = code;
-        exited = true;
-        notifyOutput();
-        void disposeScreen();
-      })
-      .catch(() => {
-        exited = true;
-        notifyOutput();
-        void disposeScreen();
-      });
+/** Opted-in owned hook recorders, merged into one --settings argument. Each is
+ * added to `recorders` as it is created, so a throw leaves the partial set for
+ * the caller to dispose. */
+function createLaunchRecorders(opts: ClaudePtyOptions, cwd: string, launch: LaunchSetup, recorders: LaunchRecorders): void {
+  const { hermetic, childEnv, args, autoplanArtifactStateRoot } = launch;
+  if (opts.observePlanReady && hermetic && childEnv.CLAUDE_CONFIG_DIR) {
+    recorders.pendingExit = createPendingExitRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR);
   }
-
-  // Top-level timeout. If a test forgets to close, this kills it eventually.
-  const wallTimer = setTimeout(() => {
-    screenAbort.abort(new Error('PTY work deadline exceeded.'));
-    try {
-      proc.kill?.('SIGKILL');
-    } catch {
-      /* ignore */
+  if (opts.observeSetupQuestions && hermetic && childEnv.CLAUDE_CONFIG_DIR) {
+    recorders.pendingQuestion = createPendingQuestionRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR);
+  }
+  if (opts.observeAutoplanArtifacts && hermetic && childEnv.CLAUDE_CONFIG_DIR && autoplanArtifactStateRoot) {
+    recorders.pendingArtifact = createAutoplanArtifactRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR, autoplanArtifactStateRoot,
+      opts.approveAutoplanArtifactEdits === true, opts.engTestPlanArtifactOnly === true, launch.autoplanEngTestPlanStateRoot);
+  }
+  if (opts.observeFilePermissions && hermetic && childEnv.CLAUDE_CONFIG_DIR) {
+    for (const expected of new Set(opts.observeFilePermissions)) {
+      const recorder = createFilePermissionRecorder(cwd, childEnv.CLAUDE_CONFIG_DIR, expected);
+      if (recorder) recorders.pendingFiles.push({ expected, recorder });
     }
-  }, Math.max(0, wallDeadline - performance.now()));
+  }
+  const { pendingExit, pendingQuestion, pendingArtifact, pendingFiles } = recorders;
+  if (pendingFiles.length || pendingQuestion || pendingArtifact) {
+    const hooks = pendingExit ? JSON.parse(pendingExit.settings).hooks : {};
+    for (const recorder of [...pendingFiles.map(p => p.recorder), ...(pendingQuestion ? [pendingQuestion] : []), ...(pendingArtifact ? [pendingArtifact] : [])]) for (const [event, entries] of Object.entries(recorder.hooks))
+      hooks[event] = [...(hooks[event] ?? []), ...entries];
+    args.push('--settings', JSON.stringify({hooks}));
+  } else if (pendingExit) args.push('--settings', pendingExit.settings);
+}
 
-  // Auto-handle the workspace-trust dialog. Runs once during the boot
-  // window, after both choices and the selected cursor are visible. Newer
-  // unnumbered menus default to "No, exit", so "1\r" would reject trust.
-  // The first paint can precede the input handler's readiness. Let startup
-  // settle, then deliver navigation and confirmation as separate events.
+function disposeRecorders(recorders: LaunchRecorders): void {
+  recorders.pendingFiles.forEach(({ recorder }) => recorder.dispose());
+  recorders.pendingExit?.dispose();
+  recorders.pendingQuestion?.dispose(); recorders.pendingArtifact?.dispose();
+}
+
+/** One spawned CLI: output buffer, exit state, viewport and owned recorders. */
+interface PtyProcess {
+  buffer: string;
+  exited: boolean;
+  closing: boolean;
+  exitCode: number | null;
+  outputWaiters: Set<() => void>;
+  screen: Awaited<ReturnType<typeof createPtyScreen>> | undefined;
+  screenAbort: AbortController;
+  screenClosing: Promise<void> | undefined;
+  screenFailure: unknown;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  proc: any;
+  exitedPromise: Promise<void>;
+  wallDeadline: number;
+  recorders: LaunchRecorders;
+}
+
+function notifyOutput(pty: PtyProcess): void { for (const done of pty.outputWaiters) done(); }
+
+function disposeScreen(pty: PtyProcess): Promise<void> {
+  return pty.screenClosing ??= (pty.screen?.dispose() ?? Promise.resolve()).catch(error => { pty.screenFailure = error; });
+}
+
+function writeTerminal(pty: PtyProcess, data: string): void {
+  if (pty.exited) return;
+  try {
+    pty.proc.terminal?.write?.(data);
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Auto-handle the workspace-trust dialog. Runs once during the boot
+ * window, after both choices and the selected cursor are visible. Newer
+ * unnumbered menus default to "No, exit", so "1\r" would reject trust.
+ * The first paint can precede the input handler's readiness. Let startup
+ * settle, then deliver navigation and confirmation as separate events.
+ */
+function watchTrustDialog(pty: PtyProcess) {
   let trustHandled = false;
   let trustVisibleAt: number | undefined;
-  const trustInputTimers: ReturnType<typeof setTimeout>[] = [];
-  const trustWatcher = setInterval(() => {
-    if (trustHandled || exited) return;
-    const input = trustDialogInput(buffer);
+  const inputTimers: ReturnType<typeof setTimeout>[] = [];
+  const watcher = setInterval(() => {
+    if (trustHandled || pty.exited) return;
+    const input = trustDialogInput(pty.buffer);
     if (input !== null) {
       trustVisibleAt ??= Date.now();
       if (Date.now() - trustVisibleAt < 1_500) return;
       trustHandled = true;
       const keys = input.match(/\x1b\[[AB]|\r/g) ?? [];
       for (const [i, key] of keys.entries()) {
-        trustInputTimers.push(setTimeout(() => {
-          if (exited) return;
-          try { proc.terminal?.write?.(key); } catch { /* ignore */ }
+        inputTimers.push(setTimeout(() => {
+          if (pty.exited) return;
+          try { pty.proc.terminal?.write?.(key); } catch { /* ignore */ }
         }, i * 500));
       }
     }
   }, 200);
   // Stop the watcher after 15s — by then the dialog has either fired or
   // doesn't exist on this run.
-  const trustWatcherStop = setTimeout(() => clearInterval(trustWatcher), 15_000);
+  const stop = setTimeout(() => clearInterval(watcher), 15_000);
+  return { watcher, stop, inputTimers };
+}
 
-  function send(data: string): void {
-    if (exited) return;
-    try {
-      proc.terminal?.write?.(data);
-    } catch {
-      /* ignore */
+async function waitForAnyOutput(
+  pty: PtyProcess,
+  patterns: Array<RegExp | string>,
+  waitOpts?: { timeoutMs?: number; pollMs?: number; since?: number },
+): Promise<{ matched: RegExp | string; index: number }> {
+  const wTimeout = waitOpts?.timeoutMs ?? 60_000;
+  const poll = waitOpts?.pollMs ?? 250;
+  const since = waitOpts?.since;
+  const start = Date.now();
+  while (Date.now() - start < wTimeout) {
+    if (pty.exited) {
+      throw new Error(
+        `claude exited (code=${pty.exitCode}) before any pattern matched. ` +
+          `Last visible:\n${stripAnsi(pty.buffer).slice(-2000)}`,
+      );
     }
+    const visible = since !== undefined ? stripAnsi(pty.buffer.slice(since)) : stripAnsi(pty.buffer);
+    for (let i = 0; i < patterns.length; i++) {
+      const p = patterns[i]!;
+      const matchIdx = typeof p === 'string' ? visible.indexOf(p) : visible.search(p);
+      if (matchIdx >= 0) {
+        return { matched: p, index: matchIdx };
+      }
+    }
+    await Bun.sleep(poll);
   }
+  throw new Error(
+    `Timed out after ${wTimeout}ms waiting for any of: ${patterns
+      .map((p) => (typeof p === 'string' ? JSON.stringify(p) : p.source))
+      .join(', ')}\nLast visible (since=${since ?? 'all'}):\n${
+      since !== undefined ? stripAnsi(pty.buffer.slice(since)).slice(-2000) : stripAnsi(pty.buffer).slice(-2000)
+    }`,
+  );
+}
 
-  type Key = Parameters<ClaudePtySession['sendKey']>[0];
-  function sendKey(key: Key): void {
-    const map: Record<string, string> = {
-      Enter: '\r',
-      Up: '\x1b[A',
-      Down: '\x1b[B',
-      Esc: '\x1b',
-      Tab: '\t',
-      ShiftTab: '\x1b[Z',
-      CtrlC: '\x03',
-    };
-    send(map[key] ?? '');
+/** SIGINT, then SIGKILL, each bounded by a shared 3s cleanup deadline; then recorders and viewport. */
+async function closePty(pty: PtyProcess, wallTimer: ReturnType<typeof setTimeout>,
+  trust: ReturnType<typeof watchTrustDialog>): Promise<void> {
+  pty.closing = true;
+  notifyOutput(pty);
+  const cleanupDeadline = Math.min(pty.wallDeadline, performance.now() + 3_000);
+  const cleanupTimer = setTimeout(() => pty.screenAbort.abort(new Error('PTY cleanup deadline exceeded.')),
+    Math.max(0, cleanupDeadline - performance.now()));
+  clearTimeout(trust.stop);
+  clearInterval(trust.watcher);
+  for (const timer of trust.inputTimers) clearTimeout(timer);
+  try {
+    for (const [signal, timeout] of [['SIGINT', 2000], ['SIGKILL', 1000]] as const) {
+      if (pty.exited) break;
+      try {
+        pty.proc.kill?.(signal);
+      } catch {
+        /* ignore */
+      }
+      let deadline!: ReturnType<typeof setTimeout>;
+      try {
+        await Promise.race([pty.exitedPromise, new Promise<void>((resolve) => {
+          deadline = setTimeout(resolve, Math.max(0, Math.min(timeout, cleanupDeadline - performance.now())));
+        })]);
+      } finally {
+        clearTimeout(deadline);
+      }
+    }
+    disposeRecorders(pty.recorders);
+    await disposeScreen(pty);
+    if (pty.screenFailure) throw pty.screenFailure;
+  } finally {
+    clearTimeout(cleanupTimer);
+    clearTimeout(wallTimer);
   }
+}
 
+function sessionHandle(pty: PtyProcess, launch: LaunchSetup, wallTimer: ReturnType<typeof setTimeout>,
+  trust: ReturnType<typeof watchTrustDialog>): ClaudePtySession {
+  const { screen } = pty;
+  const { pendingExit, pendingQuestion, pendingArtifact, pendingFiles } = pty.recorders;
+  const send = (data: string) => writeTerminal(pty, data);
   let lastMark = 0;
-  function mark(): number {
-    lastMark = buffer.length;
-    return lastMark;
-  }
-  function visibleSince(marker?: number): string {
-    const offset = marker ?? lastMark;
-    return stripAnsi(buffer.slice(offset));
-  }
-
-  async function waitForOutput(since: number, timeoutMs: number): Promise<void> {
-    if (buffer.length > since || exited || closing) return;
-    await new Promise<void>((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        outputWaiters.delete(done);
-        resolve();
-      };
-      const timer = setTimeout(done, timeoutMs);
-      outputWaiters.add(done);
-    });
-  }
-
-  async function waitForAny(
-    patterns: Array<RegExp | string>,
-    waitOpts?: { timeoutMs?: number; pollMs?: number; since?: number },
-  ): Promise<{ matched: RegExp | string; index: number }> {
-    const wTimeout = waitOpts?.timeoutMs ?? 60_000;
-    const poll = waitOpts?.pollMs ?? 250;
-    const since = waitOpts?.since;
-    const start = Date.now();
-    while (Date.now() - start < wTimeout) {
-      if (exited) {
-        throw new Error(
-          `claude exited (code=${exitCodeCaptured}) before any pattern matched. ` +
-            `Last visible:\n${stripAnsi(buffer).slice(-2000)}`,
-        );
-      }
-      const visible = since !== undefined ? stripAnsi(buffer.slice(since)) : stripAnsi(buffer);
-      for (let i = 0; i < patterns.length; i++) {
-        const p = patterns[i]!;
-        const matchIdx = typeof p === 'string' ? visible.indexOf(p) : visible.search(p);
-        if (matchIdx >= 0) {
-          return { matched: p, index: matchIdx };
-        }
-      }
-      await Bun.sleep(poll);
-    }
-    throw new Error(
-      `Timed out after ${wTimeout}ms waiting for any of: ${patterns
-        .map((p) => (typeof p === 'string' ? JSON.stringify(p) : p.source))
-        .join(', ')}\nLast visible (since=${since ?? 'all'}):\n${
-        since !== undefined ? stripAnsi(buffer.slice(since)).slice(-2000) : stripAnsi(buffer).slice(-2000)
-      }`,
-    );
-  }
-
-  async function waitFor(
-    pattern: RegExp | string,
-    waitOpts?: { timeoutMs?: number; pollMs?: number; since?: number },
-  ): Promise<void> {
-    await waitForAny([pattern], waitOpts);
-  }
-
   let closePromise: Promise<void> | undefined;
-  function close(): Promise<void> {
-    return closePromise ??= closeOnce();
-  }
-  async function closeOnce(): Promise<void> {
-    closing = true;
-    notifyOutput();
-    const cleanupDeadline = Math.min(wallDeadline, performance.now() + 3_000);
-    const cleanupTimer = setTimeout(() => screenAbort.abort(new Error('PTY cleanup deadline exceeded.')),
-      Math.max(0, cleanupDeadline - performance.now()));
-    clearTimeout(trustWatcherStop);
-    clearInterval(trustWatcher);
-    for (const timer of trustInputTimers) clearTimeout(timer);
-    try {
-      for (const [signal, timeout] of [['SIGINT', 2000], ['SIGKILL', 1000]] as const) {
-        if (exited) break;
-        try {
-          proc.kill?.(signal);
-        } catch {
-          /* ignore */
-        }
-        let deadline!: ReturnType<typeof setTimeout>;
-        try {
-          await Promise.race([exitedPromise, new Promise<void>((resolve) => {
-            deadline = setTimeout(resolve, Math.max(0, Math.min(timeout, cleanupDeadline - performance.now())));
-          })]);
-        } finally {
-          clearTimeout(deadline);
-        }
-      }
-      pendingFiles.forEach(({ recorder }) => recorder.dispose());
-      pendingExit?.dispose();
-      pendingQuestion?.dispose(); pendingArtifact?.dispose();
-      await disposeScreen();
-      if (screenFailure) throw screenFailure;
-    } finally {
-      clearTimeout(cleanupTimer);
-      clearTimeout(wallTimer);
-    }
-  }
-
+  const readable = () => {
+    if (!screen) throw new Error('PTY screen observation was not enabled for this session.');
+    if (pty.screenFailure) throw new Error('PTY screen observation failed.', { cause: pty.screenFailure });
+    return screen;
+  };
+  const waitForAny = (patterns: Array<RegExp | string>, waitOpts?: { timeoutMs?: number; pollMs?: number; since?: number }) =>
+    waitForAnyOutput(pty, patterns, waitOpts);
   return {
     send,
-    sendKey,
-    rawOutput: () => buffer,
-    visibleText: () => stripAnsi(buffer),
-    currentScreen: async (deadlineAt?: number) => {
-      if (!screen) throw new Error('PTY screen observation was not enabled for this session.');
-      if (screenFailure) throw new Error('PTY screen observation failed.', { cause: screenFailure });
-      return screen.read(deadlineAt);
+    sendKey: key => {
+      const map: Record<string, string> = {
+        Enter: '\r',
+        Up: '\x1b[A',
+        Down: '\x1b[B',
+        Esc: '\x1b',
+        Tab: '\t',
+        ShiftTab: '\x1b[Z',
+        CtrlC: '\x03',
+      };
+      send(map[key] ?? '');
     },
+    rawOutput: () => pty.buffer,
+    visibleText: () => stripAnsi(pty.buffer),
+    currentScreen: async (deadlineAt?: number) => readable().read(deadlineAt),
     currentScreenFrame: async (deadlineAt?: number) => {
-      if (!screen) throw new Error('PTY screen observation was not enabled for this session.');
-      if (screenFailure) throw new Error('PTY screen observation failed.', { cause: screenFailure });
-      const frame = await screen.readFrame(deadlineAt);
+      const frame = await readable().readFrame(deadlineAt);
       return {text: frame.text, rawEnd: frame.inputOffset, styledText: frame.styledText};
     },
-    mark,
-    waitForOutput,
-    visibleSince,
+    mark: () => (lastMark = pty.buffer.length),
+    waitForOutput: async (since: number, timeoutMs: number) => {
+      if (pty.buffer.length > since || pty.exited || pty.closing) return;
+      await new Promise<void>((resolve) => {
+        const done = () => {
+          clearTimeout(timer);
+          pty.outputWaiters.delete(done);
+          resolve();
+        };
+        const timer = setTimeout(done, timeoutMs);
+        pty.outputWaiters.add(done);
+      });
+    },
+    visibleSince: (marker?: number) => stripAnsi(pty.buffer.slice(marker ?? lastMark)),
     waitForAny,
-    waitFor,
-    pid: () => proc.pid as number | undefined,
-    exited: () => exited,
-    exitCode: () => exitCodeCaptured,
-    hermeticConfigDir: hermetic ? childEnv.CLAUDE_CONFIG_DIR ?? null : null,
-    hermeticSkillStateRoot,
+    waitFor: async (pattern, waitOpts) => { await waitForAny([pattern], waitOpts); },
+    pid: () => pty.proc.pid as number | undefined,
+    exited: () => pty.exited,
+    exitCode: () => pty.exitCode,
+    hermeticConfigDir: launch.hermetic ? launch.childEnv.CLAUDE_CONFIG_DIR ?? null : null,
+    hermeticSkillStateRoot: launch.hermeticSkillStateRoot,
     pendingPlanReadyFile: pendingExit?.file,
     pendingQuestionFile: pendingQuestion?.file,
     pendingAutoplanArtifactFile: pendingArtifact?.file,
-    autoplanArtifactStateRoot: pendingArtifact ? autoplanArtifactStateRoot : undefined,
-    autoplanEngTestPlanStateRoot: pendingArtifact ? autoplanEngTestPlanStateRoot : undefined,
+    autoplanArtifactStateRoot: pendingArtifact ? launch.autoplanArtifactStateRoot : undefined,
+    autoplanEngTestPlanStateRoot: pendingArtifact ? launch.autoplanEngTestPlanStateRoot : undefined,
     startAutoplanArtifactEditApproval: pendingArtifact?.startEditApproval,
     pendingFilePermissionFiles: pendingFiles.map(({ expected, recorder }) => ({ expected, file: recorder.file })),
-    close,
+    close: () => closePromise ??= closePty(pty, wallTimer, trust),
   };
 }
