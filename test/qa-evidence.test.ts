@@ -43,7 +43,7 @@ test('native capture executes once, preserves exact JSON and stderr, and materia
   f.json('intent.json', { capture: '001', observationCommand: 'first native command', hypothesis: 'The successful boundary suggests testing the rejected input next.', nextCommand: 'second native command' });
   const checkpoint = f.run('checkpoint', f.root, '001', 'intent.json');
   expect(checkpoint.status, checkpoint.stderr).toBe(0);
-  expect(receipt(checkpoint.stdout)).toMatchObject({ action: 'checkpoint', status: 'complete', id: '001' });
+  expect(receipt(checkpoint.stdout)).toMatchObject({ action: 'checkpoint', status: 'complete', id: '001', link: '[checkpoint 001](exploration-001.json)' });
   expect(JSON.parse(fs.readFileSync(path.join(f.root, 'exploration-001.json'), 'utf8'))).toEqual({
     observationCommand: 'first native command', observed, hypothesis: 'The successful boundary suggests testing the rejected input next.', nextCommand: 'second native command',
   });
