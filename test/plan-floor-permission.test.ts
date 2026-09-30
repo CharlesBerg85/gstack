@@ -259,13 +259,14 @@ async function exercise(mode: Mode, kind: keyof typeof SEEDS = 'ceo', capture?: 
     },
   };
   const run = new Function(...Object.keys(boundary), body + '\nreturn runPlanSkillFloorCheck;')(...Object.values(boundary));
+  const driver: runner.PtyDriver = {launch: boundary.launchClaudePty, now: () => now, monotonic: () => now, sleep: boundary.Bun.sleep};
   try {
     let result: any, error: unknown;
     try {
       result = await run({skillName:`plan-${kind}-review`, slashCommand:`/plan-${kind}-review`, followUpPrompt:SEEDS[kind],
         productType:mode==='product-type'||mode.startsWith('dx-')?'sdk-documentation':undefined,
         devexSetupContext:mode.startsWith('dx-')&&mode!=='dx-undeclared'?dxCustom.reply:undefined,
-        requestedPlanPath:mode === 'captured' ? undefined : `/tmp/gstack-test-plan-${kind}-floor.md`, timeoutMs:100_000});
+        requestedPlanPath:mode === 'captured' ? undefined : `/tmp/gstack-test-plan-${kind}-floor.md`, timeoutMs:100_000, driver});
     } catch(caught) { if(!snapshotOptions?.interrupt)throw caught; error=caught; }
     expect(closed).toBe(1); expect(fs.existsSync(fixture!.cwd)).toBe(false);
     expect(recorders.every(recorder=>!fs.existsSync(recorder.file))).toBe(true);

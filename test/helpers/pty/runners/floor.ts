@@ -18,10 +18,9 @@ import { capturePlanCountQuestion, createPlanCountPermissionGuard, matchesNative
 import { resolveClaudeBinary } from '../binary';
 import { designReviewSetupAUQ } from '../boundaries';
 import { SANCTIONED_WRITE_SUBSTRINGS, isProseAUQVisible, planCountSubmissionInput } from '../classify';
-import { launchClaudePty } from '../launch';
 import type { ClaudePtySession } from '../launch';
 import { isNumberedOptionListVisible, isPermissionDialogVisible, isPlanReadyVisible, isRejectedSlashCommand, stripPtyResidue } from '../screen';
-import type { PtyDriver } from '../session';
+import { realPtyDriver, runPtySession, type PtyDriver, type PtyStep } from '../session';
 
 // ────────────────────────────────────────────────────────────────────────────
 // runPlanSkillFloorCheck — stop at the first substantive seeded question.
@@ -130,7 +129,8 @@ export function planFloorDXReplyInput(visible: string, call: NativePlanQuestionC
     : { input: '\r', stage: 'done' };
 }
 
-export async function runPlanSkillFloorCheck(opts: {
+/** Options for runPlanSkillFloorCheck. */
+export interface PlanSkillFloorOptions {
   /** Skill name, e.g. 'plan-eng-review'. Used for diagnostic strings only. */
   skillName: string;
   /** Slash command; the owned PLAN.md target is supplied in the same submission. */
@@ -153,9 +153,10 @@ export async function runPlanSkillFloorCheck(opts: {
   model?: string;
   /** Launch seam and clock; tests pass the fake driver. Default: real launcher and clocks. */
   driver?: PtyDriver;
-}): Promise<PlanSkillFloorObservation> {
-  const driver = opts.driver ?? { launch: launchClaudePty, now: () => Date.now(),
-    monotonic: () => performance.now(), sleep: (ms: number) => Bun.sleep(ms) };
+}
+
+export async function runPlanSkillFloorCheck(opts: PlanSkillFloorOptions): Promise<PlanSkillFloorObservation> {
+  const driver = opts.driver ?? realPtyDriver;
   const startedAt = driver.now();
   const timeoutMs = opts.timeoutMs ?? 600_000;
   const dxContext = opts.devexSetupContext;
@@ -177,9 +178,18 @@ export async function runPlanSkillFloorCheck(opts: {
   const fixture = createPlanCountFixture(request, { requestedPlanPath: opts.requestedPlanPath,
     nativeReviewOnly: true, preconfiguredReviewActor: true });
   const sessionId = randomUUID();
-  let session: ClaudePtySession;
-  try {
-    session = await driver.launch({
+  const run = { opts, driver, startedAt, timeoutMs, dxContext, fixture, sessionId,
+    ownedFilePermissions: [], planningDirectory: undefined, transcript: { status: 'missing', calls: [], assistantMessages: [] },
+    viewport: '', publicTools: [], pendingQuestion: undefined, floorReview: undefined, floorAssessment: undefined,
+    setupChoices: new Map(), submittedSetup: new Set(), assessed: new Map(), dxReplies: new Map(),
+    since: 0, commandStartedAt: 0, targetDelivery: undefined, saveSnapshot: undefined, nativeCandidates: [],
+    validatedPendingQuestion: undefined, sampledAt: undefined, lastCheckpointAt: 0, lastCheckpointState: '',
+    artifactError: undefined, finished: false, started: false, start: 0, deadlineAt: 0, screenDeadlineAt: 0,
+  } as unknown as FloorRun;
+  return runPtySession<PlanSkillFloorObservation>({
+    driver,
+    cleanup: () => fixture.cleanup(),
+    launch: {
       permissionMode: 'plan',
       cwd: fixture.cwd,
       timeoutMs: timeoutMs + 60_000,
@@ -191,291 +201,327 @@ export async function runPlanSkillFloorCheck(opts: {
       ...(dxContext ? { rows: 80 } : {}),
       observeFilePermissions: fixture.workingPlanPath ? [fixture.workingPlanPath] : undefined,
       extraArgs: ['--session-id', sessionId],
-    });
-  } catch (error) {
-    fixture.cleanup();
-    throw error;
-  }
-
-  const ownedFilePermissions = (session.pendingFilePermissionFiles ?? []).map(binding =>
-    ({ ...binding, guard: createPlanCountPermissionGuard() }));
-  const planningDirectory = session.hermeticConfigDir ? path.join(session.hermeticConfigDir, 'plans') : undefined;
-  let transcript: PlanCountTranscript = { status: 'missing', calls: [], assistantMessages: [] };
-  let viewport = '';
-  let publicTools: NativePublicToolEvent[] = [];
-  let pendingQuestion: NativePlanQuestionCall | undefined;
-  let floorReview: PlanFloorReview | undefined;
-  let floorAssessment: PlanFloorAssessment | undefined;
-  const setupChoices = new Map<string, Set<number>>();
-  const submittedSetup = new Set<string>();
-  const assessed = new Map<string, PlanFloorAssessment>();
-  const dxReplies = new Map<string, PlanFloorDXReply>();
-  let captureBeforeClose: ((error?: unknown) => void) | undefined;
-  let floorFailed = false;
-  let floorError: unknown;
-  try {
-    await driver.sleep(8000); // boot grace + auto-trust handler window
-    const since = session.mark();
-    const commandStartedAt = driver.now();
-    session.send(`${opts.slashCommand} PLAN.md\r`);
-    const deliveryOptions = { seed: fixture.seed, sessionId,
-      slashCommand: opts.slashCommand, startedAt: commandStartedAt };
-    let targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
-      { ...deliveryOptions, now: driver.now() });
-    const saveSnapshot = createPlanCountSnapshotWriter();
-    let nativeCandidates: NativePlanQuestionCall[] = [];
-    let validatedPendingQuestion: ReturnType<typeof readPendingQuestion>;
-    let sampledAt: number | undefined;
-    let lastCheckpointAt = 0, lastCheckpointState = '';
-    let artifactError: string | undefined;
-    let finished = false;
-    const capture = (observation: object) => {
-      const recorderStatus = pendingQuestionRecorderStatus(session.pendingQuestionFile, fixture.cwd, session.hermeticConfigDir);
-      const artifacts = saveSnapshot({ skillName: opts.skillName, cwd: fixture.cwd,
-        claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(),
-        visible: session.visibleSince(since), viewport,
-        observation: { ...observation, transcript, publicTools, pendingQuestion, floorReview, floorAssessment, targetDelivery, commandStartedAt,
-          pendingWriteInputs: ownedFilePermissions.flatMap(binding => {
-            const input = readPendingWriteInput(binding.file, binding.expected, fixture.cwd, session.hermeticConfigDir, startedAt);
-            return input ? [input] : [];
-          }),
-          questionDiagnostics: { sampledAt, parentSessionId: sessionId, recorderStatus, recorderStatusAt: driver.now(), nativeCandidates, validatedPendingQuestion },
-          ...(dxContext ? { setupContextReplies: [...dxReplies.values()] } : {}), artifactError } });
-      if (artifacts.artifactError) {
-        artifactError ??= artifacts.artifactError;
-        console.error(`PTY artifact write failed: ${artifacts.artifactError}`);
-      }
-      return { ...artifacts, ...(artifactError ? { artifactError } : {}) };
-    };
-    const checkpoint = () => {
-      const state = JSON.stringify([pendingQuestionRecorderStatus(session.pendingQuestionFile, fixture.cwd, session.hermeticConfigDir),
-        targetDelivery.status, nativeCandidates, validatedPendingQuestion, pendingQuestion, [...dxReplies.values()]]);
-      if (state === lastCheckpointState && driver.now() - lastCheckpointAt < 15_000) return;
-      lastCheckpointState = state; lastCheckpointAt = driver.now();
-      capture({ state: 'in_progress', elapsedMs: driver.now() - startedAt });
-    };
-    captureBeforeClose = (error) => {
-      if (floorFailed && session.hermeticConfigDir) {
-        publicTools = [];
-        transcript = readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd, event => publicTools.push(event));
-      }
-      if (!finished) capture({ state: floorFailed ? 'threw' : 'in_progress', error: floorFailed ? String(error) : undefined,
-        captureReason: 'before_cleanup', elapsedMs: driver.now() - startedAt });
-    };
-    const finish = (observation: PlanSkillFloorObservation): PlanSkillFloorObservation => {
-      const artifacts = capture(observation);
-      finished = true;
-      return { ...observation, targetDelivery, ...artifacts };
-    };
-
-    const start = driver.now();
-    const deadlineAt = start + timeoutMs;
-    const screenDeadlineAt = driver.monotonic() + timeoutMs;
-    while (driver.now() - start < timeoutMs) {
+    },
+    start: session => floorStart(run, session),
+    poll: async () => {
+      if (!(driver.now() - run.start < timeoutMs)) return false;
       await driver.sleep(2000);
-      const visible = session.visibleSince(since);
-
-      if (session.exited()) {
-        return finish({
-          auqObserved: false,
-          outcome: 'exited',
-          summary: `claude exited (code=${session.exitCode()}) before a qualifying finding`,
-          evidence: visible.slice(-3000),
-          elapsedMs: driver.now() - startedAt,
-        });
-      }
-      if (isRejectedSlashCommand(visible, opts.slashCommand)) {
-        return finish({
-          auqObserved: false,
-          outcome: 'exited',
-          summary: `claude rejected ${opts.slashCommand} as unknown command`,
-          evidence: visible.slice(-3000),
-          elapsedMs: driver.now() - startedAt,
-        });
-      }
-
-      if (targetDelivery.status !== 'ready') {
-        targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
-          { ...deliveryOptions, now: driver.now() });
-        if (targetDelivery.status !== 'ready') {
-          viewport = await session.currentScreen(screenDeadlineAt);
-          checkpoint();
-          continue;
-        }
-      }
-
-      // Current native identity precedes permission handling and finding assessment.
-      floorReview = undefined; floorAssessment = undefined;
-      viewport = await session.currentScreen(screenDeadlineAt);
-      publicTools = [];
-      transcript = session.hermeticConfigDir
-        ? readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd, event => publicTools.push(event))
-        : { status: 'missing', calls: [], assistantMessages: [] };
-      const hook = readPendingQuestion(session.pendingQuestionFile, fixture.cwd,
-        session.hermeticConfigDir, commandStartedAt, transcript);
-      const currentCalls = transcript.status === 'ready' ? transcript.calls.filter(call =>
-        call.sessionId === sessionId && !call.answered && !call.failed && publicTools.filter(event =>
-          event.sessionId === sessionId && event.kind === 'use' && event.name === 'AskUserQuestion' &&
-          event.toolUseId === call.toolUseId && Date.parse(event.timestamp) >= commandStartedAt &&
-          Date.parse(event.timestamp) <= driver.now() && isDeepStrictEqual(event.input?.questions, call.questions)).length === 1) : [];
-      nativeCandidates = currentCalls.slice();
-      validatedPendingQuestion = hook;
-      sampledAt = driver.now();
-      if (hook?.sessionId === sessionId && !transcript.calls.some(call => call.toolUseId === hook.toolUseId)) currentCalls.push(hook);
-      const activeReply = currentCalls.length === 1 && dxReplies.get(`${currentCalls[0]!.sessionId}:${currentCalls[0]!.toolUseId}`);
-      if (activeReply) {
-        pendingQuestion = undefined;
-        const next = planFloorDXReplyInput(viewport, currentCalls[0]!, activeReply);
-        if (next) { session.send(next.input); activeReply.stage = next.stage; }
-        checkpoint();
-        continue;
-      }
-      const matching = currentCalls.filter(call => dxContext
-        ? planFloorDXPane(viewport, call) !== null : matchesNativePlanQuestion(viewport, call, planningDirectory));
-      pendingQuestion = matching.length === 1 ? matching[0] : undefined;
-      checkpoint();
-      const nativeQuestionVisible = Boolean(pendingQuestion);
-      const permissionIsActiveRender = !nativeQuestionVisible &&
-        (isPermissionDialogVisible(viewport) || isCroppedEditPermissionVisible(viewport));
-      if (permissionIsActiveRender) {
-        // An authorized file write enables the review, but never supplies its
-        // finding question. Exclude the permission's old render after approval.
-        const owned = currentFilePermissionBinding(ownedFilePermissions, fixture.cwd,
-          session.hermeticConfigDir, startedAt, transcript, viewport);
-        let ordinaryOwnedTarget = false;
-        if (fixture.workingPlanPath) try {
-          const parent = fs.realpathSync(path.dirname(fixture.workingPlanPath));
-          let target: fs.Stats | undefined;
-          try { target = fs.lstatSync(fixture.workingPlanPath); }
-          catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-          ordinaryOwnedTarget = parent === fs.realpathSync(fixture.cwd) && (!target || target.isFile());
-        } catch { /* No authority for a linked, foreign, or unreadable target. */ }
-        if (owned && ordinaryOwnedTarget && owned.binding.guard(viewport, session.visibleText(), owned.epoch) === 'grant')
-          session.send('1\r');
-      }
-      if (permissionIsActiveRender) continue;
-
-      const questionViewport = dxContext && pendingQuestion ? planFloorDXPane(viewport, pendingQuestion)! : viewport;
-      const fp = pendingQuestion && capturePlanCountQuestion(questionViewport, new Set(), driver.now() - start, true, pendingQuestion, planningDirectory);
-      if (fp && pendingQuestion) {
-        const index = fp.nativeQuestionIndex ?? 0;
-        const question = pendingQuestion.questions[index]!;
-        const key = `${pendingQuestion.sessionId}:${pendingQuestion.toolUseId}`;
-        const chosen = setupChoices.get(key) ?? new Set<number>();
-        const allDesign = opts.skillName === 'plan-design-review' && designReviewSetupAUQ(fp)
-          ? question.options.flatMap((option, i) => /^(?:Review )?All 7 (?:design )?(?:dimensions|passes)(?:\s*\(recommended\))?$/i.test(option.label.trim()) ? [i + 1] : []) : [];
-        const pick = pickPlanFloorMode(opts.skillName, question) ?? planCountPrerequisitePick(fp, fp)
-          ?? (opts.skillName === 'plan-devex-review' ? pickPlanFloorProductType(question, opts.productType) : null)
-          ?? (allDesign.length === 1 ? allDesign[0]! : null);
-        if (pick !== null) {
-          if (!chosen.has(index)) {
-            session.send(planCountQuestionInput(viewport, fp, pick));
-            chosen.add(index); setupChoices.set(key, chosen);
-          }
-          continue;
-        }
-        floorReview = { seed: fixture.seed, candidate: { transport: 'native', identity: `${key}:question:${index}`,
-          question: structuredClone(question) } };
-      } else {
-        // Public fallback must be a complete current question, not scrollback,
-        // a generic idle prompt, permission, tool result or quoted example.
-        floorReview = undefined;
-        const message = transcript.assistantMessages.filter(m => m.sessionId === sessionId &&
-          Date.parse(m.timestamp) >= commandStartedAt && Date.parse(m.timestamp) <= driver.now()).at(-1);
-        const compact = (text: string) => text.replace(/\s+/g, '');
-        if (!currentCalls.length && message && isProseAUQVisible(viewport) && isProseAUQVisible(message.text) &&
-            !/^\s*(?:>|`{3,}|~{3,})/m.test(message.text) && compact(viewport).includes(compact(message.text)))
-          floorReview = { seed: fixture.seed, candidate: { transport: 'prose',
-            identity: `${message.sessionId}:${message.timestamp}`, text: message.text } };
-        const submit = planCountSubmissionInput(viewport);
-        const packet = currentCalls.find(call => setupChoices.get(`${call.sessionId}:${call.toolUseId}`)?.size === call.questions.length);
-        if (submit && packet) {
-          const key = `${packet.sessionId}:${packet.toolUseId}`;
-          if (!submittedSetup.has(key)) { session.send(submit); submittedSetup.add(key); }
-          continue;
-        }
-      }
-      if (floorReview) {
-        const key = JSON.stringify(floorReview);
-        floorAssessment = assessed.get(key);
-        if (!floorAssessment) {
-          try {
-            floorAssessment = judgePlanFloorReview(floorReview, {
-              binary: resolveClaudeBinary() ?? 'claude', model: resolveEvalModel('warmup'), deadlineAt });
-          } catch (error) {
-            return finish({ auqObserved: false, outcome: 'assessment_error',
-              summary: `Finding assessment failed: ${error instanceof Error ? error.message : String(error)}`,
-              evidence: viewport, elapsedMs: driver.now() - startedAt });
-          }
-          assessed.set(key, floorAssessment);
-        }
-        if (dxContext && floorAssessment.kind === 'setup' && pendingQuestion?.questions.length === 1 &&
-            !pendingQuestion.questions[0]!.multiSelect && floorReview.candidate.transport === 'native') {
-          const key = `${pendingQuestion.sessionId}:${pendingQuestion.toolUseId}`;
-          dxReplies.set(key, { call: structuredClone(pendingQuestion), pane: questionViewport, reply: dxContext, stage: 'focus' });
-        }
-        if (floorAssessment.kind === 'finding') return finish({
-          auqObserved: true, outcome: 'auq_observed',
-          summary: `Current ${floorReview.candidate.transport} question addresses the owned seeded finding: ${floorAssessment.reason}`,
-          evidence: viewport, elapsedMs: driver.now() - startedAt,
-        });
-      }
-
-      // Silent write outside sanctioned dirs is the transcript-bug shape.
-      const writeRe = /⏺\s*(?:Write|Edit)\(([^)]+)\)/g;
-      let m: RegExpExecArray | null;
-      while ((m = writeRe.exec(visible)) !== null) {
-        const target = m[1] ?? '';
-        const sanctioned = SANCTIONED_WRITE_SUBSTRINGS.some((s) => target.includes(s));
-        if (!sanctioned && !isNumberedOptionListVisible(visible)) {
-          return finish({
-            auqObserved: false,
-            outcome: 'silent_write',
-            summary: `Write/Edit to ${target} fired before any AskUserQuestion`,
-            evidence: visible.slice(-3000),
-            elapsedMs: driver.now() - startedAt,
-          });
-        }
-      }
-
-      // Reached terminal without AUQ → transcript-bug regression.
-      // Note: COMPLETION_SUMMARY_RE is intentionally NOT checked here — it
-      // matches "GSTACK REVIEW REPORT" anywhere in the buffer, including
-      // when the agent does recon by reading existing plan files (which
-      // contain that string as a generated section). The plan_ready check
-      // (claude's actual "Ready to execute" confirmation) is the reliable
-      // terminal signal for "agent finished without asking."
-      if (isPlanReadyVisible(visible)) {
-        return finish({
-          auqObserved: false,
-          outcome: 'plan_ready',
-          summary: 'agent reached plan_ready without a qualifying finding question',
-          evidence: visible.slice(-3000),
-          elapsedMs: driver.now() - startedAt,
-        });
-      }
-    }
-
-    return finish({
+      return true;
+    },
+    tick: session => floorTick(run, session),
+    timeout: session => floorFinish(run, session, {
       auqObserved: false,
       outcome: 'timeout',
-      summary: targetDelivery.status === 'ready'
+      summary: run.targetDelivery.status === 'ready'
         ? `no qualifying finding question within ${timeoutMs}ms`
-        : `seeded target delivery unavailable within ${timeoutMs}ms: ${targetDelivery.reason ?? targetDelivery.status}`,
-      evidence: session.visibleSince(since).slice(-3000),
+        : `seeded target delivery unavailable within ${timeoutMs}ms: ${run.targetDelivery.reason ?? run.targetDelivery.status}`,
+      evidence: session.visibleSince(run.since).slice(-3000),
       elapsedMs: driver.now() - startedAt,
-    });
-  } catch (error) {
-    floorFailed = true;
-    floorError = error;
-    throw error;
-  } finally {
-    try { captureBeforeClose?.(floorError); }
-    catch (error) { if (!floorFailed) { floorFailed = true; throw error; } }
-    finally {
-      try { await session.close(); }
-      catch (error) { if (!floorFailed) throw error; }
-      finally { fixture.cleanup(); }
+    }),
+    beforeClose: (session, failure) => floorBeforeClose(run, session, failure),
+  });
+}
+
+/** Mutable state of one floor attempt, shared by its session-loop steps. */
+interface FloorRun {
+  opts: PlanSkillFloorOptions;
+  driver: PtyDriver;
+  startedAt: number;
+  timeoutMs: number;
+  dxContext: string | undefined;
+  fixture: ReturnType<typeof createPlanCountFixture>;
+  sessionId: string;
+  ownedFilePermissions: Array<{ expected: string; file: string; guard: ReturnType<typeof createPlanCountPermissionGuard> }>;
+  planningDirectory: string | undefined;
+  transcript: PlanCountTranscript;
+  viewport: string;
+  publicTools: NativePublicToolEvent[];
+  pendingQuestion: NativePlanQuestionCall | undefined;
+  floorReview: PlanFloorReview | undefined;
+  floorAssessment: PlanFloorAssessment | undefined;
+  setupChoices: Map<string, Set<number>>;
+  submittedSetup: Set<string>;
+  assessed: Map<string, PlanFloorAssessment>;
+  dxReplies: Map<string, PlanFloorDXReply>;
+  since: number;
+  commandStartedAt: number;
+  deliveryOptions: { seed: string; sessionId: string; slashCommand: string; startedAt: number };
+  targetDelivery: PlanFloorTargetDelivery;
+  saveSnapshot: ReturnType<typeof createPlanCountSnapshotWriter>;
+  nativeCandidates: NativePlanQuestionCall[];
+  validatedPendingQuestion: ReturnType<typeof readPendingQuestion>;
+  sampledAt: number | undefined;
+  lastCheckpointAt: number;
+  lastCheckpointState: string;
+  artifactError: string | undefined;
+  finished: boolean;
+  /** Command sent and capture state ready; before-close capture applies from here. */
+  started: boolean;
+  /** Loop start after the command; the finding clock and assessment deadline. */
+  start: number;
+  deadlineAt: number;
+  screenDeadlineAt: number;
+}
+
+async function floorStart(run: FloorRun, session: ClaudePtySession): Promise<undefined> {
+  const { opts, driver, fixture } = run;
+  run.ownedFilePermissions = (session.pendingFilePermissionFiles ?? []).map(binding =>
+    ({ ...binding, guard: createPlanCountPermissionGuard() }));
+  run.planningDirectory = session.hermeticConfigDir ? path.join(session.hermeticConfigDir, 'plans') : undefined;
+  await driver.sleep(8000); // boot grace + auto-trust handler window
+  run.since = session.mark();
+  run.commandStartedAt = driver.now();
+  session.send(`${opts.slashCommand} PLAN.md\r`);
+  run.deliveryOptions = { seed: fixture.seed, sessionId: run.sessionId,
+    slashCommand: opts.slashCommand, startedAt: run.commandStartedAt };
+  run.targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
+    { ...run.deliveryOptions, now: driver.now() });
+  run.saveSnapshot = createPlanCountSnapshotWriter();
+  run.started = true;
+  run.start = driver.now();
+  run.deadlineAt = run.start + run.timeoutMs;
+  run.screenDeadlineAt = driver.monotonic() + run.timeoutMs;
+  return undefined;
+}
+
+function floorCapture(run: FloorRun, session: ClaudePtySession, observation: object) {
+  const { fixture } = run;
+  const recorderStatus = pendingQuestionRecorderStatus(session.pendingQuestionFile, fixture.cwd, session.hermeticConfigDir);
+  const artifacts = run.saveSnapshot({ skillName: run.opts.skillName, cwd: fixture.cwd,
+    claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(),
+    visible: session.visibleSince(run.since), viewport: run.viewport,
+    observation: { ...observation, transcript: run.transcript, publicTools: run.publicTools, pendingQuestion: run.pendingQuestion,
+      floorReview: run.floorReview, floorAssessment: run.floorAssessment, targetDelivery: run.targetDelivery, commandStartedAt: run.commandStartedAt,
+      pendingWriteInputs: run.ownedFilePermissions.flatMap(binding => {
+        const input = readPendingWriteInput(binding.file, binding.expected, fixture.cwd, session.hermeticConfigDir, run.startedAt);
+        return input ? [input] : [];
+      }),
+      questionDiagnostics: { sampledAt: run.sampledAt, parentSessionId: run.sessionId, recorderStatus, recorderStatusAt: run.driver.now(),
+        nativeCandidates: run.nativeCandidates, validatedPendingQuestion: run.validatedPendingQuestion },
+      ...(run.dxContext ? { setupContextReplies: [...run.dxReplies.values()] } : {}), artifactError: run.artifactError } });
+  if (artifacts.artifactError) {
+    run.artifactError ??= artifacts.artifactError;
+    console.error(`PTY artifact write failed: ${artifacts.artifactError}`);
+  }
+  return { ...artifacts, ...(run.artifactError ? { artifactError: run.artifactError } : {}) };
+}
+
+function floorCheckpoint(run: FloorRun, session: ClaudePtySession): void {
+  const state = JSON.stringify([pendingQuestionRecorderStatus(session.pendingQuestionFile, run.fixture.cwd, session.hermeticConfigDir),
+    run.targetDelivery.status, run.nativeCandidates, run.validatedPendingQuestion, run.pendingQuestion, [...run.dxReplies.values()]]);
+  if (state === run.lastCheckpointState && run.driver.now() - run.lastCheckpointAt < 15_000) return;
+  run.lastCheckpointState = state; run.lastCheckpointAt = run.driver.now();
+  floorCapture(run, session, { state: 'in_progress', elapsedMs: run.driver.now() - run.startedAt });
+}
+
+function floorBeforeClose(run: FloorRun, session: ClaudePtySession, failure: { error: unknown } | undefined): void {
+  if (!run.started) return;
+  if (failure && session.hermeticConfigDir) {
+    const publicTools: NativePublicToolEvent[] = [];
+    run.publicTools = publicTools;
+    run.transcript = readPlanCountTranscript(session.hermeticConfigDir, run.fixture.cwd, event => publicTools.push(event));
+  }
+  if (!run.finished) floorCapture(run, session, { state: failure ? 'threw' : 'in_progress', error: failure ? String(failure.error) : undefined,
+    captureReason: 'before_cleanup', elapsedMs: run.driver.now() - run.startedAt });
+}
+
+function floorFinish(run: FloorRun, session: ClaudePtySession, observation: PlanSkillFloorObservation): PlanSkillFloorObservation {
+  const artifacts = floorCapture(run, session, observation);
+  run.finished = true;
+  return { ...observation, targetDelivery: run.targetDelivery, ...artifacts };
+}
+
+async function floorTick(run: FloorRun, session: ClaudePtySession): Promise<PtyStep<PlanSkillFloorObservation>> {
+  const { opts, driver, fixture, sessionId } = run;
+  const visible = session.visibleSince(run.since);
+  const finish = (observation: PlanSkillFloorObservation) => ({ done: floorFinish(run, session, observation) });
+  if (session.exited()) return finish({ auqObserved: false, outcome: 'exited',
+    summary: `claude exited (code=${session.exitCode()}) before a qualifying finding`,
+    evidence: visible.slice(-3000), elapsedMs: driver.now() - run.startedAt });
+  if (isRejectedSlashCommand(visible, opts.slashCommand)) return finish({ auqObserved: false, outcome: 'exited',
+    summary: `claude rejected ${opts.slashCommand} as unknown command`,
+    evidence: visible.slice(-3000), elapsedMs: driver.now() - run.startedAt });
+
+  if (run.targetDelivery.status !== 'ready') {
+    run.targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
+      { ...run.deliveryOptions, now: driver.now() });
+    if (run.targetDelivery.status !== 'ready') {
+      run.viewport = await session.currentScreen(run.screenDeadlineAt);
+      floorCheckpoint(run, session);
+      return 'continue';
     }
   }
+
+  // Current native identity precedes permission handling and finding assessment.
+  run.floorReview = undefined; run.floorAssessment = undefined;
+  run.viewport = await session.currentScreen(run.screenDeadlineAt);
+  const publicTools: NativePublicToolEvent[] = [];
+  run.publicTools = publicTools;
+  run.transcript = session.hermeticConfigDir
+    ? readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd, event => publicTools.push(event))
+    : { status: 'missing', calls: [], assistantMessages: [] };
+  const hook = readPendingQuestion(session.pendingQuestionFile, fixture.cwd,
+    session.hermeticConfigDir, run.commandStartedAt, run.transcript);
+  const currentCalls = run.transcript.status === 'ready' ? run.transcript.calls.filter(call =>
+    call.sessionId === sessionId && !call.answered && !call.failed && publicTools.filter(event =>
+      event.sessionId === sessionId && event.kind === 'use' && event.name === 'AskUserQuestion' &&
+      event.toolUseId === call.toolUseId && Date.parse(event.timestamp) >= run.commandStartedAt &&
+      Date.parse(event.timestamp) <= driver.now() && isDeepStrictEqual(event.input?.questions, call.questions)).length === 1) : [];
+  run.nativeCandidates = currentCalls.slice();
+  run.validatedPendingQuestion = hook;
+  run.sampledAt = driver.now();
+  if (hook?.sessionId === sessionId && !run.transcript.calls.some(call => call.toolUseId === hook.toolUseId)) currentCalls.push(hook);
+  const activeReply = currentCalls.length === 1 && run.dxReplies.get(`${currentCalls[0]!.sessionId}:${currentCalls[0]!.toolUseId}`);
+  if (activeReply) {
+    run.pendingQuestion = undefined;
+    const next = planFloorDXReplyInput(run.viewport, currentCalls[0]!, activeReply);
+    if (next) { session.send(next.input); activeReply.stage = next.stage; }
+    floorCheckpoint(run, session);
+    return 'continue';
+  }
+  const matching = currentCalls.filter(call => run.dxContext
+    ? planFloorDXPane(run.viewport, call) !== null : matchesNativePlanQuestion(run.viewport, call, run.planningDirectory));
+  run.pendingQuestion = matching.length === 1 ? matching[0] : undefined;
+  floorCheckpoint(run, session);
+  if (floorPermission(run, session)) return 'continue';
+  const question = floorQuestion(run, session, currentCalls);
+  if (question) return question;
+  return floorAssess(run, session, visible);
+}
+
+/** An authorized owned file write enables the review, but never supplies its
+ * finding question. True when an active permission render owns this tick. */
+function floorPermission(run: FloorRun, session: ClaudePtySession): boolean {
+  const { fixture, viewport } = run;
+  const permissionIsActiveRender = !run.pendingQuestion &&
+    (isPermissionDialogVisible(viewport) || isCroppedEditPermissionVisible(viewport));
+  if (!permissionIsActiveRender) return false;
+  // Exclude the permission's old render after approval.
+  const owned = currentFilePermissionBinding(run.ownedFilePermissions, fixture.cwd,
+    session.hermeticConfigDir, run.startedAt, run.transcript, viewport);
+  let ordinaryOwnedTarget = false;
+  if (fixture.workingPlanPath) try {
+    const parent = fs.realpathSync(path.dirname(fixture.workingPlanPath));
+    let target: fs.Stats | undefined;
+    try { target = fs.lstatSync(fixture.workingPlanPath); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    ordinaryOwnedTarget = parent === fs.realpathSync(fixture.cwd) && (!target || target.isFile());
+  } catch { /* No authority for a linked, foreign, or unreadable target. */ }
+  if (owned && ordinaryOwnedTarget && owned.binding.guard(viewport, session.visibleText(), owned.epoch) === 'grant')
+    session.send('1\r');
+  return true;
+}
+
+/** Answer declared setup choices; otherwise stage the current question (native
+ * or complete prose) as the floor review candidate. A step ends this tick. */
+function floorQuestion(run: FloorRun, session: ClaudePtySession, currentCalls: NativePlanQuestionCall[]): PtyStep<PlanSkillFloorObservation> | undefined {
+  const { opts, fixture, viewport, pendingQuestion } = run;
+  const questionViewport = run.dxContext && pendingQuestion ? planFloorDXPane(viewport, pendingQuestion)! : viewport;
+  const fp = pendingQuestion && capturePlanCountQuestion(questionViewport, new Set(), run.driver.now() - run.start, true, pendingQuestion, run.planningDirectory);
+  if (fp && pendingQuestion) {
+    const index = fp.nativeQuestionIndex ?? 0;
+    const question = pendingQuestion.questions[index]!;
+    const key = `${pendingQuestion.sessionId}:${pendingQuestion.toolUseId}`;
+    const chosen = run.setupChoices.get(key) ?? new Set<number>();
+    const allDesign = opts.skillName === 'plan-design-review' && designReviewSetupAUQ(fp)
+      ? question.options.flatMap((option, i) => /^(?:Review )?All 7 (?:design )?(?:dimensions|passes)(?:\s*\(recommended\))?$/i.test(option.label.trim()) ? [i + 1] : []) : [];
+    const pick = pickPlanFloorMode(opts.skillName, question) ?? planCountPrerequisitePick(fp, fp)
+      ?? (opts.skillName === 'plan-devex-review' ? pickPlanFloorProductType(question, opts.productType) : null)
+      ?? (allDesign.length === 1 ? allDesign[0]! : null);
+    if (pick !== null) {
+      if (!chosen.has(index)) {
+        session.send(planCountQuestionInput(viewport, fp, pick));
+        chosen.add(index); run.setupChoices.set(key, chosen);
+      }
+      return 'continue';
+    }
+    run.floorReview = { seed: fixture.seed, candidate: { transport: 'native', identity: `${key}:question:${index}`,
+      question: structuredClone(question) } };
+    return undefined;
+  }
+  // Public fallback must be a complete current question, not scrollback,
+  // a generic idle prompt, permission, tool result or quoted example.
+  run.floorReview = undefined;
+  const message = run.transcript.assistantMessages.filter(m => m.sessionId === run.sessionId &&
+    Date.parse(m.timestamp) >= run.commandStartedAt && Date.parse(m.timestamp) <= run.driver.now()).at(-1);
+  const compact = (text: string) => text.replace(/\s+/g, '');
+  if (!currentCalls.length && message && isProseAUQVisible(viewport) && isProseAUQVisible(message.text) &&
+      !/^\s*(?:>|`{3,}|~{3,})/m.test(message.text) && compact(viewport).includes(compact(message.text)))
+    run.floorReview = { seed: fixture.seed, candidate: { transport: 'prose',
+      identity: `${message.sessionId}:${message.timestamp}`, text: message.text } };
+  const submit = planCountSubmissionInput(viewport);
+  const packet = currentCalls.find(call => run.setupChoices.get(`${call.sessionId}:${call.toolUseId}`)?.size === call.questions.length);
+  if (submit && packet) {
+    const key = `${packet.sessionId}:${packet.toolUseId}`;
+    if (!run.submittedSetup.has(key)) { session.send(submit); run.submittedSetup.add(key); }
+    return 'continue';
+  }
+  return undefined;
+}
+
+/** Assess a staged candidate once; then the silent-write and plan-ready terminals. */
+function floorAssess(run: FloorRun, session: ClaudePtySession, visible: string): PtyStep<PlanSkillFloorObservation> {
+  const { driver, floorReview, pendingQuestion } = run;
+  const finish = (observation: PlanSkillFloorObservation) => ({ done: floorFinish(run, session, observation) });
+  if (floorReview) {
+    const key = JSON.stringify(floorReview);
+    run.floorAssessment = run.assessed.get(key);
+    if (!run.floorAssessment) {
+      try {
+        run.floorAssessment = judgePlanFloorReview(floorReview, {
+          binary: resolveClaudeBinary() ?? 'claude', model: resolveEvalModel('warmup'), deadlineAt: run.deadlineAt });
+      } catch (error) {
+        return finish({ auqObserved: false, outcome: 'assessment_error',
+          summary: `Finding assessment failed: ${error instanceof Error ? error.message : String(error)}`,
+          evidence: run.viewport, elapsedMs: driver.now() - run.startedAt });
+      }
+      run.assessed.set(key, run.floorAssessment);
+    }
+    if (run.dxContext && run.floorAssessment.kind === 'setup' && pendingQuestion?.questions.length === 1 &&
+        !pendingQuestion.questions[0]!.multiSelect && floorReview.candidate.transport === 'native') {
+      const replyKey = `${pendingQuestion.sessionId}:${pendingQuestion.toolUseId}`;
+      const questionViewport = planFloorDXPane(run.viewport, pendingQuestion)!;
+      run.dxReplies.set(replyKey, { call: structuredClone(pendingQuestion), pane: questionViewport, reply: run.dxContext, stage: 'focus' });
+    }
+    if (run.floorAssessment.kind === 'finding') return finish({
+      auqObserved: true, outcome: 'auq_observed',
+      summary: `Current ${floorReview.candidate.transport} question addresses the owned seeded finding: ${run.floorAssessment.reason}`,
+      evidence: run.viewport, elapsedMs: driver.now() - run.startedAt,
+    });
+  }
+
+  // Silent write outside sanctioned dirs is the transcript-bug shape.
+  const writeRe = /⏺\s*(?:Write|Edit)\(([^)]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = writeRe.exec(visible)) !== null) {
+    const target = m[1] ?? '';
+    const sanctioned = SANCTIONED_WRITE_SUBSTRINGS.some((s) => target.includes(s));
+    if (!sanctioned && !isNumberedOptionListVisible(visible)) {
+      return finish({
+        auqObserved: false,
+        outcome: 'silent_write',
+        summary: `Write/Edit to ${target} fired before any AskUserQuestion`,
+        evidence: visible.slice(-3000),
+        elapsedMs: driver.now() - run.startedAt,
+      });
+    }
+  }
+
+  // Reached terminal without AUQ → transcript-bug regression.
+  // Note: COMPLETION_SUMMARY_RE is intentionally NOT checked here — it
+  // matches "GSTACK REVIEW REPORT" anywhere in the buffer, including
+  // when the agent does recon by reading existing plan files (which
+  // contain that string as a generated section). The plan_ready check
+  // (claude's actual "Ready to execute" confirmation) is the reliable
+  // terminal signal for "agent finished without asking."
+  if (isPlanReadyVisible(visible)) {
+    return finish({
+      auqObserved: false,
+      outcome: 'plan_ready',
+      summary: 'agent reached plan_ready without a qualifying finding question',
+      evidence: visible.slice(-3000),
+      elapsedMs: driver.now() - run.startedAt,
+    });
+  }
+  return 'continue';
 }

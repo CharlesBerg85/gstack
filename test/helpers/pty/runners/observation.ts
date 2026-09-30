@@ -13,9 +13,9 @@ import { randomUUID } from 'node:crypto';
 import { classifyVisible, isProseAUQVisible, isScopeGateAutoSelectVisible, isScopeGateQuestionVisible } from '../classify';
 import { judgePtyState, logPtySnapshot } from '../judge';
 import type { PtyStateVerdict } from '../judge';
-import { launchClaudePty } from '../launch';
+import type { ClaudePtySession } from '../launch';
 import { extractPlanFilePath, isNumberedOptionListVisible, isPermissionDialogVisible, isPlanReadyVisible, isRejectedSlashCommand } from '../screen';
-import type { PtyDriver } from '../session';
+import { realPtyDriver, runPtySession, type PtyDriver, type PtyStep } from '../session';
 
 // ---------------------------------------------------------------------------
 // High-level skill-mode test contract
@@ -116,24 +116,8 @@ export interface PlanSkillObservation {
   tokensObserved?: Record<string, boolean>;
 }
 
-/**
- * The contract for "skill X invoked in plan mode behaves correctly."
- *
- * PASS: outcome is 'asked' or 'plan_ready'.
- *   - 'asked' = the skill is gating decisions on the user, as expected.
- *   - 'plan_ready' = the skill ran end-to-end, wrote a plan file, and
- *     surfaced claude's native confirmation. Some skills (like
- *     plan-design-review on a no-UI branch) legitimately reach plan_ready
- *     without firing AskUserQuestion because they short-circuit.
- *
- * FAIL: 'silent_write' or 'exited' or 'timeout'.
- *
- * This replaces the SDK-based runPlanModeSkillTest which never worked
- * because plan mode renders its native confirmation as TTY UI, not via
- * the AskUserQuestion tool — so canUseTool never fired and the assertion
- * counted zero questions.
- */
-export async function runPlanSkillObservation(opts: {
+/** Options for runPlanSkillObservation. */
+export interface PlanSkillObservationOptions {
   /** Skill name, e.g. 'plan-ceo-review'. */
   skillName: string;
   /** Whether to launch in plan mode. Default true. The no-op regression
@@ -186,279 +170,331 @@ export async function runPlanSkillObservation(opts: {
   trackTokens?: string[];
   /** Launch seam and clock; tests pass the fake driver. Default: real launcher and clocks. */
   driver?: PtyDriver;
-}): Promise<PlanSkillObservation> {
-  const driver = opts.driver ?? { launch: launchClaudePty, now: () => Date.now(),
-    monotonic: () => performance.now(), sleep: (ms: number) => Bun.sleep(ms) };
+}
+
+/**
+ * The contract for "skill X invoked in plan mode behaves correctly."
+ *
+ * PASS: outcome is 'asked' or 'plan_ready'.
+ *   - 'asked' = the skill is gating decisions on the user, as expected.
+ *   - 'plan_ready' = the skill ran end-to-end, wrote a plan file, and
+ *     surfaced claude's native confirmation. Some skills (like
+ *     plan-design-review on a no-UI branch) legitimately reach plan_ready
+ *     without firing AskUserQuestion because they short-circuit.
+ *
+ * FAIL: 'silent_write' or 'exited' or 'timeout'.
+ *
+ * This replaces the SDK-based runPlanModeSkillTest which never worked
+ * because plan mode renders its native confirmation as TTY UI, not via
+ * the AskUserQuestion tool — so canUseTool never fired and the assertion
+ * counted zero questions.
+ */
+export async function runPlanSkillObservation(opts: PlanSkillObservationOptions): Promise<PlanSkillObservation> {
+  const driver = opts.driver ?? realPtyDriver;
   const startedAt = driver.now();
   const budgetMs = opts.timeoutMs ?? 180_000;
-  const deadlineAt = startedAt + budgetMs;
-  const screenDeadlineAt = driver.monotonic() + budgetMs;
   // Explicitly identify only a new seeded plan-mode session. Caller-owned
   // resume/session arguments retain their existing behavior.
   const scopeSessionId = opts.initialPlanContent && opts.inPlanMode !== false &&
     !opts.extraArgs?.some(arg => /^(?:--session-id|--resume|--continue|-r|-c)(?:=|$)/.test(arg))
     ? randomUUID() : undefined;
-  const readAutoDecisionState = opts.autoDecisionState
-    ? bindAutoDecisionState(opts.autoDecisionState, opts.env, opts.skillName) : undefined;
-  const saveSnapshot = createPlanCountSnapshotWriter();
-  const session = await driver.launch({
-    permissionMode: opts.inPlanMode === false ? null : 'plan',
-    cwd: opts.cwd,
-    timeoutMs: (opts.timeoutMs ?? 180_000) + 30_000,
-    extraArgs: [...(opts.extraArgs ?? []), ...(scopeSessionId ? ['--session-id', scopeSessionId] : [])],
-    env: {
-      ...(opts.inPlanMode !== false && !opts.extraArgs?.some(arg => /^--permission-mode(?:=|$)/.test(arg))
-        ? { GSTACK_PLAN_MODE: 'active' } : {}),
-      ...opts.env,
+  const run: ObservationRun = {
+    opts, driver, startedAt, budgetMs, deadlineAt: startedAt + budgetMs, scopeSessionId,
+    readAutoDecisionState: opts.autoDecisionState
+      ? bindAutoDecisionState(opts.autoDecisionState, opts.env, opts.skillName) : undefined,
+    saveSnapshot: createPlanCountSnapshotWriter(),
+    since: 0, commandStartedAt: 0, start: 0, lastJudgeAt: 0, lastJudgeVerdict: null,
+    proseAUQEverObserved: false, waitingEverObserved: false,
+    scopeGateQuestionObserved: false, scopeGateAutoSelectObserved: false,
+    scopeTranscript: { status: 'missing', calls: [], assistantMessages: [] }, scopeTools: [],
+    nativeAutoDecide: null, nativePolledAt: null,
+    tokensObserved: Object.fromEntries((opts.trackTokens ?? []).map(t => [t, false])),
+  };
+  return runPtySession<PlanSkillObservation>({
+    driver,
+    launch: {
+      permissionMode: opts.inPlanMode === false ? null : 'plan',
+      cwd: opts.cwd,
+      timeoutMs: (opts.timeoutMs ?? 180_000) + 30_000,
+      extraArgs: [...(opts.extraArgs ?? []), ...(scopeSessionId ? ['--session-id', scopeSessionId] : [])],
+      env: {
+        ...(opts.inPlanMode !== false && !opts.extraArgs?.some(arg => /^--permission-mode(?:=|$)/.test(arg))
+          ? { GSTACK_PLAN_MODE: 'active' } : {}),
+        ...opts.env,
+      },
+      model: opts.model,
+      seedSkills: true,
+      observeScreen: !!opts.initialPlanContent,
+      screenDeadlineAt: driver.monotonic() + budgetMs,
     },
-    model: opts.model,
-    seedSkills: true,
-    observeScreen: !!opts.initialPlanContent,
-    screenDeadlineAt,
+    start: session => observationStart(run, session),
+    poll: async () => {
+      if (!(driver.now() < run.deadlineAt)) return false;
+      await driver.sleep(Math.min(2000, Math.max(0, run.deadlineAt - driver.now())));
+      return true;
+    },
+    tick: session => observationTick(run, session),
+    timeout: session => observationTimeout(run, session),
+    onError: (session, error) => observationFailure(run, session, error),
   });
+}
 
-  let observationFailed = false;
-  try {
-    const preflightTimeout = async (summary: string): Promise<PlanSkillObservation> => {
-      let viewport: string | undefined, viewportError: string | undefined;
-      try { viewport = (await session.currentScreenFrame())?.text; } catch (error) { viewportError = String(error); }
-      const artifacts = saveSnapshot({ skillName: opts.skillName, cwd: path.resolve(opts.cwd ?? process.cwd()),
-        claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(), visible: session.visibleText(), viewport,
-        observation: { state: 'plan_skill_preflight_timeout', summary, scopeSessionId, startedAt, deadlineAt, viewportError } });
-      return {
-        outcome: 'timeout', summary, evidence: session.visibleText().slice(-2000),
-        elapsedMs: driver.now() - startedAt,
-        proseAUQEverObserved: false, waitingEverObserved: false,
-        scopeGateQuestionObserved: false, scopeGateAutoSelectObserved: false,
-        ...(opts.trackTokens?.length ? { tokensObserved: Object.fromEntries(opts.trackTokens.map(t => [t, false])) } : {}),
-        ...artifacts,
-      };
-    };
-    // Entry deadline → boot → owned paste/receipt/ack → slash → observation.
-    // Setup consumes the existing case budget; cleanup has its separate grace.
-    if (!opts.initialPlanContent) await driver.sleep(Math.min(8000, Math.max(0, deadlineAt - driver.now())));
-    if (opts.initialPlanContent) {
-      const seed = `Keep this draft plan as context. Briefly acknowledge receipt, then wait for my next message containing a slash command. Do not start the review or call tools yet.\n\n${opts.initialPlanContent}`;
-      try {
-        await submitPlanSeed({...session, currentScreen: session.currentScreenFrame}, seed, {
-          cwd: opts.cwd ?? process.cwd(), launchedAt: startedAt, deadlineAt,
-          isQuestionOrPermission: text => isProseAUQVisible(text) || isNumberedOptionListVisible(text) || isPermissionDialogVisible(text),
-        });
-      } catch (error) {
-        if (!(error instanceof PlanSeedTimeout)) throw error;
-        return await preflightTimeout(`Plan seed submission failed: ${error.message}`);
-      }
-    }
-    if (driver.now() >= deadlineAt) return await preflightTimeout('Boot or seed preflight exhausted the existing case budget');
-    const commandStartedAt = driver.now();
-    const since = session.mark();
-    session.send(`/${opts.skillName}\r`);
+interface ObservationRun {
+  opts: PlanSkillObservationOptions;
+  driver: PtyDriver;
+  startedAt: number;
+  budgetMs: number;
+  deadlineAt: number;
+  scopeSessionId: string | undefined;
+  readAutoDecisionState: ReturnType<typeof bindAutoDecisionState> | undefined;
+  saveSnapshot: ReturnType<typeof createPlanCountSnapshotWriter>;
+  since: number;
+  commandStartedAt: number;
+  start: number;
+  lastJudgeAt: number;
+  lastJudgeVerdict: PtyStateVerdict | null;
+  // High-water marks: did we EVER see a prose-AUQ surface or a judge
+  // 'waiting' verdict during the run? Models may surface options
+  // briefly, then resume thinking when no user response comes (test
+  // env has no responder). At timeout we trust historical signals
+  // even if the current state is 'working'.
+  proseAUQEverObserved: boolean;
+  waitingEverObserved: boolean;
+  scopeGateQuestionObserved: boolean;
+  scopeGateAutoSelectObserved: boolean;
+  scopeTranscript: PlanCountTranscript;
+  scopeTools: NativePublicToolEvent[];
+  nativeAutoDecide: NativeAutoDecision | null;
+  nativePolledAt: number | null;
+  tokensObserved: Record<string, boolean>;
+}
 
-    const start = driver.now();
-    let lastJudgeAt = 0;
-    let lastJudgeVerdict: PtyStateVerdict | null = null;
-    // High-water marks: did we EVER see a prose-AUQ surface or a judge
-    // 'waiting' verdict during the run? Models may surface options
-    // briefly, then resume thinking when no user response comes (test
-    // env has no responder). At timeout we trust historical signals
-    // even if the current state is 'working'.
-    let proseAUQEverObserved = false;
-    let waitingEverObserved = false;
-    let scopeGateQuestionObserved = false;
-    let scopeGateAutoSelectObserved = false;
-    let scopeTranscript: PlanCountTranscript = { status: 'missing', calls: [], assistantMessages: [] };
-    let scopeTools: NativePublicToolEvent[] = [];
-    let nativeAutoDecide: NativeAutoDecision | null = null;
-    let nativePolledAt: number | null = null;
-    const tokensObserved: Record<string, boolean> = {};
-    for (const t of opts.trackTokens ?? []) tokensObserved[t] = false;
-    // Single source for the high-water flags at EVERY return site. Hand-
-    // spreading them per-site already drifted once (the judge-waiting return
-    // omitted the prose/waiting flags); a site that forgets a must-stay-false
-    // flag makes `obs.flag ?? false` negative assertions pass vacuously.
-    const highWaterFlags = () => {
-      const flags = { proseAUQEverObserved, waitingEverObserved,
-        scopeGateQuestionObserved, scopeGateAutoSelectObserved,
-        ...(nativeAutoDecide ? { nativeAutoDecide } : {}),
-        ...(opts.trackTokens?.length ? { tokensObserved } : {}) };
-      // Preserve the measured terminal flags and public evidence before the
-      // hermetic session is removed, including when a later assertion fails.
-      const artifacts = saveSnapshot({ skillName: opts.skillName,
-        cwd: path.resolve(opts.cwd ?? process.cwd()), claudeConfigDir: session.hermeticConfigDir,
-        raw: session.rawOutput(), visible: session.visibleSince(since),
-        observation: { state: 'plan_skill_observation_terminal', ...flags,
-          commandStartedAt, scopeSessionId, native: scopeTranscript, publicTools: scopeTools,
-          nativePolledAt, nativeScope: 'Latest owned native poll, refreshed while observing; not an exhaustive terminal journal.' } });
-      return { ...flags, ...artifacts };
-    };
-    const JUDGE_AFTER_MS = 60_000;
-    const JUDGE_INTERVAL_MS = 30_000;
-    while (driver.now() < deadlineAt) {
-      await driver.sleep(Math.min(2000, Math.max(0, deadlineAt - driver.now())));
-      const visible = session.visibleSince(since);
+async function observationPreflightTimeout(run: ObservationRun, session: ClaudePtySession, summary: string): Promise<PlanSkillObservation> {
+  const { opts } = run;
+  let viewport: string | undefined, viewportError: string | undefined;
+  try { viewport = (await session.currentScreenFrame())?.text; } catch (error) { viewportError = String(error); }
+  const artifacts = run.saveSnapshot({ skillName: opts.skillName, cwd: path.resolve(opts.cwd ?? process.cwd()),
+    claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(), visible: session.visibleText(), viewport,
+    observation: { state: 'plan_skill_preflight_timeout', summary, scopeSessionId: run.scopeSessionId,
+      startedAt: run.startedAt, deadlineAt: run.deadlineAt, viewportError } });
+  return {
+    outcome: 'timeout', summary, evidence: session.visibleText().slice(-2000),
+    elapsedMs: run.driver.now() - run.startedAt,
+    proseAUQEverObserved: false, waitingEverObserved: false,
+    scopeGateQuestionObserved: false, scopeGateAutoSelectObserved: false,
+    ...(opts.trackTokens?.length ? { tokensObserved: Object.fromEntries(opts.trackTokens.map(t => [t, false])) } : {}),
+    ...artifacts,
+  };
+}
 
-      if (session.exited()) {
-        return {
-          outcome: 'exited',
-          summary: `claude exited (code=${session.exitCode()}) before reaching a terminal outcome`,
-          evidence: visible.slice(-2000),
-          elapsedMs: driver.now() - startedAt,
-          ...highWaterFlags(),
-        };
-      }
-      if (isRejectedSlashCommand(visible, `/${opts.skillName}`)) {
-        return {
-          outcome: 'exited',
-          summary: `claude rejected /${opts.skillName} as unknown command (skill not registered in this cwd)`,
-          evidence: visible.slice(-2000),
-          elapsedMs: driver.now() - startedAt,
-          ...highWaterFlags(),
-        };
-      }
-
-      const classified = classifyVisible(visible, {
-        strictPlanWrites: !!opts.initialPlanContent,
-        currentScreen: opts.initialPlanContent ? await session.currentScreen() : undefined,
+/** Entry deadline → boot → owned paste/receipt/ack → slash → observation.
+ * Setup consumes the existing case budget; cleanup has its separate grace. */
+async function observationStart(run: ObservationRun, session: ClaudePtySession): Promise<PlanSkillObservation | undefined> {
+  const { opts, driver } = run;
+  if (!opts.initialPlanContent) await driver.sleep(Math.min(8000, Math.max(0, run.deadlineAt - driver.now())));
+  if (opts.initialPlanContent) {
+    const seed = `Keep this draft plan as context. Briefly acknowledge receipt, then wait for my next message containing a slash command. Do not start the review or call tools yet.\n\n${opts.initialPlanContent}`;
+    try {
+      await submitPlanSeed({...session, currentScreen: session.currentScreenFrame}, seed, {
+        cwd: opts.cwd ?? process.cwd(), launchedAt: run.startedAt, deadlineAt: run.deadlineAt,
+        isQuestionOrPermission: text => isProseAUQVisible(text) || isNumberedOptionListVisible(text) || isPermissionDialogVisible(text),
       });
-      const pendingSeededCompletion = !!opts.initialPlanContent &&
-        isPlanReadyVisible(visible) && classified === null;
-
-      // Cheap surface-tracking: did the model ever surface a prose AUQ in
-      // this tick's recent buffer? Track once-true (high water).
-      if (!proseAUQEverObserved && !pendingSeededCompletion && isProseAUQVisible(visible)) {
-        proseAUQEverObserved = true;
-        logPtySnapshot(visible, {
-          testName: opts.skillName,
-          elapsedMs: driver.now() - start,
-          tag: 'prose-auq-surfaced',
-        });
-      }
-      // Scope-gate render tracking (same high-water shape). Full-run
-      // detection matters because the 2KB evidence tail usually scrolls
-      // past the gate render before the outcome fires.
-      if (!scopeGateQuestionObserved && isScopeGateQuestionVisible(visible)) {
-        scopeGateQuestionObserved = true;
-      }
-      if (!scopeGateAutoSelectObserved && isScopeGateAutoSelectVisible(visible)) {
-        scopeGateAutoSelectObserved = true;
-      }
-      // Keep reading after scope selection: an AUTO_DECIDE annotation may
-      // arrive later, and a prior poll cannot establish its current ownership.
-      if (scopeSessionId && opts.initialPlanContent && session.hermeticConfigDir) {
-        scopeTools = [];
-        scopeTranscript = readPlanCountTranscript(session.hermeticConfigDir,
-          path.resolve(opts.cwd ?? process.cwd()), event => scopeTools.push(event));
-        nativePolledAt = driver.now();
-        if (!scopeGateAutoSelectObserved) scopeGateAutoSelectObserved = nativeSeededPlanSelection(scopeTranscript, scopeTools, {
-          seed: opts.initialPlanContent, skillName: opts.skillName, sessionId: scopeSessionId, commandStartedAt,
-        });
-      }
-      for (const t of opts.trackTokens ?? []) {
-        if (!tokensObserved[t] && visible.includes(t)) tokensObserved[t] = true;
-      }
-
-      if (classified) {
-        const obs: PlanSkillObservation = {
-          ...classified,
-          evidence: visible.slice(-2000),
-          elapsedMs: driver.now() - startedAt,
-          ...highWaterFlags(),
-        };
-        // Capture the plan file path on any outcome where one may have been
-        // written. Gating only on 'plan_ready' missed two cases: (1) the
-        // 'asked' outcome where the model wrote a plan partway through then
-        // paused on a question, and (2) 'wrote_findings_before_asking' where
-        // the bug is precisely that the plan was written. The
-        // assertReviewReportAtBottom checks downstream gate on planFile
-        // existing, not on the outcome.
-        const planFile = extractPlanFilePath(visible);
-        if (planFile) obs.planFile = planFile;
-        return obs;
-      }
-
-      // Terminal classification retains precedence (including actual questions
-      // and writes). Only an unclassified frame may use owned native auto-decision evidence.
-      if (scopeSessionId) {
-        nativeAutoDecide = findNativeAutoDecision(scopeTranscript, scopeTools, {
-          skillName: opts.skillName, sessionId: scopeSessionId, commandStartedAt, now: driver.now(), proseQuestionObserved: proseAUQEverObserved,
-          stateEvidence: readAutoDecisionState?.(),
-        });
-        if (nativeAutoDecide) return {
-          outcome: 'auto_decided',
-          summary: 'owned native session completed the saved-preference auto-decision',
-          evidence: visible.slice(-2000), elapsedMs: driver.now() - startedAt,
-          ...highWaterFlags(),
-        };
-      }
-
-      // LLM judge fallback: if regex detectors didn't classify and we've
-      // burned >60s with periodic ticks, ask Haiku "is the model waiting,
-      // working, or hung?" Treat 'waiting' as 'asked' (model surfaced a
-      // question via prose the regex couldn't reassemble). Snapshot the
-      // visible buffer at each judge call when GSTACK_PTY_LOG=1.
-      const elapsed = driver.now() - start;
-      if (elapsed > JUDGE_AFTER_MS && driver.now() - lastJudgeAt > JUDGE_INTERVAL_MS) {
-        lastJudgeAt = driver.now();
-        logPtySnapshot(visible, { testName: opts.skillName, elapsedMs: elapsed, tag: 'judge-tick' });
-        lastJudgeVerdict = judgePtyState(visible, { testName: opts.skillName });
-        if (lastJudgeVerdict.state === 'waiting' && !pendingSeededCompletion) {
-          waitingEverObserved = true;
-          if (opts.requireProseEvidence && !proseAUQEverObserved) continue;
-          return {
-            outcome: 'asked',
-            summary: `LLM judge: ${lastJudgeVerdict.reasoning} (state=waiting after ${Math.round(elapsed / 1000)}s)`,
-            evidence: visible.slice(-2000),
-            elapsedMs: driver.now() - startedAt,
-            ...highWaterFlags(),
-          };
-        }
-      }
+    } catch (error) {
+      if (!(error instanceof PlanSeedTimeout)) throw error;
+      return await observationPreflightTimeout(run, session, `Plan seed submission failed: ${error.message}`);
     }
+  }
+  if (driver.now() >= run.deadlineAt) return await observationPreflightTimeout(run, session, 'Boot or seed preflight exhausted the existing case budget');
+  run.commandStartedAt = driver.now();
+  run.since = session.mark();
+  session.send(`/${opts.skillName}\r`);
+  run.start = driver.now();
+  return undefined;
+}
 
-    // Timeout fallback: if we observed a prose-AUQ surface OR a judge
-    // 'waiting' verdict at any point during the run, treat as 'asked'.
-    // This catches the model-surfaced-then-resumed-thinking case where
-    // by the time the timeout fires, the buffer has moved past the
-    // options into spinner state but the question DID surface earlier.
-    const finalVisible = session.visibleSince(since);
-    if (proseAUQEverObserved || waitingEverObserved && !opts.requireProseEvidence) {
-      return {
+/** Single source for the high-water flags at EVERY return site. Hand-
+ * spreading them per-site already drifted once (the judge-waiting return
+ * omitted the prose/waiting flags); a site that forgets a must-stay-false
+ * flag makes `obs.flag ?? false` negative assertions pass vacuously. */
+function observationFlags(run: ObservationRun, session: ClaudePtySession) {
+  const { opts } = run;
+  const flags = { proseAUQEverObserved: run.proseAUQEverObserved, waitingEverObserved: run.waitingEverObserved,
+    scopeGateQuestionObserved: run.scopeGateQuestionObserved, scopeGateAutoSelectObserved: run.scopeGateAutoSelectObserved,
+    ...(run.nativeAutoDecide ? { nativeAutoDecide: run.nativeAutoDecide } : {}),
+    ...(opts.trackTokens?.length ? { tokensObserved: run.tokensObserved } : {}) };
+  // Preserve the measured terminal flags and public evidence before the
+  // hermetic session is removed, including when a later assertion fails.
+  const artifacts = run.saveSnapshot({ skillName: opts.skillName,
+    cwd: path.resolve(opts.cwd ?? process.cwd()), claudeConfigDir: session.hermeticConfigDir,
+    raw: session.rawOutput(), visible: session.visibleSince(run.since),
+    observation: { state: 'plan_skill_observation_terminal', ...flags,
+      commandStartedAt: run.commandStartedAt, scopeSessionId: run.scopeSessionId, native: run.scopeTranscript, publicTools: run.scopeTools,
+      nativePolledAt: run.nativePolledAt, nativeScope: 'Latest owned native poll, refreshed while observing; not an exhaustive terminal journal.' } });
+  return { ...flags, ...artifacts };
+}
+
+const JUDGE_AFTER_MS = 60_000;
+const JUDGE_INTERVAL_MS = 30_000;
+
+async function observationTick(run: ObservationRun, session: ClaudePtySession): Promise<PtyStep<PlanSkillObservation>> {
+  const { opts, driver } = run;
+  const visible = session.visibleSince(run.since);
+  const ended = (summary: string): PtyStep<PlanSkillObservation> => ({ done: {
+    outcome: 'exited', summary, evidence: visible.slice(-2000), elapsedMs: driver.now() - run.startedAt,
+    ...observationFlags(run, session),
+  } });
+  if (session.exited()) return ended(`claude exited (code=${session.exitCode()}) before reaching a terminal outcome`);
+  if (isRejectedSlashCommand(visible, `/${opts.skillName}`)) {
+    return ended(`claude rejected /${opts.skillName} as unknown command (skill not registered in this cwd)`);
+  }
+
+  const classified = classifyVisible(visible, {
+    strictPlanWrites: !!opts.initialPlanContent,
+    currentScreen: opts.initialPlanContent ? await session.currentScreen() : undefined,
+  });
+  const pendingSeededCompletion = !!opts.initialPlanContent &&
+    isPlanReadyVisible(visible) && classified === null;
+  observeHighWaterMarks(run, session, visible, pendingSeededCompletion);
+
+  if (classified) {
+    const obs: PlanSkillObservation = {
+      ...classified,
+      evidence: visible.slice(-2000),
+      elapsedMs: driver.now() - run.startedAt,
+      ...observationFlags(run, session),
+    };
+    // Capture the plan file path on any outcome where one may have been
+    // written. Gating only on 'plan_ready' missed two cases: (1) the
+    // 'asked' outcome where the model wrote a plan partway through then
+    // paused on a question, and (2) 'wrote_findings_before_asking' where
+    // the bug is precisely that the plan was written. The
+    // assertReviewReportAtBottom checks downstream gate on planFile
+    // existing, not on the outcome.
+    const planFile = extractPlanFilePath(visible);
+    if (planFile) obs.planFile = planFile;
+    return { done: obs };
+  }
+
+  // Terminal classification retains precedence (including actual questions
+  // and writes). Only an unclassified frame may use owned native auto-decision evidence.
+  if (run.scopeSessionId) {
+    run.nativeAutoDecide = findNativeAutoDecision(run.scopeTranscript, run.scopeTools, {
+      skillName: opts.skillName, sessionId: run.scopeSessionId, commandStartedAt: run.commandStartedAt, now: driver.now(), proseQuestionObserved: run.proseAUQEverObserved,
+      stateEvidence: run.readAutoDecisionState?.(),
+    });
+    if (run.nativeAutoDecide) return { done: {
+      outcome: 'auto_decided',
+      summary: 'owned native session completed the saved-preference auto-decision',
+      evidence: visible.slice(-2000), elapsedMs: driver.now() - run.startedAt,
+      ...observationFlags(run, session),
+    } };
+  }
+
+  // LLM judge fallback: if regex detectors didn't classify and we've
+  // burned >60s with periodic ticks, ask Haiku "is the model waiting,
+  // working, or hung?" Treat 'waiting' as 'asked' (model surfaced a
+  // question via prose the regex couldn't reassemble). Snapshot the
+  // visible buffer at each judge call when GSTACK_PTY_LOG=1.
+  const elapsed = driver.now() - run.start;
+  if (elapsed > JUDGE_AFTER_MS && driver.now() - run.lastJudgeAt > JUDGE_INTERVAL_MS) {
+    run.lastJudgeAt = driver.now();
+    logPtySnapshot(visible, { testName: opts.skillName, elapsedMs: elapsed, tag: 'judge-tick' });
+    run.lastJudgeVerdict = judgePtyState(visible, { testName: opts.skillName });
+    if (run.lastJudgeVerdict.state === 'waiting' && !pendingSeededCompletion) {
+      run.waitingEverObserved = true;
+      if (opts.requireProseEvidence && !run.proseAUQEverObserved) return 'continue';
+      return { done: {
         outcome: 'asked',
-        summary:
-          `prose-AUQ surface observed during run (proseAUQEverObserved=${proseAUQEverObserved}, waitingEverObserved=${waitingEverObserved}); model surfaced the question and the test budget elapsed without a follow-up classification` +
-          (lastJudgeVerdict
-            ? ` (last LLM judge: ${lastJudgeVerdict.state} — ${lastJudgeVerdict.reasoning})`
-            : ''),
-        evidence: finalVisible.slice(-2000),
-        elapsedMs: driver.now() - startedAt,
-        ...highWaterFlags(),
-      };
+        summary: `LLM judge: ${run.lastJudgeVerdict.reasoning} (state=waiting after ${Math.round(elapsed / 1000)}s)`,
+        evidence: visible.slice(-2000),
+        elapsedMs: driver.now() - run.startedAt,
+        ...observationFlags(run, session),
+      } };
     }
+  }
+  return 'continue';
+}
+
+/** Cheap per-tick surface tracking; each flag is once-true (high water). */
+function observeHighWaterMarks(run: ObservationRun, session: ClaudePtySession, visible: string, pendingSeededCompletion: boolean): void {
+  const { opts, driver } = run;
+  if (!run.proseAUQEverObserved && !pendingSeededCompletion && isProseAUQVisible(visible)) {
+    run.proseAUQEverObserved = true;
+    logPtySnapshot(visible, {
+      testName: opts.skillName,
+      elapsedMs: driver.now() - run.start,
+      tag: 'prose-auq-surfaced',
+    });
+  }
+  // Scope-gate render tracking (same high-water shape). Full-run
+  // detection matters because the 2KB evidence tail usually scrolls
+  // past the gate render before the outcome fires.
+  if (!run.scopeGateQuestionObserved && isScopeGateQuestionVisible(visible)) {
+    run.scopeGateQuestionObserved = true;
+  }
+  if (!run.scopeGateAutoSelectObserved && isScopeGateAutoSelectVisible(visible)) {
+    run.scopeGateAutoSelectObserved = true;
+  }
+  // Keep reading after scope selection: an AUTO_DECIDE annotation may
+  // arrive later, and a prior poll cannot establish its current ownership.
+  if (run.scopeSessionId && opts.initialPlanContent && session.hermeticConfigDir) {
+    const scopeTools: NativePublicToolEvent[] = [];
+    run.scopeTools = scopeTools;
+    run.scopeTranscript = readPlanCountTranscript(session.hermeticConfigDir,
+      path.resolve(opts.cwd ?? process.cwd()), event => scopeTools.push(event));
+    run.nativePolledAt = driver.now();
+    if (!run.scopeGateAutoSelectObserved) run.scopeGateAutoSelectObserved = nativeSeededPlanSelection(run.scopeTranscript, run.scopeTools, {
+      seed: opts.initialPlanContent, skillName: opts.skillName, sessionId: run.scopeSessionId, commandStartedAt: run.commandStartedAt,
+    });
+  }
+  for (const t of opts.trackTokens ?? []) {
+    if (!run.tokensObserved[t] && visible.includes(t)) run.tokensObserved[t] = true;
+  }
+}
+
+/** Timeout fallback: if we observed a prose-AUQ surface OR a judge
+ * 'waiting' verdict at any point during the run, treat as 'asked'.
+ * This catches the model-surfaced-then-resumed-thinking case where
+ * by the time the timeout fires, the buffer has moved past the
+ * options into spinner state but the question DID surface earlier. */
+function observationTimeout(run: ObservationRun, session: ClaudePtySession): PlanSkillObservation {
+  const { opts, driver, lastJudgeVerdict } = run;
+  const finalVisible = session.visibleSince(run.since);
+  if (run.proseAUQEverObserved || run.waitingEverObserved && !opts.requireProseEvidence) {
     return {
-      outcome: 'timeout',
+      outcome: 'asked',
       summary:
-        `no terminal outcome within ${budgetMs}ms` +
+        `prose-AUQ surface observed during run (proseAUQEverObserved=${run.proseAUQEverObserved}, waitingEverObserved=${run.waitingEverObserved}); model surfaced the question and the test budget elapsed without a follow-up classification` +
         (lastJudgeVerdict
-          ? ` (last LLM judge: state=${lastJudgeVerdict.state} — ${lastJudgeVerdict.reasoning})`
+          ? ` (last LLM judge: ${lastJudgeVerdict.state} — ${lastJudgeVerdict.reasoning})`
           : ''),
       evidence: finalVisible.slice(-2000),
-      elapsedMs: driver.now() - startedAt,
-      ...highWaterFlags(),
+      elapsedMs: driver.now() - run.startedAt,
+      ...observationFlags(run, session),
     };
-  } catch (error) {
-    observationFailed = true;
-    try {
-      const publicTools: NativePublicToolEvent[] = [];
-      const transcript = session.hermeticConfigDir ? readPlanCountTranscript(session.hermeticConfigDir,
-        path.resolve(opts.cwd ?? process.cwd()), event => publicTools.push(event)) : undefined;
-      const saved = saveSnapshot({ skillName: opts.skillName, cwd: path.resolve(opts.cwd ?? process.cwd()),
-        claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(), visible: session.visibleText(),
-        observation: { state: 'threw', error: String(error), transcript, publicTools } });
-      if (saved.artifactError) console.error(`PTY artifact write failed: ${saved.artifactError}`);
-    } catch (captureError) { console.error(`PTY failure capture failed: ${String(captureError)}`); }
-    throw error;
-  } finally {
-    try { await session.close(); }
-    catch (error) { if (!observationFailed) throw error; }
   }
+  return {
+    outcome: 'timeout',
+    summary:
+      `no terminal outcome within ${run.budgetMs}ms` +
+      (lastJudgeVerdict
+        ? ` (last LLM judge: state=${lastJudgeVerdict.state} — ${lastJudgeVerdict.reasoning})`
+        : ''),
+    evidence: finalVisible.slice(-2000),
+    elapsedMs: driver.now() - run.startedAt,
+    ...observationFlags(run, session),
+  };
+}
+
+function observationFailure(run: ObservationRun, session: ClaudePtySession, error: unknown): void {
+  const { opts } = run;
+  try {
+    const publicTools: NativePublicToolEvent[] = [];
+    const transcript = session.hermeticConfigDir ? readPlanCountTranscript(session.hermeticConfigDir,
+      path.resolve(opts.cwd ?? process.cwd()), event => publicTools.push(event)) : undefined;
+    const saved = run.saveSnapshot({ skillName: opts.skillName, cwd: path.resolve(opts.cwd ?? process.cwd()),
+      claudeConfigDir: session.hermeticConfigDir, raw: session.rawOutput(), visible: session.visibleText(),
+      observation: { state: 'threw', error: String(error), transcript, publicTools } });
+    if (saved.artifactError) console.error(`PTY artifact write failed: ${saved.artifactError}`);
+  } catch (captureError) { console.error(`PTY failure capture failed: ${String(captureError)}`); }
 }
