@@ -158,6 +158,7 @@ const BASELINE = [
   'test/memory-cache-injection.test.ts',
   'test/memory-ingest-include-gitignored.test.ts',
   'test/migrations-v1.27.0.0.test.ts',
+  'test/module-size-ratchet.test.ts', // ratchet (c) source scanner (W2): measures product modules as text; its counter is test tooling
   'test/native-auto-decide-pty.test.ts',
   'test/no-suicide-exit.test.ts',
   'test/osv-config-wiring.test.ts',

@@ -716,3 +716,61 @@ describe('derived touchfile closure', () => {
     expect(paid.filter(file => !keyed(file))).toEqual(Object.keys(KEYLESS_PAID).sort());
   });
 });
+
+// Moved code keeps its paid-eval selection: touching a module extracted by a
+// refactor must select a superset of what touching its source file selected
+// before the move. Each golden in test/fixtures/touchfile-move-goldens/ maps
+// new modules to their source files and records the sources' selections.
+describe('touchfile coverage for moved code', () => {
+  const GOLDENS = 'test/fixtures/touchfile-move-goldens';
+  type Selection = 'global' | string[];
+  interface MoveGolden { moves: Record<string, string[]>; selections: Record<string, { e2e: Selection; judges: Selection }> }
+  const MAPS = { e2e: E2E_TOUCHFILES, judges: LLM_JUDGE_TOUCHFILES } as const;
+  const selectionFor = (file: string, map: Record<string, string[]>): Selection => {
+    const result = selectTests([file], map, GLOBAL_TOUCHFILES);
+    return result.reason.startsWith('global') ? 'global' : result.selected;
+  };
+  /** One line per module/source/map whose recorded selection is no longer covered. */
+  const moveSelectionGaps = (golden: MoveGolden, current = selectionFor): string[] => {
+    const gaps: string[] = [];
+    for (const [module, sources] of Object.entries(golden.moves)) {
+      for (const source of sources) {
+        const recorded = golden.selections[source];
+        if (!recorded) { gaps.push(`${module}  no recorded selection for source ${source}`); continue; }
+        for (const kind of ['e2e', 'judges'] as const) {
+          const now = current(module, MAPS[kind]);
+          if (now === 'global') continue;
+          const missing = recorded[kind] === 'global' ? ['(every test: global touchfile)']
+            : (recorded[kind] as string[]).filter(name => name in MAPS[kind] && !now.includes(name));
+          if (missing.length) gaps.push(`${module}  ${kind} selection misses ${missing.join(', ')} (selected by ${source})`);
+        }
+      }
+    }
+    return gaps;
+  };
+  const goldens = fs.readdirSync(path.join(ROOT, GOLDENS)).filter(name => name.endsWith('.json')).sort();
+
+  test.each(goldens)('%s: every new module selects a superset of its source files', name => {
+    const golden = JSON.parse(fs.readFileSync(path.join(ROOT, GOLDENS, name), 'utf8')) as MoveGolden;
+    const gaps = moveSelectionGaps(golden);
+    if (gaps.length) {
+      throw new Error([
+        `Touchfile move coverage — ${gaps.length} gap(s):`, ...gaps.map(gap => `  ${gap}`),
+        'Rule: code moved out of a file keeps that file\'s paid-eval selection, so an edit to the new module still runs the evals the old file ran.',
+        'Fix: add the new module to every touchfile entry (E2E_TOUCHFILES, LLM_JUDGE_TOUCHFILES, GLOBAL_TOUCHFILES) that lists its source file in test/helpers/touchfiles-data.ts.',
+        `Golden: ${GOLDENS}/${name} — re-record a source's selection only for a deliberate, reviewed touchfile change.`,
+      ].join('\n'));
+    }
+  });
+
+  test('the move check fails when a new module drops its source file\'s selection', () => {
+    const golden: MoveGolden = {
+      moves: { 'scripts/new-module.ts': ['scripts/old.ts'] },
+      selections: { 'scripts/old.ts': { e2e: 'global', judges: [] } },
+    };
+    expect(moveSelectionGaps(golden, () => [])).toEqual([
+      'scripts/new-module.ts  e2e selection misses (every test: global touchfile) (selected by scripts/old.ts)',
+    ]);
+    expect(moveSelectionGaps(golden, () => 'global')).toEqual([]);
+  });
+});
