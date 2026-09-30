@@ -34,7 +34,8 @@
 
 set -u
 
-GSTACK_HOME="${GSTACK_HOME:-${HOME}/.gstack}"
+. "${BASH_SOURCE[0]%/*}/../../bin/gstack-state-root.sh" 2>/dev/null || { echo "$0: cannot resolve the gstack state root: ${BASH_SOURCE[0]%/*}/../../bin/gstack-state-root.sh is missing. fix: reinstall with ./setup or /gstack-upgrade (docs/state-root.md)" >&2; exit 1; }
+gstack_state_root_select; GSTACK_HOME="$_gstack_sr_root"
 MIGRATION_DIR="${GSTACK_HOME}/.migrations"
 DONE="${MIGRATION_DIR}/v1.65.0.0.done"
 # Written when a removal happened but the verified end state (a Chromium

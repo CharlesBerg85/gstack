@@ -228,7 +228,8 @@ At session start or after compaction, recover recent project context.
 ```bash
 eval "$($GSTACK_BIN/gstack-slug 2>/dev/null)"
 _BRANCH=$(git branch --show-current 2>/dev/null | tr -cd 'a-zA-Z0-9._/-') || :; _BRANCH=${_BRANCH:-unknown}
-_PROJ="${GSTACK_HOME:-$HOME/.gstack}/projects/${SLUG:-unknown}"
+eval "$($GSTACK_BIN/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+_PROJ="$GSTACK_STATE_ROOT/projects/${SLUG:-unknown}"
 if [ -d "$_PROJ" ]; then
   echo "--- RECENT ARTIFACTS ---"
   find "$_PROJ/ceo-plans" "$_PROJ/checkpoints" -type f -name "*.md" 2>/dev/null | xargs -r ls -t 2>/dev/null | head -3
@@ -338,7 +339,8 @@ Then build the complete version of what remains.
 
 **Eureka:** When first-principles reasoning contradicts conventional wisdom, name it and log:
 ```bash
-jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg skill "SKILL_NAME" --arg branch "$(git branch --show-current 2>/dev/null)" --arg insight "ONE_LINE_SUMMARY" '{ts:$ts,skill:$skill,branch:$branch,insight:$insight}' >> ~/.gstack/analytics/eureka.jsonl 2>/dev/null || true
+eval "$($GSTACK_BIN/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+jq -n --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg skill "SKILL_NAME" --arg branch "$(git branch --show-current 2>/dev/null)" --arg insight "ONE_LINE_SUMMARY" '{ts:$ts,skill:$skill,branch:$branch,insight:$insight}' >> "$GSTACK_STATE_ROOT/analytics/eureka.jsonl" 2>/dev/null || true
 ```
 
 ## Completion Status Protocol
@@ -1395,12 +1397,13 @@ Coverage line: `Test Coverage Audit: N new code paths. M covered (Y% any test, X
 After producing the coverage diagram, write a test plan artifact so `/qa` and `/qa-only` can consume it:
 
 ```bash
-eval "$($GSTACK_ROOT/bin/gstack-slug 2>/dev/null)" && mkdir -p ~/.gstack/projects/$SLUG
+eval "$($GSTACK_ROOT/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+eval "$($GSTACK_ROOT/bin/gstack-slug 2>/dev/null)" && mkdir -p "$GSTACK_STATE_ROOT/projects/$SLUG" && echo "PROJECT_DIR: $GSTACK_STATE_ROOT/projects/$SLUG"
 USER=$(whoami)
 DATETIME=$(date +%Y%m%d-%H%M%S)
 ```
 
-Write to `~/.gstack/projects/{slug}/{user}-{branch}-ship-test-plan-{datetime}.md`:
+Write to `<PROJECT_DIR>/{user}-{branch}-ship-test-plan-{datetime}.md` (`PROJECT_DIR` printed above):
 
 ```markdown
 # Test Plan
@@ -3428,7 +3431,8 @@ git config --get core.hooksPath >/dev/null 2>&1 || _HOOKS_CONFIG_STATUS=$?
 if [ -n "$_HOOK_PATH" ] && [ -n "$_HOOKS_DIR" ] && [ "$_HOOKS_CONFIG_STATUS" = "1" ] && [ ! -L "$_HOOKS_DIR" ]; then
   _HOOKS_IN_GIT_DIR="yes"
 fi
-_PREPUSH_PROMPTED=$([ -f "${GSTACK_HOME:-$HOME/.gstack}/.redact-prepush-prompted" ] && echo "yes" || echo "no")
+eval "$($GSTACK_ROOT/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+_PREPUSH_PROMPTED=$([ -f "$GSTACK_STATE_ROOT/.redact-prepush-prompted" ] && echo "yes" || echo "no")
 if [ "$_REDACT_PREPUSH" = "true" ] && [ "$_HOOKS_IN_GIT_DIR" = "yes" ] && [ "$_HOOK_STATE" != "unmanaged" ]; then
   $GSTACK_ROOT/bin/gstack-redact install-prepush-hook || exit $?
 fi
@@ -3465,7 +3469,8 @@ Branch on the echoed values:
    ALWAYS (after either answer, but NOT if the question itself failed to
    render — a failed AskUserQuestion must re-offer next time):
    ```bash
-   touch "${GSTACK_HOME:-$HOME/.gstack}/.redact-prepush-prompted"
+   eval "$($GSTACK_ROOT/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+   touch "$GSTACK_STATE_ROOT/.redact-prepush-prompted"
    ```
 3. **Declined earlier** — continue
    without comment.
@@ -3530,7 +3535,7 @@ then return here for a new lookup, fresh body and both redaction scans before pu
 
 1. Resolve the archive directory and branch:
    ```bash
-   eval "$($GSTACK_ROOT/bin/gstack-paths)"
+   eval "$($GSTACK_ROOT/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
    eval "$($GSTACK_ROOT/bin/gstack-slug)"
    CURRENT_BRANCH=$(git branch --show-current)
    SPEC_ARCHIVES="$GSTACK_STATE_ROOT/projects/$SLUG/specs"
@@ -3719,8 +3724,7 @@ The shell supplies the branch. Run this automatically, without confirmation.
 After a successful ship, show the non-blocking /plan-tune nudge once per machine:
 
 ```bash
-eval "$($GSTACK_ROOT/bin/gstack-paths)"
-export GSTACK_STATE_ROOT
+eval "$($GSTACK_ROOT/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
 _NUDGE_MARKER="$GSTACK_STATE_ROOT/.plan-tune-nudge-shown"
 _QT=$($GSTACK_ROOT/bin/gstack-config get question_tuning 2>/dev/null || echo "false")
 if [ ! -f "$_NUDGE_MARKER" ] && [ "$_QT" = "false" ]; then
