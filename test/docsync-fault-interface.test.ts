@@ -19,6 +19,9 @@ test('prepare copies the exact generated prompt and snapshots actual inputs with
     const prepared = JSON.parse(response.text);
     const candidate = JSON.parse(fs.readFileSync(prepared.candidate, 'utf8'));
     expect(candidate).toEqual(docsCandidate(fixture.repo, 'first', 'edit', candidate.base_sha));
+    const supplied = JSON.parse(fs.readFileSync(path.join(fixture.home, 'candidate.json'), 'utf8'));
+    expect(candidate.selected_paths).toEqual(supplied.selected_paths);
+    expect(fs.readFileSync(fixture.invocation, 'utf8')).toContain('prepare saves the same selection with current hashes, so it needs no separate Read.');
     const source = extractDocsDispatch(fs.readFileSync(path.join(fixture.skills, 'ship/sections/documentation.md'), 'utf8'));
     expect(fs.readFileSync(prepared.prompt, 'utf8')).toBe(source.replaceAll('${HOME}', fixture.home)
       .replaceAll('<branch>', 'feature/docs').replaceAll('<base>', 'main')

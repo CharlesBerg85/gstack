@@ -5,7 +5,7 @@
 The **caller** (/qa, /qa-only, /review or /ship) owns decisions, tests, fixes and publication. Discovery writes only reports/evidence
 and owned fixture state; no workflows, framework installs or publication.
 
-Complete these Reads in order before writing charters or probing. Do not repeat a Read already completed in this invocation.
+Complete these Reads in order before writing charters or probing. Await their results before the first probe, never in the same response. Do not repeat a Read already completed in this invocation.
 1. Read `sections/scope.md` relative to the installed `qa`/`gstack-qa` SKILL.md directory in full and select the surfaces.
 2. Read the selected surface methods below in full.
 

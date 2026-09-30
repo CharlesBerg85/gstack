@@ -52,7 +52,7 @@ and owned fixture state; no workflows, framework installs or publication.
 
 ${reportOnly ? `## 0. Preparation gate
 
-Complete these Reads in order before writing charters or probing:` : 'Complete these Reads in order before writing charters or probing. Do not repeat a Read already completed in this invocation.'}
+Complete these Reads in order before writing charters or probing:` : 'Complete these Reads in order before writing charters or probing. Await their results before the first probe, never in the same response. Do not repeat a Read already completed in this invocation.'}
 1. Read ${sectionPath(ctx, 'qa', 'scope')} in full and select the surfaces.
 2. Read the selected surface methods below in full.
 

@@ -8,6 +8,7 @@ import { HOST_PATHS } from '../scripts/resolvers/types';
 
 function assertPreparation(text: string) {
   expect(text).toContain('Complete these Reads in order before writing charters or probing');
+  expect(text).toMatch(/Await their results before the first probe, never in the same response\.|Await each successful Read result before continuing\./);
   expect(text).toContain('Do not repeat a Read already completed in this invocation');
   const stages = ['1. Read `sections/scope.md`', 'in full and select the surfaces',
     '2. Read the selected surface methods below in full', '**Functional surfaces:**',
@@ -240,6 +241,8 @@ describe('QA probe entry and checkpoint gates', () => {
       text.replace(method, method + '\n' + method),
       'Write a **charter**\n' + text,
       text.replace('Do not repeat a Read already completed in this invocation', 'Repeat all Reads'),
+      // ci-36641820398-1-gate-census-7 ship-exploratory-small-cli dispatched its first probe with the resource Reads.
+      text.replace(' Await their results before the first probe, never in the same response.', ''),
     ]) expect(() => assertPreparation(changed)).toThrow();
   });
 

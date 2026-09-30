@@ -138,6 +138,22 @@ describe('pre-publication documentation lifecycle', () => {
     expect(read('ship/sections/apple-release.md.tmpl')).toContain('ship/sections/documentation.md');
   });
 
+  test('ship-owned documentation_section carries its status so /ship embeds it unchanged', () => {
+    // ci-36641820398-1-gate-census-3 ship-docsync-completion: the section had scope, health and debt but no result,
+    // so the parent spliced a Status line into it and the report no longer contained the returned section.
+    const scope = read('document-release/sections/audit-scope.md.tmpl').replace(/\s+/g, ' ');
+    expect(scope).toContain('complete for verbatim embedding: a first `**Status:**` line with `status` and the result, audited scope');
+    expect(read('ship/sections/documentation.md.tmpl')).toContain('nonempty Markdown with scope, result and debt');
+    expect(read('ship/sections/pr-body.md.tmpl')).toContain("Embed Step 14.5's vetted nonempty `documentation_section`");
+  });
+
+  test('a missing installed document-release section blocks before launch', () => {
+    // ci-36709485593-1-eval-slices-2 ship-docsync-missing-asset: audit-scope.md was absent, but the parent saw the
+    // SKILL.md "Ship-owned documentation mode" heading, read the gate as satisfied and dispatched.
+    const gate = read('ship/sections/documentation.md.tmpl').replace(/\s+/g, ' ');
+    expect(gate).toContain('full audit-scope/release-body content, linked as sections or inlined for external hosts. A missing section or old `Ship-owned documentation mode` blocks before launch; never substitute.');
+  });
+
   test('nested authored discovery and standalone protections survive', () => {
     const skill = read('document-release/SKILL.md.tmpl') + read('document-release/sections/audit-scope.md.tmpl');
     expect(skill).not.toContain('find . -maxdepth 2');

@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import {
-  callerExcerpt, callerSnapshot, callerTools, createQaCallerFixture, qaCallerInstructions,
+  callerExcerpt, callerReviewRecordTemplate, callerSnapshot, callerTools, createQaCallerFixture, qaCallerInstructions,
   QA_CALLER_CASES, QA_CALLER_TEST_MS,
   qaCallerSessionOptions, qaCallerCommandAllowed, readCallerReceipt, retainQaCallerEvidence, runQaCaller, validateCallerEvidence,
   type CallerProbe, type CallerReceipt, type QaCallerFixture,
@@ -136,9 +136,46 @@ describe('caller native-event observer controls', () => {
       const fixture = createQaCallerFixture(id, { installRuntime: false });
       try { return qaCallerSessionOptions(fixture, 'free-control').prompt; } finally { fs.rmSync(fixture.root, { recursive: true, force: true }); }
     };
-    expect(prompt('review-exploratory-small-cli')).toContain("/bin/gstack-review-log '<JSON>' --finish <token>`, never through bun");
+    expect(prompt('review-exploratory-small-cli')).toContain('never through bun or another interpreter. A review record fills this installed template, keeping its keys and adding none: `');
     expect(prompt('review-exploratory-small-cli')).toContain('otherwise issues_found; a review stopped at a gate records completed:false');
     expect(prompt('ship-exploratory-small-cli')).toContain('otherwise issues_found (unavailable for missing dispatched reviewer output)');
+  });
+
+  test('captured PR-lane review record: an invented shape without the installed template is rejected; the template is quoted', () => {
+    // ci-36641824710-1-eval-slices-6 review-exploratory-small-cli, native event 8jewsM (fixture paths shortened).
+    const invented = `/runtime/bin/gstack-review-log '{"timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","commit":"'"$(git rev-parse --short HEAD)"'","branch":"caller-change","status":"issues_found","completed":false,"gate":"fix-first-ask","findings":[{"path":"scale.ts","line":3,"category":"functional-contract","severity":"CRITICAL","fingerprint":"scale.ts:3:functional-contract","confidence":10,"action":"ask","summary":"new !n guard rejects documented lower bound 0 (exit 2 instead of 0)"}],"qa":{"probes":["probe-167de79c-2645-4b60-b06b-3d0d6eebf13f"],"checkpoints":["exploration-001.json","exploration-002.json"],"suite":"bun run test 1 pass 0 fail"},"remaining":["fix-first-ask-approval"]}' --finish 37b567b3-c4bf-4469-9bad-29096740c234`;
+    const errorsFor = (command: string) => {
+      const observed = evidence();
+      observed.result.transcript.push(...nativeCall('record', 'Bash', { command }, ''));
+      return validateCallerEvidence(observed);
+    };
+    expect(errorsFor(invented)).toEqual(['command outside declared caller observation interface', 'QA checkpoint: Unsupported checkpoint Bash interaction']);
+    for (const caller of ['review', 'ship'] as const) {
+      const template = callerReviewRecordTemplate({ caller, runtime: '/runtime' });
+      expect(template.startsWith(`/runtime/bin/gstack-review-log '{"skill":"review","timestamp":`)).toBe(true);
+      expect(template).toEndWith(`}' --finish REVIEW_START`);
+      const filled = template.replace('"timestamp":"TIMESTAMP"', `"timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"`)
+        .replace('"commit":"COMMIT"', `"commit":"'"$(git rev-parse --short HEAD)"'"`)
+        .replace('"STATUS"', '"issues_found"').replace(/"issues_found":N/, '"issues_found":1').replace('"critical":N', '"critical":1').replace('"informational":N', '"informational":0')
+        .replace('SCORE', '10.0').replace('SPECIALISTS_JSON', '{}').replace('FINDINGS_JSON', '[{"fingerprint":"scale.ts:3:functional-contract","severity":"CRITICAL","action":"ask-pending"}]')
+        .replace('COMPLETED', 'false').replace('CONVERGED', 'false').replace('CYCLES', '0').replace('REVIEW_START', 'native-token');
+      expect(errorsFor(filled)).toEqual([]);
+      const fixture = createQaCallerFixture(caller === 'review' ? 'review-exploratory-small-cli' : 'ship-exploratory-small-cli', { installRuntime: false });
+      try { expect(qaCallerSessionOptions(fixture, 'free-control').prompt).toContain(callerReviewRecordTemplate(fixture)); } finally { fs.rmSync(fixture.root, { recursive: true, force: true }); }
+    }
+  });
+
+  test('captured PR-lane plan-completion git log is in the caller interface; other log forms stay outside', () => {
+    // ci-36641824710-1-eval-slices-7 ship-exploratory-plan-checks, native event 3Pvdmu: ship/sections/plan-completion.md requires this read.
+    expect(fs.readFileSync(path.join(import.meta.dir, '../ship/sections/plan-completion.md'), 'utf8')).toContain('`git log origin/<base>..HEAD --oneline`');
+    expect(qaCallerCommandAllowed('git log origin/main..HEAD --oneline')).toBe(true);
+    for (const command of ['git log', 'git log --oneline', 'git log origin/main..HEAD', 'git log origin/main..HEAD --oneline -p',
+      'git log origin/main..HEAD --oneline --output=/tmp/x', 'git log --all --oneline', 'git log origin/main..HEAD --oneline; git push',
+      'git log origin/main..HEAD --oneline && git commit -am x', 'git -c core.pager=x log origin/main..HEAD --oneline', 'git log origin/main...HEAD --oneline']) {
+      expect(qaCallerCommandAllowed(command)).toBe(false);
+    }
+    const fixture = createQaCallerFixture('ship-exploratory-plan-checks', { installRuntime: false });
+    try { expect(qaCallerSessionOptions(fixture, 'free-control').prompt).toContain("git log origin/main..HEAD --oneline, git diff"); } finally { fs.rmSync(fixture.root, { recursive: true, force: true }); }
   });
 
   test('a later unchanged handoff reread does not invalidate an already completed freshness decision', () => {

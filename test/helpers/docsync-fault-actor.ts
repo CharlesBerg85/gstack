@@ -232,7 +232,7 @@ Earlier review stages are synthetic and outside this fixture. No live review han
 ## Checks
 Earlier check stages are synthetic and outside this fixture. No test receipts are asserted.
 ## Initial documentation state
-Attempts used: 0. No accepted audit, hashes, exception or child handle. The supplied candidate.json is initial fixture input, not an accepted audit.
+Attempts used: 0. No accepted audit, hashes, exception or child handle. The supplied candidate.json is initial fixture input, not an accepted audit; prepare saves the same selection with current hashes, so it needs no separate Read.
 ## Initial next steps
 1. CURRENT: documentation phase (Step 14.5, or store documentation preflight).
 2. Save the result and optionally execute the authorized local publication stand-in if the actual documentation gate permits it.

@@ -32,9 +32,10 @@ on the LAST nonempty line, without fences or trailing prose:
 - `files_updated`, `files_reviewed`: unique repo-relative file paths actually edited
   and actually read; `blockers`, `decisions`: strings. Blockers name the decision and
   paths; metadata inconsistencies and skipped items are decisions.
-- `documentation_section`: nonempty Markdown without a `## Documentation` heading:
-  audited scope, per-file status in Step 9's `Documentation health` form (no VERSION
-  row), and Step 1.5's coverage debt and diagram drift. Describe scope even without docs.
+- `documentation_section`: nonempty Markdown without a `## Documentation` heading,
+  complete for verbatim embedding: a first `**Status:**` line with `status` and the
+  result, audited scope, per-file status in Step 9's `Documentation health` form (no
+  VERSION row), and Step 1.5's coverage debt and diagram drift. Describe scope even without docs.
 
 ## Discovery (both modes)
 

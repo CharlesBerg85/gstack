@@ -110,6 +110,33 @@ describe('QA command-observation boundary', () => {
     });
   }
 
+  // ci-36709485593-1-eval-slices-6 qa-functional-cli-fix: link(2) raised the temporary receipt's nlink to 2 before the
+  // receipt.json name resolved, so the observer's open failed with ENOENT during an ordinary atomic publication.
+  for (const variant of ['published', 'foreign-link-kept', 'foreign-link-dropped', 'replaced-target'] as const) {
+    test(`evidence publication observed mid-link: ${variant}`, async () => {
+      const fixture = createQAFunctionalFixture('cli');
+      const outside = fs.mkdtempSync(path.join(path.dirname(fixture.root), 'qa-link-'));
+      const observer = await observeQAWrites(fixture.root, { evidenceProducer: true });
+      try {
+        const directory = path.join(fixture.root, 'qa-reports/.qa-evidence/002');
+        fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+        observer.drain();
+        const temporary = path.join(directory, 'receipt.json.tmp.2282.fd4f6b4d');
+        const target = path.join(directory, 'receipt.json');
+        const foreign = path.join(outside, 'second-name');
+        fs.writeFileSync(temporary, JSON.stringify({ version: 1, id: '002', status: 'complete' }), { mode: 0o600 });
+        fs.linkSync(temporary, foreign);
+        observer.drain();
+        if (variant === 'published') { fs.unlinkSync(foreign); fs.linkSync(temporary, target); observer.drain(); fs.unlinkSync(temporary); }
+        if (variant === 'foreign-link-dropped') fs.unlinkSync(temporary);
+        if (variant === 'replaced-target') { fs.unlinkSync(foreign); fs.unlinkSync(temporary); fs.writeFileSync(target, '{}', { mode: 0o600 }); }
+        const verdict = qaWriteVerdict(observer.stop(), 'qa-only');
+        if (variant === 'published') expect(verdict).toEqual([]);
+        else expect(verdict).toContain('incomplete write observation');
+      } finally { fixture.cleanup(); fs.rmSync(outside, { recursive: true, force: true }); }
+    });
+  }
+
   test('lost directory watches and allowed-directory link substitutions fail closed', async () => {
     const fixture = createQAFunctionalFixture('cli');
     const observer = await observeQAWrites(fixture.root);

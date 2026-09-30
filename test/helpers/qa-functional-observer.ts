@@ -95,6 +95,7 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
   const events: QAWriteObservation['events'] = [];
   const failures: string[] = [];
   const publications = new Map<string, { temporary: string; dev: number; ino: number; bytes: string; parentDev: number; parentIno: number; mode: number }>();
+  const pendingLinks = new Map<string, { target: string; dev: number; ino: number; mode: number; bytes: string }>();
   let stopped = false;
   const observedPath = (relative: string, knownPair = false): string => {
     try {
@@ -150,6 +151,18 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
         publications.set(relativeTarget, publication);
         return target;
       } catch (publicationError) {
+        if (receipt === undefined && (publicationError as NodeJS.ErrnoException).code === 'ENOENT' && temporaryName.test(basename)) {
+          let linking: number | undefined;
+          try { linking = fs.openSync(path.join(parent, basename), fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); }
+          catch (openError) { if ((openError as NodeJS.ErrnoException).code === 'ENOENT') return path.join(parent, basename); }
+          if (linking !== undefined) try {
+            const entry = fs.fstatSync(linking);
+            if (entry.isFile() && entry.nlink === 2 && entry.uid === parentStat.uid && (entry.mode & 0o777) === mode) {
+              pendingLinks.set(relative, { target: path.relative(root, target), dev: entry.dev, ino: entry.ino, mode, bytes: fs.readFileSync(linking, 'utf8') });
+              return path.join(parent, basename);
+            }
+          } finally { fs.closeSync(linking); }
+        }
         try { return ownedPath(root, relative); } catch { throw publicationError; }
       } finally { if (receipt !== undefined) fs.closeSync(receipt); }
     }
@@ -240,6 +253,13 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
             || (entry.mode & 0o777) !== publication.mode || parent.dev !== publication.parentDev || parent.ino !== publication.parentIno
             || fs.readFileSync(target, 'utf8') !== publication.bytes) throw new Error('Evidence publication did not settle unchanged');
         } catch (error) { failures.push(String(pathFailure(root, relative, error))); }
+      }
+      for (const [temporary, pending] of pendingLinks) {
+        try {
+          const entry = fs.lstatSync(ownedPath(root, pending.target));
+          if (fs.existsSync(ownedPath(root, temporary)) || entry.dev !== pending.dev || entry.ino !== pending.ino || entry.nlink !== 1
+            || (entry.mode & 0o777) !== pending.mode || fs.readFileSync(ownedPath(root, pending.target), 'utf8') !== pending.bytes) throw new Error('Evidence publication did not settle unchanged');
+        } catch (error) { failures.push(String(pathFailure(root, temporary, error))); }
       }
       let after: Record<string, string> = {};
       try { after = qaTreeSnapshot(root); } catch (error) { failures.push(String(error)); }
