@@ -545,6 +545,8 @@ process.exit(exit ?? 127);
     run('config', 'user.name', 'QA Caller Fixture');
     run('config', 'user.email', 'qa-caller-fixture@gstack.test');
     run('config', 'commit.gpgsign', 'false');
+    run('config', 'gc.auto', '0');
+    run('config', 'maintenance.auto', 'false');
     fs.writeFileSync(path.join(cwd, '.gitignore'), 'reports/\n.gstack/\n.qa-state/\ncaller-*.md\n');
     run('add', '.');
     run('commit', '-m', 'Seed caller fixture');
