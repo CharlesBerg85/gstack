@@ -269,7 +269,12 @@ test('a later capture requires a checkpoint anchored on the latest complete capt
   const allowed = f.capture('002', 'console.log(JSON.stringify({ step: 2 }))');
   expect(allowed.status, allowed.stderr).toBe(0);
   expect(receipt(allowed.stdout).next).toContain('anchored on capture 002');
-  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Only two probes ran.'], evidence: [{ capture: '001', command: first, contract: 'README.md', expected: 'step 1', classification: 'pass' }] });
+  const firstRow = { capture: '001', command: first, contract: 'README.md', expected: 'step 1', classification: 'pass' };
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Only two probes ran.'], evidence: [firstRow] });
+  const omitted = f.run('materialize', f.root, 'annotations.json');
+  expect(omitted.status).toBe(2);
+  expect(receipt(omitted.stderr).message).toContain('add an evidence row for capture 002');
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Only two probes ran.'], evidence: [firstRow, { capture: '002', command: second('002'), contract: 'README.md', expected: 'step 2', classification: 'pass' }] });
   const report = f.run('materialize', f.root, 'annotations.json');
   expect(report.status, report.stderr).toBe(0);
   expect(receipt(report.stdout).reportLinks).toEqual(['[checkpoint 001](exploration-001.json)']);

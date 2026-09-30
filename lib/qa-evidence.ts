@@ -121,13 +121,15 @@ function checkpointNotes(root: string): Record<string, any>[] {
     .map(name => ({ name, ...JSON.parse(decode(read(root, name))) }));
 }
 
-function latestCompleteCapture(root: string): string | undefined {
-  if (!fs.existsSync(path.join(root, '.qa-evidence'))) return undefined;
+function completeReceipts(root: string): Record<string, any>[] {
+  if (!fs.existsSync(path.join(root, '.qa-evidence'))) return [];
   return fs.readdirSync(owned(root, '.qa-evidence')).filter(name => /^\d{3}$/.test(name) && fs.existsSync(path.join(root, '.qa-evidence', name, 'receipt.json')))
     .map(name => JSON.parse(decode(read(root, `.qa-evidence/${name}/receipt.json`))))
     .filter(receipt => receipt.status === 'complete')
-    .sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt)).at(-1)?.id;
+    .sort((a, b) => Date.parse(a.completedAt) - Date.parse(b.completedAt));
 }
+const completeCaptures = (root: string): string[] => completeReceipts(root).map(receipt => receipt.id);
+const latestCompleteCapture = (root: string): string | undefined => completeCaptures(root).at(-1);
 
 async function capture(root: string, captureId: string, publicOutput: boolean, option: string, budget: string, command: string, args: string[]) {
   id(captureId);
@@ -262,6 +264,9 @@ function materialize(root: string, source: string) {
     const captured = readQaCapture(root, row.capture);
     return { command: row.command, contract: row.contract, expected: row.expected, classification: row.classification, observed: captured.observed };
   });
+  const missing = completeCaptures(root).filter(capture => !captures.has(capture)
+    && !annotations.limits.some((limit: string) => new RegExp(`\\b${capture}\\b`).test(limit)));
+  if (missing.length) throw new QaEvidenceError(`Invalid report annotations: add an evidence row for capture ${missing.join(', ')} (every complete capture needs one, or name it in limits with why it is withheld)`);
   const learning = annotations.learning.map((name: unknown) => {
     if (typeof name !== 'string') throw new QaEvidenceError('Invalid checkpoint reference');
     const note = JSON.parse(decode(read(root, `exploration-${id(name)}.json`)));

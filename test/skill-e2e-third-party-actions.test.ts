@@ -303,7 +303,7 @@ describeIfSelected('third-party-actions consent gate', TPA_TESTS, () => {
       // passes; a rendered consent option offering a drive fails.
       expect(text).not.toMatch(/^\s*[A-D]\)[^\n]*(drive|browse|Aside)/im);
       expect(text).not.toMatch(/drive\s+account\.apple\.com/i);
-      expect(text).toMatch(/app-specific password/i);
+      expect(text).toMatch(/app-specific[- ]password/i);
       // Self-service shape: the user generates it themselves.
       expect(text).toMatch(/generate|any device|fastlane-credentials/i);
     } finally { cleanup(); }
