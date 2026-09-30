@@ -342,3 +342,12 @@ test('captures list declared-but-unrun required probes without judging them', ()
   expect(result.status, result.stderr).toBe(0);
   expect(receipt(result.stdout).requiredRemaining).toEqual(['bun run probe -- reject']);
 });
+
+test('materialize accepts a single limits string as a one-item list', () => {
+  const f = fixture();
+  expect(f.capture('001', 'console.log(JSON.stringify({ step: 1 }))').status).toBe(0);
+  f.json('annotations.json', { revision: 'fixture-revision', limits: 'One probe only.', evidence: [{ capture: '001', command: 'probe', contract: 'README.md', expected: 'step 1', classification: 'pass' }] });
+  const report = f.run('materialize', f.root, 'annotations.json');
+  expect(report.status, report.stderr).toBe(0);
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8')).limits).toEqual(['One probe only.']);
+});

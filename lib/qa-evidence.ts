@@ -256,7 +256,7 @@ function materialize(root: string, source: string) {
     revision: measured.revision ?? supplied.revision,
     runtime: measured.runtime,
     cwd: measured.cwd,
-    limits: supplied.limits,
+    limits: typeof supplied.limits === 'string' ? [supplied.limits] : supplied.limits,
     evidence: supplied.evidence,
     learning: supplied.learning ?? notes.filter(note => typeof note.observationCommand === 'string' && typeof note.nextCommand === 'string'
       && nativeCommand(note.observationCommand) !== nativeCommand(note.nextCommand)).map(note => note.name.slice(12, 15)),
