@@ -203,7 +203,8 @@ describeIfSelected('QA skill quality evals', ['qa/SKILL.md workflow', 'qa/SKILL.
     const t0 = Date.now();
     const section = readWorkflowJudgeInput({ root: ROOT, skillPath: 'qa/SKILL.md',
       startMarker: '# /qa: Test', endMarker: null,
-      references: ['qa/templates/functional-report-template.md'] }).text;
+      // qa-patterns.md loads both browser assets; judges penalized their absence.
+      references: ['qa/templates/functional-report-template.md', 'qa/templates/qa-report-template.md', 'qa/references/issue-taxonomy.md'] }).text;
 
     const samples = await judgePanel(() => callJudge<JudgeScore>(`You are evaluating the quality of a QA testing workflow document for an AI coding agent.
 
