@@ -85,7 +85,7 @@ export function docsFaultPrompt(fixture: ReturnType<typeof fixtureDocs>, phase: 
   const actorFile = path.join(import.meta.dir, 'docsync-fault-actor.ts');
   const stateFile = path.join(fixture.home, 'actor-state.json');
   const opening = seed
-    ? `Load gstack /ship: ${phase} is its excerpt for this step, so ship/SKILL.md needs no Read. Continue the documentation phase from ${phase}, already in progress, and stop before Step 15. Base main; existing open PR, already-pushed docs-only branch. Skill assets are installed at ${fixture.skills}. The fixture owner already prepared and dispatched attempt 1 through the transport below; the invocation record's Checkpoint 1 is its pre-dispatch entry and names its candidate, prompt, dispatch exit code and verbatim output, saved once at ${seed.completion}. Resume at Parent processing (Collect, then validate) for that output. Do not repeat attempt 1's preparation, save its output again or reread the child assets it already checked. No audit from an earlier invocation is reusable. Place candidate/prompt/report artifacts directly under ${fixture.home}. Write the final ship report to ${report}; no user risk exception or risky edit is approved.`
+    ? `Load gstack /ship: ${phase} is its excerpt for this step, so ship/SKILL.md needs no Read. Continue the documentation phase from ${phase}, already in progress, and stop before Step 15. Base main; existing open PR, already-pushed docs-only branch. Skill assets are installed at ${fixture.skills}. The fixture owner already prepared and dispatched attempt 1 through the transport below; the invocation record's Checkpoint 1 is its pre-dispatch entry and names its candidate, prompt, dispatch exit code and verbatim output, saved once at ${seed.completion}. Resume at Parent processing (Collect, then validate) for that output. Do not repeat attempt 1's preparation, save its output again or reread the child assets it already checked. Attempt 1 is this invocation's own attempt: it counts toward the attempt limit, and a further attempt needs what Blocked recovery requires (changed audited inputs, or a concrete correction the declared interface below actually provides). No audit from an earlier invocation is reusable. Place candidate/prompt/report artifacts directly under ${fixture.home}. Write the final ship report to ${report}; no user risk exception or risky edit is approved.`
     : `Load gstack /ship. Execute the actual next phase from ${phase} and stop before Step 15. Base main; ${scenario === 'legacy-completion' ? 'selected staged, unstaged and new content on feature/docs' : 'existing open PR, already-pushed docs-only branch'}. Skill assets are installed at ${fixture.skills}. Place candidate/prompt/report artifacts directly under ${fixture.home}. No prior audit is reusable. Write the final ship report to ${report}; no user risk exception or risky edit is approved.`;
   return `${opening}
 
@@ -179,7 +179,8 @@ export async function runShipDocsFault(testName: string, scenario: DocsFault, co
         cursor = found + literal.length;
       }
     }
-    const events = result.toolCalls.filter(call => call.tool === 'Bash' && String(call.input?.command).includes(actorFile));
+    const events = result.toolCalls.filter(call => call.tool === 'Bash' && String(call.input?.command).includes(actorFile)
+      && String(call.input?.command).includes(stateFile));
     for (const action of ['prepare', 'dispatch', 'inspect', 'status', 'stop', 'repair', 'publish']) {
       expect(events.filter(call => String(call.input?.command).replaceAll("'", '').replaceAll('"', '').includes(` ${action} `)).length)
         .toBe(parentEvents.filter(e => e.action === action).length);
