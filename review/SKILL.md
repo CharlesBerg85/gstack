@@ -965,13 +965,13 @@ Retain the completed action in the invocation action list before starting any re
 
 ### Step 5c: Batch-ask about ASK items
 
-If there are ASK items remaining, present them in ONE AskUserQuestion:
+Present remaining ASK items in ONE AskUserQuestion:
 
-- List each item with a number, the severity label (or `[ADVISORY]` for optional advice), the problem, and a recommended fix
-- For each item, provide options: A) Fix as recommended, B) Skip
+- Number each item with its severity label (or `[ADVISORY]` for optional advice), problem and recommended fix
+- Options per item: A) Fix as recommended, B) Skip (describe only as: no code/index change; Skip recorded)
 - Include an overall RECOMMENDATION
 
-If 3 or fewer ASK items, you may use individual AskUserQuestion calls instead of batching.
+With 3 or fewer ASK items, individual AskUserQuestion calls are fine.
 Retain each explicit Skip choice and its finding metadata in the invocation action list. Do not record an unanswered question as skipped or ask again about a decision already revalidated in this invocation.
 
 ### Step 5d: Apply user-approved fixes

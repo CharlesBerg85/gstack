@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureGit, fixtureWrite, installSourceShims,
-  installHostileGitConfig, isGuardedGitRequest, standaloneInstructions, SHARED_LIBS_ROOT, readRequests, seedOpportunitySources, sharedReadOnlyViolations, shellQuote, snapshotFixture, type SharedLibsFixture,
+  installHostileGitConfig, isGuardedGitRequest, reviewLifecycleInstructions, standaloneInstructions, SHARED_LIBS_ROOT, readRequests, seedOpportunitySources, sharedReadOnlyViolations, shellQuote, snapshotFixture, type SharedLibsFixture,
   SharedCaptureAccumulator, type SharedCaptureAttempt, isInternalClaudeGitRequest, SHARED_LIBS_OLDER_OPEN_PRS, incompleteFirstFileView,
 } from './helpers/shared-libs-eval-fixture';
 import { EvalCollector, type EvalTestEntry } from './helpers/eval-store';
@@ -14,6 +14,7 @@ import { collectorOutcomeCounts } from '../scripts/test-paid-shards';
 import { E2E_TOUCHFILES, GLOBAL_TOUCHFILES, selectTests } from './helpers/touchfiles';
 import nativeNoChangeCases from './fixtures/shared-libs-no-change-ci-public.json';
 import r44 from './fixtures/shared-libs-index-flags-r44-packets.json';
+import skipDescriptions from './fixtures/shared-libs-index-flags-skip-description-public.json';
 import { seedPathReviewPrerequisites, checkPathReviewPrerequisites } from './helpers/shared-libs-path-fixture';
 
 const cleanup: string[] = [];
@@ -69,6 +70,27 @@ describe('shared-code Git guard', () => {
       { ...wrapped, args: [...wrapped.args, '--output=out.patch'] },
       { ...wrapped, args: wrapped.args.map(arg => arg === 'core.fsmonitor=false' ? 'core.fsmonitor=true' : arg) },
     ]) expect(isGuardedGitRequest(damaged), JSON.stringify(damaged.args)).toBe(false);
+  });
+});
+
+describe('review Skip option description', () => {
+  test.each(skipDescriptions.cases)('Step 5c limits Skip to its own effect; the $scenario capture narrated more and stays refused', async ({ input }) => {
+    const rule = 'B) Skip (describe only as: no code/index change; Skip recorded)';
+    expect(fs.readFileSync(path.join(SHARED_LIBS_ROOT, 'review/SKILL.md'), 'utf8')).toContain(rule);
+    const workflow = fs.readFileSync(reviewLifecycleInstructions({ root: scratch() } as SharedLibsFixture), 'utf8');
+    expect(workflow.slice(workflow.indexOf('### Step 5c'), workflow.indexOf('### Step 5d'))).toContain(rule);
+    const refusals: Error[] = [];
+    const handler = () => createSharedInteractiveToolHandler('skip', { nonQuestion: () => { throw new Error('unexpected tool'); },
+      onQuestion: () => {}, onAnswer: () => {}, onRefusal: error => { refusals.push(error); } });
+    const skip = input.questions[0].options.find(option => option.label.startsWith('Skip'))!;
+    expect(skip.description).toMatch(/can be applied in a later|replacing the invalidated prior Skip/);
+    await expect(handler()('AskUserQuestion', input)).rejects.toThrow('No unambiguous no-change option');
+    expect(refusals).toHaveLength(1);
+    const ruled = structuredClone(input);
+    ruled.questions[0].options.find(option => option.label.startsWith('Skip'))!.description = 'No code/index change; Skip recorded.';
+    const answer = await handler()('AskUserQuestion', ruled);
+    expect(answer.updatedInput.answers).toEqual({ [ruled.questions[0].question]: ruled.questions[0].options.find(option => option.label.startsWith('Skip'))!.label });
+    expect(refusals).toHaveLength(1);
   });
 });
 
