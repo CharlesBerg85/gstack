@@ -174,7 +174,9 @@ function readsFile(command: unknown, file: string, cwd: string, output: unknown,
   const andDisplay = (p: string) => {
     if (p === 'echo' || /^echo\s+[-=]+$/.test(p) || /^echo [-=]{2,} [A-Za-z0-9_.\/-]+ [-=]{2,}$/.test(p)) return true;
     const caption = /^echo\s+(.+)$/.exec(p), value = caption && literal(caption[1]!);
-    if (value && /^[-=]{2,}(?:\s*[A-Za-z0-9_][A-Za-z0-9_./-]*(?:\s+(?:vs|and)\s+[A-Za-z0-9_][A-Za-z0-9_./-]*)?\s*)?[-=]{2,}$/.test(value)) return true;
+    // A fenced caption may name the next display in plain words, such as
+    // "=== git diff main --stat ==="; an unfenced command string stays data.
+    if (value && /^[-=]{2,}(?:\s*[A-Za-z0-9_][A-Za-z0-9_./-]*(?:\s+[A-Za-z0-9_./-]+)*\s*)?[-=]{2,}$/.test(value)) return true;
     return /^git\s+diff(?:\s+[A-Za-z0-9_][A-Za-z0-9_./~^-]*)?\s+--stat$/.test(p) ||
       /^git\s+log\s+--oneline\s+[A-Za-z0-9_][A-Za-z0-9_./~^-]*$/.test(p);
   };

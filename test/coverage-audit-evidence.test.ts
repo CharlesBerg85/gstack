@@ -272,6 +272,23 @@ Guard clauses tested: 0 / 4
       : numbered(s.files.tests.content);
     return {s, use, result};
   }
+  test('a fenced plain-word caption in a successful && read chain is display only', () => {
+    // Exact command from the failed census 36776104571 /plan-eng-review capture.
+    const command = 'echo "=== src/billing.ts ===" && cat -n src/billing.ts && echo && echo "=== test/billing.test.ts ===" && cat -n test/billing.test.ts && echo && echo "=== git diff main --stat ===" && git diff main --stat && echo "=== package.json ===" && cat package.json';
+    const numbered = (body: string) => body.replace(/\n$/, '').split('\n').map((line, index) => `${String(index + 1).padStart(6)}\t${line}`).join('\n');
+    const read = (edit: (command: string) => string = c => c, content?: string) => {
+      const s = synthetic(); s.result.transcript.splice(3, 2);
+      Object.assign(block(s, 1), {name: 'Bash', input: {command: edit(command)}});
+      block(s, 2).content = content ?? `=== src/billing.ts ===\n${numbered(s.files.source.content)}\n\n=== test/billing.test.ts ===\n${numbered(s.files.tests.content)}\n\n=== git diff main --stat ===\n src/billing.ts | 2 ++\n=== package.json ===\n{}`;
+      return verdict(s);
+    };
+    expect(read()).toEqual({sourceRead: true, testsRead: true, diagram: true, passed: true, failures: []});
+    for (const caption of ['echo "git diff main --stat"', 'echo "cat -n src/billing.ts"', 'echo "=== $(git diff) ==="',
+      'echo "=== git diff ===" > src/billing.ts', 'echo -e "=== git diff ==="', 'echo "=== git diff ===" || true', 'echo "=== git diff ==="; false']) {
+      expect(read(c => c.replace('echo "=== git diff main --stat ==="', caption)), caption).toMatchObject({sourceRead: false, testsRead: false});
+    }
+    expect(read(c => c, 'src/billing.ts and test/billing.test.ts were read')).toMatchObject({sourceRead: false, testsRead: false});
+  });
   test('mixed Git display tails retain separately delivered files and numbered reads after context', () => {
     // Shell forms from the two failed 2026-09-20 paid /review captures.
     for (const context of [false, true]) expect(verdict(mixedDisplay(context).s).passed).toBe(true);
