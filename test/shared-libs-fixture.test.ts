@@ -36,7 +36,7 @@ describe('shared-code Git guard', () => {
     installSourceShims(f);
     const instructions = fs.readFileSync(standaloneInstructions(f), 'utf8');
     const helper = path.join(SHARED_LIBS_ROOT, 'bin/gstack-safe-git');
-    expect(instructions).toContain(`\`${helper} rev-parse --is-inside-work-tree\``);
+    expect(instructions).toContain(`\`${helper} -C <repo> rev-parse --is-inside-work-tree\``);
     expect(instructions).not.toContain('~/.claude/skills/gstack');
     const run = (command: string, args: string[]) => spawnSync(command, args, {
       cwd: f.repo, encoding: 'utf8', timeout: 10_000, env: { ...process.env, ...f.env } });

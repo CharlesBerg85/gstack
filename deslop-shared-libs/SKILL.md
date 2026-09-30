@@ -72,7 +72,7 @@ changed after writing one.
    protections and refuses reads that could run filters, drivers, hooks or
    transports, naming the allowed forms. Never bypass a refusal with raw `git`.
    `diff` takes exactly two explicit committed object IDs, then `--` and paths.
-   First probe with `~/.claude/skills/gstack/bin/gstack-safe-git rev-parse --is-inside-work-tree`; a Git
+   First probe the audited repository with `~/.claude/skills/gstack/bin/gstack-safe-git -C <repo> rev-parse --is-inside-work-tree` (use `-C <repo>` on every call when your shell is elsewhere); a Git
    version check alone is insufficient. If the probe fails (for example
    `unknown option: --no-lazy-fetch`), use pinned-commit GET API source
    and history reads or disclose unavailable local-history coverage. Never retry

@@ -56,7 +56,7 @@ describe('shared-code skill distribution', () => {
       expect(standalone).toContain('Keep API responses and intermediate data on stdout or in memory');
       // Git safety is the installed helper from the trusted global runtime, not a retyped prefix.
       const safeGit = `~/${host.globalRoot}/bin/gstack-safe-git`;
-      expect(standalone).toContain(`${safeGit} rev-parse --is-inside-work-tree`);
+      expect(standalone).toContain(`${safeGit} -C <repo> rev-parse --is-inside-work-tree`);
       expect(standalone).toContain(`${safeGit} ls-files --cached --others --exclude-standard -z`);
       expect(standalone).toContain('never bare `git`');
       expect(standalone).not.toContain('git --no-pager');
