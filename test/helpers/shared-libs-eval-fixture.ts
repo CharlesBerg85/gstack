@@ -862,7 +862,57 @@ export interface SharedReviewStageActor {
   verify(events: any[]): boolean;
 }
 
-export function reviewPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string, resumed?: SharedReviewResume | Pick<SharedReviewStageActor, 'actorCommand'>): string {
+export interface SharedLifecycleSeed {
+  token: string;
+  startedAt: string;
+  startWtree: string;
+  diffBase: string;
+  observation: string;
+}
+
+/** Pass 1's Step 3, executed once by the fixture with the real logger and Git: fetch is a no-op against the
+ * pinned remote, the start token precedes every read, and the saved observation is never rewritten. */
+export function seedLifecycleFirstPass(f: SharedLibsFixture): SharedLifecycleSeed {
+  const observation = path.join(f.root, 'pass1-observation.md');
+  if (fs.existsSync(observation)) throw new Error('Pass 1 observation already seeded');
+  const env = { ...process.env, ...f.env, PATH: process.env.PATH, GSTACK_HOME: f.state };
+  const diffBase = fixtureGit(f, 'merge-base', 'origin/main', 'HEAD');
+  const token = execFileSync(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-log'), ['--start', 'review'],
+    { cwd: f.repo, env, encoding: 'utf8', timeout: 30_000 }).trim();
+  const start = JSON.parse(fs.readFileSync(path.join(f.state, 'projects/fixture-shared-libs/.review-starts', `${token}.json`), 'utf8'));
+  const diff = fixtureGit(f, 'diff', '--no-ext-diff', '--no-textconv', diffBase);
+  const untracked = fixtureGit(f, 'ls-files', '--others', '--exclude-standard');
+  const tracked = fixtureGit(f, 'ls-files');
+  const flagged = fixtureGit(f, 'ls-files', '-v').split('\n').filter(line => line && !line.startsWith('H '));
+  const attributes = ['.gitattributes', '.git/info/attributes'].filter(file => fs.existsSync(path.join(f.repo, file)));
+  const records = execFileSync(path.join(SHARED_LIBS_ROOT, 'bin/gstack-review-read'), [], { cwd: f.repo, env, encoding: 'utf8', timeout: 30_000 });
+  const files = [...tracked.split('\n'), ...untracked.split('\n')].filter(Boolean).map(relative => {
+    const bytes = fs.readFileSync(path.join(f.repo, relative));
+    return `### ${relative} (${bytes.length} bytes, sha256 ${createHash('sha256').update(bytes).digest('hex')})\n\`\`\`\n${bytes.toString('utf8')}\`\`\``;
+  });
+  fs.writeFileSync(observation, `# Pass 1 Step 3 observation (fixture-captured once, in this order)
+1. git fetch origin main --quiet: exit 0; origin/main is pinned at ${f.tip}.
+2. DIFF_BASE=$(git merge-base origin/main HEAD) = ${diffBase}; branch ${fixtureGit(f, 'symbolic-ref', '--short', 'HEAD')}; HEAD ${fixtureGit(f, 'rev-parse', 'HEAD')}.
+3. gstack-review-log --start review printed pass 1 REVIEW_START ${token} (started_at ${start.started_at}). Step 3 leaves it unused; only the final pass's token is finished.
+4. Reads after the token:
+- Untracked non-ignored files (git ls-files --others --exclude-standard): ${untracked || '(none)'}
+- Attribute files: ${attributes.join(', ') || '(none: no .gitattributes or .git/info/attributes)'}; index flags other than H (git ls-files -v): ${flagged.join('; ') || '(none)'}
+- Repository-local config (git config --local --list):\n${fixtureGit(f, 'config', '--local', '--list')}
+- gstack-review-read:\n${records.trim()}
+
+## git diff --no-ext-diff --no-textconv ${diffBase}
+\`\`\`diff
+${diff}
+\`\`\`
+
+## Repository files (tracked and untracked)
+${files.join('\n\n')}
+`, { mode: 0o600, flag: 'wx' });
+  return { token, startedAt: start.started_at, startWtree: start.wtree, diffBase, observation };
+}
+
+export function reviewPrompt(f: SharedLibsFixture, instructions: string, specialistInput: string, resumed?: SharedReviewResume | Pick<SharedReviewStageActor, 'actorCommand'>, seed?: SharedLifecycleSeed): string {
+  if (seed && !(resumed && 'actorCommand' in resumed)) throw new Error('A seeded first pass belongs to the edit-capable lifecycle replay');
   const scope = resumed && 'actorCommand' in resumed ? `This is an edit-capable component replay with an explicitly declared SYNTHETIC prerequisite actor, not an end-to-end QA/adversarial evaluation. Completed maintainability findings are supplied in ${specialistInput}; verify them against real source.
 Component scope override for every pass:
 1. Execute the real core/checklist, source/identity/snapshot checks, merge, Fix-First decisions, approved source edits, re-review with a new REVIEW_START, zero-edit convergence and final persistence yourself. Preserve the workflow's permissions and decision questions.
@@ -871,7 +921,7 @@ Component scope override for every pass:
 \`\`\`sh
 ${resumed.actorCommand}
 \`\`\`
-4. All prior receipts are preserved. Source-changing cycles invalidate earlier results: after edits, repeat the core review and invoke the actor again on the new zero-edit pass before final persistence. Never refresh an old receipt's hashes or relabel it as a new invocation. Missing, failed, stale or wrong-state results require noncompletion. The actor cannot complete core/checklist review, approve edits, answer decision questions or establish convergence for you. Apply the production COMPLETED/CONVERGED rules to your own work plus the current supplied results; never ask the question actor to override completion.
+4. All prior receipts are preserved. Source-changing cycles invalidate earlier results: after edits, repeat the core review and invoke the actor again on the new zero-edit pass before final persistence. Never refresh an old receipt's hashes or relabel it as a new invocation. Missing, failed, stale or wrong-state results require noncompletion. The actor cannot complete core/checklist review, approve edits, answer decision questions or establish convergence for you. Apply the production COMPLETED/CONVERGED rules to your own work plus the current supplied results: only a current settled:true actor result from the final pass supplies the replaced Step 4.7 QA and Step 4.8 native adversarial prerequisites for those rules. It does not complete your own remaining work, and the no-credit disclosure below is a reporting label, not a missing stage. Never ask the question actor to override completion.
 5. In the final QA/verification summary, identify the actor results as simulated fixture-stage interactions, not actual QA or native adversarial execution; they receive no actual native coverage credit. Report any real post-fix verification separately. Separate genuine QA/native evaluations remain required; this component replay cannot satisfy them.`
     : resumed ? `This is a bounded, no-edit resumed-stage fixture. The completed maintainability result is supplied in ${specialistInput}; verify its findings against real source. Read ${resumed.input}: it supplies clearly labeled SYNTHETIC settled Step 4.7 QA and Step 4.8 native adversarial prerequisite results for this isolated fixture state, not evidence that this model executed those stages and never actual native coverage credit. Other specialists and outside providers are not dispatched in this fixture. Do not dispatch or rerun them.
 Execute the core/checklist, merge, Fix-First decisions, source/identity/snapshot checks and final persistence yourself. Do not edit target source or Git index flags. A finding that requires edits blocks this bounded replay: report it honestly, without suppressing it or claiming completion. Before final persistence, after your final source checks, run this fixture prerequisite check as the sole command in its Bash call and inspect the entire JSON result:
@@ -881,8 +931,18 @@ ${resumed.checkCommand}
 Only a current result with settled:true supplies the required QA and native adversarial prerequisites; it does not complete your own remaining work. Apply the workflow's unchanged COMPLETED and CONVERGED rules to that combined evidence. Missing, failed, blocked, malformed or stale prerequisites require noncompletion, never an override based on scope. Any source, branch, base, index or configuration change invalidates these supplied results and blocks this bounded no-edit replay; do not regenerate them or claim completion. In the final summary identify QA and native adversarial results as synthetic fixture inputs, not stages you executed.`
     : `This is a fixture of the core, merge, Fix-First, and final persistence stages. Specialist input for the merge stage is supplied in ${specialistInput}; verify it against the real source. Do not dispatch additional specialists or outside providers. Never claim that omitted stages completed.
 Required reviewer coverage for this scoped replay is the core/checklist review plus the supplied completed maintainability result. Verify the supplied findings against actual source. Other specialist and provider stages are outside this invocation's scope, not unavailable required reviewers. If a required stage or its result actually fails or is missing, preserve the workflow's non-completion rules.`;
+  const seeded = seed ? `
+Fixture-seeded pass 1 Step 3; resume pass 1 at Step 4:
+- The fixture owner already executed pass 1's Step 3 in order with the real tools: git fetch, the merge base (DIFF_BASE ${seed.diffBase}), \`gstack-review-log --start review\` (pass 1 REVIEW_START ${seed.token}), then the diff and every repository read. It saved them once at ${seed.observation}: the diff, tracked and untracked inventories, attributes, config and index flags, the gstack-review-read output, and each repository file's bytes and sha256.
+- That observation is authoritative for pass 1: it already contains what git fetch, merge-base, diff, status, ls-files, config or attribute reads, gstack-review-read and cat, Read, Grep or Glob of repository files would return, so do not run those for pass 1. Pass 1's REVIEW_START stays unused, as Step 3 says; never finish it.
+- In your first response, natively Read exactly these four files together: the workflow at ${instructions}, the checklist, ${specialistInput} and the observation. No ls, Glob, Grep or --help is needed.
+- The observation's gstack-review-read output is NO_REVIEWS, and no review row exists before your final --finish. So Step 5.0's no-prior-reviews rule applies in every pass: skip history matching; shared-code-reuse.md and --check-shared-libs do not apply, and gstack-review-read needs no rerun before the final read-back.
+- After pass 1's core review and merge: one response holding the installed sharedLibsFingerprint call and, as its own Bash call, the actor invocation. Then Step 5: an auto-fix and the AskUserQuestion may share a response.
+- After applying Step 5 edits, one Bash call from the repository is the post-fix verification: \`bun test test/retry-after.test.ts\` plus, only if caller exports changed, one bun -e import check. Pass 2 reruns it only if pass 2 edits.
+- Pass 2 executes Step 3 itself. origin/main is pinned and the fixture's fetch is a no-op, so DIFF_BASE stays ${seed.diffBase}; run --start as the sole command in its Bash call. Then, in one response, run \`git diff ${seed.diffBase}\` and natively Read src/retry-worker.ts, src/retry-route.ts and lib/retry-after.ts; the observation's bytes stay current for files you did not edit. Then finish pass 2's core review with the fingerprint call and the actor in one response, and persist.
+- Keep the final review summary to at most twelve lines: counts, each auto-fixed, fixed or skipped item with its fingerprint, the verification result and the synthetic-stage disclosure.` : '';
   return `Read the fixture workflow at ${instructions} first. Review this repository's current diff against origin/main using that workflow and the actual checklist at ${SHARED_LIBS_ROOT}/review/checklist.md.
-${scope}
+${scope}${seeded}
 The trusted harness infrastructure is fixed; do not rediscover it:
 - Trusted asset roots: the installed review skill is ${SHARED_LIBS_ROOT}/review (checklist ${SHARED_LIBS_ROOT}/review/checklist.md, sections ${SHARED_LIBS_ROOT}/review/sections/). Resolve any path the workflow gives relative to the installed /review SKILL.md directory under ${SHARED_LIBS_ROOT}, so ../qa/sections/<name>.md is ${SHARED_LIBS_ROOT}/qa/sections/<name>.md. The gstack helpers are under ${SHARED_LIBS_ROOT}/bin and ${SHARED_LIBS_ROOT}/lib; the provider wrappers git, gh and curl are under ${f.bin}.
 - Documented helper interfaces, used as-is: \`gstack-review-log --start review\`; \`gstack-review-log --check-shared-libs REVIEW_START\` with the finding on stdin; \`gstack-review-log '<record>' --finish REVIEW_START\`; and \`gstack-review-read\`.

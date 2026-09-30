@@ -13,7 +13,7 @@ import {
   installHostileGitConfig, installInterpreterCanary, installNormalizingFilter,
   isGuardedGitRequest, isInternalClaudeGitRequest,
   installSourceShims, readRequests, reviewLifecycleInstructions, reviewPrompt, reviewRevalidationPrompt,
-  reviewRecords, runSharedCapture, runSharedInteractive, seedOpportunitySources,
+  reviewRecords, runSharedCapture, runSharedInteractive, seedLifecycleFirstPass, seedOpportunitySources,
   seedReviewSources, seedSkippedAdvisory, snapshotFixture, specialistFixture,
   sharedReadOnlyViolations, standaloneInstructions, toolCommandTrace, type SharedLibsFixture,
   SharedCaptureAccumulator, type SharedCaptureAttempt, SHARED_LIBS_ROOT,
@@ -155,9 +155,10 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
         const instructions = reviewLifecycleInstructions(f);
         const input = specialistFixture(f);
         const stageActor = createLifecyclePrerequisiteActor(f);
+        const seed = seedLifecycleFirstPass(f);
         let questions: any[] = [];
         await recordCapture(attempt, choose, 'shared-libs-review-lifecycle', async () => {
-          const capture = await runSharedInteractive(f, 'shared-libs-review-lifecycle', reviewPrompt(f, instructions, input, stageActor), choose, { stageActor, attempt });
+          const capture = await runSharedInteractive(f, 'shared-libs-review-lifecycle', reviewPrompt(f, instructions, input, stageActor, seed), choose, { stageActor, attempt });
           questions = capture.questions;
           return capture.result;
         }, result => {
@@ -174,6 +175,11 @@ describeE2E('Shared-code safety and review lifecycle (gate)', () => {
             completed: true, converged: true });
           expect(last.review_binding.state).toBe('verified');
           expect(last.review_binding.branch_id).toBe(createHash('sha256').update('feature/a').digest('hex'));
+          // The seeded pass-1 token stays unused; the model's own post-edit start binds the final record.
+          expect(last.review_binding.started_at).not.toBe(seed.startedAt);
+          expect(last.review_binding.start_wtree).not.toBe(seed.startWtree);
+          expect(result.toolCalls.some((call: any) => call.tool === 'Read' && call.input?.file_path === seed.observation)
+            || toolCommandTrace(result).some(command => command.includes(seed.observation))).toBe(true);
           // Earlier cycles cannot stand in for the final zero-edit record. Both
           // the explicit choice and its original identity must survive there.
           const findings = last.findings || [];

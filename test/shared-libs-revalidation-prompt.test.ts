@@ -103,7 +103,8 @@ describe('bounded shared-code revalidation prompt', () => {
       'All prior receipts are preserved', 'Source-changing cycles invalidate earlier results',
       'invoke the actor again on the new zero-edit pass', "Never refresh an old receipt's hashes",
       'Missing, failed, stale or wrong-state results require noncompletion', 'cannot complete core/checklist review',
-      'no actual native coverage credit']) expect(prompt).toContain(rule);
+      'only a current settled:true actor result from the final pass supplies the replaced Step 4.7 QA and Step 4.8 native adversarial prerequisites',
+      'a reporting label, not a missing stage', 'no actual native coverage credit']) expect(prompt).toContain(rule);
     expect(prompt).not.toContain('Required reviewer coverage for this scoped replay');
     expect(prompt).not.toContain('Do not edit target source');
   });
@@ -237,7 +238,7 @@ describe('bounded shared-code revalidation prompt', () => {
     expect(await invoke()).toBe(result);
     expect(calls).toEqual([[f, 'shared-libs-review-revalidation', reviewRevalidationPrompt(f, instructions, input, resumed), 'skip', { attempt, prerequisiteSource: 'synthetic-fixture-input' }]]);
     const lifecycle = source.slice(source.indexOf("test('shared-libs-review-lifecycle'"), source.indexOf("test('shared-libs-review-revalidation'"));
-    expect(lifecycle).toContain('reviewPrompt(f, instructions, input, stageActor)');
+    expect(lifecycle).toContain('reviewPrompt(f, instructions, input, stageActor, seed)');
     expect(lifecycle).not.toContain('reviewRevalidationPrompt(');
   });
 
