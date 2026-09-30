@@ -17,7 +17,9 @@ export const FIXTURES = [
   'pass', 'fail', 'skip', 'wall-timeout', 'module-load-error', 'zero-executed', 'unhandled-between-tests',
 ] as const;
 export const REAL_SHARD = 'test/strict-output.test.ts';
-const WALL_MS = 3_000;
+// Only the wall-timeout fixture should ever reach its wall; the others get
+// generous headroom so a loaded CI host cannot turn a pass into a timeout.
+const wallFor = (name: string) => (name === 'wall-timeout' ? 3_000 : 60_000);
 
 const root = path.resolve(process.argv[2] ?? path.join(import.meta.dir, '../../..'));
 const fixtureDir = import.meta.dir;
@@ -28,11 +30,11 @@ const freeExit = (status: string) => (status === 'passed' ? 0 : status === 'time
 
 try {
   const runFree = (file: string, index: number) => free.runFreeShard([file], index + 1, FIXTURES.length, {
-    rootDir: root, quiet: true, log: () => {}, wallTimeoutMs: WALL_MS,
+    rootDir: root, quiet: true, log: () => {}, wallTimeoutMs: wallFor(FIXTURES[index]),
     logFilePath: path.join(scratch, `free-${index}.log`),
   });
   const runPaid = (file: string, index: number) => paid.runPaidShard([file], index + 1, FIXTURES.length, {
-    rootDir: root, timeoutMs: WALL_MS, jobs: 2, logDir: scratch, log: () => {},
+    rootDir: root, timeoutMs: wallFor(FIXTURES[index]), jobs: 2, logDir: scratch, log: () => {},
     env: { ...process.env, GSTACK_CLAUDE_CLI_VERSION: 'fixture', EVALS: '', EVALS_TIER: '', EVALS_ALL: '' },
   });
   const files = FIXTURES.map(name => path.join(fixtureDir, `${name}.fixture.ts`));

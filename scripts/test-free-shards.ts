@@ -339,6 +339,10 @@ export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }>
     reason: 'tests the contained repair witness with POSIX private-directory and compiled-helper assumptions; comprehensive execution is unavailable on Windows',
   },
   {
+    file: 'test/shard-engine-equivalence.test.ts',
+    reason: 'its classification golden was recorded from the POSIX runners (process-group wall kill); the win32 engine path is pinned by the mocked-platform case in shard-engine.test.ts',
+  },
+  {
     file: 'test/cso-scanner-cli.test.ts',
     reason: 'drives the prebuilt POSIX CSO launcher with /usr/bin/git and a POSIX-only PATH; native Windows launcher behavior is covered by the dedicated cso-windows-launcher gate',
   },

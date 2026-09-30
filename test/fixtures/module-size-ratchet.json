@@ -4,7 +4,7 @@
     { "file": "test/helpers/module-size.ts", "movedFrom": "(new: ratchet (c) counter)" }
   ],
   "residualFiles": [
-    { "file": "scripts/test-free-shards.ts", "maxLines": 2352, "reason": "free lane policy after the shard engine took spawn, sandbox, logs, seeds and flags" },
+    { "file": "scripts/test-free-shards.ts", "maxLines": 2356, "reason": "free lane policy after the shard engine took spawn, sandbox, logs, seeds and flags" },
     { "file": "scripts/test-paid-shards.ts", "maxLines": 1921, "reason": "paid lane policy after the shard engine took sandbox, logs, seeds, verdicts and flags" }
   ],
   "allowlist": []
