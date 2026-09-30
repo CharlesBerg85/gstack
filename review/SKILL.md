@@ -827,6 +827,7 @@ Never install, import cookies or bootstrap tests. Functional-only skips browser 
 **3. Run smoke and plan checks.**
 Follow the shared Probe loop for smoke checks, replays and revalidation until the smoke limit.
 Then run required plan checks, even after smoke expires, using the same procedure but no smoke guard; never reset the clock.
+Plan checks and their revalidation skip the `G status D` expiry stop and use `--timeout-ms`, not `--deadline D`; checkpoints still publish beside D. A smoke recheck after expiry is not-run.
 Use finite command timeouts, capped at the caller's remaining time if it has a deadline.
 Await clock/guard results before acting. When the caller's deadline expires, mark unfinished checks not-run.
 
@@ -952,8 +953,8 @@ toward AUTO-FIX.
 
 **Test stub override:** Any finding that has a `test_stub` field, from a specialist or exploratory QA,
 is reclassified as ASK regardless of its original classification. When presenting the ASK
-item, show the proposed test file path and the test code. The user approves or skips the
-test creation. If approved, follow Step 5d's regression-before-repair order. Derive the test file path from
+item, show the proposed test file path and the test code. Step 5c's A) Fix writes the test and
+repair in Step 5d's regression-before-repair order; B) Skip skips both; the defect stays unresolved. Derive the test file path from
 the finding's `path` using project conventions (`spec/` for RSpec, `__tests__/` for
 Jest/Vitest, `test_` prefix for pytest, `_test.go` suffix for Go). If the test file
 already exists, append the new test.
