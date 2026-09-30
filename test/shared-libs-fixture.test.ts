@@ -7,7 +7,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import {
   createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureGit, fixtureWrite, installSourceShims,
   readRequests, seedOpportunitySources, sharedReadOnlyViolations, shellQuote, snapshotFixture, type SharedLibsFixture,
-  SharedCaptureAccumulator, type SharedCaptureAttempt, isInternalClaudeGitRequest, SHARED_LIBS_OLDER_OPEN_PRS,
+  SharedCaptureAccumulator, type SharedCaptureAttempt, isInternalClaudeGitRequest, SHARED_LIBS_OLDER_OPEN_PRS, incompleteFirstFileView,
 } from './helpers/shared-libs-eval-fixture';
 import { EvalCollector, type EvalTestEntry } from './helpers/eval-store';
 import { collectorOutcomeCounts } from '../scripts/test-paid-shards';
@@ -1637,5 +1637,45 @@ describe('retained native runtime callback failures', () => {
     });
     await expect(callback('AskUserQuestion', input)).rejects.toThrow('No unambiguous no-change option');
     expect(events).toEqual(['question', 'refusal']);
+  });
+});
+
+describe('incompleteFirstFileView (census 36641820398 shared-libs-pr-coverage)', () => {
+  const call = (command: string, output: string) => ({ tool: 'Bash', input: { command }, output });
+  const page1 = 'gh api --method GET "/repos/fixture/shared-libs/pulls/42/files?per_page=100&page=1" 2>&1 | jq -c \'if type=="array" then (length, .[] | {filename,status}) else . end\'';
+  test('a first page-1 view whose jq filter failed without printing files is incomplete', () => {
+    const failed = call(`echo "--- PR 42 metadata"; gh api --method GET /repos/fixture/shared-libs/pulls/42 | jq -c .number; echo "--- PR 42 files page 1"; ${page1}`,
+      'Exit code 5\n--- PR 42 metadata\n42\n--- PR 42 files page 1 [file-list unit 1]\njq: error (at <stdin>:1): Cannot index number with string "filename"');
+    expect(incompleteFirstFileView({ toolCalls: [failed, call(page1, '{"count":100,"files":[{"filename":"docs/coordination-0.md"}]}')] }, 42)).toBe(true);
+  });
+  test('head truncation still counts; a complete first view or a later-page error does not', () => {
+    expect(incompleteFirstFileView({ toolCalls: [call(`${page1} | head -c 4000`, '{"filename":"a"')] }, 42)).toBe(true);
+    expect(incompleteFirstFileView({ toolCalls: [call(page1, '{"count":100,"files":[{"filename":"docs/coordination-0.md"}]}')] }, 42)).toBe(false);
+    expect(incompleteFirstFileView({ toolCalls: [call(page1, 'jq: error (at <stdin>:1): x\n{"filename": "docs/a.md"}')] }, 42)).toBe(false);
+    expect(incompleteFirstFileView({ toolCalls: [call(page1.replace('&page=1', '&page=2'), 'jq: error (at <stdin>:1): x')] }, 42)).toBe(false);
+    expect(incompleteFirstFileView({ toolCalls: [call(page1.replace('/pulls/42/', '/pulls/7/'), 'jq: error (at <stdin>:1): x')] }, 42)).toBe(false);
+  });
+});
+
+describe('skip actor: deferred-reuse wording in a Skip option (PR lane run 36641824710)', () => {
+  const question = (skipDescription: string) => ({ questions: [{
+    question: '[ADVISORY] src/retry-worker.ts:2 — the worker now duplicates the tested `retrySeconds` helper from lib/retry-after.ts. How should this be handled? RECOMMENDATION: A (Fix).',
+    header: 'Shared-libs', multiSelect: false,
+    options: [
+      { label: 'Fix as recommended', description: 'Re-export retrySeconds from lib/retry-after.ts in both src/retry-worker.ts and src/retry-route.ts.' },
+      { label: 'Skip', description: skipDescription },
+    ],
+  }] });
+  const answer = async (skipDescription: string) => {
+    const callback = createSharedInteractiveToolHandler('skip', { nonQuestion: () => {}, onQuestion: () => {}, onAnswer: () => {} });
+    return callback('AskUserQuestion', question(skipDescription));
+  };
+  test('a future review reusing the recorded Skip once coverage holds is still no change', async () => {
+    const captured = 'Keep the duplicated implementations for now. Records an explicit Skip for this advisory (fingerprint shared-libs:af037ba2…) so a future review can reuse it once snapshot coverage holds.';
+    expect(await answer(captured)).toMatchObject({ behavior: 'allow', updatedInput: { answers: { [question(captured).questions[0].question]: 'Skip' } } });
+  });
+  test('a conditional tail that commits product work still refuses', async () => {
+    await expect(answer('Records an explicit Skip so a future review can reuse it once we migrate the worker and then import the helper.')).rejects.toThrow('No unambiguous no-change option');
+    await expect(answer('Records an explicit Skip so a future review can reuse the helper once snapshot coverage holds.')).rejects.toThrow('No unambiguous no-change option');
   });
 });

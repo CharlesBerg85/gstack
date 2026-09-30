@@ -941,6 +941,21 @@ export function toolCommandTrace(result: { toolCalls: Array<{ tool: string; inpu
   return result.toolCalls.filter(call => call.tool === 'Bash').map(call => String(call.input?.command || ''));
 }
 
+/** Whether the first read of a PR's file-list page 1 left no usable file set:
+ * truncated by `head -c`, or a failed filter (e.g. a jq error) that printed no
+ * file entries. One recovery read of page 1 is then legitimate, still charged
+ * to the page budget. */
+export function incompleteFirstFileView(result: { toolCalls: Array<{ tool: string; input: any; output?: string }> }, pr: number): boolean {
+  const page1 = new RegExp(String.raw`\b(?:gh\s+api|curl)\b[^;\n]*\/pulls\/${pr}\/files(?![^;\n]*[?&]page=(?!1\b)\d)`);
+  const first = result.toolCalls.find(call => call.tool === 'Bash' && page1.test(String(call.input?.command || '')));
+  if (!first) return false;
+  const command = String(first.input?.command || '');
+  if (new RegExp(String.raw`\b(?:gh\s+api|curl)\b[^;\n]*\/pulls\/${pr}\/files[^;\n]*\|\s*head\s+-c\s*\d+`).test(command)) return true;
+  const output = String(first.output ?? '');
+  const view = output.slice(Math.max(0, output.search(new RegExp(String.raw`\/pulls\/${pr}\/files|files page 1`))));
+  return /^jq: error\b/m.test(view) && !/"filename"\s*:/.test(view);
+}
+
 /** A raw-byte change hidden by Git normalization, reproducing a real snapshot blind spot. */
 export function installNormalizingFilter(f: SharedLibsFixture): void {
   // Fixture instrumentation is local: do not introduce a distributed attribute
@@ -1045,7 +1060,7 @@ function skippedReviewOption(question: any): any {
       const futureObject = clause.slice((futureMatch?.index ?? 0) + (futureMatch?.[0].length ?? 0)).trim();
       const referentialDecision = /\b(?:review|pass)$/.test(futureSubject)
         && metadataReference > productReference
-        && /^(?:it|this|that|them|these|those)(?:\s+(?:later|again))?[.!?)]*$/.test(futureObject);
+        && /^(?:it|this|that|them|these|those)(?:\s+(?:later|again))?(?:\s+(?:once|when|after|until)\s+(?:(?!\b(?:and|then|also)\b)[^.!?;])+)?[.!?)]*$/.test(futureObject);
       const futureDecision = referentialDecision || /\b(?:can|will|would|should|must|may)\s+(?:(?:still|also|now|just|[a-z]+ly)\s+)*reuse\s+(?:(?:this|the|prior|recorded|existing)\s+)*(?:review\s+(?:log|record)|decision|advisory|snapshot|ledger)\b/.test(clause);
       const purpose = [...clause.matchAll(/\b(?:to|by|through|via)\s+(?:[a-z]+ly\s+)*([a-z]+(?:-[a-z]+)*)/g)]
         .some(match => isAction(match[1]));

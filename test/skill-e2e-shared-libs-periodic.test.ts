@@ -10,7 +10,7 @@ import { createSharedPlanReuseSelector } from './helpers/shared-libs-plan-actor'
 import {
   SHARED_LIBS_ROOT, commitFixture, createSharedLibsFixture, fixtureWrite, installSourceShims,
   readRequests, runSharedCapture, runSharedInteractive, seedOpportunitySources,
-  sharedReadOnlyViolations, snapshotFixture, standaloneInstructions, toolCommandTrace, type SharedLibsFixture,
+  sharedReadOnlyViolations, snapshotFixture, standaloneInstructions, toolCommandTrace, incompleteFirstFileView, type SharedLibsFixture,
   SharedCaptureAccumulator, type SharedCaptureAttempt,
 } from './helpers/shared-libs-eval-fixture';
 
@@ -166,8 +166,7 @@ describeE2E('Shared-code opportunity and coordination judgment (periodic)', () =
         // observed capture truncated its first response with head, then fetched
         // full pages 1–3. Permit that one recovery while charging every request
         // to the hard budget and forbidding repeated complete first-page reads.
-        const truncatedFirstView = toolCommandTrace(result).some(command =>
-          /\b(?:gh\s+api|curl)\b[^;\n]*\/pulls\/42\/files[^;\n]*\|\s*head\s+-c\s*\d+/.test(command));
+        const truncatedFirstView = incompleteFirstFileView(result, 42);
         expect(coordinationPages.length).toBeLessThanOrEqual(truncatedFirstView ? 4 : 3);
         const firstPages = coordinationPages.filter(endpoint => !/[?&]page=/.test(endpoint) || /[?&]page=1(?:&|$)/.test(endpoint));
         expect(firstPages.length).toBeGreaterThan(0);
