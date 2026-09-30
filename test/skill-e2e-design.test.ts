@@ -836,8 +836,19 @@ function pluginDetectorFixture() {
   git('commit', '-m', 'initial');
   git('checkout', '-b', 'feature/landing');
   fs.copyFileSync(path.join(ROOT, 'test/fixtures/review-eval-design-slop.html'), path.join(repoDir, 'index.html'));
+  fs.copyFileSync(path.join(ROOT, 'test/fixtures/review-eval-design-slop.css'), path.join(repoDir, 'styles.css'));
   git('add', '.');
   git('commit', '-m', 'landing page');
+  // The engine reports this repository's files and lines, so its evidence is checkable where the page links it.
+  const located = (file: string, needle: string) => ({ file, line: fs.readFileSync(path.join(repoDir, file), 'utf-8').split('\n').findIndex(text => text.includes(needle)) + 1 });
+  const sample = path.join(fixture.dir, 'impeccable-detect-sample.json');
+  fs.writeFileSync(sample, JSON.stringify((JSON.parse(fs.readFileSync(sample, 'utf-8')) as Array<Record<string, unknown>>).map(finding => {
+    const snippet = String(finding.snippet);
+    const where = finding.antipattern === 'skipped-heading' ? located('index.html', 'Feature One')
+      : finding.antipattern === 'marketing-buzzword' ? located('index.html', 'streamline')
+      : located('styles.css', /on (#[0-9a-f]{6})/.exec(snippet)?.[1] ?? '#8b5cf6');
+    return { ...finding, ...where };
+  }), null, 2));
   fs.writeFileSync(path.join(repoDir, 'design-review-detector.md'), detectorSkillText([
     ['**Design detector (optional, deterministic):**', '**Create output directories:**'],
     ['**Phase 0: mechanical scan**', '## Phases 1-6'],
@@ -860,6 +871,17 @@ if (!evalsEnabled) test('plugin detector fixture discovers the selected engine w
     });
     expect(scan.status).toBe(2);
     expect(scan.stderr).toContain('handoff=/impeccable colorize');
+    // Census 36709485593: rows naming test/fixtures/... paths absent from this repo cost four
+    // reconciliation turns and exceeded max turns. Every row must cite a repo file:line holding its evidence.
+    const rows = [...scan.stderr.matchAll(/^ {2}(\S+):(\d+) {2}(.*)$/gm)];
+    expect(rows).toHaveLength(6);
+    for (const [, file, line, snippet] of rows) {
+      const text = fs.readFileSync(path.join(fixture.repoDir, file!), 'utf-8').split('\n')[Number(line) - 1]!;
+      const evidence = /on (#[0-9a-f]{6})/.exec(snippet!)?.[1] ?? (/Purple/.test(snippet!) ? '#8b5cf6' : /buzzword/.test(snippet!) ? 'streamline' : 'Feature One');
+      expect(text, `${file}:${line}`).toContain(evidence);
+    }
+    const shipped = JSON.parse(fs.readFileSync(DETECT_SAMPLE, 'utf-8')) as Array<{ file: string }>;
+    expect(shipped.every(finding => !fs.existsSync(path.join(fixture.repoDir, finding.file)))).toBe(true);
     expect(fs.existsSync(path.join(fixture.dir, '4.10.0.jsonl'))).toBe(true);
     expect(fs.existsSync(path.join(fixture.dir, '4.3.1.jsonl'))).toBe(false);
     expect(fs.existsSync(path.join(fixture.dir, 'launcher-ran'))).toBe(false);

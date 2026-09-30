@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test';
 import { E2E_TOUCHFILES, selectTests } from './helpers/touchfiles';
 
 const ptyIds = [
-  'plan-ceo-review-plan-mode', 'plan-eng-review-plan-mode', 'plan-design-review-plan-mode',
+  'plan-ceo-review-plan-mode', 'plan-eng-review-plan-mode', 'plan-design-review-plan-mode-smoke',
   'plan-devex-review-plan-mode', 'plan-mode-no-op', 'office-hours-auto-mode',
   'auto-decide-preserved', 'plan-ceo-mode-routing', 'plan-design-with-ui-scope', 'plan-eng-finding-floor',
   'auq-format-gate', 'carve-section-loading', 'office-hours-section-loading', 'office-hours-design-draft', 'plan-ceo-section-loading', 'ship-section-loading',

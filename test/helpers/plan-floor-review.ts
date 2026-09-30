@@ -137,6 +137,14 @@ function deterministicPlanFloorSetup(input: PlanFloorReview): PlanFloorAssessmen
     /\b(?:developer|sdk developer|user)\b/.test(question) &&
     /\b(?:experiences|journey|narrative)\b/.test(question);
 
+  // plan-devex-review 0B's confirmation contract: the brief asks whether the
+  // narrative matches reality and every option is one of its three answers
+  // (accurate / some wrong / way off). Any remedy option leaves it to the assessor.
+  const isDxNarrativeConfirmation =
+    /\b(?:empathy|narrative)\b/.test(header) &&
+    /\b(?:narrative|journey)\b[^?\n]*\bmatch\b[^?\n]*\?/.test(q.question.split(/\r?\n/)[0]!.toLowerCase()) &&
+    q.options.every(o => /^(?:[a-d][).:]\s*)?(?:(?:this is\s+)?accurate|some\b[^,]*?\b(?:wrong|corrections?)|(?:this is\s+)?way off)\b/i.test(o.label.trim()));
+
   const isProductTypeSetup =
     header === 'product type' &&
     /^is this\b/.test(question) &&
@@ -146,7 +154,7 @@ function deterministicPlanFloorSetup(input: PlanFloorReview): PlanFloorAssessmen
     /^(?:mode|review mode)$/.test(header) &&
     /\b(?:which|what)\b.*\breview mode\b/.test(question);
 
-  if (!isDxEmpathySetup && !isProductTypeSetup && !isReviewModeSetup) return null;
+  if (!isDxEmpathySetup && !isDxNarrativeConfirmation && !isProductTypeSetup && !isReviewModeSetup) return null;
 
   return validatePlanFloorAssessment(input, {
     kind: 'setup',

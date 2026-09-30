@@ -26,7 +26,7 @@ import * as path from 'path';
 import * as http from 'http';
 import { runAgentSdkTest, toSkillTestResult, passThroughNonAskUserQuestion, resolveClaudeBinary, type AgentSdkResult, type QueryProvider, type RunAgentSdkOptions } from './helpers/agent-sdk-runner';
 import { runRecordedOfficeHoursAttempt, OFFICE_HOURS_BUN_GRACE_MS } from './helpers/office-hours-attempt';
-import { publicEvents, redactPublicValue } from './helpers/setup-gbrain-sandbox';
+import { publicEvents, redactPublicValue, setupGbrainRemoteAnswer } from './helpers/setup-gbrain-sandbox';
 import { EvalCollector } from './helpers/eval-store';
 import { resolveEvalModel } from '../lib/eval-model';
 import { buildSetupGbrainFixture } from './helpers/setup-gbrain-fixture';
@@ -263,17 +263,16 @@ describeE2E('/setup-gbrain Path 4 (Remote MCP) — happy path', () => {
                 askUserQuestions.push({ input });
                 const q = (input.questions as Array<{
                   question: string;
+                  header?: string;
                   options: Array<{ label: string }>;
                 }>)[0];
-                // Auto-decline / skip everything except the path-pick (which the
-                // user-prompt already directed to Path 4).
-                const decline =
-                  q.options.find((o) => /skip|decline|no thanks|local/i.test(o.label)) ?? q.options[q.options.length - 1]!;
+                // Register at Step 5a (the contract under test); decline or skip every other gate.
+                const answer = setupGbrainRemoteAnswer(q);
                 return {
                   behavior: 'allow',
                   updatedInput: {
                     questions: input.questions,
-                    answers: { [q.question]: decline.label },
+                    answers: { [q.question]: answer },
                   },
                 };
               }

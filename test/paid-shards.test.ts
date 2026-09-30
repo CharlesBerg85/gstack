@@ -206,6 +206,16 @@ describe('case-sharded files', () => {
     });
   }
 
+  test('every case in a case-sharded file has exactly one owner, so --case can select it', () => {
+    for (const file of CASE_SHARDED_FILES) {
+      const { registered } = fileCaseRegistration(file, fs.readFileSync(path.join(ROOT, file), 'utf8'));
+      for (const id of registered) expect(caseFile(id), id).toBe(file);
+    }
+    expect(caseFile('plan-design-review-plan-mode')).toBe('test/skill-e2e-design.test.ts');
+    expect(caseFile('plan-design-review-plan-mode-smoke')).toBe('test/skill-e2e-plan-design-plan-mode.test.ts');
+    expect(() => caseFile('carve-section-loading')).toThrow(/registered by .*; it needs exactly one/);
+  });
+
   test('a case key runs exactly its case: exact name pattern, own eval slug, per-case supervision', () => {
     const pattern = new RegExp(caseTestNamePattern(['design-review-detector-shim']));
     expect(pattern.test('Design review detector shim E2E design-review-detector-shim')).toBe(true);
