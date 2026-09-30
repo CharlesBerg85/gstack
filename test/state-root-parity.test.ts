@@ -17,19 +17,28 @@ const BASH = Bun.which('bash') ?? '/bin/bash';
 
 type Row = { name: string; env: Record<string, string>; win?: boolean };
 
-function bashEval(row: Row, body: string): string {
+// On a Windows host the MSYS runtime fills HOME before Git Bash starts, so a
+// row that leaves HOME unset or empty reaches the bash twin with the runtime's
+// HOME. Those rows compare both twins under the HOME the child actually saw;
+// the unset-HOME branches themselves are covered on POSIX hosts.
+const HOST_FILLS_HOME = process.platform === 'win32';
+
+function bashEval(row: Row, body: string): { out: string; home: string } {
   const ostype = row.win ? 'msys' : 'linux-gnu';
-  const r = spawnSync(BASH, ['-c', `OSTYPE=${ostype}; . "${TWIN}" && ${body}`], {
+  const r = spawnSync(BASH, ['-c', `OSTYPE=${ostype}; printf '%s\\0' "\${HOME-}"; . "${TWIN}" && ${body}`], {
     env: { USERPROFILE: '', ...row.env, PATH: '' },
     encoding: 'utf-8',
     timeout: 10_000,
   });
   if (r.status !== 0) throw new Error(`bash twin failed for ${row.name}: ${r.stderr}`);
-  return r.stdout;
+  const split = r.stdout.indexOf('\0');
+  return { home: r.stdout.slice(0, split), out: r.stdout.slice(split + 1) };
 }
 
-function tsEnv(row: Row): Record<string, string> {
-  return { USERPROFILE: '', ...row.env };
+function tsEnv(row: Row, childHome: string): Record<string, string> {
+  const env: Record<string, string> = { USERPROFILE: '', ...row.env };
+  if (HOST_FILLS_HOME && !row.env.HOME) env.HOME = childHome;
+  return env;
 }
 
 const A = '/state/a', B = '/state/b', C = '/state/c';
@@ -63,8 +72,8 @@ const rootRows: Row[] = [
 describe('state root parity (bash twin vs lib/state-root.ts)', () => {
   for (const row of rootRows) {
     test(row.name, () => {
-      const bash = bashEval(row, 'gstack_state_root; printf x').replace(/x$/, '');
-      expect(bash).toBe(resolveStateRoot(tsEnv(row), row.win ? 'win32' : 'linux'));
+      const bash = bashEval(row, 'gstack_state_root; printf x');
+      expect(bash.out.replace(/x$/, '')).toBe(resolveStateRoot(tsEnv(row, bash.home), row.win ? 'win32' : 'linux'));
     });
   }
 
@@ -126,9 +135,9 @@ describe('config key parity (gstack_read_config_key vs readConfigKey)', () => {
     ];
     for (const row of envs) {
       for (const key of keys) {
-        const bash = bashEval(row, `gstack_read_config_key ${key}; printf x`).replace(/x$/, '');
-        const ts = readConfigKey(key, tsEnv(row), row.win ? 'win32' : 'linux') ?? '';
-        expect(`${row.name}/${key}=${bash}`).toBe(`${row.name}/${key}=${ts}`);
+        const bash = bashEval(row, `gstack_read_config_key ${key}; printf x`);
+        const ts = readConfigKey(key, tsEnv(row, bash.home), row.win ? 'win32' : 'linux') ?? '';
+        expect(`${row.name}/${key}=${bash.out.replace(/x$/, '')}`).toBe(`${row.name}/${key}=${ts}`);
       }
     }
   });
