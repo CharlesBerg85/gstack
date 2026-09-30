@@ -11,12 +11,15 @@ import captured_ceo_hold_posture_ag from './fixtures/ceo-hold-posture-ag.json';
 import retainedPreservationCaptures_ceo_hold_posture_ag from './fixtures/ceo-hold-preservation-f359.json';
 import captured_ceo_mode_colon_at from './fixtures/ceo-mode-colon-at.json';
 import scrolledReview from './fixtures/ceo-mode-scrolled-review-36606688266.json';
+import clippedReview from './fixtures/ceo-mode-clipped-review-local.json';
+import bundledTab from './fixtures/ceo-mode-bundled-tab-local.json';
+import clippedMode from './fixtures/ceo-mode-clipped-mode-question-local.json';
 import fs_ceo_mode_full_ad from 'node:fs';
 import os_ceo_mode_full_ad from 'node:os';
 import path_ceo_mode_full_ad from 'node:path';
 import { ceoExpansionPacingChoice } from './helpers/ceo-mode-option';
 import { ceoExpansionPacingReady } from './helpers/ceo-mode-option';
-import { ceoModeSubmissionInput } from './helpers/ceo-mode-option';
+import { ceoModePacketTabAnswer, ceoModeSubmissionInput } from './helpers/ceo-mode-option';
 import { capturePlanCountQuestion } from './helpers/claude-pty-runner';
 import { planCountPrerequisitePick } from './helpers/claude-pty-runner';
 import { isNumberedOptionListVisible } from './helpers/claude-pty-runner';
@@ -1628,7 +1631,7 @@ test.each(['acknowledged pacing','missing pacing ACK'])('actual paid posture loo
   expect(start).toBeGreaterThan(0);expect(end).toBeGreaterThan(start);
   const loop=source.slice(start,end+"          outcome = 'posture_confirmed';".length);
   const keys=['Bun','Date','c','session','sincePick','selectionStartedAt','question','fixture','capture','readPlanCountTranscript',
-    'readPendingQuestion','hasNativePostAnswerCeoPosture','ceoModeSubmissionInput','ceoExpansionPacingReady','ceoExpansionPacingChoice',
+    'readPendingQuestion','hasNativePostAnswerCeoPosture','ceoModeSubmissionInput','ceoModePacketTabAnswer','ceoExpansionPacingReady','ceoExpansionPacingChoice',
     'nextCeoPostureContinuation','capturePlanCountQuestion','planCountQuestionInput','selectPtyNumberedOption','isPlanReadyVisible','isNumberedOptionListVisible',
     'EXPANSION_PACING_CALLS','modeIndex','artifacts','visibleAtMode','postureSource'];
   const compiled=new Bun.Transpiler({loader:'ts'}).transformSync(`async function run(b){const {${keys.join(',')}}=b;let outcome;${loop};return {outcome,continuedQuestion,pacingCalls};}`);
@@ -1655,7 +1658,7 @@ test.each(['acknowledged pacing','missing pacing ACK'])('actual paid posture loo
   };
   const bindings={Bun:{sleep:async(ms:number)=>{clock+=ms;}},Date:{now:()=>clock},c:{mode:'SCOPE EXPANSION',postureRe:pattern},session,sincePick:0,
     selectionStartedAt:f.selectedAt,question:{nativeCall:f.mode},fixture:{cwd:'fixture-root'},capture:(state:string)=>snapshots.push(state),readPlanCountTranscript,
-    readPendingQuestion:()=>undefined,hasNativePostAnswerCeoPosture,ceoModeSubmissionInput,ceoExpansionPacingReady,ceoExpansionPacingChoice,nextCeoPostureContinuation,
+    readPendingQuestion:()=>undefined,hasNativePostAnswerCeoPosture,ceoModeSubmissionInput,ceoModePacketTabAnswer,ceoExpansionPacingReady,ceoExpansionPacingChoice,nextCeoPostureContinuation,
     capturePlanCountQuestion,planCountQuestionInput,selectPtyNumberedOption:async(s:any,index:number)=>s.send(String(index)),isPlanReadyVisible,isNumberedOptionListVisible,
     EXPANSION_PACING_CALLS:1,modeIndex:2,artifacts:{},visibleAtMode:'captured mode menu',
     postureSource:{path:path.join('fixture-root','PLAN.md'),content:plan}};
@@ -1891,6 +1894,135 @@ describe('mode submission when the review panel scrolls past the viewport', () =
     const other = structuredClone(scrolledCall);
     other.questions[1]!.question += ' (changed)';
     expect(scrolledSubmit(scrolledReview.screen, scrolledReview.screenText, 'HOLD SCOPE', other)).toBeNull();
+  });
+});
+
+describe('a setup tab bundled after the mode tab', () => {
+  const transcript = bundledTab.transcript as unknown as PlanCountTranscript;
+  const call = transcript.calls[1] as NativePlanQuestionCall;
+  const answer = (screen = bundledTab.screen, selected: NativePlanQuestionCall = call, native = transcript, seen = new Set<string>()) =>
+    ceoModePacketTabAnswer(screen, selected, native, seen);
+
+  test('the captured packet asks the mode first and Learnings second', () => {
+    expect(call.questions.map(q => q.header)).toEqual(['Review mode', 'Learnings']);
+    expect(bundledTab.screen).toContain('☒ Review mode  ☐ Learnings  ✔ Submit');
+  });
+
+  test('the answered mode tab lets the harness answer the Learnings tab once with option 1', () => {
+    const seen = new Set<string>();
+    const first = answer(bundledTab.screen, call, transcript, seen);
+    expect(first?.index).toBe(1);
+    expect(first?.question.nativeQuestionIndex).toBe(1);
+    expect(answer(bundledTab.screen, call, transcript, seen)).toBeNull();
+  });
+
+  test('an unanswered mode tab is left for the mode selection', () => {
+    expect(answer(bundledTab.screen.replace('☒ Review mode', '☐ Review mode'))).toBeNull();
+  });
+
+  test('an already answered setup tab is not answered again', () => {
+    expect(answer(bundledTab.screen.replace('☐ Learnings', '☒ Learnings'))).toBeNull();
+  });
+
+  test('a tab bar naming other questions does not belong to this packet', () => {
+    expect(answer(bundledTab.screen.replace('☐ Learnings', '☐ Deploy'))).toBeNull();
+  });
+
+  test('an answered, foreign or changed native call gets no input', () => {
+    expect(answer(bundledTab.screen, { ...call, answered: true })).toBeNull();
+    expect(answer(bundledTab.screen, { ...call, toolUseId: 'foreign' })).toBeNull();
+    const changed = structuredClone(call);
+    changed.questions[1]!.options[1]!.label = 'Upload learnings';
+    expect(answer(bundledTab.screen, changed, { ...transcript, calls: [transcript.calls[0]!, changed] })).toBeNull();
+  });
+
+  test('a setup tab before the mode tab stays with navigation', () => {
+    const reordered = structuredClone(call);
+    reordered.questions.reverse();
+    const screen = bundledTab.screen.replace('☒ Review mode  ☐ Learnings', '☐ Learnings  ☒ Review mode');
+    expect(answer(screen, reordered, { ...transcript, calls: [transcript.calls[0]!, reordered] })).toBeNull();
+  });
+});
+
+describe('mode submission when the clip cuts through the mode question itself', () => {
+  const transcript = clippedMode.transcript as unknown as PlanCountTranscript;
+  const call = transcript.calls[1] as NativePlanQuestionCall;
+  const submit = (screen: string, mode: 'HOLD SCOPE' | 'SCOPE EXPANSION' = 'SCOPE EXPANSION', selected = call) =>
+    ceoModeSubmissionInput(screen, selected, mode, transcript, new Set(), screen);
+
+  test('the captured viewport starts inside the mode question and still shows its answer', () => {
+    expect(call.questions.map(q => q.header)).toEqual(['Review mode', 'Learnings']);
+    expect(clippedMode.screen).not.toContain('Review your answers');
+    expect(clippedMode.screen).not.toContain('Which review mode');
+    expect(clippedMode.screen).toMatch(/→ SCOPE EXPANSION[\s\S]*→ Enable cross-project learnings \(recommended\)\s+Ready to submit/);
+  });
+
+  test('the visible target answer and a long native tail submit once', () => {
+    const seen = new Set<string>();
+    expect(ceoModeSubmissionInput(clippedMode.screen, call, 'SCOPE EXPANSION', transcript, seen, clippedMode.screen)).toBe('\r');
+    expect(ceoModeSubmissionInput(clippedMode.screen, call, 'SCOPE EXPANSION', transcript, seen, clippedMode.screen)).toBeNull();
+  });
+
+  test('another target mode is not acknowledged', () => {
+    expect(submit(clippedMode.screen, 'HOLD SCOPE')).toBeNull();
+  });
+
+  test('a short remnant of the mode question cannot identify it', () => {
+    const cut = clippedMode.screen.lastIndexOf('\n', clippedMode.screen.indexOf('→ SCOPE EXPANSION') - 2);
+    expect(submit(clippedMode.screen.slice(cut + 1))).toBeNull();
+  });
+
+  test('an altered mode question tail is rejected', () => {
+    expect(submit(clippedMode.screen.replace('Avoids a later schema migration', 'Avoids a later deploy'))).toBeNull();
+  });
+});
+
+describe('mode submission when the review panel is clipped before its heading renders', () => {
+  const transcript = clippedReview.transcript as unknown as PlanCountTranscript;
+  const call = transcript.calls[0] as NativePlanQuestionCall;
+  const submit = (screen: string, mode: 'HOLD SCOPE' | 'SCOPE EXPANSION' = 'HOLD SCOPE', selected = call) =>
+    ceoModeSubmissionInput(screen, selected, mode, transcript, new Set(), screen);
+
+  test('the captured review has no heading or tab bar and truncates the mode question', () => {
+    expect(clippedReview.screen).not.toContain('Review your answers');
+    expect(clippedReview.screen).not.toMatch(/←[^\r\n]+✔\s*Submit\s*→/);
+    expect(clippedReview.screen).toMatch(/flagged as …\s+→ HOLD SCOPE\s+Ready to submit your answers\?/);
+    expect(call.questions.map(q => q.header)).toEqual(['Routing', 'Learnings', 'Review mode']);
+  });
+
+  test('the clipped review submits the selected mode once', () => {
+    const seen = new Set<string>();
+    expect(ceoModeSubmissionInput(clippedReview.screen, call, 'HOLD SCOPE', transcript, seen, clippedReview.screen)).toBe('\r');
+    expect(ceoModeSubmissionInput(clippedReview.screen, call, 'HOLD SCOPE', transcript, seen, clippedReview.screen)).toBeNull();
+  });
+
+  test('without accumulated screen text ending at the same prompt the clipped route cannot submit', () => {
+    expect(ceoModeSubmissionInput(clippedReview.screen, call, 'HOLD SCOPE', transcript, new Set(), '')).toBeNull();
+    expect(ceoModeSubmissionInput(clippedReview.screen, call, 'HOLD SCOPE', transcript, new Set(), `${clippedReview.screen}\nMore`)).toBeNull();
+  });
+
+  test('a clipped review showing another mode does not acknowledge the target', () => {
+    expect(submit(clippedReview.screen, 'SCOPE EXPANSION')).toBeNull();
+  });
+
+  for (const [name, change] of [
+    ['an altered mode question', (text: string) => text.replace('D3 — MODE: Which review mode', 'D3 — MODE: Which deploy mode')],
+    ['an altered truncated tail', (text: string) => text.replace('get flagged as …', 'get deleted as …')],
+    ['a mode question truncated too early', (text: string) => text.replace(/│ ● D3 — MODE:[\s\S]*?→ HOLD SCOPE/, '│ ● D3 — MODE: Which review mode for the saved-views plan?…\n   → HOLD SCOPE')],
+    ['an answer no option offers', (text: string) => text.replace('→ Enable cross-project (recommended)', '→ Upload learnings')],
+    ['a clip that hides the mode answer', (text: string) => text.slice(text.indexOf('Ready to submit'))],
+    ['a visible tab bar', (text: string) => `←  ☒ Routing ☒ Learnings ☐ Review mode ✔ Submit →\n${text}`],
+    ['output after the prompt', (text: string) => `${text}\nMore text`],
+    ['an unfocused Submit prompt', (text: string) => text.replace('❯ 1. Submit answers', '  1. Submit answers\n❯ 2. Cancel')],
+  ] as const) test(`the clipped route rejects ${name}`, () => {
+    expect(submit(change(clippedReview.screen))).toBeNull();
+  });
+
+  test('an answered or changed native call cannot be submitted', () => {
+    expect(submit(clippedReview.screen, 'HOLD SCOPE', { ...call, answered: true })).toBeNull();
+    const other = structuredClone(call);
+    other.questions[2]!.question = other.questions[2]!.question.replace('Which review mode', 'Which deploy mode');
+    expect(submit(clippedReview.screen, 'HOLD SCOPE', other)).toBeNull();
   });
 });
 

@@ -243,7 +243,7 @@ async function registered(scenario:'accept'|'uncertain'|'missing source'|'missin
     navigateToModeAskUserQuestion:async()=>({modeIndex:3,visibleAtMode:'captured mode',question:{nativeCall:mode(f)}}),
     planCountQuestionInput:(_v:string,q:any)=>q.nativeCall.toolUseId===modeId?'3':'1',selectPtyNumberedOption:async()=>{throw Error('unexpected legacy key');},
     hasNativePostAnswerCeoPosture:scenario==='lexical pass'||scenario==='expansion'?()=>true:hasNativePostAnswerCeoPosture,
-    ceoModeSubmissionInput:()=>null,ceoExpansionPacingReady:()=>false,ceoExpansionPacingChoice:()=>null,holdDeferKeepIndex,
+    ceoModeSubmissionInput:()=>null,ceoModePacketTabAnswer:()=>null,ceoExpansionPacingReady:()=>false,ceoExpansionPacingChoice:()=>null,holdDeferKeepIndex,
     nextCeoPostureContinuation:(_a:any,_b:any,_c:any,_d:any,_e:any,continued:boolean)=>continued?null:'question',
     capturePlanCountQuestion:()=>({nativeCall:pending}),isPlanReadyVisible:()=>false,isNumberedOptionListVisible:()=>false,
     buildCeoHoldPostureReview,evaluateCeoHoldPostureReview:async(review:PlanReviewDecisionInput)=>{

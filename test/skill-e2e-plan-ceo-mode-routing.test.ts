@@ -44,7 +44,7 @@ import {
   type AskUserQuestionFingerprint,
   type ClaudePtySession,
 } from './helpers/claude-pty-runner';
-import { ceoExpansionPacingChoice, ceoExpansionPacingReady, ceoModeSubmissionInput, hasNativePostAnswerCeoPosture, holdDeferKeepIndex, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
+import { ceoExpansionPacingChoice, ceoExpansionPacingReady, ceoModePacketTabAnswer, ceoModeSubmissionInput, hasNativePostAnswerCeoPosture, holdDeferKeepIndex, nextCeoModeNavigation, nextCeoPostureContinuation } from './helpers/ceo-mode-option';
 import { createPlanCountFixture } from './helpers/plan-count-fixture';
 import { readPlanCountTranscript, type NativePublicToolEvent, type PlanCountTranscript } from './helpers/plan-count-transcript';
 import { readPendingQuestion, pendingQuestionRecorderStatus } from './helpers/plan-count-pending-question';
@@ -231,6 +231,7 @@ describeE2E('/plan-ceo-review mode routing (gate)', () => {
           let pacingCalls = 0;
           const seenDownstream = new Set<string>();
           const submittedModePackets = new Set<string>();
+          const answeredPacketTabs = new Set<string>();
           while (Date.now() - start < budgetMs) {
             await Bun.sleep(2500);
             if (session.exited()) {
@@ -262,6 +263,13 @@ describeE2E('/plan-ceo-review mode routing (gate)', () => {
             capture('awaiting_posture', currentInput, transcript);
             const modeSubmit = ceoModeSubmissionInput(currentInput, question.nativeCall, c.mode, transcript, submittedModePackets, session.visibleText());
             if (modeSubmit !== null) { session.send(modeSubmit); continue; }
+            const packetTab = ceoModePacketTabAnswer(currentInput, question.nativeCall, transcript, answeredPacketTabs);
+            if (packetTab) {
+              const input = planCountQuestionInput(currentInput, packetTab.question, packetTab.index);
+              if (input.includes('\r')) await selectPtyNumberedOption(session, packetTab.index);
+              else session.send(input);
+              continue;
+            }
             const pendingQuestion = readPendingQuestion(session.pendingQuestionFile, fixture.cwd,
               session.hermeticConfigDir, selectionStartedAt, transcript);
             if (pacingChoice && !ceoExpansionPacingReady(currentInput, transcript, pacingChoice, publicTools)) continue;

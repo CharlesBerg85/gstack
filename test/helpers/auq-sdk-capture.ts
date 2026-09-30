@@ -53,7 +53,8 @@ export function scoreAuqFormat(text: string): { present: number; total: number; 
  * whether the ORIGINAL used the literal "because" — a soft style signal, since
  * the format spec prefers it and the voice rule forbids the em-dash form.
  *
- * This does NOT touch judgeRecommendation or its pinned fixtures.
+ * This does NOT touch judgeRecommendation or its pinned fixtures. A judge
+ * failure propagates with its cause; it is never reported as substance 0.
  */
 export async function gradeAuqRecommendation(
   text: string,
@@ -75,12 +76,8 @@ export async function gradeAuqRecommendation(
     }
   }
 
-  try {
-    const r = await judgeRecommendation(graded);
-    return { substance: r.reason_substance, present: r.present, hadLiteralBecause, reason: r.reason_text };
-  } catch {
-    return { substance: 0, present: !!recLine, hadLiteralBecause, reason: '' };
-  }
+  const r = await judgeRecommendation(graded);
+  return { substance: r.reason_substance, present: r.present, hadLiteralBecause, reason: r.reason_text };
 }
 
 /**

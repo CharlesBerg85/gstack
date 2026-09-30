@@ -387,7 +387,7 @@ do not launch the downstream skill or open a browser.`,
     expectedSections: ['proposal-and-preview.md'],
     requiredReads: ['proposal-and-preview.md'],
     scenario:
-      'The user gave product context (a B2B analytics dashboard for ops teams) and declined the research phase. Skip browser/design tool setup. Proceed to build the complete design-system proposal, then write DESIGN.md. Produce the proposal and the DESIGN.md content.',
+      'The user gave product context (a B2B analytics dashboard for ops teams), declined the research phase and declined the optional outside design voices. Skip browser/design tool setup. Proceed to build the complete design-system proposal, then write DESIGN.md and its CLAUDE.md guidance.',
     staticInvariants: {
       mustStayInSkeleton: ['## Phase 0: Pre-checks', '## Phase 1: Product Context', '## Phase 2: Research'],
       mustMoveToSection: ['## Phase 3: The Complete Proposal', '## Phase 6: Write DESIGN.md'],

@@ -13,17 +13,13 @@
   2.1.251 in every recent run) and the HOLD SCOPE
   routing case when its next brief happens not to name the mode (see the
   handoff item below). Effort M each.
-- **`/plan-ceo-review` skips its Step 0E mode handoff** — in 4 of 4 asked-mode
-  samples (census 36633323521 plus three local runs) the model went straight
-  to tools after the mode answer without the required `Mode: <mode>; approved
-  decisions: …` chat. The routing case still passes on other posture text; a
-  wording change moving the handoff ahead of the question log did not change
-  the behavior in two paid runs, so it was not shipped. Effort M.
-- **`/ship` design-lite probe wording** — `scripts/resolvers/design.ts` still
-  says "Probe for a design detector the user installed", the wording that let
-  `/review` skip its probe in 5 of 6 captured trials before this release made it
-  mandatory. The ship union ratio is at 1.3966 of 1.397, so the same sentence
-  needs a trim elsewhere first. Effort S.
+- **`/plan-ceo-review` skips its Step 0E mode handoff** — 0 of 15 answered
+  samples sent the required `Mode: <mode>; approved decisions: …` chat after
+  the mode answer, across four wording repairs (none shipped). The model writes
+  the handoff in its reasoning and later says it was "sent above". A prose fix
+  won't reach it; this needs a mechanism outside the prompt (a hook or a
+  tool-result gate). The HOLD SCOPE routing case fails whenever the handoff is
+  skipped and nothing else names the posture in time. Effort M.
 - **Let pass-rate history decide the rest** — every census on this branch had
   a different handful of single-trial reds. Once `eval:pass-rates` has 10 weekly
   trials per case, apply the CASE_QUARANTINE entry rule instead of chasing one

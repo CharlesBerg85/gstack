@@ -397,6 +397,16 @@ ${text}`, undefined, { signal });
  * Format spec: scripts/resolvers/preamble/generate-ask-user-format.ts
  *   Recommendation: <choice> because <one-line reason>
  */
+export const RECOMMENDATION_JUDGE_SCHEMA = {
+  type: 'object',
+  properties: {
+    reason_substance: { type: 'integer', enum: [1, 2, 3, 4, 5] },
+    reasoning: { type: 'string' },
+  },
+  required: ['reason_substance', 'reasoning'],
+  additionalProperties: false,
+};
+
 export async function judgeRecommendation(askUserText: string, signal?: AbortSignal): Promise<RecommendationScore> {
   signal?.throwIfAborted();
   // Deterministic checks. The format spec requires:
@@ -472,7 +482,7 @@ Respond with ONLY valid JSON:
   const out = await callJudge<{ reason_substance: number; reasoning: string }>(
     prompt,
     'claude-haiku-4-5-20251001',
-    { signal },
+    { signal, jsonSchema: RECOMMENDATION_JUDGE_SCHEMA },
   );
 
   // Defensive clamp: rubric is 1-5. If Haiku returns out-of-range or non-numeric,

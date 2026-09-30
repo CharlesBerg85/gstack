@@ -146,6 +146,77 @@ function hasNativePostureProse(text: string, posture: RegExp): boolean {
   return hasPostAnswerCeoPosture(`● ${prose}`, posture);
 }
 
+const CLIPPED_PREFIX_MIN = 120;
+
+/**
+ * A review taller than the viewport can clip its heading and earlier questions
+ * before they ever render, and it truncates a long question with "…". Authenticate
+ * the visible tail from the Submit prompt backwards: every visible answer is an
+ * offered option, each question below the clip matches its native text (or a long
+ * native prefix before "…"), the mode question's target answer is visible, and only
+ * the topmost segment may be cut off above the viewport; a cut mode question must
+ * still show a long native tail. The native answer is verified again after Submit.
+ */
+function clippedReviewMatches(visible: string, selected: NativePlanQuestionCall,
+  modeQuestion: NativePlanQuestionCall['questions'][number], targetMode: CeoMode): boolean {
+  const compact = (text: string) => text.replace(/\s+/g, '');
+  let body = compact(visible.replace(/^[ \t]*[│┃] ?/gm, '').replace(/^[ \t]*[●⏺] ?/gm, ''));
+  if (!body.endsWith(BARLESS_SUBMIT_END) || /[←☐☒]/.test(body)) return false;
+  body = body.slice(0, -BARLESS_SUBMIT_END.length);
+  const modeIndex = selected.questions.indexOf(modeQuestion);
+  for (let i = selected.questions.length - 1; i >= 0; i--) {
+    const question = selected.questions[i]!;
+    const answers = (i === modeIndex
+      ? question.options.filter(o => modeTitle(o.label) === targetMode.replace(/\s+/g, ''))
+      : question.options).map(o => `→${compact(o.label)}`).filter(answer => body.endsWith(answer));
+    if (answers.length !== 1) return false;
+    body = body.slice(0, -answers[0]!.length);
+    const text = compact(question.question);
+    let shown = 0;
+    if (body.endsWith(text)) shown = text.length;
+    else if (body.endsWith('…')) {
+      for (let length = text.length - 1; length >= CLIPPED_PREFIX_MIN && !shown; length--) {
+        if (body.slice(0, -1).endsWith(text.slice(0, length))) shown = length + 1;
+      }
+    }
+    if (!shown) {
+      if (i > modeIndex || (i === modeIndex && body.replace(/…$/, '').length < CLIPPED_PREFIX_MIN)) return false;
+      return body.endsWith('…') ? text.includes(body.slice(0, -1)) : text.endsWith(body);
+    }
+    body = body.slice(0, -shown);
+    if (!body) return i <= modeIndex;
+  }
+  return 'Reviewyouranswers'.endsWith(body);
+}
+
+/**
+ * A packet can bundle setup tabs after the mode tab. Once the mode tab is
+ * answered, answer each later non-mode tab of the same unsubmitted call once,
+ * with the navigation rule (prerequisite pick, else option 1), so Submit is reachable.
+ */
+export function ceoModePacketTabAnswer(
+  visible: string, selected: NativePlanQuestionCall | undefined, transcript: PlanCountTranscript, answered: Set<string>,
+): { question: AskUserQuestionFingerprint; index: number } | null {
+  if (!selected || !selected.sessionId || !selected.toolUseId || transcript.status !== 'ready' ||
+      selected.questions.length < 2 || selected.questions.length > 4 || selected.questions.some(q => q.multiSelect)) return null;
+  const id = `${selected.sessionId}:${selected.toolUseId}`;
+  const current = transcript.calls.filter(call => `${call.sessionId}:${call.toolUseId}` === id);
+  if (current.length !== 1 || current[0]!.answered || current[0]!.failed ||
+      JSON.stringify(current[0]!.questions) !== JSON.stringify(selected.questions)) return null;
+  const bar = posturePacketBar(visible);
+  if (!bar || JSON.stringify(bar.headers) !== JSON.stringify(selected.questions.map(q => q.header.trim().replace(/\s+/g, ' ')))) return null;
+  const modeIndex = selected.questions.findIndex(q => q.options.filter(o => modeTitle(o.label)).length >= 2);
+  if (modeIndex < 0 || !bar.answered[modeIndex]) return null;
+  const question = capturePlanCountQuestion(visible, new Set(), 0, true, selected);
+  const tab = question?.nativeQuestionIndex;
+  if (!question || question.nativeCall !== selected || tab === undefined || tab <= modeIndex || bar.answered[tab] ||
+      JSON.stringify(question.options.map(o => o.label)) !== JSON.stringify(selected.questions[tab]!.options.map(o => o.label))) return null;
+  const key = `${id}:${tab}`;
+  if (answered.has(key)) return null;
+  answered.add(key);
+  return { question, index: planCountPrerequisitePick(question) ?? 1 };
+}
+
 /** Finish the selected native mode packet before waiting for its answer. */
 export function ceoModeSubmissionInput(
   visible: string, selected: NativePlanQuestionCall | undefined, targetMode: CeoMode,
@@ -178,6 +249,11 @@ export function ceoModeSubmissionInput(
     // focused Submit prompt; the accumulated screen text then supplies the
     // one complete review panel, authenticated below exactly as with a bar.
     const heading = screenText.lastIndexOf('Review your answers');
+    if (heading < 0 && compact(screenText).endsWith(BARLESS_SUBMIT_END) &&
+        clippedReviewMatches(visible, selected, modeQuestions[0]!, targetMode)) {
+      submitted.add(id);
+      return '\r';
+    }
     if (heading < 0 || !compact(visible).endsWith(BARLESS_SUBMIT_END) ||
         quotedContext.test(screenText.slice(0, heading).split('\n').slice(-3).join('\n'))) return null;
     review = screenText.slice(heading);
