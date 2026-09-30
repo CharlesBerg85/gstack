@@ -21,6 +21,13 @@ Source: the Sept 28 weekly census (run 36385945043) and the final proof census o
 
 The biggest change is honesty. With about 240 live cases, a retry used to hide a failing test; now every trial is recorded, `bun run eval:pass-rates` shows each case's pass rate with a confidence range, and a case that slides gets flagged by its history instead of passing on a lucky rerun.
 
+### Fewer rotating reds
+
+Across 11 lanes the PR eval lane failed 6-8 of its 125 records per run, a different handful each time. A census of 1,827 attempts traced most of it to two sources, and this release attacks both instead of retrying:
+
+- **Runs that ran out of time.** Passing runs used 80-92% of their budgets, and the ones that timed out took 20-50% more steps, not slower steps. The heaviest cases now start at the gate they test, from recorded setup and recorded subagent results (docsync faults, shared-libs review, QA callers, Review Army), and land at roughly 35-60% of unchanged budgets.
+- **Bookkeeping the model forgot.** `gstack-qa-evidence` now enforces the checkpoint before every next probe, fills revision/runtime/cwd/learning itself, rejects placeholders, replay-only learning, missing evidence rows and evidence observed on an older input snapshot, prints report links, timing and any declared-but-unrun probes, and answers `--help`. `/deslop-shared-libs` runs every git read through `bin/gstack-safe-git`, which always applies the safety flags.
+
 ### What this means for contributors
 
 Run `bun run typecheck` and `bun run typecheck:test` before you push; both are free and take seconds. A red paid run now prints a headline and one line per failure with its cause and a rerun command. New paid evals need a kind in `E2E_KINDS`: see "Add a paid eval" in CONTRIBUTING.md.
