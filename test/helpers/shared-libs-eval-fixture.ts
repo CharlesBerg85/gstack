@@ -426,6 +426,8 @@ function sharedShellTokens(command: string): SharedShellToken[] {
   return tokens;
 }
 
+const SHARED_OUTPUT_DEVICES = ['/dev/null', '/dev/stdout', '/dev/stderr', '/dev/fd/1', '/dev/fd/2'];
+
 /** Share attempted-write checks across native, semantic and Codex standalone captures. */
 export function sharedReadOnlyViolations(toolCalls: Array<{ tool: string; input: any }>, requests: SourceRequest[] = []): string[] {
   const violations: string[] = [];
@@ -448,10 +450,17 @@ export function sharedReadOnlyViolations(toolCalls: Array<{ tool: string; input:
     };
     for (let i = 0; i < tokens.length; i++) {
       const token = tokens[i].value;
-      if (tokens[i].operator && ['>', '>>', '&>'].includes(token) && !['/dev/null', '/dev/stdout', '/dev/stderr', '/dev/fd/1', '/dev/fd/2'].includes(tokens[i + 1]?.value))
+      if (tokens[i].operator && ['>', '>>', '&>'].includes(token) && !SHARED_OUTPUT_DEVICES.includes(tokens[i + 1]?.value))
         violations.push('shell file output redirection');
       if (tokens[i].operator && token === '>&' && !['1', '2', '-'].includes(tokens[i + 1]?.value)) violations.push('shell file output redirection');
-      if (isCommand(i) && /(?:^|\/)tee$/.test(token) && tokens[i + 1] && !tokens[i + 1].operator) violations.push('tee file output');
+      if (isCommand(i) && /(?:^|\/)tee$/.test(token)) {
+        // Like a redirection, tee may only duplicate to the discard/stdout devices; any other operand is a file.
+        const operands = sharedShellCommandTokens(tokens, i + 1).map(operand => operand.value);
+        const end = operands.indexOf('--');
+        const files = end < 0 ? operands.filter(value => !value.startsWith('-') || value === '-')
+          : [...operands.slice(0, end).filter(value => !value.startsWith('-') || value === '-'), ...operands.slice(end + 1)];
+        if (files.some(file => !SHARED_OUTPUT_DEVICES.includes(file))) violations.push('tee file output');
+      }
       if (isCommand(i) && /(?:^|\/)curl$/.test(token)) {
         // URL variables resolve only in the instrumented process. Its request
         // record supplies endpoint validation; source text still reveals writes.

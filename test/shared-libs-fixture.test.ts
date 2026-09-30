@@ -904,6 +904,7 @@ describe('shared-code curl source isolation', () => {
       "curl -w '%output{/tmp/report}%{http_code}' https://api.github.com/repos/fixture/shared-libs",
       "curl -X POST https://api.github.com/repos/fixture/shared-libs",
       'printf data > /tmp/report', 'cat README.md >> "/tmp/report"', 'cat README.md | tee /tmp/report',
+      'cat README.md | tee /dev/null report.txt', 'cat README.md | tee -a report.txt', 'cat README.md | tee -- -a',
       "bash <<'SH'\nprintf data > /tmp/report\nSH\n",
       "cat <<'DATA'\njust data\nDATA\ncurl -o /tmp/report https://api.github.com/repos/fixture/shared-libs",
     ]) expect(sharedReadOnlyViolations(bash(command)).length, command).toBeGreaterThan(0);
@@ -913,6 +914,9 @@ describe('shared-code curl source isolation', () => {
       "curl -sS -o - -w 'http=%{http_code}\\n' https://api.github.com/repos/fixture/shared-libs",
       "curl -sS -m 15 -o /dev/null -w 'http=%{http_code}\\n' https://api.github.com/repos/fixture/shared-libs 2>&1",
       'gh auth status 2>&1 | head -5', 'git --no-lazy-fetch log 2>/dev/null',
+      // Paid opportunity-judgment t1 (1213b01): tee to the discard device writes no file.
+      'for p in src/version.ts README.md .gitignore; do echo "===== $p"; gh api --method GET -H "Accept: application/vnd.github.raw" "repos/fixture/shared-libs/contents/$p?ref=987f57ff2613724dd4a5509dda1b0fea155aab8a" 2>&1 | head -c 4000 | tee /dev/null | sha256sum; echo "exit=${PIPESTATUS[0]}"; done',
+      'cat README.md | tee -a /dev/stderr',
       "rg 'a > b' README.md", "rg '>' README.md", "rg '|' README.md",
       'rg tee README.md', 'rg curl README.md',
       "python3 - <<'PY'\nsize = 2\nif size > 1:\n    print(size)\nPY\n",
