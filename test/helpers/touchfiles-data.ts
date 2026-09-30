@@ -123,7 +123,7 @@ export const E2E_TOUCHFILES: Record<string, string[]> = {
 
   // Review Army (specialist dispatch)
   'review-army-migration-safety': [ 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
-  'review-army-perf-n-plus-one':  [ 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts',   'test/fixtures/review-n-plus-one-dispatch.json', 'test/helpers/office-hours-attempt.ts'],
+  'review-army-perf-n-plus-one':  [ 'review/**', 'scripts/resolvers/review-army.ts', 'bin/gstack-diff-scope', 'test/skill-e2e-review-army.test.ts',   'test/fixtures/review-n-plus-one-dispatch.json', 'test/fixtures/review-army-n-plus-one.rb', 'test/helpers/office-hours-attempt.ts'],
   'review-army-delivery-audit':   [ 'review/**', 'scripts/resolvers/review.ts', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],
   'review-army-quality-score':    [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts',  'test/helpers/office-hours-attempt.ts'],
   'review-army-json-findings':    [ 'review/**', 'scripts/resolvers/review-army.ts', 'test/skill-e2e-review-army.test.ts', 'test/helpers/office-hours-attempt.ts'],

@@ -148,8 +148,26 @@ Write your findings to ${dir}/review-output.md`,
 
 let nPlusOneCaptureSequence = 0;
 
+// The case's contract is Step 4.5 selection -> a foreground Performance specialist ->
+// the Step 4.6 merge -> the conditional Red Team -> a report that surfaces the N+1.
+// The fixture records the stages before it (scope detection, specialist stats,
+// learnings, the diff) and stages only the Review Army section, so the session does
+// not spend its budget on the core pass, QA loading, web research or a long report.
+// Scope flags are gstack-diff-scope's output for this fixture before staging;
+// recorded rather than rerun so the free controls stay runnable without bash.
+const N_PLUS_ONE_SCOPE = `SCOPE_FRONTEND=false
+SCOPE_BACKEND=true
+SCOPE_PROMPTS=false
+SCOPE_TESTS=false
+SCOPE_DOCS=false
+SCOPE_CONFIG=false
+SCOPE_MIGRATIONS=false
+SCOPE_API=true
+SCOPE_AUTH=false`;
+
 describeIfSelected('Review Army: N+1 Performance', ['review-army-perf-n-plus-one'], () => {
   let dir: string;
+  let observations: string;
 
   beforeAll(() => {
     const repo = setupRepo('army-n-plus-one');
@@ -167,26 +185,49 @@ describeIfSelected('Review Army: N+1 Performance', ['review-army-perf-n-plus-one
     repo.run('git', ['add', '.']);
     repo.run('git', ['commit', '-m', 'add posts controller']);
 
-    copyReviewFiles(dir);
+    const git = (args: string[]) => spawnSync('git', args, { cwd: dir, encoding: 'utf-8', timeout: 5000 }).stdout ?? '';
+    const diff = git(['diff', 'main...HEAD']);
+    if (!diff.includes('posts_controller.rb')) throw new Error('N+1 fixture diff is missing posts_controller.rb');
+    const diffLines = [...git(['diff', '--shortstat', 'main...HEAD']).matchAll(/(\d+) (?:insertion|deletion)/g)]
+      .reduce((sum, match) => sum + Number(match[1]), 0);
+    observations = `$ gstack-diff-scope main
+${N_PLUS_ONE_SCOPE}
+STACK: unknown
+DIFF_LINES: ${diffLines}
+TEST_FW: unknown
+$ gstack-specialist-stats
+SPECIALIST_STATS: 0 reviews analyzed
+$ gstack-learnings-search --type pitfall --query "performance" --limit 5
+(no output: no past learnings)
+$ git diff $(git merge-base main HEAD)
+${diff.trimEnd()}`;
+
+    fs.writeFileSync(path.join(dir, 'review-army.md'), readReviewSection('review-army.md'));
+    const specDir = path.join(dir, 'review-specialists');
+    fs.mkdirSync(specDir, { recursive: true });
+    for (const f of ['performance.md', 'red-team.md']) {
+      fs.copyFileSync(path.join(ROOT, 'review', 'specialists', f), path.join(specDir, f));
+    }
   });
 
   afterAll(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
 
   testConcurrentIfSelected('review-army-perf-n-plus-one', async () => {
     const result = await runSkillTest({
-      prompt: `You are in a git repo on a feature branch with a Ruby controller that has N+1 queries.
-Read review-SKILL.md for instructions. Also read review-checklist.md.
-The specialist checklists are in review-specialists/ (testing.md, performance.md, etc.).
+      prompt: `You are the /review parent on branch feature/add-posts-index, a Ruby controller change. The caller invoked /review --performance.
+The base branch is main. There is no origin remote, so use main wherever the workflow says origin/<base>.
 
-Skip the preamble, lake intro, telemetry sections.
-Run Step 4 (Critical pass) then Step 4.5 (Review Army).
-The base branch is main. This is a Ruby backend file, so Performance specialist should activate.
-
-For the specialist dispatch, read review-specialists/performance.md and apply it against the diff.
+This capture covers only Step 4.5 (Review Army), its Step 4.6 merge and the Red Team dispatch. Read review-army.md once: it is that workflow.
+The core Step 4 pass, Exploratory QA, adversarial review, web research, Fix-First and review-log persistence are outside this capture; do not run or load them. Do not edit source.
+The fixture already ran the workflow's detect-scope, specialist-stats and learnings commands and the diff. Use these recorded outputs instead of rerunning them:
+\`\`\`
+${observations}
+\`\`\`
+Selection: --performance force-includes the Performance specialist despite the small diff; dispatch no other specialist. The checklists for this capture are review-specialists/performance.md and review-specialists/red-team.md; give subagents those paths.
 The Performance focus does not waive the skill's conditional Red Team dispatch. If a specialist
 produces a CRITICAL finding, dispatch a separate foreground Red Team subagent and merge its findings.
 
-Write all required review outputs to ${dir}/review-output.md. After saving the report,
+Write ${dir}/review-output.md with only the selection line, the SPECIALIST REVIEW block with its PR Quality Score, and the Red Team result, in at most 30 lines. After saving the report,
 finish with a brief acknowledgement rather than repeating the findings in the final response.`,
       workingDirectory: dir,
       maxTurns: 20,
@@ -204,6 +245,13 @@ finish with a brief acknowledgement rather than repeating the findings in the fi
         && /\bred[ -]team\b/i.test(call.input.description ?? call.input.subagent_type ?? '')
         && call.input.run_in_background === false,
       )).toBe(true);
+      const foreground = result.toolCalls.filter(call =>
+        ['Agent', 'Task'].includes(call.tool) && call.input.run_in_background === false);
+      const label = (call: { input: any }) => call.input.description ?? call.input.subagent_type ?? '';
+      const isRedTeam = (call: { input: any }) => /\bred[ -]team\b/i.test(label(call));
+      const performance = foreground.findIndex(call => /\bperformance\b/i.test(label(call)) && !isRedTeam(call));
+      expect(performance).toBeGreaterThanOrEqual(0);
+      expect(foreground.findIndex(isRedTeam)).toBeGreaterThan(performance);
 
       const outputPath = path.join(dir, 'review-output.md');
       expect(fs.existsSync(outputPath)).toBe(true);
