@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { atomicWriteSync } from './fs-atomic';
-import { runQaDeadlineCommand, runQaWindowsWorker, startQaDeadline, withQaReceiptOutput } from './qa-deadline';
+import { qaDeadlineStatus, readQaDeadline, runQaDeadlineCommand, runQaWindowsWorker, startQaDeadline, withQaReceiptOutput } from './qa-deadline';
 import { scan } from './redact-engine';
 
 const object = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -174,11 +174,15 @@ async function capture(root: string, captureId: string, publicOutput: boolean, o
     fs.writeFileSync(owned(root, `.qa-evidence/${captureId}/observation.json`), bytes, { flag: 'wx', mode: 0o600 });
     observation = { sha256: hash(bytes), bytes: Buffer.byteLength(bytes) };
   }
+  const completedAt = new Date().toISOString();
+  let remainingMs: number | undefined;
+  if (option === '--deadline') try { remainingMs = qaDeadlineStatus(readQaDeadline(deadline)).remainingMs; } catch {}
   const receipt = { version: 1, id: captureId, cwd: process.cwd(), argv: [command, ...args], deadline, timing, startedAt,
-    completedAt: new Date().toISOString(), exitCode, signal: result.signal, status, observation, publicOutput,
+    completedAt, exitCode, signal: result.signal, status, observation, publicOutput,
     ...streams };
   const sha256 = publish(root, `.qa-evidence/${captureId}/receipt.json`, receipt);
-  return { action: 'capture', id: captureId, status, sha256, exitCode, signal: result.signal, publicOutput };
+  return { action: 'capture', id: captureId, status, sha256, exitCode, signal: result.signal, publicOutput,
+    startedAt, completedAt, durationMs: Date.parse(completedAt) - Date.parse(startedAt), ...(remainingMs === undefined ? {} : { remainingMs }) };
 }
 
 function checkpoint(root: string, checkpointId: string, source: string | Record<string, string>) {
@@ -188,7 +192,7 @@ function checkpoint(root: string, checkpointId: string, source: string | Record<
   if (!exact(intent, ['capture', 'observationCommand', 'hypothesis', 'nextCommand'])
     || typeof intent.capture !== 'string' || typeof intent.observationCommand !== 'string' || !intent.observationCommand.trim()
     || typeof intent.hypothesis !== 'string' || intent.hypothesis.trim().length <= 20 || !/[a-z]{3}/i.test(intent.hypothesis)
-    || typeof intent.nextCommand !== 'string' || !intent.nextCommand.trim()) throw new QaEvidenceError('Invalid causal intent');
+    || typeof intent.nextCommand !== 'string' || !intent.nextCommand.trim()) throw new QaEvidenceError('Invalid causal intent: need exactly capture, observationCommand, hypothesis (one sentence over 20 characters) and nextCommand');
   if (scan(decode(bytes)).findings.some(finding => finding.tier === 'HIGH')) throw new QaEvidenceError('Sensitive intent cannot be published');
   const captured = readQaCapture(root, intent.capture);
   const value = { observationCommand: intent.observationCommand, observed: captured.observed, hypothesis: intent.hypothesis, nextCommand: intent.nextCommand };
@@ -204,11 +208,11 @@ function materialize(root: string, source: string) {
   if (!exact(annotations, ['revision', 'runtime', 'cwd', 'limits', 'evidence', 'learning'])
     || !['revision', 'runtime', 'cwd'].every(key => typeof annotations[key] === 'string' && annotations[key].trim())
     || !Array.isArray(annotations.limits) || !annotations.limits.length || !annotations.limits.every((limit: unknown) => typeof limit === 'string' && limit.trim())
-    || !Array.isArray(annotations.evidence) || !Array.isArray(annotations.learning)) throw new QaEvidenceError('Invalid report annotations');
+    || !Array.isArray(annotations.evidence) || !Array.isArray(annotations.learning)) throw new QaEvidenceError('Invalid report annotations: need exactly revision, runtime and cwd (non-empty strings), limits (non-empty string array), evidence (row array) and learning (checkpoint ID array)');
   const captures = new Set<string>();
   const evidence = annotations.evidence.map((row: any) => {
     if (!exact(row, ['capture', 'command', 'contract', 'expected', 'classification'])
-      || !Object.values(row).every(value => typeof value === 'string' && value.trim()) || captures.has(row.capture)) throw new QaEvidenceError('Invalid evidence annotation');
+      || !Object.values(row).every(value => typeof value === 'string' && value.trim()) || captures.has(row.capture)) throw new QaEvidenceError('Invalid evidence annotation: each row needs exactly capture, command, contract, expected and classification as non-empty strings, with a unique capture');
     captures.add(row.capture);
     const captured = readQaCapture(root, row.capture);
     return { command: row.command, contract: row.contract, expected: row.expected, classification: row.classification, observed: captured.observed };

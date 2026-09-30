@@ -35,6 +35,8 @@ test('native capture executes once, preserves exact JSON and stderr, and materia
   expect(result.status, result.stderr).toBe(0);
   const captured = receipt(result.stdout);
   expect(captured).toMatchObject({ action: 'capture', status: 'complete', id: '001', exitCode: 0 });
+  expect(captured.durationMs).toBe(Date.parse(captured.completedAt) - Date.parse(captured.startedAt));
+  expect(captured.remainingMs).toBeUndefined();
   expect(result.stdout).not.toContain('stateRoot');
   expect(result.stderr).toBe('');
   expect(fs.readFileSync(path.join(f.root, 'effects'), 'utf8')).toBe('once');
@@ -47,6 +49,10 @@ test('native capture executes once, preserves exact JSON and stderr, and materia
   expect(JSON.parse(fs.readFileSync(path.join(f.root, 'exploration-001.json'), 'utf8'))).toEqual({
     observationCommand: 'first native command', observed, hypothesis: 'The successful boundary suggests testing the rejected input next.', nextCommand: 'second native command',
   });
+  f.json('annotations.json', { revision: 'revision', runtime: 'runtime', cwd: f.root, evidence: [], learning: [] });
+  const rejected = f.run('materialize', f.root, 'annotations.json');
+  expect(rejected.status).toBe(2);
+  expect(receipt(rejected.stderr).message).toContain('limits (non-empty string array)');
   f.json('annotations.json', { revision: 'revision', runtime: 'runtime', cwd: f.root, limits: ['Only the declared contract was checked.'], evidence: [{ capture: '001', command: 'first native command', contract: 'README.md', expected: 'Declared exact result', classification: 'pass' }], learning: ['001'] });
   const report = f.run('materialize', f.root, 'annotations.json');
   expect(report.status, report.stderr).toBe(0);
@@ -94,7 +100,10 @@ test('capture shares a working-directory-relative deadline without resetting or 
   const before = fs.readFileSync(path.join(f.root, 'reports/deadline.json'));
   const result = f.run('capture', 'reports', '001', '--deadline', 'reports/deadline.json', '--', process.execPath, '-e', 'console.log("{}")');
   expect(result.status, result.stderr).toBe(0);
-  expect(receipt(result.stdout)).toMatchObject({ status: 'complete', exitCode: 0 });
+  const captured = receipt(result.stdout);
+  expect(captured).toMatchObject({ status: 'complete', exitCode: 0 });
+  expect(captured.remainingMs).toBeGreaterThan(0);
+  expect(captured.remainingMs).toBeLessThanOrEqual(5000);
   expect(fs.readFileSync(path.join(f.root, 'reports/deadline.json'))).toEqual(before);
   expect(fs.existsSync(path.join(f.root, 'reports/.qa-evidence/001/deadline.json'))).toBe(false);
 });
