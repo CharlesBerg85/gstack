@@ -171,9 +171,9 @@ test('the native launcher consumes the family-specific actor boundary', () => {
       ? 'The generic wrapper does NOT support wait'
       : 'bun cancel.ts is a CLI-only entrypoint, not part of this fixture');
     expect(prompt).not.toContain('parseInt');
-    if (entry.family === 'webhook') {
+    if (entry.family === 'webhook') expect(prompt).toContain('Choose their order from observations after the happy path');
+    if (entry.family === 'webhook' && entry.mode === 'qa-only') {
       expect(prompt).toContain('All eight scenarios are required coverage; a replay does not replace another scenario');
-      expect(prompt).toContain('Choose their order from observations after the happy path');
     } else {
       expect(prompt).not.toContain('All eight scenarios');
     }
@@ -248,24 +248,32 @@ test('fix completion budgets for required repair and avoids duplicating preserve
   }
 });
 
-test('webhook fix stage retains the required scenarios omitted by both R29 captures', () => {
+test('webhook fix stage asks for the fix-loop probes; the R29 scenario omissions stay bound by the report-only case', () => {
+  // Both R29 fix-run captures completed the fix loop (happy path, replayed defect,
+  // cancellation, dependency) and omitted only exploration scenarios. Eight-scenario
+  // coverage is the report-only webhook case's contract; the fix case's harness
+  // reruns all eight on the repaired source (verifyQANativeRegression).
   const captured = [
     { id: 'ecd6da06-abd0-4299-8c33-e1b99a672325', scenarios: ['happy', 'partial', 'partial', 'concurrent-ab', 'partial', 'cancel', 'dependency', 'happy'], missing: ['reject', 'duplicate', 'concurrent-ba'] },
     { id: '45722f13-a72c-4c01-87cc-8e17285ef8c4', scenarios: ['happy', 'concurrent-ab', 'concurrent-ab', 'concurrent-ab', 'happy', 'cancel', 'dependency'], missing: ['reject', 'duplicate', 'partial', 'concurrent-ba'] },
   ];
-  const prompt = qaFunctionalPrompt({ family: 'webhook', mode: 'qa' });
-  const verification = prompt.slice(prompt.indexOf('2. On the repaired source'), prompt.indexOf('3. Save the evidence'));
   const required = ['happy', 'reject', 'duplicate', 'partial', 'concurrent-ab', 'concurrent-ba', 'cancel', 'dependency'];
   for (const attempt of captured) {
     expect(required.filter(scenario => !attempt.scenarios.includes(scenario))).toEqual(attempt.missing);
-    for (const scenario of required) expect(verification).toContain(`\`${scenario}\``);
+    for (const scenario of ['happy', 'cancel', 'dependency']) expect(attempt.scenarios).toContain(scenario);
+    expect(attempt.scenarios.some((scenario, index) => attempt.scenarios.indexOf(scenario) !== index && scenario !== 'happy')).toBe(true);
   }
-  expect(verification).toContain('every still-unobserved scenario');
-  expect(verification).toContain('recheck earlier scenarios affected by the repair');
-  expect(verification).toContain('None of these scenarios is optional exploration');
-  expect(prompt).toContain('the completion reserve does not end required coverage');
-  expect(qaFunctionalPrompt({ family: 'cli', mode: 'qa' })).not.toContain('`concurrent-ba`');
+  const fix = qaFunctionalPrompt({ family: 'webhook', mode: 'qa' });
+  const verification = fix.slice(fix.indexOf('2. On the repaired source'), fix.indexOf('3. Save the evidence'));
+  expect(verification).toContain('run the original failing probe, an adjacent happy-path probe, cancellation and the unavailable-dependency probe');
+  expect(verification).not.toContain('All eight scenarios');
+  expect(fix).toContain('the completion reserve does not end required coverage');
+  expect(verification).toBe(((prompt: string) => prompt.slice(prompt.indexOf('2. On the repaired source'), prompt.indexOf('3. Save the evidence')))(qaFunctionalPrompt({ family: 'cli', mode: 'qa' })));
+  const report = qaFunctionalPrompt({ family: 'webhook', mode: 'qa-only' });
+  expect(report).toContain('All eight scenarios are required coverage; a replay does not replace another scenario');
+  for (const scenario of required) expect(report).toContain(scenario);
 });
+
 
 test('fix-stage checkpoint provenance survives intervening native regression tests', () => {
   const prompt = qaFunctionalPrompt({ family: 'webhook', mode: 'qa' });
