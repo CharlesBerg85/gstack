@@ -1,0 +1,64 @@
+{
+  "recordedAt": "96764e80",
+  "note": "paid evals selected by touching each W1 source file, recorded on the base commit before the change",
+  "modules": {
+    "lib/state-root.ts": {
+      "sources": [
+        "browse/src/config.ts",
+        "lib/cso/state.ts"
+      ],
+      "e2e": [
+        "aside-browse-basic",
+        "aside-browse-flow",
+        "benchmark-workflow",
+        "browse-basic",
+        "browse-snapshot",
+        "canary-workflow",
+        "carve-section-loading",
+        "cso-diff-mode",
+        "cso-full-audit",
+        "cso-infra-scope",
+        "design-review-detector-shim-dom",
+        "design-review-fix",
+        "diagram-authoring-quality",
+        "diagram-triplet",
+        "qa-b6-static",
+        "qa-b7-spa",
+        "qa-b8-checkout",
+        "qa-fix-loop",
+        "qa-only-no-fix",
+        "qa-quick"
+      ],
+      "llmJudge": [
+        "browse/SKILL.md reference"
+      ]
+    },
+    "bin/gstack-state-root.sh": {
+      "sources": [
+        "bin/gstack-paths",
+        "careful/bin/hook-extract.sh"
+      ],
+      "e2e": [
+        "investigate-owned-abort",
+        "investigate-owned-completion",
+        "investigate-owned-ending-error",
+        "plan-design-with-ui-scope"
+      ],
+      "llmJudge": []
+    },
+    "hosts/claude/hooks/hook-log.ts": {
+      "sources": [
+        "hosts/claude/hooks/question-log-hook.ts",
+        "hosts/claude/hooks/question-preference-hook.ts",
+        "hosts/claude/hooks/auq-error-fallback-hook.ts",
+        "hosts/claude/hooks/timeline-stop-hook.ts",
+        "hosts/claude/hooks/memorable-user-prompt-hook.ts"
+      ],
+      "e2e": [
+        "auto-decide-preserved",
+        "docsync-spawned"
+      ],
+      "llmJudge": []
+    }
+  }
+}
