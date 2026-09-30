@@ -1365,7 +1365,7 @@ describe('real caller-specific native fixture and capture boundary', () => {
         expect(options.appendSystemPrompt).not.toMatch(/bun scripts\/probe\.ts \d|invalid input|highest.risk/i);
         expect(options.prompt).toContain('Keep normal parent decision gates.');
         expect(options.prompt).toContain("use the section clock's Hard deadline UTC, never its Runner entry UTC, reserve-start time or a clock-read time");
-        expect(options.prompt).toContain('Before every completion report or bookkeeping log, read HANDOFF.md');
+        expect(options.prompt).toContain('Before the completion report and each completed:true review record, read HANDOFF.md');
         expect(options.prompt).toContain('a later handoff read cannot validate an earlier completion');
         expect(options.prompt).toContain('If you defer an optional idea or stop exploration, do not publish a checkpoint for it');
         expect(options.prompt).toContain('An unused checkpoint requires an actual authenticated expired-capture result; nearing the deadline or choosing to stop is not enough');
