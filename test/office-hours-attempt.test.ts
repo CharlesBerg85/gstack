@@ -606,7 +606,7 @@ const fakeJudgeRequest = async (body, options) => {
   const id = attempt;
   await new Promise(resolve => setTimeout(resolve, scenario === 'late-judge' ? 130 : 10));
   event({ kind: 'judge-ready', id, aborted: options?.signal?.aborted ?? false });
-  return { content: [{ type: 'text', text: JSON.stringify({ reason_substance: scenario === 'bad-score' ? 3 : 5, reasoning: 'fixture specific tradeoff' }) }] };
+  return { stop_reason: 'end_turn', content: [{ type: 'text', text: JSON.stringify({ reason_substance: scenario === 'bad-score' ? 3 : 5, reasoning: 'fixture specific tradeoff' }) }] };
 };
 mock.module('@anthropic-ai/sdk', () => ({ default: class { messages = { create: fakeJudgeRequest }; } }));
 globalThis.fetch = () => { throw new Error('No network is permitted in this free lifecycle fixture'); };
