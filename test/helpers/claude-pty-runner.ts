@@ -4720,6 +4720,9 @@ export async function runPlanSkillFloorCheck(opts: {
     'Proceed directly to the requested review; skip the optional /office-hours prerequisite.',
     'This actor has already declined routing setup, cross-project recall and outside reviewers.',
     'Preserve the supplied product scope. For review-mode questions choose HOLD SCOPE (CEO), DX POLISH (DX), or the full BIG CHANGE review (Eng). Design: review all seven dimensions.',
+    // Runs 36626737820 and 36776104571: CEO read scope preservation as approving
+    // approach A, so the seeded premise gap never reached a question.
+    ...(opts.skillName === 'plan-ceo-review' ? ['Preserving scope does not approve the plan\'s premise, approach or any remedy.'] : []),
     ...(opts.productType === 'sdk-documentation' ? [
       'Product type is confirmed: SDK quickstart documentation, with the complete journey to the first SDK call as context. If asked to classify, choose SDK + Docs when offered, otherwise Documentation. This confirms the review lens; it does not expand the plan.',
       'Target persona is confirmed: a hands-on developer integrating this SDK for the first time, trying to make one successful call. Product type and persona setup are already answered; proceed to reviewing the supplied plan.',
