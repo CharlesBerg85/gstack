@@ -66,7 +66,7 @@ Never batch probes.
 4. Replay the exact failing command/request from the same initial fixture state via steps 2–3 (same native command, fresh capture ID)
    before repair, then minimize via those gates. Expiry leaves confirmation/minimization incomplete.
    Another input or a regression test is not that replay.
-5. After source/commands/fixtures change, re-review and return to step 2 for each affected revalidation. Keep limits/notes; status requires fresh evidence.
+5. After source/commands/fixtures change, re-review and return to step 2 for each affected revalidation (unproven=affected). Keep limits/notes; status requires fresh evidence.
 
 ## 3. Parent handoff
 
@@ -82,7 +82,7 @@ Never freeze buggy output, weaken tests or delete valid red tests.
 
 Use the surface report template; link each checkpoint. Separate browser scores, functional outcomes and proposed/executed tests.
 Write R/annotations.json: {evidence: [{capture, command, contract, expected, classification}], limits}.
-Before Markdown, `bun Q materialize R annotations.json` builds evidence.json; Q fills observed, revision, runtime, cwd and learning and prints reportLinks to include; you classify. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
+Before Markdown, `bun Q materialize R annotations.json` builds evidence.json; Q fills observed, revision, runtime, cwd and learning and prints reportLinks; you classify. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
 Evidence is invocation-local; /ship reruns once per invocation.
 Missing prerequisites/expectations/observations, timeouts and refusal never pass.
 Pass requires all required current-input contracts to pass with no required remainder.

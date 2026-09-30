@@ -84,7 +84,7 @@ Never batch probes.
    to confirm it, then minimize via those gates. Expiry leaves confirmation/minimization incomplete.
    Another input or a regression test is not that replay.
 5. If the user or another process changes source, commands or fixtures, review the affected
-   contracts and return to step 2 for each affected revalidation. Do not make product changes yourself.
+   contracts and return to step 2 for each affected revalidation (unproven=affected). Do not make product changes yourself.
    Keep the original limits/notes; update outcomes only from fresh evidence.
 
 ## 3. Parent handoff
@@ -97,7 +97,7 @@ with their failing contract and expected assertion; never create tests or freeze
 
 Use the surface report template; link each checkpoint. Separate browser scores, functional outcomes and proposed/executed tests.
 Write R/annotations.json: {evidence: [{capture, command, contract, expected, classification}], limits}.
-Before Markdown, `bun Q materialize R annotations.json` builds evidence.json; Q fills observed, revision, runtime, cwd and learning and prints reportLinks to include; you classify. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
+Before Markdown, `bun Q materialize R annotations.json` builds evidence.json; Q fills observed, revision, runtime, cwd and learning and prints reportLinks; you classify. Retain all safe probes, including failures/replays; disclose withheld/incomplete evidence.
 Evidence is invocation-local.
 Missing prerequisites/expectations/observations, timeouts and refusal never pass.
 Pass requires all required current-input contracts to pass with no required remainder.
