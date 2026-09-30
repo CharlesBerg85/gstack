@@ -716,3 +716,49 @@ describe('derived touchfile closure', () => {
     expect(paid.filter(file => !keyed(file))).toEqual(Object.keys(KEYLESS_PAID).sort());
   });
 });
+
+describe('moved code keeps its paid-eval selection', () => {
+  // Each refactor that moves code out of a touchfile records, before the move,
+  // the paid evals that touching the source selected. A directory key (ending
+  // in '/') covers every .ts file under it, so a new module there is checked too.
+  const GOLDEN_DIR = 'test/fixtures/touchfile-selection';
+  const goldens = fs.readdirSync(path.join(ROOT, GOLDEN_DIR)).filter(file => file.endsWith('.json')).sort();
+  type Golden = { sources: Record<string, { e2e: string[]; llmJudge: string[] }>; modules: Record<string, string[]> };
+  type Lanes = { e2e: Record<string, string[]>; llmJudge: Record<string, string[]> };
+  const expand = (key: string) => !key.endsWith('/') ? [key] : fs.readdirSync(path.join(ROOT, key), { recursive: true })
+    .map(String).filter(file => file.endsWith('.ts')).map(file => key + file.replace(/\\/g, '/'));
+  function supersetViolations(record: Golden, lanes: Lanes, modules: (key: string) => string[], globals?: string[]): string[] {
+    const violations: string[] = [];
+    for (const [key, sources] of Object.entries(record.modules)) for (const module of modules(key)) {
+      for (const lane of ['e2e', 'llmJudge'] as const) {
+        const selected = new Set(selectTests([module], lanes[lane], globals).selected);
+        for (const source of sources) for (const name of record.sources[source]![lane]) {
+          if (!selected.has(name)) violations.push(`${module}  ${lane}: '${name}' (selected by ${source} before the move)`);
+        }
+      }
+    }
+    return violations;
+  }
+  const message = (violations: string[], golden: string) => violations.length ? [...violations,
+    'Moved code must keep the paid evals its source file selected, or a change to it silently skips them.',
+    "Fix: add the new module (or a directory glob such as 'test/helpers/pty/**') to every touchfile entry that lists its source file in test/helpers/touchfiles-data.ts.",
+    `Golden: ${GOLDEN_DIR}/${golden}; update it only when an eval's dependency on the moved code genuinely ends.`,
+  ].join('\n') : '';
+
+  test.each(goldens)('%s: every moved module selects a superset of its source selection', golden => {
+    const record = JSON.parse(fs.readFileSync(path.join(ROOT, GOLDEN_DIR, golden), 'utf8')) as Golden;
+    for (const key of Object.keys(record.modules)) for (const module of expand(key))
+      expect(fs.existsSync(path.join(ROOT, module)), `${module} is listed in ${GOLDEN_DIR}/${golden} but does not exist`).toBe(true);
+    const violations = supersetViolations(record, { e2e: E2E_TOUCHFILES, llmJudge: LLM_JUDGE_TOUCHFILES }, expand);
+    expect(violations, message(violations, golden)).toEqual([]);
+  });
+
+  test('a planted module missing from one source entry is reported with the fix', () => {
+    const record: Golden = { sources: { 'src/old.ts': { e2e: ['eval-a', 'eval-b'], llmJudge: [] } }, modules: { 'src/new/': ['src/old.ts'] } };
+    const lanes: Lanes = { e2e: { 'eval-a': ['src/old.ts', 'src/new/**'], 'eval-b': ['src/old.ts'] }, llmJudge: {} };
+    const violations = supersetViolations(record, lanes, () => ['src/new/module.ts'], []);
+    expect(violations).toEqual(["src/new/module.ts  e2e: 'eval-b' (selected by src/old.ts before the move)"]);
+    expect(message(violations, 'planted.json')).toContain('Fix: add the new module');
+    expect(message(violations, 'planted.json')).toContain(`Golden: ${GOLDEN_DIR}/planted.json`);
+  });
+});
