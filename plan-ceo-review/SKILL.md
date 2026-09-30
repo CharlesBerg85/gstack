@@ -1221,8 +1221,9 @@ forbidden, show the actual fields as not persisted and continue without writing.
 If the reviewer fails, report that limit and continue after recording the outcome;
 if a required save fails, stop before claiming completion.
 ```bash
-mkdir -p ~/.gstack/analytics || exit 1
-echo '{"skill":"plan-ceo-review","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","iterations":ITERATIONS,"issues_found":FOUND,"issues_fixed":FIXED,"remaining":REMAINING,"quality_score":SCORE}' >> ~/.gstack/analytics/spec-review.jsonl || exit 1
+eval "$(~/.claude/skills/gstack/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+mkdir -p "$GSTACK_STATE_ROOT/analytics" || exit 1
+echo '{"skill":"plan-ceo-review","ts":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","iterations":ITERATIONS,"issues_found":FOUND,"issues_fixed":FIXED,"remaining":REMAINING,"quality_score":SCORE}' >> "$GSTACK_STATE_ROOT/analytics/spec-review.jsonl" || exit 1
 ```
 ITERATIONS counts actual reviewer launches. FOUND, FIXED and REMAINING count reported issues, reviewer-confirmed fixes and reported unresolved issues. Use actual counts, never estimates.
 

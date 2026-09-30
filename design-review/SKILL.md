@@ -769,7 +769,7 @@ Commands:
 - `$D iterate --session /path/session.json --feedback "..." --output /path.png` — iterate
 
 **CRITICAL PATH RULE:** Design artifacts belong in `$GSTACK_STATE_ROOT/projects/$SLUG/designs/`.
-Use `bin/gstack-paths`: GSTACK_HOME → plugin storage → ~/.gstack. Keep it even if temporary; never substitute
+Use `bin/gstack-paths` (docs/state-root.md). Keep it even if temporary; never substitute
 .context/, docs/designs/ or another directory.
 These are user files, not application source.
 
@@ -1387,9 +1387,10 @@ Compare screenshots and observations across pages for:
 
 **Project-scoped:**
 ```bash
-eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)" && mkdir -p ~/.gstack/projects/$SLUG
+eval "$(~/.claude/skills/gstack/bin/gstack-paths)"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)" && mkdir -p "$GSTACK_STATE_ROOT/projects/$SLUG" && echo "PROJECT_DIR: $GSTACK_STATE_ROOT/projects/$SLUG"
 ```
-Write to: `~/.gstack/projects/{slug}/{user}-{branch}-design-audit-{datetime}.md`
+Write to: `<PROJECT_DIR>/{user}-{branch}-design-audit-{datetime}.md` (`PROJECT_DIR` printed above)
 
 **Baseline:** Write `design-baseline.json` for regression mode (temp file then `mv`, and a per-run copy `design-baseline.<runId>.json` beside it):
 ```json

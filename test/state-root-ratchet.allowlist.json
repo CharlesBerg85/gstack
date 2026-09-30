@@ -8,8 +8,5 @@
   { "path": "bin/gstack-state-root.sh", "match": "*", "reason": "the bash owner of the chain" },
   { "path": "careful/bin/check-careful.sh", "match": "_GSTACK_HOME_DIR=\"${GSTACK_HOME:-$HOME/.gstack}\"", "reason": "partial-upgrade fallback, reached only when an older hook-extract.sh lacks gstack_hook_state_root (legacy order kept on purpose)" },
   { "path": "gstack-upgrade/SKILL.md.tmpl", "match": "elif [ -d \"$HOME/.gstack/repos/gstack/.git\" ]; then", "reason": "the relocated gstack checkout is an install location, not state" },
-  { "path": "gstack-upgrade/SKILL.md.tmpl", "match": "INSTALL_DIR=\"$HOME/.gstack/repos/gstack\"", "reason": "the relocated gstack checkout is an install location, not state" },
-  { "path": "scripts/resolvers/review.ts", "match": "*", "reason": "PENDING CROSS-OWNER (W5): delete this entry once the W1 handoff's review.ts / new-module edits are applied" },
-  { "path": "scripts/resolvers/design.ts", "match": "*", "reason": "PENDING CROSS-OWNER (W5): delete this entry once the W1 handoff's design.ts edits are applied" },
-  { "path": "scripts/test-free-shards.ts", "match": "*", "reason": "PENDING CROSS-OWNER (W2): delete this entry once the W1 handoff's test-free-shards.ts edit is applied" }
+  { "path": "gstack-upgrade/SKILL.md.tmpl", "match": "INSTALL_DIR=\"$HOME/.gstack/repos/gstack\"", "reason": "the relocated gstack checkout is an install location, not state" }
 ]

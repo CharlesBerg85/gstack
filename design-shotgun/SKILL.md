@@ -444,7 +444,7 @@ Commands:
 - `$D iterate --session /path/session.json --feedback "..." --output /path.png` — iterate
 
 **CRITICAL PATH RULE:** Design artifacts belong in `$GSTACK_STATE_ROOT/projects/$SLUG/designs/`.
-Use `bin/gstack-paths`: GSTACK_HOME → plugin storage → ~/.gstack. Keep it even if temporary; never substitute
+Use `bin/gstack-paths` (docs/state-root.md). Keep it even if temporary; never substitute
 .context/, docs/designs/ or another directory.
 These are user files, not application source.
 
@@ -556,7 +556,8 @@ Read this project's taste profile:
 ```bash
 eval "$("~/.claude/skills/gstack/bin/gstack-slug" 2>/dev/null)"
 [ -n "${SLUG:-}" ] || { echo "NO_TASTE_PROFILE"; exit 0; }
-_TASTE_PROFILE=~/.gstack/projects/$SLUG/taste-profile.json
+eval "$("~/.claude/skills/gstack/bin/gstack-paths")"; : "${GSTACK_STATE_ROOT:?gstack-paths failed; reinstall with ./setup or /gstack-upgrade}"
+_TASTE_PROFILE="$GSTACK_STATE_ROOT/projects/$SLUG/taste-profile.json"
 if [ -f "$_TASTE_PROFILE" ]; then
   # Schema v1: { dimensions: { fonts, colors, layouts, aesthetics }, sessions: [] }
   # Each dimension has approved[] and rejected[] entries with

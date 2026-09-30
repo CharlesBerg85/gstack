@@ -85,6 +85,7 @@ import { spawn, spawnSync } from 'child_process';
 import { StringDecoder } from 'node:string_decoder';
 import { createHash, randomUUID } from 'node:crypto';
 import { isPaidTestFile } from '../test/helpers/paid-test-set';
+import { resolveStateRoot } from '../lib/state-root';
 import {
   BunTestOutputClassifier,
   createShardSandbox,
@@ -353,6 +354,10 @@ export const KNOWN_WINDOWS_INCOMPATIBLE: Array<{ file: string; reason: string }>
 // pattern hit is a false positive — the point of these files is Windows
 // coverage, so auto-excluding them defeats the regression tests they carry.
 const KNOWN_WINDOWS_SAFE: Array<{ file: string; reason: string }> = [
+  {
+    file: 'test/state-root-parity.test.ts',
+    reason: 'runs the bash twin and lib/state-root.ts over an env table with PATH empty; no shebang execution, raw-string comparison is platform-neutral',
+  },
   {
     file: 'test/qa-evidence.test.ts',
     reason: 'invokes the production helper through Bun argv and exercises native Windows job cleanup, private file captures and backpressured receipt output',
@@ -1310,7 +1315,7 @@ export function flakeLedgerPath(env: NodeJS.ProcessEnv = process.env): string {
     const slug = spawnSync('bash', ['-c', '~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null'], { stdio: 'pipe', timeout: 3000 })
       .stdout?.toString().match(/^SLUG=(.+)$/m)?.[1];
     if (slug) {
-      const dir = path.join(os.homedir(), '.gstack', 'projects', slug);
+      const dir = path.join(resolveStateRoot(env), 'projects', slug);
       fs.mkdirSync(dir, { recursive: true });
       return path.join(dir, 'flake-ledger.jsonl');
     }

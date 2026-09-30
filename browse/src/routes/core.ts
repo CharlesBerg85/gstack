@@ -5,6 +5,8 @@
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
+import { resolveStateRoot } from '../../../lib/state-root';
 import { json, type RouteEntry } from './table';
 import { handleCookiePickerRoute } from '../cookie-picker-routes';
 import { sanitizeReplacer } from '../sanitize';
@@ -16,7 +18,7 @@ function resolveWelcomePath(): string | null {
   const rawSlug = process.env.GSTACK_SLUG || 'unknown';
   const slug = /^[a-z0-9_-]+$/.test(rawSlug) ? rawSlug : 'unknown';
   const homeDir = process.env.HOME || process.env.USERPROFILE || '/tmp';
-  const projectWelcome = `${homeDir}/.gstack/projects/${slug}/designs/welcome-page-20260331/finalized.html`;
+  const projectWelcome = path.join(resolveStateRoot(), 'projects', slug, 'designs', 'welcome-page-20260331', 'finalized.html');
   if (fs.existsSync(projectWelcome)) return projectWelcome;
   // Fallback: built-in welcome page from gstack install. Reject SKILL_ROOT
   // values containing '..' for the same defense-in-depth reason.
