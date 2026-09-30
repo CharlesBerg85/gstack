@@ -5,6 +5,9 @@ import * as path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 
+import { qaCommandAllowed } from './helpers/qa-functional-observer';
+import { qaCallerCommandAllowed } from './helpers/qa-callers-fixture';
+
 const CLI = path.resolve(import.meta.dir, '../bin/gstack-qa-evidence');
 const ROOT = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'qa-evidence-'));
 afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
@@ -293,4 +296,17 @@ test('materialize rejects placeholder metadata and same-probe learning with the 
   const selected = f.run('materialize', f.root, 'annotations.json');
   expect(selected.status, selected.stderr).toBe(0);
   expect(JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8')).learning).toEqual([]);
+});
+
+test('both QA helpers answer --help with usage and exit 0, and the declared interfaces allow it', () => {
+  for (const [cli, needle] of [[CLI, 'materialize ROOT ANNOTATIONS'], [path.resolve(import.meta.dir, '../bin/gstack-qa-deadline'), 'status FILE']] as const) {
+    const result = spawnSync(process.execPath, [cli, '--help'], { encoding: 'utf8', timeout: 10_000 });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(needle);
+  }
+  expect(qaCommandAllowed('bun bin/gstack-qa-evidence --help')).toBe(true);
+  expect(qaCommandAllowed('bun /abs/runtime/bin/gstack-qa-deadline --help')).toBe(true);
+  expect(qaCommandAllowed('bun bin/gstack-qa-evidence --help; rm -rf x')).toBe(false);
+  expect(qaCommandAllowed('bun bin/gstack-qa-evidence --version')).toBe(false);
+  expect(qaCallerCommandAllowed('bun /abs/host/runtime/bin/gstack-qa-evidence --help')).toBe(true);
 });

@@ -281,7 +281,13 @@ export function qaWriteVerdict(observation: QAWriteObservation, mode: QAMode): s
   return failures;
 }
 
+/** Asking an installed gstack QA helper for its own usage text is read-only and always declared. */
+export function qaHelperUsageCommand(command: string): boolean {
+  return /^bun (?:[\w./-]+\/)?bin\/gstack-qa-(?:evidence|deadline) --help$/.test(command.trim());
+}
+
 export function qaCommandAllowed(command: string, root?: string): boolean {
+  if (qaHelperUsageCommand(command)) return true;
   const producer = root ? qaEvidenceCommand(command, { cwd: root, reportRoot: path.join(root, 'qa-reports'), executable: path.join(root, 'bin/gstack-qa-evidence') }) : undefined;
   if (producer) {
     try { ownedPath(root!, 'bin/gstack-qa-evidence'); } catch { return false; }

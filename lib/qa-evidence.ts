@@ -277,12 +277,18 @@ function materialize(root: string, source: string) {
     next: 'Include every reportLinks entry in the Markdown report.' };
 }
 
+const QA_EVIDENCE_USAGE = 'capture ROOT ID [--public] --deadline FILE|--timeout-ms MS -- COMMAND ARGS | checkpoint ROOT ID CAPTURE OBSERVATION_COMMAND HYPOTHESIS NEXT_COMMAND | checkpoint ROOT ID INTENT_FILE | materialize ROOT ANNOTATIONS (annotations: {evidence: [{capture, command, contract, expected, classification}], limits: [..]}; revision, runtime, cwd and learning are filled in)';
+
 export async function qaEvidenceMain(args: string[]): Promise<number> {
   return withQaReceiptOutput(false, 'qa-evidence-receipt', value => value.event === 'observation'
     ? JSON.stringify(value.observed) + '\n' : value.event === 'diagnostic' ? String(value.stderr)
       : '\nQA_EVIDENCE ' + JSON.stringify({ producer: 'gstack-qa-evidence', version: 1, ...value }) + '\n', async emit => {
     try {
       const [action, reportRoot, ...rest] = args;
+      if (action === '--help' && args.length === 1) {
+        emit('stdout', { action: 'help', status: 'complete', usage: QA_EVIDENCE_USAGE, exitCode: 0 });
+        return 0;
+      }
       const root = qaEvidenceRoot(reportRoot);
       let receipt: Record<string, any>;
       const publicOutput = action === 'capture' && rest[1] === '--public';
@@ -297,7 +303,7 @@ export async function qaEvidenceMain(args: string[]): Promise<number> {
       } else if (action === 'checkpoint' && rest.length === 2) receipt = checkpoint(root, rest[0], rest[1]);
       else if (action === 'checkpoint' && rest.length === 5) receipt = checkpoint(root, rest[0], { capture: rest[1], observationCommand: rest[2], hypothesis: rest[3], nextCommand: rest[4] });
       else if (action === 'materialize' && rest.length === 1) receipt = materialize(root, rest[0]);
-      else throw new QaEvidenceError('Usage: capture ROOT ID [--public] --deadline FILE|--timeout-ms MS -- COMMAND ARGS | checkpoint ROOT ID CAPTURE OBSERVATION_COMMAND HYPOTHESIS NEXT_COMMAND | checkpoint ROOT ID INTENT_FILE | materialize ROOT ANNOTATIONS');
+      else throw new QaEvidenceError(`Usage: ${QA_EVIDENCE_USAGE}`);
       emit('stdout', receipt);
       return receipt.status === 'complete' ? receipt.exitCode : receipt.status === 'incomplete' ? receipt.exitCode || 2 : 2;
     } catch (error) {

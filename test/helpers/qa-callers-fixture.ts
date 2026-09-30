@@ -11,7 +11,7 @@ import { runSkillTest, SESSION_DRAIN_GRACE_MS } from './session-runner';
 import { CAPTURE_MS } from './eval-budgets';
 import { refreshHermeticSkillRuntime } from './hermetic-skill-runtime';
 import { seedHermeticGstackHome } from './hermetic-env';
-import { observeQAWrites, type QAWriteObservation } from './qa-functional-observer';
+import { observeQAWrites, qaHelperUsageCommand, type QAWriteObservation } from './qa-functional-observer';
 import { nativeCalls, readQACheckpointFiles, validateQACheckpoints } from './qa-checkpoint-evidence';
 import { ownedPath } from './qa-functional-fixture';
 import { qaEvidenceCommand, qaNativeCapture, qaProducerReceipt, type QaEvidenceContext } from './qa-evidence-producer';
@@ -214,6 +214,7 @@ function callerDeadlineCommand(command: string, context?: CallerDeadlineContext)
 
 export function qaCallerCommandAllowed(command: string, workflowCommands: string[] = [], deadline?: CallerDeadlineContext): boolean {
   const text = command.trim();
+  if (qaHelperUsageCommand(text)) return true;
   if (callerEvidenceCommand(text, deadline)) return true;
   if (callerDeadlineCommand(text, deadline)) return true;
   if (/\bgstack-qa-(?:deadline|evidence)\b/.test(text) && !literalCallerCLI.test(text)
