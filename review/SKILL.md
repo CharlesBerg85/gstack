@@ -666,7 +666,7 @@ Sanitize every query before it leaves the machine: strip hostnames, IPs, file pa
 
 ## Step 4: Critical pass (core review)
 
-> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below. Templates cannot replace them.
+> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below and await them. Templates cannot replace them.
 Step 4 is read-only: defer charters, setup and probes to Step 4.7.
 
 From the installed /review SKILL.md's directory, choose one path:

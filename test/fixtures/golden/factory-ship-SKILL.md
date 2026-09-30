@@ -2347,7 +2347,7 @@ Never overwrite another run's reports. Batch only independent Reads.
 
 **1. Load methods before any QA or explicit-verification probe.**
 
-> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below. Templates cannot replace them.
+> **STOP.** Before any probe, including plan checks, complete the ordered scope/method Reads below and await them. Templates cannot replace them.
 
 From the installed /ship SKILL.md's directory, Read `../gstack-qa/sections/exploratory.md` in full. Use this host's installation, never the product tree. If missing or unreadable, report a QA setup blocker and its affected probes as blocked; continue other safe probes (independent functional/static checks). Missing/unreadable assets block required QA.
 
