@@ -52,10 +52,10 @@ function receipt(output: string) {
   return value;
 }
 
-function background(args: string[], preload?: string) {
+function background(args: string[], preload?: string, options: { unreadStdout?: boolean } = {}) {
   const child = spawn(process.execPath, [...(preload ? ['--preload', preload] : []), CLI, ...args], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '';
-  child.stdout!.on('data', chunk => { stdout += chunk; });
+  if (!options.unreadStdout) child.stdout!.on('data', chunk => { stdout += chunk; });
   child.stderr!.on('data', chunk => { stderr += chunk; });
   const result = new Promise<{ code: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }>((resolve, reject) => {
     child.once('error', reject);
@@ -345,8 +345,7 @@ import { write } from 'node:fs';
 write(1, Buffer.alloc(2 * 1024 * 1024, 32), () => {});
 await Bun.sleep(100);
 `);
-  const runner = background(['start', f.receipt, '30'], preload);
-  runner.child.stdout!.pause();
+  const runner = background(['start', f.receipt, '30'], preload, { unreadStdout: true });
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     const code = await Promise.race([
