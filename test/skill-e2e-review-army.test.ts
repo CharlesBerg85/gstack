@@ -144,26 +144,60 @@ Write your findings to ${dir}/review-output.md`,
   }, CAPTURE_MS);
 });
 
+// Review Army sessions whose contract starts at specialist dispatch (N+1, consensus).
+// The fixture records the Step 4.5 stages before dispatch (scope detection, specialist
+// stats, learnings, the diff) and stages only the Review Army section and the named
+// checklists, so the session does not spend its budget on the core pass, QA loading,
+// web research or a long report. Each case's scope flags are gstack-diff-scope's
+// output for its fixture before staging, recorded rather than rerun so the free
+// controls stay runnable without bash. A subagent outside a case's contract (the
+// consensus case's Red Team) is supplied as a labeled recorded result.
+function stageReviewArmySession(dir: string, scopeFlags: string, specialists: string[], checklists: string[]): string {
+  const git = (args: string[]) => spawnSync('git', args, { cwd: dir, encoding: 'utf-8', timeout: 5000 }).stdout ?? '';
+  const diff = git(['diff', 'main...HEAD']);
+  if (!diff.includes('diff --git')) throw new Error(`Review Army fixture in ${dir} has an empty diff against main`);
+  const diffLines = [...git(['diff', '--shortstat', 'main...HEAD']).matchAll(/(\d+) (?:insertion|deletion)/g)]
+    .reduce((sum, match) => sum + Number(match[1]), 0);
+  fs.writeFileSync(path.join(dir, 'review-army.md'), readReviewSection('review-army.md'));
+  const specDir = path.join(dir, 'review-specialists');
+  fs.mkdirSync(specDir, { recursive: true });
+  for (const name of checklists) {
+    fs.copyFileSync(path.join(ROOT, 'review', 'specialists', `${name}.md`), path.join(specDir, `${name}.md`));
+  }
+  return `$ gstack-diff-scope main
+${scopeFlags}
+STACK: unknown
+DIFF_LINES: ${diffLines}
+TEST_FW: unknown
+$ gstack-specialist-stats
+SPECIALIST_STATS: 0 reviews analyzed
+${specialists.map(name => `$ gstack-learnings-search --type pitfall --query "${name}" --limit 5
+(no output: no past learnings)`).join('\n')}
+$ git diff $(git merge-base main HEAD)
+${diff.trimEnd()}`;
+}
+
+function reviewArmyScope(observations: string, stages: string): string {
+  return `The base branch is main. There is no origin remote, so use main wherever the workflow says origin/<base>.
+
+This capture covers only Step 4.5 (Review Army), ${stages}. Read review-army.md once: it is that workflow.
+The core Step 4 pass, Exploratory QA, adversarial review, web research, Fix-First and review-log persistence are outside this capture; do not run or load them. Do not edit source.
+The fixture already ran the workflow's detect-scope, specialist-stats and learnings commands and the diff. Use these recorded outputs instead of rerunning them:
+\`\`\`
+${observations}
+\`\`\``;
+}
+
+function reviewArmyChecklists(checklists: string[]): string {
+  const paths = checklists.map(name => `review-specialists/${name}.md`);
+  return `The checklists for this capture are ${paths.slice(0, -1).join(', ')} and ${paths.at(-1)}; give subagents those paths.`;
+}
+
 // --- Review Army: N+1 Performance ---
+// Contract: Step 4.5 selection -> a foreground Performance specialist -> the Step 4.6
+// merge -> the conditional Red Team -> a report that surfaces the N+1.
 
 let nPlusOneCaptureSequence = 0;
-
-// The case's contract is Step 4.5 selection -> a foreground Performance specialist ->
-// the Step 4.6 merge -> the conditional Red Team -> a report that surfaces the N+1.
-// The fixture records the stages before it (scope detection, specialist stats,
-// learnings, the diff) and stages only the Review Army section, so the session does
-// not spend its budget on the core pass, QA loading, web research or a long report.
-// Scope flags are gstack-diff-scope's output for this fixture before staging;
-// recorded rather than rerun so the free controls stay runnable without bash.
-const N_PLUS_ONE_SCOPE = `SCOPE_FRONTEND=false
-SCOPE_BACKEND=true
-SCOPE_PROMPTS=false
-SCOPE_TESTS=false
-SCOPE_DOCS=false
-SCOPE_CONFIG=false
-SCOPE_MIGRATIONS=false
-SCOPE_API=true
-SCOPE_AUTH=false`;
 
 describeIfSelected('Review Army: N+1 Performance', ['review-army-perf-n-plus-one'], () => {
   let dir: string;
@@ -185,29 +219,15 @@ describeIfSelected('Review Army: N+1 Performance', ['review-army-perf-n-plus-one
     repo.run('git', ['add', '.']);
     repo.run('git', ['commit', '-m', 'add posts controller']);
 
-    const git = (args: string[]) => spawnSync('git', args, { cwd: dir, encoding: 'utf-8', timeout: 5000 }).stdout ?? '';
-    const diff = git(['diff', 'main...HEAD']);
-    if (!diff.includes('posts_controller.rb')) throw new Error('N+1 fixture diff is missing posts_controller.rb');
-    const diffLines = [...git(['diff', '--shortstat', 'main...HEAD']).matchAll(/(\d+) (?:insertion|deletion)/g)]
-      .reduce((sum, match) => sum + Number(match[1]), 0);
-    observations = `$ gstack-diff-scope main
-${N_PLUS_ONE_SCOPE}
-STACK: unknown
-DIFF_LINES: ${diffLines}
-TEST_FW: unknown
-$ gstack-specialist-stats
-SPECIALIST_STATS: 0 reviews analyzed
-$ gstack-learnings-search --type pitfall --query "performance" --limit 5
-(no output: no past learnings)
-$ git diff $(git merge-base main HEAD)
-${diff.trimEnd()}`;
-
-    fs.writeFileSync(path.join(dir, 'review-army.md'), readReviewSection('review-army.md'));
-    const specDir = path.join(dir, 'review-specialists');
-    fs.mkdirSync(specDir, { recursive: true });
-    for (const f of ['performance.md', 'red-team.md']) {
-      fs.copyFileSync(path.join(ROOT, 'review', 'specialists', f), path.join(specDir, f));
-    }
+    observations = stageReviewArmySession(dir, `SCOPE_FRONTEND=false
+SCOPE_BACKEND=true
+SCOPE_PROMPTS=false
+SCOPE_TESTS=false
+SCOPE_DOCS=false
+SCOPE_CONFIG=false
+SCOPE_MIGRATIONS=false
+SCOPE_API=true
+SCOPE_AUTH=false`, ['performance'], ['performance', 'red-team']);
   });
 
   afterAll(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
@@ -215,15 +235,8 @@ ${diff.trimEnd()}`;
   testConcurrentIfSelected('review-army-perf-n-plus-one', async () => {
     const result = await runSkillTest({
       prompt: `You are the /review parent on branch feature/add-posts-index, a Ruby controller change. The caller invoked /review --performance.
-The base branch is main. There is no origin remote, so use main wherever the workflow says origin/<base>.
-
-This capture covers only Step 4.5 (Review Army), its Step 4.6 merge and the Red Team dispatch. Read review-army.md once: it is that workflow.
-The core Step 4 pass, Exploratory QA, adversarial review, web research, Fix-First and review-log persistence are outside this capture; do not run or load them. Do not edit source.
-The fixture already ran the workflow's detect-scope, specialist-stats and learnings commands and the diff. Use these recorded outputs instead of rerunning them:
-\`\`\`
-${observations}
-\`\`\`
-Selection: --performance force-includes the Performance specialist despite the small diff; dispatch no other specialist. The checklists for this capture are review-specialists/performance.md and review-specialists/red-team.md; give subagents those paths.
+${reviewArmyScope(observations, 'its Step 4.6 merge and the Red Team dispatch')}
+Selection: --performance force-includes the Performance specialist despite the small diff; dispatch no other specialist. ${reviewArmyChecklists(['performance', 'red-team'])}
 The Performance focus does not waive the skill's conditional Red Team dispatch. If a specialist
 produces a CRITICAL finding, dispatch a separate foreground Red Team subagent and merge its findings.
 
@@ -626,9 +639,12 @@ Start the file with "RED TEAM REVIEW" on the first line.`,
 });
 
 // --- Review Army: Consensus (periodic) ---
+// Contract: two forced specialists flag the same injection and the Step 4.6 merge
+// surfaces it as MULTI-SPECIALIST CONFIRMED.
 
 describeIfSelected('Review Army: Consensus', ['review-army-consensus'], () => {
   let dir: string;
+  let observations: string;
   let consensusCaptureSequence = 0;
 
   beforeAll(() => {
@@ -657,23 +673,33 @@ end
     repo.run('git', ['add', '.']);
     repo.run('git', ['commit', '-m', 'add auth controller']);
 
-    copyReviewFiles(dir);
+    observations = stageReviewArmySession(dir, `SCOPE_FRONTEND=false
+SCOPE_BACKEND=true
+SCOPE_PROMPTS=false
+SCOPE_TESTS=false
+SCOPE_DOCS=false
+SCOPE_CONFIG=false
+SCOPE_MIGRATIONS=false
+SCOPE_API=true
+SCOPE_AUTH=true`, ['security', 'testing'], ['security', 'testing']);
   });
 
   afterAll(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
 
   testConcurrentIfSelected('review-army-consensus', async () => {
     const result = await runSkillTest({
-      prompt: `You are reviewing a git diff with a SQL injection in an auth controller.
-Read review-SKILL.md, review-checklist.md, and the specialist checklists in review-specialists/.
+      prompt: `You are the /review parent reviewing a git diff with a SQL injection in an auth controller, on branch feature/vuln-auth. The caller invoked /review --security --testing.
+${reviewArmyScope(observations, 'its Step 4.6 merge and the multi-specialist confirmation')}
+Selection: --security and --testing force-include those two specialists despite the small diff; dispatch no other specialist. ${reviewArmyChecklists(['security', 'testing'])}
+The Red Team is outside this case's contract. When its activation condition is met, do not dispatch it: use this fixture-supplied (synthetic) Red Team result instead, and label it as supplied in the report: NO FINDINGS
 
 This vulnerability should be caught by BOTH the security specialist (injection vector)
 AND the testing specialist (no test for auth bypass).
 
-Run the review. In your output, if a finding is flagged by multiple perspectives,
+In your output, if a finding is flagged by multiple perspectives,
 mark it as "MULTI-SPECIALIST CONFIRMED" with the confirming categories.
 
-Write findings to ${dir}/review-output.md`,
+Write ${dir}/review-output.md with only the selection line, the SPECIALIST REVIEW block with its PR Quality Score, and the Red Team result, in at most 30 lines. After saving the report, finish with a brief acknowledgement rather than repeating the findings in the final response.`,
       workingDirectory: dir,
       maxTurns: 20,
       timeout: CAPTURE_MS,
