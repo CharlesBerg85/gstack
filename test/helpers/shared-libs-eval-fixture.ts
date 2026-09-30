@@ -250,7 +250,7 @@ export function snapshotFixture(directory: string): Record<string, string> {
 
 export interface SourceRequest {
   tool: string; args: string[]; endpoint?: string; method?: string; cwd: string;
-  violation?: string;
+  env?: Record<string, string>; violation?: string;
   pid?: number; ppid?: number; parentExecutable?: string; parentCommand?: string;
 }
 
@@ -463,6 +463,22 @@ export function sharedReadOnlyViolations(toolCalls: Array<{ tool: string; input:
   return [...new Set(violations)];
 }
 
+const SAFE_GIT_ENV = { GIT_OPTIONAL_LOCKS: '0', GIT_NO_LAZY_FETCH: '1', GIT_TERMINAL_PROMPT: '0' };
+const SAFE_GIT_FLAGS = ['--no-pager', '--no-lazy-fetch', '--no-replace-objects'];
+const SAFE_GIT_CONFIG = ['core.fsmonitor=false', 'log.showSignature=false', 'diff.submodule=short'];
+
+/** A repository Git process that carries the complete safe prefix bin/gstack-safe-git applies, including its
+ * environment, plus patch-driver disabling for diffs; a partial literal prefix does not qualify. */
+export function isGuardedGitRequest(request: SourceRequest): boolean {
+  const args = request.args, command = args.findIndex((arg, i) => !arg.startsWith('-') && args[i - 1] !== '-c' && args[i - 1] !== '-C');
+  const globals = command < 0 ? args : args.slice(0, command), rest = command < 0 ? [] : args.slice(command);
+  const configs = globals.flatMap((arg, i) => globals[i - 1] === '-c' ? [arg] : []);
+  return Object.entries(SAFE_GIT_ENV).every(([key, value]) => request.env?.[key] === value)
+    && SAFE_GIT_FLAGS.every(flag => globals.includes(flag)) && SAFE_GIT_CONFIG.every(config => configs.includes(config))
+    && !rest.some(arg => ['--ext-diff', '--textconv', '--output'].includes(arg) || arg.startsWith('--output='))
+    && (rest[0] !== 'diff' || (rest.includes('--no-ext-diff') && rest.includes('--no-textconv')));
+}
+
 /** Claude's own workspace probes are not commands requested by the skill. */
 export function isInternalClaudeGitRequest(request: SourceRequest, commands: string[]): boolean {
   const hostPrefix = ['-c', 'protocol.ext.allow=never', '-c', 'submodule.recurse=false',
@@ -578,7 +594,8 @@ export function installSourceShims(f: SharedLibsFixture, opts: {
   }
   const common = `const fs=require('node:fs'), cp=require('node:child_process');\nconst a=process.argv.slice(2);\nconst trace=${JSON.stringify(f.trace)};\nconst parent={pid:process.pid,ppid:process.ppid};try{parent.parentExecutable=fs.readlinkSync('/proc/'+process.ppid+'/exe');parent.parentCommand=fs.readFileSync('/proc/'+process.ppid+'/cmdline','utf8').replaceAll('\\0',' ');}catch{try{const info=cp.spawnSync('ps',['-p',String(process.ppid),'-o','comm=','-o','args='],{encoding:'utf8',timeout:3_000});const line=(info.stdout||'').trim();parent.parentExecutable=line.split(/\\s+/)[0];parent.parentCommand=line;}catch{}}\n`;
   fs.writeFileSync(path.join(f.bin, 'git'), `#!${nodeBin}\n${common}
-fs.appendFileSync(trace,JSON.stringify({tool:'git',args:a,cwd:process.cwd(),...parent})+'\\n');
+const gitEnv=Object.fromEntries(['GIT_OPTIONAL_LOCKS','GIT_NO_LAZY_FETCH','GIT_TERMINAL_PROMPT'].filter(k=>k in process.env).map(k=>[k,process.env[k]]));
+fs.appendFileSync(trace,JSON.stringify({tool:'git',args:a,env:gitEnv,cwd:process.cwd(),...parent})+'\\n');
 if (${!!opts.unsupportedGit} && a.some(x=>x==='--no-lazy-fetch')) { console.error('unknown option: --no-lazy-fetch'); process.exit(129); }
 if(a.includes('ls-remote')) { console.log('ref: refs/heads/main\\tHEAD\\n${f.tip}\\tHEAD\\n${f.tip}\\trefs/heads/main'); process.exit(0); }
 // The fixture remote is already current. Record fetch attempts without contacting a real repository.
@@ -758,9 +775,10 @@ export function seedOpportunitySources(f: SharedLibsFixture): void {
 
 export function standaloneInstructions(f: SharedLibsFixture, codex = false): string {
   const source = codex ? path.join(SHARED_LIBS_ROOT, '.agents/skills/gstack-deslop-shared-libs') : path.join(SHARED_LIBS_ROOT, 'deslop-shared-libs');
+  // Resolve the installed helper to this checkout, as the hermetic runtime for the skill under test.
   const text = extractSkillSections(source, [
     'Scope and read-only boundary', 'Establish the reviewed source', 'Start with recent work', 'Evaluate candidates', 'Output',
-  ]);
+  ]).replaceAll(codex ? '~/.codex/skills/gstack' : '~/.claude/skills/gstack', SHARED_LIBS_ROOT);
   const file = path.join(f.root, 'standalone-instructions.md');
   fs.writeFileSync(file, text);
   return file;

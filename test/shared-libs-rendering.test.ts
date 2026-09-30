@@ -54,8 +54,14 @@ describe('shared-code skill distribution', () => {
       expect(standalone).toContain('including repeated page numbers');
       expect(standalone).toContain('temporary files and files outside the repository');
       expect(standalone).toContain('Keep API responses and intermediate data on stdout or in memory');
-      expect(standalone).toContain('--no-lazy-fetch');
-      expect(standalone).toContain('log.showSignature=false');
+      // Git safety is the installed helper from the trusted global runtime, not a retyped prefix.
+      const safeGit = `~/${host.globalRoot}/bin/gstack-safe-git`;
+      expect(standalone).toContain(`${safeGit} rev-parse --is-inside-work-tree`);
+      expect(standalone).toContain(`${safeGit} ls-files --cached --others --exclude-standard -z`);
+      expect(standalone).toContain('never bare `git`');
+      expect(standalone).not.toContain('git --no-pager');
+      expect(standalone).not.toContain('$GSTACK_ROOT');
+      expect(standalone).not.toContain('{{SAFE_GIT}}');
       expect(standalone).toContain('python3 -I -S');
       expect(standalone).toContain('two explicit committed object IDs');
       expect(standalone).toContain('same Git tree');

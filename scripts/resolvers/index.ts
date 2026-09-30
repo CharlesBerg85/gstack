@@ -38,7 +38,7 @@ import { generateThirdPartyActions } from './third-party-actions';
 import { generateAsideSetup, generateAsideCookbook, generateAsideResearch, generateUntrustedContentWarning, asideExecPrelude } from './aside';
 import { generateCommandReference, generateSnapshotFlags, generateBrowseSetup, generateBrowseFallback } from './browse';
 import { generateDesignDocDiscovery } from './design-doc-discovery';
-import { generateSharedLibsRubric } from './shared-libs';
+import { generateSharedLibsRubric, generateSafeGitPath } from './shared-libs';
 import { generateTestValueBar, generateTestValueMessage } from './test-value';
 import { generateQAScope, generateQAExploratory, generateQAFunctional, generateQAResource, generateQAReview, generateQAReviewPreflight, generateQAMethodReads } from './qa';
 
@@ -63,6 +63,7 @@ export const RESOLVERS: Record<string, ResolverFn> = {
   THIRD_PARTY_ACTIONS: generateThirdPartyActions,
   DESIGN_DOC_DISCOVERY: generateDesignDocDiscovery,
   SHARED_LIBS_RUBRIC: generateSharedLibsRubric,
+  SAFE_GIT: generateSafeGitPath,
   SHARED_CODE_REUSE: generateSharedCodeReuse,
   UNTRUSTED_CONTENT_WARNING: generateUntrustedContentWarning,
   COMMAND_REFERENCE: generateCommandReference,

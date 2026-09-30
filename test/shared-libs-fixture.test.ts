@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   createSharedInteractiveToolHandler, createSharedLibsFixture, fixtureGit, fixtureWrite, installSourceShims,
-  readRequests, seedOpportunitySources, sharedReadOnlyViolations, shellQuote, snapshotFixture, type SharedLibsFixture,
+  installHostileGitConfig, isGuardedGitRequest, standaloneInstructions, SHARED_LIBS_ROOT, readRequests, seedOpportunitySources, sharedReadOnlyViolations, shellQuote, snapshotFixture, type SharedLibsFixture,
   SharedCaptureAccumulator, type SharedCaptureAttempt, isInternalClaudeGitRequest, SHARED_LIBS_OLDER_OPEN_PRS, incompleteFirstFileView,
 } from './helpers/shared-libs-eval-fixture';
 import { EvalCollector, type EvalTestEntry } from './helpers/eval-store';
@@ -26,6 +26,51 @@ function scratch(): string {
   cleanup.push(directory);
   return directory;
 }
+
+describe('shared-code Git guard', () => {
+  test('the standalone runtime resolves the real helper, and only its complete prefix counts as a guarded read', () => {
+    const f = createSharedLibsFixture('safe-git');
+    cleanup.push(f.root);
+    seedOpportunitySources(f);
+    installHostileGitConfig(f);
+    installSourceShims(f);
+    const instructions = fs.readFileSync(standaloneInstructions(f), 'utf8');
+    const helper = path.join(SHARED_LIBS_ROOT, 'bin/gstack-safe-git');
+    expect(instructions).toContain(`\`${helper} rev-parse --is-inside-work-tree\``);
+    expect(instructions).not.toContain('~/.claude/skills/gstack');
+    const run = (command: string, args: string[]) => spawnSync(command, args, {
+      cwd: f.repo, encoding: 'utf8', timeout: 10_000, env: { ...process.env, ...f.env } });
+    const refusal = run(helper, ['status']);
+    expect(refusal.status).toBe(2);
+    expect(refusal.stderr).toContain('gstack-safe-git: refused');
+    // Exit status is Git's own; with Git < 2.44 these reach the recording shim and then fail on --no-lazy-fetch.
+    for (const args of [['rev-parse', '--is-inside-work-tree'], ['log', '-p', '-1'],
+      ['diff', f.tip, f.tip, '--', 'README.md'], ['ls-files', '--cached', '--others', '--exclude-standard', '-z']]) run(helper, args);
+    const guarded = readRequests(f).filter(row => row.tool === 'git');
+    expect(guarded.map(row => row.args[9])).toEqual(['rev-parse', 'log', 'diff', 'ls-files']);
+    for (const row of guarded) expect(isGuardedGitRequest(row), JSON.stringify(row)).toBe(true);
+    expect(fs.existsSync(f.hookTrace) ? fs.readFileSync(f.hookTrace, 'utf8') : '').toBe('');
+
+    fs.rmSync(f.trace, { force: true });
+    run('git', ['log', '-1']);
+    run('git', ['--no-lazy-fetch', '-c', 'core.fsmonitor=false', '-c', 'log.showSignature=false', 'rev-parse', 'HEAD']);
+    const unguarded = readRequests(f);
+    expect(unguarded).toHaveLength(2);
+    for (const row of unguarded) expect(isGuardedGitRequest(row), JSON.stringify(row)).toBe(false);
+
+    const wrapped = guarded[2]!;
+    const without = (value: string) => ({ ...wrapped, args: wrapped.args.filter(arg => arg !== value) });
+    for (const damaged of [
+      { ...wrapped, env: {} },
+      { ...wrapped, env: { ...wrapped.env, GIT_NO_LAZY_FETCH: '0' } },
+      without('--no-replace-objects'), without('--no-pager'), without('diff.submodule=short'),
+      without('--no-textconv'), without('--no-ext-diff'),
+      { ...wrapped, args: [...wrapped.args, '--ext-diff'] },
+      { ...wrapped, args: [...wrapped.args, '--output=out.patch'] },
+      { ...wrapped, args: wrapped.args.map(arg => arg === 'core.fsmonitor=false' ? 'core.fsmonitor=true' : arg) },
+    ]) expect(isGuardedGitRequest(damaged), JSON.stringify(damaged.args)).toBe(false);
+  });
+});
 
 describe('shared-code legacy interactive actor', () => {
   test('R58 acknowledges the exact removed-filter Skip packet without authorizing its recommended fix', async () => {

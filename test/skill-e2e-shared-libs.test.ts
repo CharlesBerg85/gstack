@@ -11,7 +11,7 @@ import { EvalCollector } from './helpers/eval-store';
 import {
   addBranchAndRawOverlay, createSharedLibsFixture, fixtureGit, fixtureWrite, fixtureWorkingTree,
   installHostileGitConfig, installInterpreterCanary, installNormalizingFilter,
-  isInternalClaudeGitRequest,
+  isGuardedGitRequest, isInternalClaudeGitRequest,
   installSourceShims, readRequests, reviewLifecycleInstructions, reviewPrompt, reviewRevalidationPrompt,
   reviewRecords, runSharedCapture, runSharedInteractive, seedOpportunitySources,
   seedReviewSources, seedSkippedAdvisory, snapshotFixture, specialistFixture,
@@ -88,9 +88,8 @@ function assertReadOnly(f: SharedLibsFixture, before: Record<string, string>, re
     expect(request.args).not.toContain('add');
     expect(request.args).not.toContain('write-tree');
     expect(request.args).not.toContain('hash-object');
-    expect(request.args).toContain('--no-lazy-fetch');
-    expect(request.args).toContain('core.fsmonitor=false');
-    expect(request.args).toContain('log.showSignature=false');
+    // Every repository read carries the complete gstack-safe-git prefix, environment included.
+    expect(isGuardedGitRequest(request), JSON.stringify(request)).toBe(true);
   }
   for (const request of requests.filter(row => row.tool === 'gh' && row.args[0] === 'api')) {
     expect(request.method).toBe('GET');
