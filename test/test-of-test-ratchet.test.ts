@@ -139,6 +139,7 @@ const BASELINE = [
   'test/helpers/budget-override.test.ts',
   'test/helpers/capture-parity-baseline.test.ts',
   'test/helpers/claude-pty-runner.scope-gate-floor.unit.test.ts',
+  'test/helpers/claude-pty-runner.runners.unit.test.ts', // W4 fake-driver regressions: the PTY harness is itself the subject (plan-mode paid evals stand on it)
   'test/helpers/e2e-gate.unit.test.ts',
   'test/helpers/eval-store.test.ts',
   'test/helpers/hermetic-env.test.ts',

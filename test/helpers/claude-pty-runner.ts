@@ -216,6 +216,21 @@ export interface ClaudePtySession {
   close(): Promise<void>;
 }
 
+/**
+ * The runners' launch seam: how a session starts, and the clock the runner
+ * loop reads. Omitted in production (real launcher, Date.now,
+ * performance.now, Bun.sleep); tests pass the fake driver from
+ * test/helpers/pty/fake-session.ts.
+ */
+export interface PtyDriver {
+  launch(opts: ClaudePtyOptions): Promise<ClaudePtySession>;
+  /** Wall clock, Date.now() semantics. */
+  now(): number;
+  /** Monotonic clock, performance.now() semantics. */
+  monotonic(): number;
+  sleep(ms: number): Promise<void>;
+}
+
 /** Let a numbered menu apply its selection before confirming it. */
 export async function selectPtyNumberedOption(
   session: Pick<ClaudePtySession, 'send'>,
@@ -3688,11 +3703,15 @@ export async function runPlanSkillObservation(opts: {
    *  buffer (case-sensitive). Results land in obs.tokensObserved. Use for
    *  consumption asserts that must survive the 2KB evidence tail. */
   trackTokens?: string[];
+  /** Launch seam and clock; tests pass the fake driver. Default: real launcher and clocks. */
+  driver?: PtyDriver;
 }): Promise<PlanSkillObservation> {
-  const startedAt = Date.now();
+  const driver = opts.driver ?? { launch: launchClaudePty, now: () => Date.now(),
+    monotonic: () => performance.now(), sleep: (ms: number) => Bun.sleep(ms) };
+  const startedAt = driver.now();
   const budgetMs = opts.timeoutMs ?? 180_000;
   const deadlineAt = startedAt + budgetMs;
-  const screenDeadlineAt = performance.now() + budgetMs;
+  const screenDeadlineAt = driver.monotonic() + budgetMs;
   // Explicitly identify only a new seeded plan-mode session. Caller-owned
   // resume/session arguments retain their existing behavior.
   const scopeSessionId = opts.initialPlanContent && opts.inPlanMode !== false &&
@@ -3701,7 +3720,7 @@ export async function runPlanSkillObservation(opts: {
   const readAutoDecisionState = opts.autoDecisionState
     ? bindAutoDecisionState(opts.autoDecisionState, opts.env, opts.skillName) : undefined;
   const saveSnapshot = createPlanCountSnapshotWriter();
-  const session = await launchClaudePty({
+  const session = await driver.launch({
     permissionMode: opts.inPlanMode === false ? null : 'plan',
     cwd: opts.cwd,
     timeoutMs: (opts.timeoutMs ?? 180_000) + 30_000,
@@ -3727,7 +3746,7 @@ export async function runPlanSkillObservation(opts: {
         observation: { state: 'plan_skill_preflight_timeout', summary, scopeSessionId, startedAt, deadlineAt, viewportError } });
       return {
         outcome: 'timeout', summary, evidence: session.visibleText().slice(-2000),
-        elapsedMs: Date.now() - startedAt,
+        elapsedMs: driver.now() - startedAt,
         proseAUQEverObserved: false, waitingEverObserved: false,
         scopeGateQuestionObserved: false, scopeGateAutoSelectObserved: false,
         ...(opts.trackTokens?.length ? { tokensObserved: Object.fromEntries(opts.trackTokens.map(t => [t, false])) } : {}),
@@ -3736,7 +3755,7 @@ export async function runPlanSkillObservation(opts: {
     };
     // Entry deadline → boot → owned paste/receipt/ack → slash → observation.
     // Setup consumes the existing case budget; cleanup has its separate grace.
-    if (!opts.initialPlanContent) await Bun.sleep(Math.min(8000, Math.max(0, deadlineAt - Date.now())));
+    if (!opts.initialPlanContent) await driver.sleep(Math.min(8000, Math.max(0, deadlineAt - driver.now())));
     if (opts.initialPlanContent) {
       const seed = `Keep this draft plan as context. Briefly acknowledge receipt, then wait for my next message containing a slash command. Do not start the review or call tools yet.\n\n${opts.initialPlanContent}`;
       try {
@@ -3749,12 +3768,12 @@ export async function runPlanSkillObservation(opts: {
         return await preflightTimeout(`Plan seed submission failed: ${error.message}`);
       }
     }
-    if (Date.now() >= deadlineAt) return await preflightTimeout('Boot or seed preflight exhausted the existing case budget');
-    const commandStartedAt = Date.now();
+    if (driver.now() >= deadlineAt) return await preflightTimeout('Boot or seed preflight exhausted the existing case budget');
+    const commandStartedAt = driver.now();
     const since = session.mark();
     session.send(`/${opts.skillName}\r`);
 
-    const start = Date.now();
+    const start = driver.now();
     let lastJudgeAt = 0;
     let lastJudgeVerdict: PtyStateVerdict | null = null;
     // High-water marks: did we EVER see a prose-AUQ surface or a judge
@@ -3793,8 +3812,8 @@ export async function runPlanSkillObservation(opts: {
     };
     const JUDGE_AFTER_MS = 60_000;
     const JUDGE_INTERVAL_MS = 30_000;
-    while (Date.now() < deadlineAt) {
-      await Bun.sleep(Math.min(2000, Math.max(0, deadlineAt - Date.now())));
+    while (driver.now() < deadlineAt) {
+      await driver.sleep(Math.min(2000, Math.max(0, deadlineAt - driver.now())));
       const visible = session.visibleSince(since);
 
       if (session.exited()) {
@@ -3802,7 +3821,7 @@ export async function runPlanSkillObservation(opts: {
           outcome: 'exited',
           summary: `claude exited (code=${session.exitCode()}) before reaching a terminal outcome`,
           evidence: visible.slice(-2000),
-          elapsedMs: Date.now() - startedAt,
+          elapsedMs: driver.now() - startedAt,
           ...highWaterFlags(),
         };
       }
@@ -3811,7 +3830,7 @@ export async function runPlanSkillObservation(opts: {
           outcome: 'exited',
           summary: `claude rejected /${opts.skillName} as unknown command (skill not registered in this cwd)`,
           evidence: visible.slice(-2000),
-          elapsedMs: Date.now() - startedAt,
+          elapsedMs: driver.now() - startedAt,
           ...highWaterFlags(),
         };
       }
@@ -3829,7 +3848,7 @@ export async function runPlanSkillObservation(opts: {
         proseAUQEverObserved = true;
         logPtySnapshot(visible, {
           testName: opts.skillName,
-          elapsedMs: Date.now() - start,
+          elapsedMs: driver.now() - start,
           tag: 'prose-auq-surfaced',
         });
       }
@@ -3848,7 +3867,7 @@ export async function runPlanSkillObservation(opts: {
         scopeTools = [];
         scopeTranscript = readPlanCountTranscript(session.hermeticConfigDir,
           path.resolve(opts.cwd ?? process.cwd()), event => scopeTools.push(event));
-        nativePolledAt = Date.now();
+        nativePolledAt = driver.now();
         if (!scopeGateAutoSelectObserved) scopeGateAutoSelectObserved = nativeSeededPlanSelection(scopeTranscript, scopeTools, {
           seed: opts.initialPlanContent, skillName: opts.skillName, sessionId: scopeSessionId, commandStartedAt,
         });
@@ -3861,7 +3880,7 @@ export async function runPlanSkillObservation(opts: {
         const obs: PlanSkillObservation = {
           ...classified,
           evidence: visible.slice(-2000),
-          elapsedMs: Date.now() - startedAt,
+          elapsedMs: driver.now() - startedAt,
           ...highWaterFlags(),
         };
         // Capture the plan file path on any outcome where one may have been
@@ -3880,13 +3899,13 @@ export async function runPlanSkillObservation(opts: {
       // and writes). Only an unclassified frame may use owned native auto-decision evidence.
       if (scopeSessionId) {
         nativeAutoDecide = findNativeAutoDecision(scopeTranscript, scopeTools, {
-          skillName: opts.skillName, sessionId: scopeSessionId, commandStartedAt, now: Date.now(), proseQuestionObserved: proseAUQEverObserved,
+          skillName: opts.skillName, sessionId: scopeSessionId, commandStartedAt, now: driver.now(), proseQuestionObserved: proseAUQEverObserved,
           stateEvidence: readAutoDecisionState?.(),
         });
         if (nativeAutoDecide) return {
           outcome: 'auto_decided',
           summary: 'owned native session completed the saved-preference auto-decision',
-          evidence: visible.slice(-2000), elapsedMs: Date.now() - startedAt,
+          evidence: visible.slice(-2000), elapsedMs: driver.now() - startedAt,
           ...highWaterFlags(),
         };
       }
@@ -3896,9 +3915,9 @@ export async function runPlanSkillObservation(opts: {
       // working, or hung?" Treat 'waiting' as 'asked' (model surfaced a
       // question via prose the regex couldn't reassemble). Snapshot the
       // visible buffer at each judge call when GSTACK_PTY_LOG=1.
-      const elapsed = Date.now() - start;
-      if (elapsed > JUDGE_AFTER_MS && Date.now() - lastJudgeAt > JUDGE_INTERVAL_MS) {
-        lastJudgeAt = Date.now();
+      const elapsed = driver.now() - start;
+      if (elapsed > JUDGE_AFTER_MS && driver.now() - lastJudgeAt > JUDGE_INTERVAL_MS) {
+        lastJudgeAt = driver.now();
         logPtySnapshot(visible, { testName: opts.skillName, elapsedMs: elapsed, tag: 'judge-tick' });
         lastJudgeVerdict = judgePtyState(visible, { testName: opts.skillName });
         if (lastJudgeVerdict.state === 'waiting' && !pendingSeededCompletion) {
@@ -3908,7 +3927,7 @@ export async function runPlanSkillObservation(opts: {
             outcome: 'asked',
             summary: `LLM judge: ${lastJudgeVerdict.reasoning} (state=waiting after ${Math.round(elapsed / 1000)}s)`,
             evidence: visible.slice(-2000),
-            elapsedMs: Date.now() - startedAt,
+            elapsedMs: driver.now() - startedAt,
             ...highWaterFlags(),
           };
         }
@@ -3930,7 +3949,7 @@ export async function runPlanSkillObservation(opts: {
             ? ` (last LLM judge: ${lastJudgeVerdict.state} — ${lastJudgeVerdict.reasoning})`
             : ''),
         evidence: finalVisible.slice(-2000),
-        elapsedMs: Date.now() - startedAt,
+        elapsedMs: driver.now() - startedAt,
         ...highWaterFlags(),
       };
     }
@@ -3942,7 +3961,7 @@ export async function runPlanSkillObservation(opts: {
           ? ` (last LLM judge: state=${lastJudgeVerdict.state} — ${lastJudgeVerdict.reasoning})`
           : ''),
       evidence: finalVisible.slice(-2000),
-      elapsedMs: Date.now() - startedAt,
+      elapsedMs: driver.now() - startedAt,
       ...highWaterFlags(),
     };
   } catch (error) {
@@ -4125,7 +4144,11 @@ export async function runPlanSkillCounting(opts: {
   env?: Record<string, string>;
   /** Override the spawned model. Defaults via launchClaudePty's chain. */
   model?: string;
+  /** Launch seam and clock; tests pass the fake driver. Default: real launcher and clocks. */
+  driver?: PtyDriver;
 }): Promise<PlanSkillCountObservation> {
+  const driver = opts.driver ?? { launch: launchClaudePty, now: () => Date.now(),
+    monotonic: () => performance.now(), sleep: (ms: number) => Bun.sleep(ms) };
   if (opts.requireNativePicker && !opts.pickAUQ)
     throw Error('Native picker binding requires a declared picker');
   if (opts.bindDesignBoardState && (opts.skillName !== 'plan-design-review' || !opts.pickAUQ))
@@ -4134,8 +4157,8 @@ export async function runPlanSkillCounting(opts: {
     throw Error('Eng test-plan approval requires the Eng caller and its explicit report');
   if (opts.isCollectionComplete && opts.expectedPlanPath)
     throw Error('Collection-only completion cannot replace the final report contract');
-  const budgetStarted = performance.now();
-  const startedAt = Date.now();
+  const budgetStarted = driver.monotonic();
+  const startedAt = driver.now();
   const defaultPick = opts.defaultPick ?? 1;
   const timeoutMs = opts.timeoutMs ?? 1_500_000;
   if (opts.startupReadyMarker !== undefined && !opts.startupReadyMarker.length) {
@@ -4149,12 +4172,12 @@ export async function runPlanSkillCounting(opts: {
     throw new RangeError('Plan counting timeout must exceed the 5000ms cleanup reserve');
   }
   const workDeadline = budgetStarted + timeoutMs - cleanupReserveMs;
-  const remainingWork = () => Math.max(0, workDeadline - performance.now());
+  const remainingWork = () => Math.max(0, workDeadline - driver.monotonic());
   async function waitForWork(ms: number): Promise<boolean> {
     const remaining = remainingWork();
     if (remaining <= 0) return false;
     const clipped = ms >= remaining;
-    await Bun.sleep(Math.min(ms, remaining));
+    await driver.sleep(Math.min(ms, remaining));
     // A clipped wait cannot finish the requested interval. Timers may wake
     // just before the fractional deadline; that is no license to advance.
     return !clipped && remainingWork() > 0;
@@ -4169,7 +4192,7 @@ export async function runPlanSkillCounting(opts: {
   ];
   let session: ClaudePtySession;
   try {
-    session = await launchClaudePty({
+    session = await driver.launch({
       permissionMode: 'plan',
       cwd: fixture.cwd,
       // Stop new output at the work cutoff so screen drain cannot consume
@@ -4210,7 +4233,7 @@ export async function runPlanSkillCounting(opts: {
   let administrativeCount = 0;
   let isFirstAUQ = true;
   const saveSnapshot = createPlanCountSnapshotWriter();
-  let lastCheckpointAt = Date.now();
+  let lastCheckpointAt = driver.now();
   let viewport = '';
 
   const capture = (observation: object) => {
@@ -4243,7 +4266,7 @@ export async function runPlanSkillCounting(opts: {
         ? `exitCode=${session.exitCode()}\n--- post-command evidence (last 3KB) ---\n${clean(visible).slice(-3000)}` +
           `\n--- full-session evidence, including startup (last 6KB) ---\n${clean(session.visibleText()).slice(-6000)}`
         : visible.slice(-3000),
-      elapsedMs: Date.now() - startedAt,
+      elapsedMs: driver.now() - startedAt,
       fingerprints,
       transcript,
       step0Count,
@@ -4272,7 +4295,7 @@ export async function runPlanSkillCounting(opts: {
       observedOutput = session.mark();
       if (opts.approveEngTestPlanEdits) {
         if (!session.startAutoplanArtifactEditApproval) throw Error('Owned Eng test-plan approval hook unavailable');
-        session.startAutoplanArtifactEditApproval(Date.now());
+        session.startAutoplanArtifactEditApproval(driver.now());
       }
       session.send(`${opts.slashCommand}\r`);
     }
@@ -4281,10 +4304,10 @@ export async function runPlanSkillCounting(opts: {
       await session.waitForOutput(observedOutput, Math.min(2000, remainingWork()));
       if (remainingWork() <= 0) break;
       const coalesceMs = session.rawOutput().length > observedOutput
-        ? 250 : 250 - (performance.now() - lastObservationAt);
+        ? 250 : 250 - (driver.monotonic() - lastObservationAt);
       if (coalesceMs > 0 && !await waitForWork(coalesceMs)) break;
       observedOutput = session.mark();
-      lastObservationAt = performance.now();
+      lastObservationAt = driver.monotonic();
       const visible = viewport = await session.currentScreen();
       if (remainingWork() <= 0) break;
       transcript = session.hermeticConfigDir
@@ -4301,9 +4324,9 @@ export async function runPlanSkillCounting(opts: {
         // Native approval owns this Edit. Never answer its repaint or count a
         // metadata-only pending request; resume only after its actual result.
         if (boundary === 'pending') {
-          if (Date.now() - lastCheckpointAt >= 30_000) {
-            lastCheckpointAt = Date.now();
-            const saved = capture({ state: 'artifact_pending', elapsedMs: Date.now() - startedAt,
+          if (driver.now() - lastCheckpointAt >= 30_000) {
+            lastCheckpointAt = driver.now();
+            const saved = capture({ state: 'artifact_pending', elapsedMs: driver.now() - startedAt,
               fingerprints, step0Count, reviewCount, administrativeCount, transcript, artifactStatus: status });
             if (saved.artifactError) console.error(`PTY artifact write failed: ${saved.artifactError}`);
           }
@@ -4316,7 +4339,7 @@ export async function runPlanSkillCounting(opts: {
       for (const [callIndex, call] of transcript.calls.entries()) {
         const signature = `${call.sessionId}:${call.toolUseId}`;
         if (!call.answered || countedCalls.has(signature)) continue;
-        const fp = nativePlanCallFingerprint(call, Date.now() - startedAt, !boundaryFired);
+        const fp = nativePlanCallFingerprint(call, driver.now() - startedAt, !boundaryFired);
         const phase = planCountQuestionPhase(fp, boundaryFired, opts.isLastStep0AUQ, opts.isFirstReviewAUQ, opts.isSetupAUQ, opts.isCompletionHandoffAUQ, opts.isArtifactGenerationAUQ);
         if (phase.administrative) {
           fp.preReview = false;
@@ -4340,9 +4363,9 @@ export async function runPlanSkillCounting(opts: {
       }
       // An outer test timeout/cancellation may prevent a terminal snapshot.
       // Keep bounded-cadence evidence without adding a timer to clean up.
-      if (Date.now() - lastCheckpointAt >= 30_000) {
-        lastCheckpointAt = Date.now();
-        const saved = capture({ state: 'in_progress', elapsedMs: Date.now() - startedAt,
+      if (driver.now() - lastCheckpointAt >= 30_000) {
+        lastCheckpointAt = driver.now();
+        const saved = capture({ state: 'in_progress', elapsedMs: driver.now() - startedAt,
           fingerprints, step0Count, reviewCount, administrativeCount, transcript });
         if (saved.artifactError) console.error(`PTY artifact write failed: ${saved.artifactError}`);
       }
@@ -4520,7 +4543,7 @@ export async function runPlanSkillCounting(opts: {
       // findings often reuse the same Add to plan / Defer / Skip menu.
       if (opts.requireNativePicker && !newlyMatched) continue;
       const capturedSeen = opts.requireNativePicker ? new Set(seen) : seen;
-      const fp = capturePlanCountQuestion(visible, capturedSeen, Date.now() - startedAt, !boundaryFired, pending, planningDirectory);
+      const fp = capturePlanCountQuestion(visible, capturedSeen, driver.now() - startedAt, !boundaryFired, pending, planningDirectory);
       if (!fp) continue;
       const boundNativeTab = pending && fp.nativeCall === pending && fp.nativeQuestionIndex !== undefined;
       if (opts.requireNativePicker && !boundNativeTab) continue;
@@ -4572,7 +4595,7 @@ export async function runPlanSkillCounting(opts: {
       // Keep the exact frame/transcript that the throwing caller observed;
       // awaiting a redraw here would erase that ordering evidence.
       const saved = capture({ state: 'threw', error: error instanceof Error ? error.message : String(error),
-        elapsedMs: Date.now() - startedAt, fingerprints, step0Count, reviewCount, administrativeCount, transcript,
+        elapsedMs: driver.now() - startedAt, fingerprints, step0Count, reviewCount, administrativeCount, transcript,
         pendingQuestion: readPendingQuestion(session.pendingQuestionFile, fixture.cwd,
           session.hermeticConfigDir, startedAt, transcript) });
       if (saved.artifactDir) console.error(`Full PTY artifacts: ${saved.artifactDir}`);
@@ -4721,8 +4744,12 @@ export async function runPlanSkillFloorCheck(opts: {
   env?: Record<string, string>;
   /** Override the spawned model. Defaults via launchClaudePty's chain. */
   model?: string;
+  /** Launch seam and clock; tests pass the fake driver. Default: real launcher and clocks. */
+  driver?: PtyDriver;
 }): Promise<PlanSkillFloorObservation> {
-  const startedAt = Date.now();
+  const driver = opts.driver ?? { launch: launchClaudePty, now: () => Date.now(),
+    monotonic: () => performance.now(), sleep: (ms: number) => Bun.sleep(ms) };
+  const startedAt = driver.now();
   const timeoutMs = opts.timeoutMs ?? 600_000;
   const dxContext = opts.devexSetupContext;
   if (dxContext !== undefined && (opts.skillName !== 'plan-devex-review' || opts.productType !== 'sdk-documentation' ||
@@ -4745,7 +4772,7 @@ export async function runPlanSkillFloorCheck(opts: {
   const sessionId = randomUUID();
   let session: ClaudePtySession;
   try {
-    session = await launchClaudePty({
+    session = await driver.launch({
       permissionMode: 'plan',
       cwd: fixture.cwd,
       timeoutMs: timeoutMs + 60_000,
@@ -4780,14 +4807,14 @@ export async function runPlanSkillFloorCheck(opts: {
   let floorFailed = false;
   let floorError: unknown;
   try {
-    await Bun.sleep(8000); // boot grace + auto-trust handler window
+    await driver.sleep(8000); // boot grace + auto-trust handler window
     const since = session.mark();
-    const commandStartedAt = Date.now();
+    const commandStartedAt = driver.now();
     session.send(`${opts.slashCommand} PLAN.md\r`);
     const deliveryOptions = { seed: fixture.seed, sessionId,
       slashCommand: opts.slashCommand, startedAt: commandStartedAt };
     let targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
-      { ...deliveryOptions, now: Date.now() });
+      { ...deliveryOptions, now: driver.now() });
     const saveSnapshot = createPlanCountSnapshotWriter();
     let nativeCandidates: NativePlanQuestionCall[] = [];
     let validatedPendingQuestion: ReturnType<typeof readPendingQuestion>;
@@ -4805,7 +4832,7 @@ export async function runPlanSkillFloorCheck(opts: {
             const input = readPendingWriteInput(binding.file, binding.expected, fixture.cwd, session.hermeticConfigDir, startedAt);
             return input ? [input] : [];
           }),
-          questionDiagnostics: { sampledAt, parentSessionId: sessionId, recorderStatus, recorderStatusAt: Date.now(), nativeCandidates, validatedPendingQuestion },
+          questionDiagnostics: { sampledAt, parentSessionId: sessionId, recorderStatus, recorderStatusAt: driver.now(), nativeCandidates, validatedPendingQuestion },
           ...(dxContext ? { setupContextReplies: [...dxReplies.values()] } : {}), artifactError } });
       if (artifacts.artifactError) {
         artifactError ??= artifacts.artifactError;
@@ -4816,9 +4843,9 @@ export async function runPlanSkillFloorCheck(opts: {
     const checkpoint = () => {
       const state = JSON.stringify([pendingQuestionRecorderStatus(session.pendingQuestionFile, fixture.cwd, session.hermeticConfigDir),
         targetDelivery.status, nativeCandidates, validatedPendingQuestion, pendingQuestion, [...dxReplies.values()]]);
-      if (state === lastCheckpointState && Date.now() - lastCheckpointAt < 15_000) return;
-      lastCheckpointState = state; lastCheckpointAt = Date.now();
-      capture({ state: 'in_progress', elapsedMs: Date.now() - startedAt });
+      if (state === lastCheckpointState && driver.now() - lastCheckpointAt < 15_000) return;
+      lastCheckpointState = state; lastCheckpointAt = driver.now();
+      capture({ state: 'in_progress', elapsedMs: driver.now() - startedAt });
     };
     captureBeforeClose = (error) => {
       if (floorFailed && session.hermeticConfigDir) {
@@ -4826,7 +4853,7 @@ export async function runPlanSkillFloorCheck(opts: {
         transcript = readPlanCountTranscript(session.hermeticConfigDir, fixture.cwd, event => publicTools.push(event));
       }
       if (!finished) capture({ state: floorFailed ? 'threw' : 'in_progress', error: floorFailed ? String(error) : undefined,
-        captureReason: 'before_cleanup', elapsedMs: Date.now() - startedAt });
+        captureReason: 'before_cleanup', elapsedMs: driver.now() - startedAt });
     };
     const finish = (observation: PlanSkillFloorObservation): PlanSkillFloorObservation => {
       const artifacts = capture(observation);
@@ -4834,11 +4861,11 @@ export async function runPlanSkillFloorCheck(opts: {
       return { ...observation, targetDelivery, ...artifacts };
     };
 
-    const start = Date.now();
+    const start = driver.now();
     const deadlineAt = start + timeoutMs;
-    const screenDeadlineAt = performance.now() + timeoutMs;
-    while (Date.now() - start < timeoutMs) {
-      await Bun.sleep(2000);
+    const screenDeadlineAt = driver.monotonic() + timeoutMs;
+    while (driver.now() - start < timeoutMs) {
+      await driver.sleep(2000);
       const visible = session.visibleSince(since);
 
       if (session.exited()) {
@@ -4847,7 +4874,7 @@ export async function runPlanSkillFloorCheck(opts: {
           outcome: 'exited',
           summary: `claude exited (code=${session.exitCode()}) before a qualifying finding`,
           evidence: visible.slice(-3000),
-          elapsedMs: Date.now() - startedAt,
+          elapsedMs: driver.now() - startedAt,
         });
       }
       if (isRejectedSlashCommand(visible, opts.slashCommand)) {
@@ -4856,13 +4883,13 @@ export async function runPlanSkillFloorCheck(opts: {
           outcome: 'exited',
           summary: `claude rejected ${opts.slashCommand} as unknown command`,
           evidence: visible.slice(-3000),
-          elapsedMs: Date.now() - startedAt,
+          elapsedMs: driver.now() - startedAt,
         });
       }
 
       if (targetDelivery.status !== 'ready') {
         targetDelivery = readPlanFloorTarget(session.hermeticConfigDir, fixture.cwd,
-          { ...deliveryOptions, now: Date.now() });
+          { ...deliveryOptions, now: driver.now() });
         if (targetDelivery.status !== 'ready') {
           viewport = await session.currentScreen(screenDeadlineAt);
           checkpoint();
@@ -4883,10 +4910,10 @@ export async function runPlanSkillFloorCheck(opts: {
         call.sessionId === sessionId && !call.answered && !call.failed && publicTools.filter(event =>
           event.sessionId === sessionId && event.kind === 'use' && event.name === 'AskUserQuestion' &&
           event.toolUseId === call.toolUseId && Date.parse(event.timestamp) >= commandStartedAt &&
-          Date.parse(event.timestamp) <= Date.now() && isDeepStrictEqual(event.input?.questions, call.questions)).length === 1) : [];
+          Date.parse(event.timestamp) <= driver.now() && isDeepStrictEqual(event.input?.questions, call.questions)).length === 1) : [];
       nativeCandidates = currentCalls.slice();
       validatedPendingQuestion = hook;
-      sampledAt = Date.now();
+      sampledAt = driver.now();
       if (hook?.sessionId === sessionId && !transcript.calls.some(call => call.toolUseId === hook.toolUseId)) currentCalls.push(hook);
       const activeReply = currentCalls.length === 1 && dxReplies.get(`${currentCalls[0]!.sessionId}:${currentCalls[0]!.toolUseId}`);
       if (activeReply) {
@@ -4922,7 +4949,7 @@ export async function runPlanSkillFloorCheck(opts: {
       if (permissionIsActiveRender) continue;
 
       const questionViewport = dxContext && pendingQuestion ? planFloorDXPane(viewport, pendingQuestion)! : viewport;
-      const fp = pendingQuestion && capturePlanCountQuestion(questionViewport, new Set(), Date.now() - start, true, pendingQuestion, planningDirectory);
+      const fp = pendingQuestion && capturePlanCountQuestion(questionViewport, new Set(), driver.now() - start, true, pendingQuestion, planningDirectory);
       if (fp && pendingQuestion) {
         const index = fp.nativeQuestionIndex ?? 0;
         const question = pendingQuestion.questions[index]!;
@@ -4947,7 +4974,7 @@ export async function runPlanSkillFloorCheck(opts: {
         // a generic idle prompt, permission, tool result or quoted example.
         floorReview = undefined;
         const message = transcript.assistantMessages.filter(m => m.sessionId === sessionId &&
-          Date.parse(m.timestamp) >= commandStartedAt && Date.parse(m.timestamp) <= Date.now()).at(-1);
+          Date.parse(m.timestamp) >= commandStartedAt && Date.parse(m.timestamp) <= driver.now()).at(-1);
         const compact = (text: string) => text.replace(/\s+/g, '');
         if (!currentCalls.length && message && isProseAUQVisible(viewport) && isProseAUQVisible(message.text) &&
             !/^\s*(?:>|`{3,}|~{3,})/m.test(message.text) && compact(viewport).includes(compact(message.text)))
@@ -4971,7 +4998,7 @@ export async function runPlanSkillFloorCheck(opts: {
           } catch (error) {
             return finish({ auqObserved: false, outcome: 'assessment_error',
               summary: `Finding assessment failed: ${error instanceof Error ? error.message : String(error)}`,
-              evidence: viewport, elapsedMs: Date.now() - startedAt });
+              evidence: viewport, elapsedMs: driver.now() - startedAt });
           }
           assessed.set(key, floorAssessment);
         }
@@ -4983,7 +5010,7 @@ export async function runPlanSkillFloorCheck(opts: {
         if (floorAssessment.kind === 'finding') return finish({
           auqObserved: true, outcome: 'auq_observed',
           summary: `Current ${floorReview.candidate.transport} question addresses the owned seeded finding: ${floorAssessment.reason}`,
-          evidence: viewport, elapsedMs: Date.now() - startedAt,
+          evidence: viewport, elapsedMs: driver.now() - startedAt,
         });
       }
 
@@ -4999,7 +5026,7 @@ export async function runPlanSkillFloorCheck(opts: {
             outcome: 'silent_write',
             summary: `Write/Edit to ${target} fired before any AskUserQuestion`,
             evidence: visible.slice(-3000),
-            elapsedMs: Date.now() - startedAt,
+            elapsedMs: driver.now() - startedAt,
           });
         }
       }
@@ -5017,7 +5044,7 @@ export async function runPlanSkillFloorCheck(opts: {
           outcome: 'plan_ready',
           summary: 'agent reached plan_ready without a qualifying finding question',
           evidence: visible.slice(-3000),
-          elapsedMs: Date.now() - startedAt,
+          elapsedMs: driver.now() - startedAt,
         });
       }
     }
@@ -5029,7 +5056,7 @@ export async function runPlanSkillFloorCheck(opts: {
         ? `no qualifying finding question within ${timeoutMs}ms`
         : `seeded target delivery unavailable within ${timeoutMs}ms: ${targetDelivery.reason ?? targetDelivery.status}`,
       evidence: session.visibleSince(since).slice(-3000),
-      elapsedMs: Date.now() - startedAt,
+      elapsedMs: driver.now() - startedAt,
     });
   } catch (error) {
     floorFailed = true;
