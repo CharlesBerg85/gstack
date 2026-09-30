@@ -253,7 +253,7 @@ export async function captureSectionReads(opts: {
   nativeReviewOnly?: boolean;
 }): Promise<{ readSections: Set<string>; reportProduced: boolean; reportWritten: boolean;
   exitReason: SkillTestResult['exitReason']; toolCalls: SkillTestResult['toolCalls'];
-  transcript: SkillTestResult['transcript']; output: string }> {
+  transcript: SkillTestResult['transcript']; output: string; result: SkillTestResult }> {
   const outFile = path.join(opts.planDir, opts.reportFile ?? 'REPORT.md');
   const timeout = opts.timeout ?? 300_000;
   const fullPlanReview = opts.skillName === 'plan-ceo-review' || opts.skillName === 'plan-eng-review';
@@ -358,7 +358,7 @@ ${fullPlanReview ? `- Save the evolving plan and review outputs to ${outFile} wi
 
   // Keep successful terminal-output captures, but a draft left by a failed run
   // must never satisfy callers that use reportProduced as their completion gate.
-  return { readSections, reportProduced, reportWritten, exitReason: result.exitReason, toolCalls: result.toolCalls, transcript: result.transcript, output };
+  return { readSections, reportProduced, reportWritten, exitReason: result.exitReason, toolCalls: result.toolCalls, transcript: result.transcript, output, result };
 }
 
 /** A completed CEO review needs its artifact and every summary outcome. */

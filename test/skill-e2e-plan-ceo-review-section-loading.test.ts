@@ -25,7 +25,7 @@
  * ~$1-2/run. Periodic tier.
  */
 
-import { test, expect } from 'bun:test';
+import { afterAll, test, expect } from 'bun:test';
 import { CAPTURE_LONG_MS } from './helpers/eval-budgets';
 import { describeE2ETier } from './helpers/e2e-gate';
 import {
@@ -37,9 +37,12 @@ import {
   LONG_SECTION_CAPTURE_MS,
 } from './helpers/auq-sdk-capture';
 import { CEO_SECTION_CACHE_PLAN, CEO_SECTION_DECISION_POLICY, hasStaleFillRaceFinding } from './helpers/ceo-section-loading-fixture';
+import { createEvalCollector, finalizeEvalCollector, recordE2E } from './helpers/e2e-helpers';
 
 const describeE2E = describeE2ETier('periodic');
 const runId = `plan-ceo-section-loading-${process.env.EVALS_RUN_ID ?? 'local'}`;
+const collector = createEvalCollector('e2e-plan-ceo-section-loading');
+afterAll(async () => { await finalizeEvalCollector(collector); });
 
 // Sections every plan-ceo-review run must consult after Step 0.
 const REQUIRED_SECTIONS = ['review-sections.md'];
@@ -79,24 +82,35 @@ describeE2E('/plan-ceo-review section-loading E2E (periodic, SDK capture)', () =
         nativeReviewOnly: true,
       });
 
-      validateCeoReviewCompletion(capture);
-      const { readSections, reportProduced, output } = capture;
-      const missing = REQUIRED_SECTIONS.filter(s => !readSections.has(s));
-      expect({ reportProduced, read: [...readSections], missing }).toEqual({
-        reportProduced: true,
-        read: expect.any(Array),
-        missing: [],
-      });
-      // Guard against an empty pass: the report must have real content.
-      expect(output.trim().length).toBeGreaterThan(200);
-      expect(output).toMatch(/^\|\s*Review\s*\|\s*Trigger\s*\|\s*Why\s*\|\s*Runs\s*\|\s*Status\s*\|\s*Findings\s*\|/m);
-      expect(output).toMatch(/^\|\s*CEO Review\s*\|/m);
-      // A native capture must not invent an outside dispatch or claim coverage.
-      expect(hasDisabledOutsideReview(output)).toBe(true);
-      // Loading a section and producing a table alone must not hide an empty
-      // review: the complete fixture still contains a real ordering defect.
-      expect(hasStaleFillRaceFinding(output)).toBe(true);
+      try { assertSectionLoadingReport(capture); }
+      catch (error) {
+        recordE2E(collector, 'plan-ceo-section-loading', 'plan-ceo-section-loading', capture.result,
+          { passed: false, error: String(error), output: capture.output });
+        throw error;
+      }
+      recordE2E(collector, 'plan-ceo-section-loading', 'plan-ceo-section-loading', capture.result,
+        { passed: true, output: capture.output });
     },
     CAPTURE_LONG_MS,
   );
 });
+
+function assertSectionLoadingReport(capture: Awaited<ReturnType<typeof captureSectionReads>>): void {
+  validateCeoReviewCompletion(capture);
+  const { readSections, reportProduced, output } = capture;
+  const missing = REQUIRED_SECTIONS.filter(s => !readSections.has(s));
+  expect({ reportProduced, read: [...readSections], missing }).toEqual({
+    reportProduced: true,
+    read: expect.any(Array),
+    missing: [],
+  });
+  // Guard against an empty pass: the report must have real content.
+  expect(output.trim().length).toBeGreaterThan(200);
+  expect(output).toMatch(/^\|\s*Review\s*\|\s*Trigger\s*\|\s*Why\s*\|\s*Runs\s*\|\s*Status\s*\|\s*Findings\s*\|/m);
+  expect(output).toMatch(/^\|\s*CEO Review\s*\|/m);
+  // A native capture must not invent an outside dispatch or claim coverage.
+  expect(hasDisabledOutsideReview(output)).toBe(true);
+  // Loading a section and producing a table alone must not hide an empty
+  // review: the complete fixture still contains a real ordering defect.
+  expect(hasStaleFillRaceFinding(output)).toBe(true);
+}
