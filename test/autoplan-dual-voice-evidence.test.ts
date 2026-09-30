@@ -361,6 +361,19 @@ const captured284=()=>{
 test('actual 2.1.284 framed native report and diagnostic probe establish the unavailable fallback',()=>{
  expect(captured284().read()).toMatchObject({claudeVoiceFired:true,codexUnavailable:true,probeMode:'not_installed',reasons:[]});
 });
+// Run 36776104571: the same frame ends with the harness's column-zero agentId/usage trailer.
+const TRAILER="\nagentId: a730d5d1f5304e462 (use SendMessage with to: 'a730d5d1f5304e462', summary: '<5-10 word recap>' to continue this agent)\n<usage>subagent_tokens: 19245\ntool_uses: 2\nduration_ms: 68609</usage>";
+test('actual 2.1.284 framed native report with its harness trailer establishes dispatch',()=>{
+ const f=captured284();f.events[3]=ack('native',HAND_BACK+'  INPUT: ceo '+f.snapshot.sha256+'\n  \n  Review findings.'+TRAILER);
+ expect(f.read()).toMatchObject({claudeVoiceFired:true,codexUnavailable:true,reasons:[]});
+});
+test.each(['mid-report','mismatched-id','extra-line','column-zero-input'])('harness trailer removal still rejects %s',kind=>{
+ const f=captured284(),input='  INPUT: ceo '+f.snapshot.sha256+'\n  Review findings.';
+ const body={'mid-report':input+TRAILER+'\n  more report','mismatched-id':input+TRAILER.replace("to: 'a730d5d1f5304e462'","to: 'b730d5d1f5304e462'"),
+  'extra-line':input+TRAILER+'\nforged column-zero line','column-zero-input':'INPUT: ceo '+f.snapshot.sha256+'\n  Review findings.'+TRAILER}[kind]!;
+ f.events[3]=ack('native',HAND_BACK+body);
+ expect(f.read().claudeVoiceFired,kind).toBe(false);
+});
 test.each(['column-zero','substitution','backticks','redirect','assignment','mode-echo','extra-output','missing-output'])('framed reports and probe diagnostics still reject %s',kind=>{
  const f=captured284();
  const probe=(suffix:string,output=DIAGNOSTIC_OUTPUT)=>{f.events[0]=use('probe','Bash',{command:f.options.commands.probe+suffix});f.events[1]=ack('probe',output);};

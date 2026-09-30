@@ -11,10 +11,13 @@ const text = (content: unknown): string => typeof content === 'string' ? content
 // Claude Code 2.1.284 frames a subagent report with one header line and indents
 // every report line by two spaces. Only a fully indented report is unwrapped;
 // a column-zero line inside the frame stays framed and earns no credit.
+// The same release appends its own column-zero agentId/usage trailer after the
+// indented report (run 36776104571); only that exact final trailer is removed.
+const trailer = /\nagentId: ([0-9a-f]{8,}) \(use SendMessage with to: '\1', summary: '<5-10 word recap>' to continue this agent\)\n<usage>(?:[a-z_]+: \d+\n)*[a-z_]+: \d+<\/usage>$/;
 const report = (content: string): string => {
   const header = /^\[Subagent hand-back\] [^\n]*The report follows:\n/.exec(content);
   if (!header) return content;
-  const lines = content.slice(header[0].length).split('\n');
+  const lines = content.slice(header[0].length).replace(trailer, '').split('\n');
   return lines.every(line => line === '' || line.startsWith('  ')) ? lines.map(line => line.slice(2)).join('\n') : content;
 };
 const object = (value: unknown): value is Record<string, any> => value !== null && typeof value === 'object' && !Array.isArray(value);
