@@ -483,3 +483,23 @@ Rules for this run:
     }
   }finally{if(child.exitCode===null)child.kill();await child.exited;fs.rmSync(dir,{recursive:true,force:true});}
 },10000);
+
+// Run 36776104571: the agent printed the whole carved section with Bash sed ranges.
+test('section detection credits a complete Bash print of the section, never a partial one', async () => {
+  const { detectSectionReads } = await import('./helpers/auq-sdk-capture');
+  const file = path.resolve(import.meta.dir, '..', 'plan-ceo-review/sections/review-sections.md');
+  const content = fs.readFileSync(file, 'utf-8'), lines = content.split('\n');
+  const sed = (from: number, to: number, extra = '') => ({ tool: 'Bash',
+    input: { command: `sed -n ${from},${to}p /fixture/plan-ceo-review/sections/review-sections.md${extra}` },
+    output: lines.slice(from - 1, to).join('\n') });
+  const sections = new Map([['review-sections.md', content]]);
+  const ranges = [[1, 330], [330, 660], [660, 1100], [1100, lines.length]].map(([a, b]) => sed(a!, b!));
+  const read = (calls: Array<{ tool: string; input: any; output: string }>) => [...detectSectionReads(calls, sections)];
+  expect(read(ranges)).toEqual(['review-sections.md']);
+  expect(read([{ tool: 'Bash', input: { command: 'cat sections/review-sections.md' }, output: content }])).toEqual(['review-sections.md']);
+  expect(read(ranges.filter((_, i) => i !== 2))).toEqual([]);
+  expect(read([{ ...ranges[0]!, input: { command: 'head -330 PLAN.md' } }, ...ranges.slice(1)])).toEqual([]);
+  expect(read([{ tool: 'Bash', input: { command: 'cat sections/review-sections.md' }, output: '' }])).toEqual([]);
+  expect(read(ranges.map(call => ({ ...call, tool: 'Grep' })))).toEqual([]);
+  expect(read([{ tool: 'Read', input: { file_path: '/fixture/plan-ceo-review/sections/review-sections.md' }, output: '' }])).toEqual(['review-sections.md']);
+});

@@ -10,7 +10,8 @@
  * loop both defeat the regex, so it reported `read: []` even when the agent did the
  * work. It now runs the skill through `claude -p` (the SDK path the AUQ matrix
  * uses) and detects section reads from the tool-use stream (`Read` calls whose
- * file_path contains `sections/review-sections.md`). No rendering layer to mangle.
+ * file_path contains `sections/review-sections.md`, or Bash prints whose output
+ * contains every line of that section). No rendering layer to mangle.
  *
  * Hermetic, not install-mutating: the freshly-generated worktree skeleton +
  * sections are copied into a throwaway fixture dir and the absolute path is pinned,

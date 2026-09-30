@@ -209,6 +209,29 @@ export function hasDisabledOutsideReview(output: string): boolean {
   return false;
 }
 
+/**
+ * Sections a capture loaded: a Read of the section file, or a Bash print of it
+ * (cat/sed ranges, as in run 36776104571) whose outputs together contain every
+ * line of the section as it stood before the run. A command without that
+ * printed content, such as head or grep, is not a read.
+ */
+export function detectSectionReads(toolCalls: SkillTestResult['toolCalls'], sections: Map<string, string>): Set<string> {
+  const readSections = new Set<string>();
+  for (const c of toolCalls) {
+    if (c.tool !== 'Read') continue;
+    const fp = String(c.input?.file_path ?? '');
+    const m = fp.match(/(?:^|[\\/])sections[\\/]([A-Za-z0-9._-]+\.md)(?=$|[?#])/);
+    if (m) readSections.add(m[1]);
+  }
+  for (const [name, content] of sections) {
+    const lines = content.split('\n').map(line => line.trimEnd()).filter(Boolean);
+    const printed = new Set(toolCalls.filter(c => c.tool === 'Bash' && String(c.input?.command ?? '').includes(`sections/${name}`))
+      .flatMap(c => c.output.split('\n').map(line => line.trimEnd())));
+    if (lines.length && lines.every(line => printed.has(line))) readSections.add(name);
+  }
+  return readSections;
+}
+
 export async function captureSectionReads(opts: {
   planDir: string;
   skillName: string;
@@ -266,6 +289,9 @@ export async function captureSectionReads(opts: {
   };
   const beforeReport = readReport();
   const skillPath = path.join(opts.planDir, opts.skillName, 'SKILL.md');
+  const sectionsDir = path.join(opts.planDir, opts.skillName, 'sections');
+  const sections = new Map(fs.existsSync(sectionsDir) ? fs.readdirSync(sectionsDir)
+    .filter(name => name.endsWith('.md')).map(name => [name, fs.readFileSync(path.join(sectionsDir, name), 'utf-8')]) : []);
   // Outside-review dispatch has separate behavioral coverage. Native-only
   // captures use the real supported control in state owned by this call;
   // never mutate the operator's or another capture's gstack configuration.
@@ -320,13 +346,7 @@ ${fullPlanReview ? `- Save the evolving plan and review outputs to ${outFile} wi
     if (stateDir) fs.rmSync(stateDir, { recursive: true, force: true });
   }
 
-  const readSections = new Set<string>();
-  for (const c of result.toolCalls) {
-    if (c.tool !== 'Read') continue;
-    const fp = String(c.input?.file_path ?? '');
-    const m = fp.match(/(?:^|[\\/])sections[\\/]([A-Za-z0-9._-]+\.md)(?=$|[?#])/);
-    if (m) readSections.add(m[1]);
-  }
+  const readSections = detectSectionReads(result.toolCalls, sections);
 
   const afterReport = readReport();
   const reportWritten = afterReport !== undefined
