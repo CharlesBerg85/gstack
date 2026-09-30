@@ -4,10 +4,10 @@
 
 ### P1: paid-eval follow-ups from the v1.91.10.0 proof censuses (filed 2026-09-29)
 
-- **Claude Code 2.1.284 bump** — it enables per-turn effort for the eval model:
-  in gate census 36626737820, 66 of 84 sessions ran longer than on 2.1.251
-  (+20% session time, +32% thinking tokens) and 11 cases timed out on unchanged
-  budgets. The CI image stays on 2.1.251 until those cases get faster. Effort M.
+- **Thin budgets on slow API days** — on Claude Code 2.1.284, review-army-perf
+  (274 of 300 s) and the ship-docsync fault cases (250-263 of 285 s) sit at
+  88-93% of their budgets; a slow-API census can time them out on either CLI
+  version. Make those skills faster rather than raising budgets. Effort M.
 - **Recurring reds to repair, not rerun** — `plan-design-review-plan-mode`
   (one ~250 s thinking block before its single write; times out at 300 s on
   2.1.251 in every recent run) and the HOLD SCOPE
