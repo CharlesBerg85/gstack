@@ -38,8 +38,9 @@
  *
  * Enumeration matches package.json's `test:gate` globs (via the shared
  * test/helpers/paid-test-set.ts) and honors EVALS_TIER against the E2E_TIERS
- * map in test/helpers/touchfiles.ts. Output classification reuses
- * scripts/test-strict-output.ts rather than reimplementing it.
+ * map in test/helpers/touchfiles.ts. Spawn, kill, sandbox, logs, seeds and
+ * output classification come from the shared shard engine
+ * (scripts/lib/shard-engine.ts); this file keeps only paid-lane policy.
  *
  * Parallelism now lives ACROSS shards (--jobs), not inside one Bun process, so
  * each shard runs its own file sequentially and can be killed independently.
@@ -57,14 +58,23 @@ import { spawnSync } from 'node:child_process';
 import { createBootstrapRetentionScope } from '../test/helpers/bootstrap-retention';
 import {
   BunTestOutputClassifier,
+  createShardSandbox,
   exactTestFileSelectors,
   forwardAndClassify,
   isTerminationRequested,
+  nextShardLogPath,
   normalizeRelativePath,
+  openShardLog,
+  parseCliFlags,
+  readDurationSeed,
+  removeShardSandbox,
   runShardChild,
-  strictTestExitCode,
+  strictShardStatus,
+  writeDurationSeed,
+  zeroExecutionVerdict,
+  type LanePolicy,
   type ShardChildResult,
-} from './test-strict-output';
+} from './lib/shard-engine';
 import { PAID_TEST_GLOBS, isPaidTestFile } from '../test/helpers/paid-test-set';
 import { PERIODIC_CI_EXCLUDE } from '../test/helpers/periodic-exclude-data';
 import { FILE_RETRY_BUDGETS, STRICT_RETRY_CASE_BUDGETS } from '../test/helpers/eval-budgets';
@@ -109,6 +119,17 @@ export const DEFAULT_MAX_FILES_PER_SHARD = 1;
 // CHROMIUM_PROFILE isolation in runPaidShard.
 export const DEFAULT_JOBS = 8;
 export const DEFAULT_WITHIN_SHARD_CONCURRENCY = 2;
+
+/**
+ * Paid-lane classification policy. Seeds keep only positive walls (a zero
+ * is not a real paid-shard measurement). A shard that passed with zero
+ * executed tests is legitimate under selection (in-file diff/tier
+ * self-skips) and only warns; under EVALS_ALL it is hollow: 'passed-empty'.
+ */
+export const PAID_LANE_POLICY: LanePolicy = {
+  acceptsSeedDuration: (ms) => ms > 0,
+  zeroExecution: ({ promisedAll }) => (promisedAll ? 'passed-empty' : 'passed-with-warning'),
+};
 
 /** One overlay process preserves the original process-wide SDK semaphore. */
 export const OVERLAY_MAX_ACTIVE_SHARDS = 1;
@@ -654,15 +675,6 @@ export interface RunShardsOptions {
   casePatterns?: Record<string, string>;
 }
 
-let shardLogSequence = 0;
-
-/** Per-shard log path: slug + timestamp; pid + sequence defeat same-ms collisions. */
-function nextShardLogPath(files: string[], logDir: string): string {
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  shardLogSequence += 1;
-  return path.join(logDir, `gstack-paid-shard-${shardSlug(files)}-${stamp}-${process.pid}-${shardLogSequence}.log`);
-}
-
 /** On-failure console excerpt budget: the last N bytes of the shard's log. */
 export const FAILURE_TAIL_BYTES = 64 * 1024;
 
@@ -712,15 +724,15 @@ export async function runPaidShard(
       ), ...(options.casePatterns ? ['--test-name-pattern', options.casePatterns[files[0]]] : [])],
     };
 
-  const env = { ...(options.env ?? process.env) };
+  const baseEnv = { ...(options.env ?? process.env) };
   if (options.evalDirBase) {
-    env.GSTACK_EVAL_DIR = path.join(options.evalDirBase, 'shards', shardSlug(files));
+    baseEnv.GSTACK_EVAL_DIR = path.join(options.evalDirBase, 'shards', shardSlug(files));
   }
   // Resolve `claude --version` ONCE in the parent (cached across shards) and
   // hand it to every child: eval-store's fallback is a synchronous spawn on
   // the same thread that polls PTY sessions, so children must never pay it.
-  if (!env.GSTACK_CLAUDE_CLI_VERSION) {
-    env.GSTACK_CLAUDE_CLI_VERSION = getClaudeCliVersion();
+  if (!baseEnv.GSTACK_CLAUDE_CLI_VERSION) {
+    baseEnv.GSTACK_CLAUDE_CLI_VERSION = getClaudeCliVersion();
   }
   // Per-shard temp + Chromium-profile isolation — the free runner treats
   // this as mandatory (test-free-shards.ts: two concurrent shards on one
@@ -731,13 +743,8 @@ export async function runPaidShard(
   // stopping wedged runs from accumulating full git-repo workspaces in the
   // shared tmpdir forever. Prerequisite for raising EVALS_JOBS (more
   // concurrency on shared state amplifies exactly the opus-47 race class).
-  const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-paid-shard-'));
-  const childTmp = path.join(stateDir, 'tmp');
-  fs.mkdirSync(childTmp);
-  env.TMPDIR = childTmp;
-  env.TEMP = childTmp;
-  env.TMP = childTmp;
-  env.CHROMIUM_PROFILE = path.join(stateDir, 'chromium-profile');
+  const sandbox = createShardSandbox('gstack-paid-shard-', baseEnv);
+  const { stateDir, tmp: childTmp, env } = sandbox;
   const bootstrapFile = files.some(file => normalizeRelativePath(file) === 'test/skill-e2e-qa-workflow.test.ts');
   delete env.GSTACK_BOOTSTRAP_RETENTION;
   if (bootstrapFile && process.platform !== 'linux') log(`${label} bootstrap dependency retention unavailable on ${process.platform}; native behavior still runs without retained-dependency qualification`);
@@ -754,14 +761,9 @@ export async function runPaidShard(
   // model), never in a whole-run Buffer[] — non-live shards used to hold
   // their entire 30-min stream-json stdout+stderr in RAM, × concurrent jobs.
   // Printed at START so a wedged shard is inspectable live, mid-run.
-  const logPath = nextShardLogPath(files, options.logDir ?? os.tmpdir());
-  const logStream = fs.createWriteStream(logPath);
-  let logWriteFailed = false;
-  logStream.on('error', (err) => {
-    if (logWriteFailed) return;
-    logWriteFailed = true;
-    console.error(`${label} could not write the full log at ${logPath}: ${err.message}`);
-  });
+  const logPath = nextShardLogPath(options.logDir ?? os.tmpdir(), `gstack-paid-shard-${shardSlug(files)}`);
+  const spool = openShardLog(logPath, label);
+  const logStream = spool.stream;
   log(`${label} full log: ${logPath}`);
 
   const classifier = new BunTestOutputClassifier();
@@ -770,7 +772,7 @@ export async function runPaidShard(
   // verdict path is unchanged by where the bytes land afterwards.
   const sink = (destination: NodeJS.WriteStream): NodeJS.WriteStream => ({
     write: (chunk: Buffer | string): boolean => {
-      if (!logWriteFailed) logStream.write(chunk);
+      spool.write(chunk);
       if (streamLive) destination.write(chunk);
       return true;
     },
@@ -822,21 +824,21 @@ export async function runPaidShard(
         logStream.off('error', onError);
         logStream.off('close', onClose);
         if (!complete) {
-          logWriteFailed = true;
+          spool.failed = true;
           logStream.destroy();
           log(`${label} incomplete log capture; retained prefix: ${logPath}`);
         }
         resolve();
       };
       const onError = () => finish(false);
-      const onClose = () => finish(logStream.writableFinished && !logWriteFailed);
+      const onClose = () => finish(logStream.writableFinished && !spool.failed);
       const expire = () => { timedOut = true; finish(false); };
       logStream.once('error', onError);
       logStream.once('close', onClose);
       if (Date.now() >= shardDeadline) { expire(); return; }
-      if (logWriteFailed || logStream.destroyed) { finish(false); return; }
+      if (spool.failed || logStream.destroyed) { finish(false); return; }
       timer = setTimeout(expire, shardDeadline - Date.now());
-      try { logStream.end(() => finish(logStream.writableFinished && !logWriteFailed)); }
+      try { logStream.end(() => finish(logStream.writableFinished && !spool.failed)); }
       catch { finish(false); }
     });
     let retentionRemovable = true;
@@ -852,16 +854,8 @@ export async function runPaidShard(
         log(`${label} bootstrap retention acknowledgment failed; preserving shard state`);
       }
     }
-    try {
-      // async rm: a SIGKILLed shard can leave a full git workspace + Chromium
-      // profile here; a synchronous recursive delete on the parent's event
-      // loop would stall every sibling shard's stream classification and
-      // wall timers for seconds (review finding).
-      if (retentionRemovable) await fs.promises.rm(stateDir, { recursive: true, force: true });
-    } catch {
-      // Best-effort: a locked file must not turn a real verdict into an
-      // exception (same posture as the free runner's cleanup).
-    }
+    // Async, best-effort backstop: group-SIGKILLed tests never clean up.
+    if (retentionRemovable) await removeShardSandbox(stateDir);
   }
 
   const summary = classifier.end();
@@ -875,9 +869,10 @@ export async function runPaidShard(
   // commands must print a synthetic `Ran N tests across M files. [Xms]` line,
   // so tests can pin the summary-missing => failure backstop.
   const expectedFiles = files.length;
-  let status: ShardStatus = timedOut
-    ? 'timed-out'
-    : !retentionFailed && !logWriteFailed && !incompleteCapture && strictTestExitCode(exitCode ?? 1, summary, expectedFiles) === 0 ? 'passed' : 'failed';
+  let status: ShardStatus = strictShardStatus({
+    timedOut, exitCode, summary, expectedFiles,
+    evidenceComplete: !retentionFailed && !spool.failed && !incompleteCapture,
+  });
   if (status === 'passed' && options.expectedCases) {
     const expected = files.reduce((count, file) => count + (options.expectedCases![file] ?? 0), 0);
     const actual = summary.terminalTestCounts.reduce((count, value) => count + value, 0) - summary.skippedTests;
@@ -950,12 +945,13 @@ export function applyHollowShardGuard(
         (outcome.executedTests === null || outcome.executedTests === 0 || isAllSkippedPass(outcome))) {
       return { ...outcome, status: 'passed-empty' };
     }
-    if (outcome.status !== 'passed' || outcome.executedTests !== 0) return outcome;
-    if (!opts.evalsAll) {
+    if (outcome.status !== 'passed') return outcome;
+    const verdict = zeroExecutionVerdict(outcome.executedTests, PAID_LANE_POLICY, { promisedAll: opts.evalsAll });
+    if (verdict === 'passed-with-warning') {
       warn(`[test:paid] WARNING: shard ${outcome.shard} passed with 0 executed tests (${outcome.files.join(' ')}) — legitimate under selection, hollow under EVALS_ALL`);
       return outcome;
     }
-    return { ...outcome, status: 'passed-empty' };
+    return verdict === 'passed-empty' ? { ...outcome, status: 'passed-empty' } : outcome;
   });
 }
 
@@ -1114,13 +1110,8 @@ export const PAID_TEST_DURATIONS_FILE = 'scripts/paid-test-durations.json';
  * missing or corrupt seed keeps the supervision-budget allocation.
  */
 export function loadPaidTestDurations(rootDir = ROOT): Record<string, number> {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(path.join(rootDir, PAID_TEST_DURATIONS_FILE), 'utf8')) as { durations?: Record<string, unknown> };
-    return Object.fromEntries(Object.entries(parsed.durations ?? {})
-      .filter((entry): entry is [string, number] => typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] > 0));
-  } catch {
-    return {};
-  }
+  const seed = readDurationSeed(path.join(rootDir, PAID_TEST_DURATIONS_FILE), PAID_LANE_POLICY.acceptsSeedDuration);
+  return seed.status === 'ok' ? seed.durations : {};
 }
 
 /** Merge a report's executed single-file outcomes into the seed; all-skipped shards carry no cost signal. */
@@ -1556,44 +1547,32 @@ export function parseCliOptions(argv: string[], env: NodeJS.ProcessEnv = process
     writeDurations: false,
   };
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === '--list') { options.listOnly = true; continue; }
-    if (arg === '--tier') {
-      const value = argv[index += 1];
+  const pathValue = (message: string, assign: (value: string) => void) => (next: () => string | undefined) => {
+    const value = next();
+    if (!value) throw new Error(message);
+    assign(value);
+  };
+  parseCliFlags(argv, {
+    '--list': () => { options.listOnly = true; },
+    '--tier': (next) => {
+      const value = next();
       if (value !== 'gate' && value !== 'periodic') throw new Error(`--tier must be gate or periodic. Received: ${value}`);
       options.tier = value;
-      continue;
-    }
-    if (arg === '--profile') {
-      const value = argv[index += 1];
-      if (!value) throw new Error('--profile needs pr or full');
-      options.profile = validatedProfile(value, '--profile'); options.profileExplicit = true; continue;
-    }
-    if (arg === '--timeout') { options.timeoutMs = parsePositiveInt(argv[index += 1], '--timeout') * 1000; options.timeoutExplicit = true; continue; }
-    if (arg === '--jobs') { options.jobs = parsePositiveInt(argv[index += 1], '--jobs'); continue; }
-    if (arg === '--files-per-shard') { options.maxFilesPerShard = parsePositiveInt(argv[index += 1], '--files-per-shard'); continue; }
-    if (arg === '--emit-plan') {
-      const value = argv[index += 1];
-      if (!value) throw new Error('--emit-plan needs a file path');
-      options.emitPlanPath = value; continue;
-    }
-    if (arg === '--skip-judges') { options.skipJudges = true; continue; }
-    if (arg === '--slices') { options.slices = parsePositiveInt(argv[index += 1], '--slices'); continue; }
-    if (arg === '--plan') {
-      const value = argv[index += 1];
-      if (!value) throw new Error('--plan needs a manifest path');
-      options.planPath = value; continue;
-    }
-    if (arg === '--slice') { options.sliceIndex = parsePositiveInt(argv[index += 1], '--slice'); continue; }
-    if (arg === '--report') {
-      const value = argv[index += 1];
-      if (!value) throw new Error('--report needs a directory');
-      options.reportDir = value; continue;
-    }
-    if (arg === '--write-durations') { options.writeDurations = true; continue; }
-    throw new Error(`Unknown argument: ${arg}`);
-  }
+    },
+    '--profile': pathValue('--profile needs pr or full', (value) => {
+      options.profile = validatedProfile(value, '--profile'); options.profileExplicit = true;
+    }),
+    '--timeout': (next) => { options.timeoutMs = parsePositiveInt(next(), '--timeout') * 1000; options.timeoutExplicit = true; },
+    '--jobs': (next) => { options.jobs = parsePositiveInt(next(), '--jobs'); },
+    '--files-per-shard': (next) => { options.maxFilesPerShard = parsePositiveInt(next(), '--files-per-shard'); },
+    '--emit-plan': pathValue('--emit-plan needs a file path', (value) => { options.emitPlanPath = value; }),
+    '--skip-judges': () => { options.skipJudges = true; },
+    '--slices': (next) => { options.slices = parsePositiveInt(next(), '--slices'); },
+    '--plan': pathValue('--plan needs a manifest path', (value) => { options.planPath = value; }),
+    '--slice': (next) => { options.sliceIndex = parsePositiveInt(next(), '--slice'); },
+    '--report': pathValue('--report needs a directory', (value) => { options.reportDir = value; }),
+    '--write-durations': () => { options.writeDurations = true; },
+  });
   if (options.writeDurations && !options.reportDir) throw new Error('--write-durations requires --report');
   if (options.skipJudges && (!options.emitPlanPath || options.tier !== 'gate')) throw new Error('--skip-judges applies only to an emitted gate census plan');
   if (options.profile === 'pr' && options.tier !== 'gate') throw new Error('PR profile requires gate tier');
@@ -1648,10 +1627,7 @@ async function main(): Promise<number> {
     }
     if (options.writeDurations) {
       const durations = mergePaidTestDurations(loadPaidTestDurations(), results);
-      const target = path.join(ROOT, PAID_TEST_DURATIONS_FILE);
-      const temporary = `${target}.tmp-${process.pid}`;
-      fs.writeFileSync(temporary, `${JSON.stringify({ version: 1, recordedAt: new Date().toISOString(), durations }, null, 2)}\n`);
-      fs.renameSync(temporary, target);
+      writeDurationSeed(path.join(ROOT, PAID_TEST_DURATIONS_FILE), durations);
       console.log(`[test:paid] wrote ${Object.keys(durations).length} durations to ${PAID_TEST_DURATIONS_FILE}`);
     }
     // Historical flaky_retries includes every case with multiple attempts,

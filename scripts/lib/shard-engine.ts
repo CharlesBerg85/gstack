@@ -12,6 +12,8 @@
 
 import { spawn, type ChildProcess } from 'node:child_process';
 import { StringDecoder } from 'node:string_decoder';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dir, '..', '..');
@@ -402,6 +404,18 @@ export interface RunShardChildOptions {
    * return reports incomplete capture instead of treating the prefix as final.
    */
   hookStreams: (child: ChildProcess) => Array<Promise<void>>;
+  /**
+   * Lane-owned companions of the child (the free lane's detached-browser
+   * tracker). Created right after spawn; `signal` runs after every forwarded
+   * group kill, and `settle` runs after the final group kill while parent
+   * signals are still forwarded.
+   */
+  attach?: (child: ChildProcess) => ShardChildCompanion;
+}
+
+export interface ShardChildCompanion {
+  signal(force: boolean): void;
+  settle(): Promise<void>;
 }
 
 export interface ShardChildResult {
@@ -436,6 +450,8 @@ export interface ShardChildResult {
  * call: a spawn 'error' event THROWS from here after the finally block runs,
  * preserving the runners' existing could-not-run handling.
  */
+const REAP_GRACE_MS = 250;
+
 export async function runShardChild(options: RunShardChildOptions): Promise<ShardChildResult> {
   const deadlineMs = Math.min(options.deadlineMs ?? Infinity, Date.now() + options.timeoutMs);
   if (!Number.isFinite(deadlineMs)) throw new Error('Shard deadline must be finite');
@@ -451,10 +467,12 @@ export async function runShardChild(options: RunShardChildOptions): Promise<Shar
     windowsHide: true,
   });
   const groupPid = child.pid ?? null;
+  const companion = options.attach?.(child);
   // Group-kill on parent SIGINT/SIGTERM too, not just on timeout.
   const forwarding = installChildSignalForwarding({
     kill: (signal?: NodeJS.Signals | number) => {
       killProcessGroup(child, (signal as NodeJS.Signals) ?? 'SIGTERM');
+      companion?.signal(signal === 'SIGKILL');
       return true;
     },
   });
@@ -477,8 +495,10 @@ export async function runShardChild(options: RunShardChildOptions): Promise<Shar
   };
   let close!: () => void;
   const closed = new Promise<void>(resolve => { close = resolve; });
-  const onExit = (code: number | null) => { exitCode = code; };
-  const onClose = (code: number | null) => { exitCode = code; childClosed = true; close(); };
+  let reap!: () => void;
+  const reaped = new Promise<void>(resolve => { reap = resolve; });
+  const onExit = (code: number | null) => { exitCode = code; reap(); };
+  const onClose = (code: number | null) => { exitCode = code; childClosed = true; close(); reap(); };
   child.once('exit', onExit);
   child.once('close', onClose);
   child.on('error', rememberError);
@@ -506,10 +526,19 @@ export async function runShardChild(options: RunShardChildOptions): Promise<Shar
     )));
     await Promise.race([Promise.all([closed, drainage]), expired]);
     if (Date.now() >= deadlineMs) timedOut = true;
+    // A wall-killed child is normally reaped within milliseconds; wait that
+    // long (bounded) so callers never observe a live pid after a timeout.
+    let reapTimer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([reaped, new Promise<void>(resolve => { reapTimer = setTimeout(resolve, REAP_GRACE_MS); })]);
+    clearTimeout(reapTimer);
   } finally {
     clearTimeout(killTimer);
-    forwarding.dispose();
     kill();
+    if (companion) {
+      try { await companion.settle(); }
+      catch (error) { rememberError(error); }
+    }
+    forwarding.dispose();
     child.off('exit', onExit);
     child.off('close', onClose);
     if (!childClosed || pendingStreams > 0) {
@@ -529,4 +558,158 @@ export async function runShardChild(options: RunShardChildOptions): Promise<Shar
     throw firstError;
   }
   return result;
+}
+
+// --- Per-shard sandbox, logs, duration seeds, verdicts, CLI flags ---
+
+/**
+ * Per-shard temp + Chromium-profile isolation. Two concurrent shards on one
+ * profile dir kill each other's browser, and shared tmp cross-contaminates;
+ * a group-SIGKILLed shard never runs its own cleanup, so the lane removes
+ * `stateDir` afterwards (the cleanup backstop). `realpath` resolves a
+ * symlinked tmpdir (macOS /var -> /private/var) for lanes that compare paths.
+ */
+export function createShardSandbox(
+  prefix: string,
+  baseEnv: NodeJS.ProcessEnv,
+  options: { realpath?: boolean } = {},
+): { stateDir: string; tmp: string; env: NodeJS.ProcessEnv } {
+  const created = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const stateDir = options.realpath ? fs.realpathSync(created) : created;
+  const tmp = path.join(stateDir, 'tmp');
+  fs.mkdirSync(tmp);
+  const env: NodeJS.ProcessEnv = {
+    ...baseEnv, TMPDIR: tmp, TEMP: tmp, TMP: tmp,
+    CHROMIUM_PROFILE: path.join(stateDir, 'chromium-profile'),
+  };
+  return { stateDir, tmp, env };
+}
+
+/**
+ * Asynchronous best-effort backstop removal: a SIGKILLed shard can leave a
+ * full git workspace plus a Chromium profile, and a synchronous recursive
+ * delete would stall every sibling shard's classification and timers.
+ */
+export async function removeShardSandbox(stateDir: string): Promise<void> {
+  try { await fs.promises.rm(stateDir, { recursive: true, force: true }); }
+  catch { /* a locked file must not turn a real verdict into an exception */ }
+}
+
+let shardLogSequence = 0;
+
+/** Timestamped log path; pid + sequence defeat same-millisecond collisions. */
+export function nextShardLogPath(directory: string, stem: string): string {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  shardLogSequence += 1;
+  return path.join(directory, `${stem}-${stamp}-${process.pid}-${shardLogSequence}.log`);
+}
+
+export interface ShardLog {
+  readonly path: string;
+  readonly stream: fs.WriteStream;
+  /** Set on the first write error; later chunks are dropped, never thrown. */
+  failed: boolean;
+  write(chunk: Buffer | string): void;
+}
+
+/** Full-stream capture: every child byte is spooled to disk, never held in RAM. */
+export function openShardLog(logPath: string, label: string, mode?: number): ShardLog {
+  const stream = fs.createWriteStream(logPath, mode === undefined ? undefined : { mode });
+  const log: ShardLog = {
+    path: logPath, stream, failed: false,
+    write(chunk) { if (!log.failed) stream.write(chunk); },
+  };
+  stream.on('error', (err) => {
+    if (log.failed) return;
+    log.failed = true;
+    console.error(`${label} could not write the full log at ${logPath}: ${err.message}`);
+  });
+  return log;
+}
+
+export type DurationSeedRead =
+  | { status: 'missing' }
+  | { status: 'corrupt'; error: Error }
+  | { status: 'ok'; durations: Record<string, number> };
+
+/** One reader for `{ durations: { file: ms } }` seeds; the lane decides which values count. */
+export function readDurationSeed(file: string, accepts: (ms: number) => boolean): DurationSeedRead {
+  let raw: string;
+  try { raw = fs.readFileSync(file, 'utf-8'); }
+  catch { return { status: 'missing' }; }
+  try {
+    const parsed = JSON.parse(raw) as { durations?: Record<string, unknown> };
+    return { status: 'ok', durations: Object.fromEntries(Object.entries(parsed.durations ?? {})
+      .filter((entry): entry is [string, number] =>
+        typeof entry[1] === 'number' && Number.isFinite(entry[1]) && accepts(entry[1]))) };
+  } catch (error) {
+    return { status: 'corrupt', error: error as Error };
+  }
+}
+
+/** Atomic temp+rename: a killed writer never leaves a truncated seed behind. */
+export function writeDurationSeed(file: string, durations: Record<string, number>): void {
+  const payload = {
+    version: 1,
+    recordedAt: new Date().toISOString(),
+    durations: Object.fromEntries(Object.entries(durations).sort(([a], [b]) => (a < b ? -1 : 1))),
+  };
+  const temporary = `${file}.tmp-${process.pid}`;
+  fs.writeFileSync(temporary, `${JSON.stringify(payload, null, 2)}\n`);
+  fs.renameSync(temporary, file);
+}
+
+/** What a strictly passed shard that executed zero tests becomes. */
+export type ZeroExecutionVerdict = 'passed' | 'passed-with-warning' | 'passed-empty';
+
+/** Classification rules each lane injects; the engine applies them, never decides them. */
+export interface LanePolicy {
+  /** Which recorded seed durations the lane trusts (free >= 0, paid > 0). */
+  acceptsSeedDuration(ms: number): boolean;
+  /** `promisedAll`: the run promised every test (EVALS_ALL) rather than a selection. */
+  zeroExecution(run: { promisedAll: boolean }): ZeroExecutionVerdict;
+}
+
+export function zeroExecutionVerdict(
+  executedTests: number | null,
+  policy: LanePolicy,
+  run: { promisedAll: boolean },
+): ZeroExecutionVerdict {
+  return executedTests === 0 ? policy.zeroExecution(run) : 'passed';
+}
+
+export type StrictShardStatus = 'passed' | 'failed' | 'timed-out';
+
+/**
+ * The verdict both lanes share: a wall timeout is its own status; otherwise
+ * a shard passes only with complete evidence (log, capture, cleanup) AND a
+ * strict exit of zero, which requires bun's summary to count every planned file.
+ */
+export function strictShardStatus(input: {
+  timedOut: boolean;
+  evidenceComplete: boolean;
+  exitCode: number | null;
+  summary: BunTestOutputSummary;
+  expectedFiles: number;
+}): StrictShardStatus {
+  if (input.timedOut) return 'timed-out';
+  return input.evidenceComplete && strictTestExitCode(input.exitCode ?? 1, input.summary, input.expectedFiles) === 0
+    ? 'passed' : 'failed';
+}
+
+/**
+ * Shared flag loop. Each lane declares its flags; a handler that takes a
+ * value calls `next()` (the following argv entry, or undefined) and owns its
+ * own validation message. Any undeclared flag is `Unknown argument: <flag>`.
+ */
+export function parseCliFlags(
+  argv: string[],
+  handlers: Record<string, (next: () => string | undefined) => void>,
+): void {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const handler = Object.hasOwn(handlers, arg) ? handlers[arg] : undefined;
+    if (!handler) throw new Error(`Unknown argument: ${arg}`);
+    handler(() => argv[++index]);
+  }
 }

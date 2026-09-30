@@ -11,9 +11,9 @@
  *      patterns (`/bin/bash`, `sh -c`, raw `/tmp/`, `chmod`, `xargs`). Files
  *      that match are excluded from the Windows-safe subset — they would fail
  *      on `windows-latest` no matter how the runner shards them.
- *   4. Execution. Spawn `bun test` children and refuse to trust their exit
- *      code alone: every byte of output is classified through
- *      scripts/test-strict-output.ts, so a child that exits 0 without bun's
+ *   4. Execution. Run `bun test` children through the shared shard engine
+ *      (scripts/lib/shard-engine.ts runShardChild) and refuse to trust their
+ *      exit code alone: every byte of output is classified strictly, so a child that exits 0 without bun's
  *      terminal summary (a mid-suite process.exit truncation), with `(fail)`
  *      result lines, or with fewer files run than planned is a FAILURE. An
  *      external wall-clock timeout SIGKILLs the child's process group and
@@ -87,18 +87,38 @@ import { createHash, randomUUID } from 'node:crypto';
 import { isPaidTestFile } from '../test/helpers/paid-test-set';
 import {
   BunTestOutputClassifier,
+  createShardSandbox,
   exactTestFileSelectors,
-  installChildSignalForwarding,
   isTerminationRequested,
   killProcessGroup,
   BunFailureSummaryParser,
+  nextShardLogPath,
+  openShardLog,
   parseBunFailureResult,
+  parseCliFlags,
   normalizeRelativePath,
-  strictTestExitCode,
+  readDurationSeed,
+  runShardChild,
+  strictShardStatus,
   stripAnsiLine,
-} from './test-strict-output';
+  writeDurationSeed,
+  zeroExecutionVerdict,
+  type LanePolicy,
+  type ShardChildResult,
+} from './lib/shard-engine';
 
-export { normalizeRelativePath } from './test-strict-output';
+export { normalizeRelativePath } from './lib/shard-engine';
+
+/**
+ * Free-lane classification policy. Seeds accept zero-duration files (fast
+ * files are real measurements). A shard with zero executed tests passes when
+ * bun's summary still counted every planned file; missing or short file
+ * counts already fail through the strict verdict.
+ */
+export const FREE_LANE_POLICY: LanePolicy = {
+  acceptsSeedDuration: (ms) => ms >= 0,
+  zeroExecution: () => 'passed',
+};
 
 const ROOT = path.resolve(import.meta.dir, '..');
 // design/test was silently absent from BOTH the package.json test script and
@@ -669,24 +689,15 @@ export const FREE_TEST_DURATIONS_FILE = 'scripts/free-test-durations.json';
 export function loadFreeTestDurations(rootDir = ROOT): Record<string, number> | null {
   const file = process.env.GSTACK_FREE_TEST_DURATIONS
     ?? path.join(rootDir, FREE_TEST_DURATIONS_FILE);
-  let raw: string;
-  try {
-    raw = fs.readFileSync(file, 'utf-8');
-  } catch {
-    return null; // no seed — hash sharding, silently (fresh checkouts are normal)
-  }
-  try {
-    const parsed = JSON.parse(raw) as { durations?: Record<string, unknown> };
-    const entries = Object.entries(parsed.durations ?? {})
-      .filter((entry): entry is [string, number] =>
-        typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0);
-    if (entries.length === 0) return null;
-    return Object.fromEntries(entries);
-  } catch (error) {
+  const seed = readDurationSeed(file, FREE_LANE_POLICY.acceptsSeedDuration);
+  // No seed — hash sharding, silently (fresh checkouts are normal).
+  if (seed.status === 'missing') return null;
+  if (seed.status === 'corrupt') {
     // A corrupt seed (bad merge) must cost a warning, never the suite.
-    console.error(`[test:free] WARNING: corrupt durations seed ${file} (${(error as Error).message}) — falling back to hash sharding`);
+    console.error(`[test:free] WARNING: corrupt durations seed ${file} (${seed.error.message}) — falling back to hash sharding`);
     return null;
   }
+  return Object.keys(seed.durations).length === 0 ? null : seed.durations;
 }
 
 export interface PackedShards {
@@ -889,7 +900,7 @@ type CliOptions = {
   results: string | null;
 };
 
-function parseCliOptions(argv: string[]): CliOptions {
+export function parseCliOptions(argv: string[]): CliOptions {
   let dryRun = false;
   let listOnly = false;
   let recordDurations = false;
@@ -903,46 +914,41 @@ function parseCliOptions(argv: string[]): CliOptions {
   const paths: Record<'ciPlan' | 'ciRun' | 'ciVerify' | 'result' | 'results', string | null> = {
     ciPlan: null, ciRun: null, ciVerify: null, result: null, results: null,
   };
+  const pathFlag = (flag: string, key: keyof typeof paths) => (next: () => string | undefined) => {
+    const value = next();
+    if (!value || value.startsWith('--')) throw new Error(`Missing path for ${flag}`);
+    paths[key] = value;
+  };
 
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === '--dry-run') { dryRun = true; continue; }
-    if (arg === '--list') { listOnly = true; continue; }
-    if (arg === '--record-durations') { recordDurations = true; continue; }
-    if (arg === '--windows-only') { windowsOnly = true; continue; }
-    if (arg === '--verbose') { verbose = true; continue; }
-    if (arg === '--quick') { quick = true; continue; }
-    const pathKey = ({ '--ci-plan': 'ciPlan', '--ci-run': 'ciRun', '--ci-verify': 'ciVerify', '--result': 'result', '--results': 'results' } as const)[arg];
-    if (pathKey) {
-      const value = argv[++index];
-      if (!value || value.startsWith('--')) throw new Error(`Missing path for ${arg}`);
-      paths[pathKey] = value;
-      continue;
-    }
-    if (arg === '--shards') {
-      const value = argv[index + 1];
+  parseCliFlags(argv, {
+    '--dry-run': () => { dryRun = true; },
+    '--list': () => { listOnly = true; },
+    '--record-durations': () => { recordDurations = true; },
+    '--windows-only': () => { windowsOnly = true; },
+    '--verbose': () => { verbose = true; },
+    '--quick': () => { quick = true; },
+    '--ci-plan': pathFlag('--ci-plan', 'ciPlan'),
+    '--ci-run': pathFlag('--ci-run', 'ciRun'),
+    '--ci-verify': pathFlag('--ci-verify', 'ciVerify'),
+    '--result': pathFlag('--result', 'result'),
+    '--results': pathFlag('--results', 'results'),
+    '--shards': (next) => {
+      const value = next();
       if (!value) throw new Error('Missing value for --shards');
       shardCount = Number.parseInt(value, 10);
-      index += 1;
-      continue;
-    }
-    if (arg === '--shard') {
-      const value = argv[index + 1];
+    },
+    '--shard': (next) => {
+      const value = next();
       if (!value) throw new Error('Missing value for --shard');
       shardIndex = Number.parseInt(value, 10);
-      index += 1;
-      continue;
-    }
-    if (arg === '--wall-timeout') {
-      const value = Number.parseInt(argv[index + 1] ?? '', 10);
+    },
+    '--wall-timeout': (next) => {
+      const value = Number.parseInt(next() ?? '', 10);
       if (!Number.isInteger(value) || value <= 0) throw new Error('--wall-timeout needs a positive integer (seconds)');
       wallTimeoutMs = value * 1000;
       wallTimeoutExplicit = true;
-      index += 1;
-      continue;
-    }
-    throw new Error(`Unknown argument: ${arg}`);
-  }
+    },
+  });
 
   const ciModes = [paths.ciPlan, paths.ciRun, paths.ciVerify].filter(Boolean).length;
   if (ciModes > 1 || (ciModes && (quick || listOnly || dryRun || recordDurations || windowsOnly))) throw new Error('CI modes cannot be combined with other selection modes');
@@ -1807,63 +1813,23 @@ export async function runFreeShard(
   // shows. Printed once at start so a wedged or noisy run is inspectable
   // without a re-run.
   const logPath = options.logFilePath ?? nextDefaultLogPath(rootDir);
-  const logStream = fs.createWriteStream(logPath, { mode: 0o600 });
-  let logWriteFailed = false;
-  logStream.on('error', (err) => {
-    if (logWriteFailed) return;
-    logWriteFailed = true;
-    console.error(`${label} could not write the full log at ${logPath}: ${err.message}`);
-  });
+  const shardLog = openShardLog(logPath, label, 0o600);
   log(`[test:free] full log: ${logPath}`);
 
   const { command, args } = options.commandFor
     ? options.commandFor(files)
     : { command: process.execPath, args: buildShardArgs(files, { parallel: options.parallel, rootDir }) };
 
-  const env = { ...(options.env ?? process.env) };
-  const stateDir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-free-shard-')));
-  const childTmp = path.join(stateDir, 'tmp');
-  fs.mkdirSync(childTmp);
-  env.TMPDIR = childTmp;
-  env.TEMP = childTmp;
-  env.TMP = childTmp;
+  // realpath: the browser tracker refuses a state dir whose path resolves elsewhere.
+  const { stateDir, env } = createShardSandbox('gstack-free-shard-', options.env ?? process.env, { realpath: true });
   // CLI renders otherwise attach to the repo's shared .gstack/browse.json,
   // even with distinct Chromium profiles. Concurrent shards and surviving
   // daemons from prior runs can then replace or remove each other's state.
   // Override inherited state too; the shard owns this directory's cleanup.
   env.BROWSE_STATE_FILE = path.join(stateDir, '.gstack', 'browse.json');
   env.GSTACK_FREE_SHARD_ID = randomUUID();
-  // Per-shard Chromium profile (same isolation idea as TMPDIR): nine test
-  // files launch in-process persistent contexts or daemons that default to
-  // the SHARED ~/.gstack/chromium-profile, and two concurrent shards on one
-  // profile dir kill each other's browser — observed live on CI once
-  // duration packing recomposed shards (handoff's launchPersistentContext
-  // died "Target page, context or browser has been closed" while a sibling
-  // shard's daemon logged "Chromium process crashed"). Hash sharding had
-  // masked the collision by chance placement. Within a shard, files run
-  // serially, so sharing the per-shard profile is safe; config tests that
-  // assert resolution order save/restore this env around their assertions.
-  env.CHROMIUM_PROFILE = path.join(stateDir, 'chromium-profile');
 
   const startedAt = Date.now();
-  const child = spawn(command, args, {
-    cwd: rootDir,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    detached: process.platform !== 'win32',
-    windowsHide: true,
-  });
-  const groupPid = child.pid ?? null;
-  const browser = trackShardBrowser(stateDir, env);
-  // Group-kill on parent SIGINT/SIGTERM too, not just on timeout.
-  const forwarding = installChildSignalForwarding({
-    kill: (signal?: NodeJS.Signals | number) => {
-      killProcessGroup(child, (signal as NodeJS.Signals) ?? 'SIGTERM');
-      browser.signal(signal === 'SIGKILL');
-      return true;
-    },
-  });
-
   const classifier = new BunTestOutputClassifier();
 
   // Console policy: quiet => nothing; verbose => the raw firehose; default =>
@@ -1881,14 +1847,16 @@ export async function runFreeShard(
   const reporter = new FreeRunReporter(files, options.verbose ? undefined : emitToConsole);
 
   const captureFailures = new Map<StreamOrigin, Error>();
-  const consumeStream = (stream: typeof child.stdout, origin: StreamOrigin): Promise<void> =>
-    new Promise((resolve) => {
+  const drained = new Set<StreamOrigin>();
+  const consumeStream = (stream: NodeJS.ReadableStream | null, origin: StreamOrigin): Promise<void> =>
+    new Promise<void>((resolve) => {
       if (!stream) {
         captureFailures.set(origin, new Error('configured pipe is missing'));
         resolve();
         return;
       }
-      let ended = stream.readableEnded;
+      const readable = stream as NodeJS.ReadableStream & { readableEnded: boolean; destroyed: boolean; errored: Error | null };
+      let ended = readable.readableEnded;
       const incomplete = (error?: Error | null): void => {
         // A delayed error replaces the initial destroyed-stream diagnostic
         // with its original cause. Failures are data, never early rejections
@@ -1901,47 +1869,49 @@ export async function runFreeShard(
       stream.on('error', incomplete);
       stream.once('end', () => { ended = true; resolve(); });
       stream.once('close', () => {
-        if (!ended) incomplete(stream.errored);
+        if (!ended) incomplete(readable.errored);
         else resolve();
       });
       stream.on('data', (chunk: Buffer | string) => {
         classifier.write(chunk, origin); // strict verdict ALWAYS sees the full stream
-        if (!logWriteFailed) logStream.write(chunk);
+        shardLog.write(chunk);
         reporter.write(chunk, origin);
         if (options.verbose) emitToConsole(typeof chunk === 'string' ? chunk : chunk.toString('utf8'), origin);
       });
       if (ended) resolve();
-      else if (stream.destroyed) incomplete(stream.errored);
-    });
+      else if (readable.destroyed) incomplete(readable.errored);
+    }).then(() => { drained.add(origin); });
 
-  let timedOut = false;
-  const killTimer = setTimeout(() => {
-    timedOut = true;
-    killProcessGroup(child, 'SIGKILL');
-  }, wallTimeoutMs);
-
-  let exitCode: number | null = null;
-  let cleanupError: string | null = null;
+  let child: ShardChildResult = { exitCode: null, timedOut: false, groupPid: null };
+  let cleanupError = null as string | null;
   try {
-    const streams = [consumeStream(child.stdout, 'stdout'), consumeStream(child.stderr, 'stderr')];
-    exitCode = await new Promise<number | null>((resolve, reject) => {
-      child.once('error', reject);
-      child.once('close', (code) => resolve(code));
+    // Shared spawn/detached/group-kill/wall-timer/reap lifecycle. The browser
+    // tracker rides along: forwarded signals reach it, and it settles after
+    // the final group kill.
+    child = await runShardChild({
+      command, args, cwd: rootDir, env, timeoutMs: wallTimeoutMs,
+      attach: () => {
+        const browser = trackShardBrowser(stateDir, env);
+        return { signal: (force) => browser.signal(force), settle: async () => { cleanupError = await browser.settle(); } };
+      },
+      hookStreams: (spawned) => [consumeStream(spawned.stdout, 'stdout'), consumeStream(spawned.stderr, 'stderr')],
     });
-    await Promise.all(streams);
+  } catch (error) {
+    child = (error as { shardResult?: ShardChildResult } | null)?.shardResult ?? child;
+    throw error;
   } finally {
-    clearTimeout(killTimer);
-    // Reap survivors of this shard even on the clean path.
-    killProcessGroup(child, 'SIGKILL');
-    cleanupError = await browser.settle();
+    // A wall-expired child is not drained: its unread tail is lost evidence.
+    for (const origin of ['stdout', 'stderr'] as const) {
+      if (!drained.has(origin) && !captureFailures.has(origin)) captureFailures.set(origin, new Error('stream did not drain before the wall deadline'));
+    }
     reporter.end();
     for (const [origin, error] of captureFailures) {
       const diagnostic = `${label} ${origin} capture incomplete: ${error.message} `
-        + `(child exit ${exitCode ?? 'signal'}). Full log: ${logPath}`;
+        + `(child exit ${child.exitCode ?? 'signal'}). Full log: ${logPath}`;
       console.error(diagnostic);
-      if (!logWriteFailed) logStream.write(diagnostic + '\n');
+      shardLog.write(diagnostic + '\n');
     }
-    await new Promise<void>((resolve) => logStream.end(() => resolve()));
+    await new Promise<void>((resolve) => shardLog.stream.end(() => resolve()));
     try {
       if (!cleanupError) fs.rmSync(stateDir, { recursive: true, force: true });
     } catch {
@@ -1949,13 +1919,18 @@ export async function runFreeShard(
       // Windows must not turn a real verdict into an exception.
       if (process.platform !== 'win32') cleanupError = 'could not remove the owned shard directory';
     }
-    forwarding.dispose();
   }
 
+  const { exitCode, timedOut, groupPid } = child;
+  const logWriteFailed = shardLog.failed;
   const summary = classifier.end();
-  const status: FreeShardStatus = timedOut
-    ? 'timed-out'
-    : !cleanupError && !logWriteFailed && captureFailures.size === 0 && strictTestExitCode(exitCode ?? 1, summary, files.length) === 0 ? 'passed' : 'failed';
+  let status: FreeShardStatus = strictShardStatus({
+    timedOut, exitCode, summary, expectedFiles: files.length,
+    evidenceComplete: !cleanupError && !logWriteFailed && captureFailures.size === 0,
+  });
+  if (status === 'passed' && zeroExecutionVerdict(reporter.report().testsRan, FREE_LANE_POLICY, { promisedAll: true }) === 'passed-empty') {
+    status = 'failed';
+  }
 
   if (cleanupError) console.error(`${label} browser cleanup failed: ${cleanupError}; retained ${stateDir}`);
 
@@ -2011,9 +1986,7 @@ export async function runFreeShard(
   return outcome;
 }
 
-let logPathSequence = 0;
-
-/** Timestamped retained log file; pid+sequence defeat same-ms collisions. */
+/** Retained private log under .context/free-test-logs; never through a link. */
 function nextDefaultLogPath(rootDir: string): string {
   let directory = fs.realpathSync(rootDir);
   for (const part of ['.context', 'free-test-logs']) {
@@ -2023,12 +1996,10 @@ function nextDefaultLogPath(rootDir: string): string {
     if (!existing) fs.mkdirSync(directory, { mode: 0o700 });
   }
   fs.chmodSync(directory, 0o700);
-  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  logPathSequence += 1;
-  return path.join(directory, `gstack-free-test-${stamp}-${process.pid}-${logPathSequence}.log`);
+  return nextShardLogPath(directory, 'gstack-free-test');
 }
 
-function exitCodeFor(status: FreeShardStatus): number {
+export function exitCodeFor(status: FreeShardStatus): number {
   if (status === 'passed') return 0;
   return status === 'timed-out' ? 124 : 1;
 }
@@ -2072,16 +2043,8 @@ async function recordFreeTestDurations(files: string[], jobs: number): Promise<n
   }
 
   const target = process.env.GSTACK_FREE_TEST_DURATIONS ?? path.join(ROOT, FREE_TEST_DURATIONS_FILE);
-  const payload = {
-    version: 1,
-    recordedAt: new Date().toISOString(),
-    durations: Object.fromEntries(Object.entries(durations).sort(([a], [b]) => (a < b ? -1 : 1))),
-  };
-  // Atomic temp+rename (capture-context-budget's pattern): a killed recorder
-  // must never leave a truncated seed for loadFreeTestDurations to warn on.
-  const tmp = `${target}.tmp-${process.pid}`;
-  fs.writeFileSync(tmp, `${JSON.stringify(payload, null, 2)}\n`);
-  fs.renameSync(tmp, target);
+  // Atomic: a killed recorder never leaves a truncated seed behind.
+  writeDurationSeed(target, durations);
   console.log(`[test:free] wrote ${Object.keys(durations).length} durations to ${path.relative(ROOT, target)}`);
   if (failed.length > 0) {
     // Failures still recorded (a red file's duration is still a real cost),
