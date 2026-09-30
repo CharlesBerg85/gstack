@@ -264,6 +264,14 @@ function materialize(root: string, source: string) {
     const captured = readQaCapture(root, row.capture);
     return { command: row.command, contract: row.contract, expected: row.expected, classification: row.classification, observed: captured.observed };
   });
+  const snapshotOf = (observed: unknown) => object(observed) && typeof observed.snapshot === 'string' ? observed.snapshot : undefined;
+  const latestCapture = latestCompleteCapture(root);
+  const currentSnapshot = latestCapture ? snapshotOf(readQaCapture(root, latestCapture).observed) : undefined;
+  const superseded = currentSnapshot === undefined ? [] : annotations.evidence.filter((row: any, index: number) => {
+    const snapshot = snapshotOf(evidence[index].observed);
+    return snapshot !== undefined && snapshot !== currentSnapshot && row.classification !== 'superseded';
+  }).map((row: any) => row.capture);
+  if (superseded.length) throw new QaEvidenceError(`Superseded evidence: capture ${superseded.join(', ')} observed an older input snapshot than the latest capture ${latestCapture}; rerun the affected probe on current inputs, or classify the row "superseded" and keep its contract open`);
   const missing = completeCaptures(root).filter(capture => !captures.has(capture)
     && !annotations.limits.some((limit: string) => new RegExp(`\\b${capture}\\b`).test(limit)));
   if (missing.length) throw new QaEvidenceError(`Invalid report annotations: add an evidence row for capture ${missing.join(', ')} (every complete capture needs one, or name it in limits with why it is withheld)`);

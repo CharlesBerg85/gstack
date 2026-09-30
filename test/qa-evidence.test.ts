@@ -315,3 +315,21 @@ test('both QA helpers answer --help with usage and exit 0, and the declared inte
   expect(qaCommandAllowed('bun bin/gstack-qa-evidence --version')).toBe(false);
   expect(qaCallerCommandAllowed('bun /abs/host/runtime/bin/gstack-qa-evidence --help')).toBe(true);
 });
+
+test('materialize refuses evidence whose declared input snapshot predates the latest capture', () => {
+  const f = fixture();
+  const command = (id: string, input: string) => `bun gstack-qa-evidence capture ${f.root} ${id} --timeout-ms 4000 -- probe ${input}`;
+  expect(f.capture('001', `console.log(JSON.stringify({ snapshot: 'before', charter: 'adverse' }))`).status).toBe(0);
+  expect(f.run('checkpoint', f.root, '001', '001', command('001', 'adverse'), 'The input changed, so the happy path must be rechecked on current inputs next.', command('002', 'happy')).status).toBe(0);
+  expect(f.capture('002', `console.log(JSON.stringify({ snapshot: 'after', charter: 'happy' }))`).status).toBe(0);
+  const rows = [
+    { capture: '001', command: command('001', 'adverse'), contract: 'README.md', expected: 'rejects', classification: 'pass' },
+    { capture: '002', command: command('002', 'happy'), contract: 'README.md', expected: 'doubles', classification: 'pass' },
+  ];
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Adverse coverage predates the input change.'], evidence: rows });
+  const stale = f.run('materialize', f.root, 'annotations.json');
+  expect(stale.status).toBe(2);
+  expect(receipt(stale.stderr).message).toContain('capture 001 observed an older input snapshot than the latest capture 002');
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Adverse coverage predates the input change.'], evidence: [{ ...rows[0], classification: 'superseded' }, rows[1]] });
+  expect(f.run('materialize', f.root, 'annotations.json').status).toBe(0);
+});
