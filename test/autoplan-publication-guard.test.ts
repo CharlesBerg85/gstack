@@ -313,6 +313,13 @@ describe('Autoplan parent publication guard', () => {
       if (!root.startsWith('\\\\')) {
         const native = [script, ...args].map(value => '"' + value + '"');
         expect(parse(`bun ${native[0]} init ${native.slice(1).join(' ')}`, root)).toEqual(args);
+        // gstack-paths prints /c/...; Git Bash hands bun C:/... for the same file.
+        const msys = [script, ...args].map(value => '"/c/' + value.slice(3).replaceAll('\\', '/') + '"');
+        expect(parse(`bun ${msys[0]} init ${msys.slice(1).join(' ')}`, root)).toEqual(args);
+        const lower = [script, ...args].map(value => `'c${value.slice(1)}'`);
+        expect(parse(`bun ${lower[0]} init ${lower.slice(1).join(' ')}`, root)).toEqual(args);
+        for (const bad of ['/cc/repo/source.md', '/c', '/c/repo/../source.md'])
+          expect(parse(`bun "${msys[0]!.slice(1, -1)}" init "${bad}" ${msys.slice(2).join(' ')}`, root)?.[0]).not.toBe(args[0]);
       }
       for (const bad of [command + ' && true', command.replace('source.md', String.raw`..\source.md`),
         command.replace('source.md', 'nested/../source.md'), command.replace(script, path.win32.join(root, 'foreign.ts'))]) {
@@ -1067,4 +1074,159 @@ describe('Autoplan authenticated phase consumption', () => {
     if (expected) expect(detected!.readToolUseId).toBe(request.toolUseId);
   });
 
+});
+
+describe('Autoplan native journal roots and Windows spellings', () => {
+  const windows = process.platform === 'win32';
+  function published(publish = true) {
+    const f = fixture(); if (publish) f.message(); f.current();
+    const { rows } = f.journal();
+    const save = () => fs.writeFileSync(f.input.transcript_path, rows.map(r => JSON.stringify(r)).join('\n') + '\n');
+    return { f, rows, save };
+  }
+  const attachment = (f: ReturnType<typeof fixture>, parentUuid: string | null, extra: object = {}) => ({
+    uuid: randomUUID(), parentUuid, cwd: f.cwd, sessionId: f.sessionId, isSidechain: false,
+    timestamp: new Date(clock).toISOString(), type: 'attachment',
+    attachment: { type: 'hook_success', hookEvent: 'SessionStart' }, ...extra });
+  const hook = (f: ReturnType<typeof fixture>, project = f.cwd) =>
+    withNativeProjectDirectory(project, () => runPublicationHook(f.input, ROOT));
+  const status = (f: ReturnType<typeof fixture>) =>
+    readOwnedClaudePublicTranscript(f.input.transcript_path, f.cwd, f.sessionId).transcript.status;
+
+  for (const shape of ['one', 'chained', 'stray-before'] as const)
+    test(`a SessionStart attachment root owns the journal beneath it (${shape})`, async () => {
+      const { f, rows, save } = published();
+      const root = attachment(f, null), chain = shape === 'chained' ? [root, attachment(f, root.uuid)] : [root];
+      rows[0].parentUuid = chain.at(-1)!.uuid;
+      rows.unshift(...(shape === 'stray-before' ? [attachment(f, null)] : []), ...chain); save();
+      expect(status(f)).toBe('ready');
+      expect(await hook(f)).toEqual({});
+    });
+
+  test('an attachment root still requires the parent publication', async () => {
+    const { f, rows, save } = published(false);
+    const root = attachment(f, null); rows[0].parentUuid = root.uuid; rows.unshift(root); save();
+    expect(await hook(f)).toMatchObject({ hookSpecificOutput: { permissionDecisionReason: expect.stringContaining('Publish the filled Phase 1') } });
+  });
+
+  for (const kind of ['foreign-cwd', 'sidechain', 'message-bearing', 'competing-conversation', 'competing-user-root'] as const)
+    test(`an attachment root cannot supply ownership: ${kind}`, async () => {
+      const { f, rows, save } = published();
+      const root = attachment(f, null, kind === 'foreign-cwd' ? { cwd: path.join(f.cwd, 'foreign') }
+        : kind === 'sidechain' ? { isSidechain: true } : kind === 'message-bearing' ? { message: { role: 'system', content: [] } } : {});
+      rows[0].parentUuid = root.uuid; rows.unshift(root);
+      if (kind === 'competing-conversation' || kind === 'competing-user-root') {
+        const other = attachment(f, null);
+        const prompt = { ...structuredClone(rows[1]), uuid: randomUUID(), parentUuid: kind === 'competing-user-root' ? null : other.uuid };
+        rows.push(...(kind === 'competing-conversation' ? [other] : []), prompt);
+      }
+      save();
+      expect(status(f)).not.toBe('ready');
+      expect((await hook(f) as any).hookSpecificOutput?.permissionDecision).toBe('deny');
+    });
+
+  test.if(windows)('CLAUDE_PROJECT_DIR spelled C:/ or c:\\ names the native journal cwd', async () => {
+    const { f } = published();
+    expect(await hook(f, f.cwd.replaceAll('\\', '/'))).toEqual({});
+    expect(await hook(f, f.cwd[0]!.toLowerCase() + f.cwd.slice(1))).toEqual({});
+    expect((await hook(f, f.cwd + '\\.') as any).hookSpecificOutput?.permissionDecision).toBe('deny');
+  });
+
+  test.if(windows)('an init command spelled with Git Bash /c/ paths binds the same invocation', () => {
+    const f = fixture(); f.message(); f.current();
+    const msys = (file: string) => '/' + file[0]!.toLowerCase() + file.slice(2).replaceAll('\\', '/');
+    f.events[0]!.input!.command = `bun "${ROOT}/bin/gstack-autoplan-snapshot.ts" init "${msys(f.source)}" "${msys(f.active)}" "${msys(f.restore)}"`;
+    expect(f.evaluate()).toEqual({ allow: true });
+  });
+
+  test.if(windows)('a close packet Read spelled C:/ is still the close Read', () => {
+    const f = fixture(), close = f.events.find(e => e.kind === 'use' && e.toolUseId === 'close')!;
+    const forward = (close.input!.file_path as string).replaceAll('\\', '/');
+    close.input!.file_path = forward;
+    (f.events.find(e => e.kind === 'result' && e.toolUseId === 'close') as any).file.filePath = forward;
+    f.message(); f.current();
+    expect(f.evaluate()).toEqual({ allow: true });
+  });
+
+  test.if(windows)('an active-plan Edit spelled C:/ after the close Read is still a mutation', () => {
+    const f = fixture(); f.message();
+    f.use('edit', 'Edit', { file_path: f.active.replaceAll('\\', '/'), old_string: 'Keep', new_string: 'Drop' });
+    f.current();
+    expect(f.evaluate()).toMatchObject({ allow: false, reason: expect.stringContaining('mutation is pending') });
+  });
+});
+
+describe('Autoplan phase entry through the gbrain :user render (#2569)', () => {
+  const generator = fs.readFileSync(path.join(ROOT, 'scripts/gen-skill-docs.ts'), 'utf8');
+  const rewriteSectionBase: (content: string, linkRoot: string | null) => string = new Function(
+    new Bun.Transpiler({ loader: 'ts' }).transformSync(generator.slice(generator.indexOf('function rewriteSectionBase('),
+      generator.indexOf('\n}\n', generator.indexOf('function rewriteSectionBase(')) + 2)) + '\nreturn rewriteSectionBase;')();
+  const sections = ['ceo-phase.md', 'design-phase.md', 'dx-phase.md', 'eng-phase.md', 'tasks-aggregator.md'];
+  /** Writes what setup's swap-in render writes: the generator's rewrite with --link-root = the final render root. */
+  function render(root: string, linkRoot = root, edit = (text: string) => text) {
+    fs.mkdirSync(path.join(root, 'autoplan', 'sections'), { recursive: true });
+    for (const name of sections) fs.writeFileSync(path.join(root, 'autoplan', 'sections', name),
+      edit(rewriteSectionBase(fs.readFileSync(path.join(ROOT, 'autoplan/sections', name), 'utf8'), linkRoot)));
+    return root;
+  }
+  function withEnv<T>(env: Record<string, string | undefined>, work: () => T): T {
+    const previous = Object.fromEntries(Object.keys(env).map(k => [k, process.env[k]]));
+    for (const [k, v] of Object.entries(env)) if (v === undefined) delete process.env[k]; else process.env[k] = v;
+    try { return work(); }
+    finally { for (const [k, v] of Object.entries(previous)) if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+  }
+  /** CEO entered through `entry` and published; the next phase entry is the request under judgment. */
+  function entered(entry: string, next?: string) {
+    const f = fixture(), text = fs.readFileSync(entry, 'utf8'), lines = text.split('\n');
+    const use = f.events.find(e => e.kind === 'use' && e.toolUseId === 'entry')!;
+    const result = f.events.find(e => e.kind === 'result' && e.toolUseId === 'entry')!;
+    use.input = { file_path: entry, offset: 1 };
+    (result as any).file = { filePath: entry, content: text, startLine: 1, numLines: lines.length, totalLines: lines.length };
+    f.message();
+    if (next) f.input.tool_input = { file_path: next };
+    f.current();
+    return f;
+  }
+  const scratch = () => { const dir = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'autoplan-render-'))); dirs.push(dir); return dir; };
+  const denied = { allow: false, reason: expect.stringContaining('different or unavailable installation') };
+
+  test('the hook rewrite is the generator rewrite', () => {
+    const linkRoot = path.join(scratch(), 'render', 'claude');
+    for (const name of [...sections, 'phase-close.md']) {
+      const text = fs.readFileSync(path.join(ROOT, 'autoplan/sections', name), 'utf8');
+      const hook = fs.readFileSync(path.join(ROOT, 'autoplan/bin/phase-publication-hook.ts'), 'utf8');
+      const fn = hook.slice(hook.indexOf('function renderSectionBase('), hook.indexOf('\n}\n', hook.indexOf('function renderSectionBase(')) + 2);
+      const ours = new Function(new Bun.Transpiler({ loader: 'ts' }).transformSync(fn) + '\nreturn renderSectionBase;')();
+      expect(ours(text, linkRoot)).toBe(rewriteSectionBase(text, linkRoot));
+    }
+  });
+
+  for (const via of ['GSTACK_USER_RENDER_DIR', 'GSTACK_HOME', 'HOME', 'empty GSTACK_USER_RENDER_DIR'] as const)
+    test(`the render root setup resolves through ${via} is this installation`, () => {
+      const home = scratch(), root = render(via === 'GSTACK_USER_RENDER_DIR' ? path.join(home, 'custom') :
+        via === 'HOME' ? path.join(home, '.gstack', 'render', 'claude') : path.join(home, 'render', 'claude'));
+      const env = via === 'GSTACK_USER_RENDER_DIR' ? { GSTACK_USER_RENDER_DIR: root, GSTACK_HOME: undefined }
+        : via === 'HOME' ? { GSTACK_USER_RENDER_DIR: undefined, GSTACK_HOME: undefined, HOME: home }
+        : { GSTACK_USER_RENDER_DIR: via === 'GSTACK_HOME' ? undefined : '', GSTACK_HOME: home };
+      const f = entered(path.join(root, 'autoplan/sections/ceo-phase.md'), path.join(root, 'autoplan/sections/design-phase.md'));
+      expect(withEnv(env, () => f.evaluate())).toEqual({ allow: true });
+    });
+
+  for (const kind of ['sibling-root', 'other-home', 'linked-out', 'changed-bytes', 'stale-link-root', 'no-render-root'] as const)
+    test(`a render lookalike is a different installation: ${kind}`, () => {
+      const home = scratch(), root = path.join(home, 'render', 'claude');
+      let next = path.join(root, 'autoplan/sections/design-phase.md'), env: Record<string, string | undefined> = { GSTACK_USER_RENDER_DIR: undefined, GSTACK_HOME: home };
+      if (kind === 'sibling-root') { render(root); next = path.join(render(path.join(home, 'render', 'claude2')), 'autoplan/sections/design-phase.md'); }
+      if (kind === 'other-home') { const other = scratch(); render(root); next = path.join(render(path.join(other, 'render', 'claude')), 'autoplan/sections/design-phase.md'); }
+      if (kind === 'linked-out') {
+        const outside = render(path.join(scratch(), 'outside'), root);
+        fs.mkdirSync(path.join(root, 'autoplan'), { recursive: true });
+        fs.symlinkSync(path.join(outside, 'autoplan', 'sections'), path.join(root, 'autoplan', 'sections'), 'junction');
+      }
+      if (kind === 'changed-bytes') render(root, root, text => text + 'Forged instruction.\n');
+      if (kind === 'stale-link-root') render(root, path.join(home, 'previous-render'));
+      if (kind === 'no-render-root') { render(root); env = { GSTACK_USER_RENDER_DIR: path.join(home, 'missing'), GSTACK_HOME: home }; }
+      const f = entered(path.join(ROOT, 'autoplan/sections/ceo-phase.md'), next);
+      expect(withEnv(env, () => f.evaluate())).toMatchObject(denied);
+    });
 });

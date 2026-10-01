@@ -71,6 +71,18 @@ const object = (value: unknown): value is Record<string, any> =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
 const validTimestamp = (value: unknown): value is string =>
   typeof value === 'string' && Number.isFinite(Date.parse(value));
+/**
+ * Windows spells one native path C:\, c:\ or C:/ (hook env, journal and tool
+ * input disagree). Fold separators and drive-letter case only; `.`/`..` and
+ * doubled separators stay distinct, so normalize checks keep rejecting them.
+ */
+export const nativePathSpelling = (value: string): string => process.platform !== 'win32' ? value :
+  value.replaceAll('/', '\\').replace(/^[a-z](?=:)/, drive => drive.toUpperCase());
+const sameNativePath = (a: unknown, b: unknown): boolean =>
+  typeof a === 'string' && typeof b === 'string' && nativePathSpelling(a) === nativePathSpelling(b);
+/** Native SessionStart hooks root a fresh journal at a message-less attachment record. */
+const attachmentRoot = (r: Record<string, any>): boolean =>
+  r.parentUuid === null && r.type === 'attachment' && r.message == null;
 
 /** Read one length-delimited protobuf field, rejecting malformed/ambiguous input. */
 function signatureField(bytes: Uint8Array | undefined, wanted: number): Uint8Array | undefined {
@@ -179,10 +191,35 @@ function ownedCausalLines(lines: string[], cwd: string, filename: string): strin
     if (!next) return [];
     root = next;
   }
-  if (root.record.parentUuid !== null || root.record.cwd !== cwd ||
-      !object(root.record.message) || root.record.message.role !== 'user') return [];
-  if (nodes.some(x => x !== root && x.record.parentUuid === null &&
-      object(x.record.message) && x.record.message.role === 'user')) throw Error('competing owned native roots');
+  const userRoot = (r: Record<string, any>) => r.parentUuid === null && object(r.message) && r.message.role === 'user';
+  // A SessionStart attachment roots ownership only above the first user prompt.
+  if (!sameNativePath(root.record.cwd, cwd) || !(userRoot(root.record) ||
+      (attachmentRoot(root.record) && first.record.message.role === 'user'))) return [];
+  // A competing root carries a separate conversation. A stray attachment root
+  // with no conversation beneath it owns nothing; an unflushed or cyclic chain
+  // supplies no root, as before.
+  const roots = new Map<string, typeof nodes[number] | undefined>();
+  const rootOf = (node: typeof nodes[number]) => {
+    const trail = new Set<string>();
+    let at: typeof nodes[number] | undefined = node, found: typeof nodes[number] | undefined;
+    while (at) {
+      const id = at.record.uuid as string;
+      if (roots.has(id)) { found = roots.get(id); break; }
+      if (trail.has(id)) break;
+      trail.add(id);
+      const up = parent(at.record);
+      if (!up) { found = at; break; }
+      at = byId.get(up);
+    }
+    for (const id of trail) roots.set(id, found);
+    return found;
+  };
+  const competing = (x: typeof nodes[number]) => {
+    if (!object(x.record.message) || !['user', 'assistant'].includes(x.record.message.role)) return false;
+    const other = rootOf(x);
+    return other !== undefined && other !== root && (userRoot(other.record) || attachmentRoot(other.record));
+  };
+  if (nodes.some(competing)) throw Error('competing owned native roots');
   // Stable topological traversal preserves physical order whenever two ready
   // records have no parent dependency. No timestamp provides ordering credit.
   const children = new Map<string, number[]>();
@@ -260,6 +297,7 @@ export function readPlanCountTranscript(configDir: string, cwd: string,
         // fixture's first parent user message; legacy records keep exact-cwd scoping.
         let originSeen = false;
         const ancestry = new Set<string>();
+        const preOrigin = new Map<string, Record<string, any>>();
         let causalMembership: Set<string> | undefined;
         const nativeUuid = (value: unknown): value is string =>
           typeof value === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
@@ -290,12 +328,26 @@ export function readPlanCountTranscript(configDir: string, cwd: string,
               // A delayed metadata parent must not cut an already-rooted native
               // session at its first cwd change. Recover membership lazily; do
               // not discover a later root or reorder public uses and results.
-              (!ownedSnapshot && record.cwd !== cwd && ancestry.size > 0 &&
+              (!ownedSnapshot && !sameNativePath(record.cwd, cwd) && ancestry.size > 0 &&
                 recoveredMember(record.uuid)));
+          if (!originSeen && parentMetadata && record.type === 'attachment' && record.message == null)
+            preOrigin.set(record.uuid, record);
           if (!originSeen && object(record.message) && ['user', 'assistant'].includes(record.message.role)) {
             originSeen = true;
-            if (parentMetadata && record.cwd === cwd && record.message.role === 'user' &&
-                record.parentUuid === null) ancestry.add(record.uuid);
+            // The first user prompt roots ownership itself, or through the
+            // SessionStart attachment chain it descends from. A stray earlier
+            // attachment root seeds nothing.
+            if (parentMetadata && sameNativePath(record.cwd, cwd) && record.message.role === 'user') {
+              const chain = new Set<string>([record.uuid]);
+              let at: Record<string, any> | undefined = record;
+              while (at && at.parentUuid !== null) {
+                at = nativeUuid(at.parentUuid) ? preOrigin.get(at.parentUuid) : undefined;
+                if (!at || chain.has(at.uuid)) at = undefined;
+                else chain.add(at.uuid);
+              }
+              if (at && (at === record || (attachmentRoot(at) && sameNativePath(at.cwd, cwd))))
+                for (const id of chain) ancestry.add(id);
+            }
           }
           if (continuation) ancestry.add(record.uuid);
           // Native compaction resets parentUuid but links its prior owned
@@ -307,7 +359,7 @@ export function readPlanCountTranscript(configDir: string, cwd: string,
             ancestry.has(record.logicalParentUuid) && !ancestry.has(record.uuid);
           if (compactContinuation) ancestry.add(record.uuid);
           if (ownedSnapshot && !ancestry.has(record.uuid)) continue;
-          if ((record.cwd !== cwd && !continuation) || record.isSidechain !== false || !object(record.message)) continue;
+          if ((!sameNativePath(record.cwd, cwd) && !continuation) || record.isSidechain !== false || !object(record.message)) continue;
           if (ownedSnapshot && record.message.role === 'user' && record.origin?.kind === 'human' &&
               record.isMeta !== true && nativeUuid(record.promptId) && typeof record.message.content === 'string') {
             const autoplan = /^<command-message>autoplan<\/command-message>\n<command-name>\/autoplan<\/command-name>(?:\n<command-args>[\s\S]*<\/command-args>)?$/.test(record.message.content);
