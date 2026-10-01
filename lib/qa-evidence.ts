@@ -285,11 +285,13 @@ function materialize(root: string, source: string) {
     || !Array.isArray(annotations.limits) || !annotations.limits.length || !annotations.limits.every((limit: unknown) => typeof limit === 'string' && limit.trim())
     || !Array.isArray(annotations.evidence) || !Array.isArray(annotations.learning)) throw new QaEvidenceError('Invalid report annotations: need limits (non-empty string array) and evidence (row array), no other keys; revision, runtime and cwd (non-empty strings) and learning (checkpoint ID array) are filled in when omitted');
   const captures = new Set<string>();
+  const argv: string[] = [];
   const evidence = annotations.evidence.map((row: any) => {
     if (!exact(row, ['capture', 'command', 'contract', 'expected', 'classification'])
       || !Object.values(row).every(value => typeof value === 'string' && value.trim()) || captures.has(row.capture)) throw new QaEvidenceError('Invalid evidence annotation: each row needs exactly capture, command, contract, expected and classification as non-empty strings, with a unique capture');
     captures.add(row.capture);
     const captured = readQaCapture(root, row.capture);
+    argv.push(JSON.stringify(captured.receipt.argv));
     return { command: row.command, contract: row.contract, expected: row.expected, classification: row.classification, observed: captured.observed };
   });
   const snapshotOf = (observed: unknown) => object(observed) && typeof observed.snapshot === 'string' ? observed.snapshot : undefined;
@@ -315,7 +317,9 @@ function materialize(root: string, source: string) {
   });
   const classes = annotations.evidence.map((row: any) => String(row.classification).toLowerCase());
   const open = [
-    ...annotations.evidence.filter((row: any) => String(row.classification).toLowerCase() === 'superseded').map((row: any) => `capture ${row.capture} superseded`),
+    ...annotations.evidence.filter((row: any, index: number) => String(row.classification).toLowerCase() === 'superseded'
+      && !annotations.evidence.some((other: any, rerun: number) => String(other.classification).toLowerCase() !== 'superseded' && argv[rerun] === argv[index]
+        && (currentSnapshot === undefined || snapshotOf(evidence[rerun].observed) === currentSnapshot))).map((row: any) => `capture ${row.capture} superseded`),
     ...completeCaptures(root).filter(capture => !captures.has(capture)).map(capture => `capture ${capture} withheld`),
     ...(requiredRemaining(root).requiredRemaining ?? []).map(command => `required probe not run: ${command}`),
     ...(annotations.evidence.length ? [] : ['no evidence rows']),
@@ -326,6 +330,7 @@ function materialize(root: string, source: string) {
         : open.length || classes.some((value: string) => !['pass', 'superseded'].includes(value)) ? 'inconclusive' : 'pass',
     open,
   };
+  if (fs.existsSync(owned(root, 'evidence.json'))) throw new QaEvidenceError('evidence.json is already published for this report root; materialize runs once, so report its printed verdict');
   const sha256 = publish(root, 'evidence.json', { ...annotations, evidence, learning, verdict });
   return { action: 'materialize', status: 'complete', sha256, annotationsSha256: hash(bytes), exitCode: 0, verdict,
     reportLinks: notes.map(note => `[checkpoint ${note.name.slice(12, 15)}](${note.name})`),

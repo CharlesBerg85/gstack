@@ -406,6 +406,32 @@ test('materialize refuses evidence whose declared input snapshot predates the la
   expect(JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8')).verdict.status).toBe('inconclusive');
 });
 
+test('a superseded row closes only when the same native probe was rerun on the current input snapshot', () => {
+  const f = fixture();
+  const hypothesis = 'The input snapshot changed, so the earlier probe must be rerun on current inputs next.';
+  const program = (charter: string) => `console.log(JSON.stringify({ snapshot: require('node:fs').readFileSync('snap', 'utf8'), charter: '${charter}' }))`;
+  const probe = (id: string, after: string, charter: string) => f.run('capture', f.root, id, '--timeout-ms', '4000', '--after', after, '--hypothesis', hypothesis, '--', process.execPath, '-e', program(charter));
+  const row = (capture: string, classification: string) => ({ capture, command: `capture ${capture}`, contract: 'README.md', expected: 'declared', classification });
+  const materialize = (...rows: ReturnType<typeof row>[]) => {
+    fs.rmSync(path.join(f.root, 'evidence.json'), { force: true });
+    f.json('annotations.json', { revision: 'fixture-revision', limits: ['Snapshot changed mid-run.'], evidence: rows });
+    const result = f.run('materialize', f.root, 'annotations.json');
+    expect(result.status, result.stderr).toBe(0);
+    return receipt(result.stdout).verdict;
+  };
+  fs.writeFileSync(path.join(f.root, 'snap'), 'before');
+  expect(f.capture('001', program('happy')).status).toBe(0);
+  fs.writeFileSync(path.join(f.root, 'snap'), 'after');
+  expect(probe('002', '001', 'adverse').status).toBe(0);
+  expect(materialize(row('001', 'superseded'), row('002', 'pass'))).toEqual({ status: 'inconclusive', open: ['capture 001 superseded'] });
+  const again = f.run('materialize', f.root, 'annotations.json');
+  expect(again.status).toBe(2);
+  expect(receipt(again.stderr).message).toContain('evidence.json is already published');
+  expect(probe('003', '002', 'happy').status).toBe(0);
+  expect(materialize(row('001', 'superseded'), row('002', 'pass'), row('003', 'superseded'))).toEqual({ status: 'inconclusive', open: ['capture 001 superseded', 'capture 003 superseded'] });
+  expect(materialize(row('001', 'superseded'), row('002', 'pass'), row('003', 'pass'))).toEqual({ status: 'pass', open: [] });
+});
+
 test('captures list declared-but-unrun required probes without judging them', () => {
   const f = fixture();
   const required = [`${process.execPath} -e console.log(JSON.stringify({step:1}))`, 'bun run probe -- reject'];
