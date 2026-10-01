@@ -776,6 +776,40 @@ function detectorReportEntries(report: string): string[] {
   return report.split(/(?=^[\t ]*(?:#{1,6}\s+|[-*|]\s*|\d+[.)]\s+)?(?:\*\*|`)?FINDING-\d+)/m);
 }
 
+const INSTALL_OR_OVERRIDE = /\bnpx\b|gstack-design-detect\.ts install|\b(?:curl|wget|npm install|bun add)\b|IMPECCABLE_BIN\s*=/;
+
+/** A quoted-delimiter heredoc body is literal data, so a report that says
+ * "no npx" is not an npx run. Unquoted bodies still expand and stay checked;
+ * an unterminated body keeps the whole command checked. */
+function commandRunsInstallOrOverride(command: string): boolean {
+  const kept: string[] = [];
+  let delimiter: string | undefined, tabs = false;
+  for (const line of command.split('\n')) {
+    if (delimiter !== undefined) {
+      if ((tabs ? line.replace(/^\t*/, '') : line) === delimiter) delimiter = undefined;
+      continue;
+    }
+    kept.push(line);
+    const quoted = /<<(-)?[ \t]*(?:'([^'\n]+)'|"([^"\n]+)"|\\(\w+))/.exec(line);
+    if (quoted) { delimiter = quoted[2] ?? quoted[3] ?? quoted[4]; tabs = !!quoted[1]; }
+  }
+  return INSTALL_OR_OVERRIDE.test(delimiter === undefined ? kept.join('\n') : command);
+}
+
+if (!evalsEnabled) test('plugin handoff counts executed install commands, not quoted report text', () => {
+  // PR lane 36794871032: the report heredoc said "no `npx impeccable`" and failed noInstallOrOverride.
+  const reportWrite = "cat > detector-output.md <<'EOF'\n# Detector output\n- No install, no launcher, no `npx impeccable`, no Impeccable skill files read.\nEOF\necho \"written: $(wc -l < detector-output.md) lines\"; git status --short";
+  expect(commandRunsInstallOrOverride(reportWrite)).toBe(false);
+  expect(commandRunsInstallOrOverride(reportWrite.replace("<<'EOF'", '<<"EOF"'))).toBe(false);
+  expect(commandRunsInstallOrOverride(reportWrite.replace("<<'EOF'", '<<\\EOF'))).toBe(false);
+  expect(commandRunsInstallOrOverride(reportWrite.replace("<<'EOF'", "<<-'EOF'").replace('\nEOF\n', '\n\t\tEOF\n'))).toBe(false);
+  expect(commandRunsInstallOrOverride('npx impeccable detect .')).toBe(true);
+  expect(commandRunsInstallOrOverride('IMPECCABLE_BIN=/tmp/x bun run detect.ts probe')).toBe(true);
+  expect(commandRunsInstallOrOverride(reportWrite.replace("<<'EOF'", '<<EOF').replace('`npx impeccable`', '$(npx impeccable)'))).toBe(true);
+  expect(commandRunsInstallOrOverride(reportWrite + '\nnpx impeccable detect .')).toBe(true);
+  expect(commandRunsInstallOrOverride(reportWrite.replace('\nEOF\n', '\nEO\n'))).toBe(true);
+});
+
 if (!evalsEnabled) test('detector report handoffs stay with their entry across inline cross-references', () => {
   const report = `### FINDING-001 \`[low-contrast]\` — impact=high — DEFERRED
 handoff=\`/impeccable colorize\`
@@ -933,7 +967,7 @@ Write the probe's first line and skill-presence line, then one FINDING-NNN entry
         probeReported: report.includes(`IMPECCABLE_READY: ${fixture.engines['4.10.0']}`) && report.includes('IMPECCABLE_SKILL: present'),
         probeExecuted: commands.some(command => /gstack-design-detect\.ts probe/.test(command)),
         scanExecuted: commands.some(command => /gstack-design-detect\.ts scan --changed main/.test(command)),
-        noInstallOrOverride: !commands.some(command => /\bnpx\b|gstack-design-detect\.ts install|\b(?:curl|wget|npm install|bun add)\b|IMPECCABLE_BIN\s*=/.test(command)),
+        noInstallOrOverride: !commands.some(commandRunsInstallOrOverride),
         oneNewEngineInvocation: invocations.length === 1,
         oldEngineNotExecuted: !fs.existsSync(path.join(fixture.dir, '4.3.1.jsonl')),
         launcherNotExecuted: !fs.existsSync(path.join(fixture.dir, 'launcher-ran')),
