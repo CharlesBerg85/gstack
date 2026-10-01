@@ -434,6 +434,7 @@ async function runWorkflowJudge(opts: {
   structuredResponse?: boolean;
   maxTokens?: number;
   stream?: boolean;
+  effort?: 'medium';
   model?: string;
   thresholds?: { clarity: number; completeness: number; actionability: number };
   readInput?: () => WorkflowJudgeInput;
@@ -520,7 +521,8 @@ async function runWorkflowJudge(opts: {
     try {
       result = reused?.samples ?? await judgePanel(() => callJudge<JudgeScore>(prompt, opts.model, { signal: controller.signal, max_tokens: maxTokens,
         ...(opts.stream ? { stream: true } : {}),
-        ...(opts.structuredResponse ? { jsonSchema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } : {}) }));
+        ...(opts.structuredResponse ? { jsonSchema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } : {}),
+        ...(opts.effort ? { effort: opts.effort } : {}) }));
     } catch (error) {
       checkActive();
       if (error instanceof JudgeRefusalError && customInputMetadata) {
@@ -572,6 +574,8 @@ describeIfSelected('Ship & Release skill evals', ['ship/SKILL.md workflow', 'doc
       structuredResponse: true,
       maxTokens: 65_536,
       stream: true,
+      // Default effort thought past JUDGE_MS in 3 of 18 measured samples; medium kept all 18 under 80 s.
+      effort: 'medium',
       suite: 'Ship & Release skill evals',
       agentCapability: 'frontier',
       // The contract now precedes platform detection; keep the complete workflow.

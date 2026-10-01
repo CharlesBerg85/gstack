@@ -104,6 +104,8 @@ export interface CallJudgeOptions {
   signal?: AbortSignal;
   /** Opt-in serialization contract; callers still validate the judgment locally. */
   jsonSchema?: JSONOutputFormat['schema'];
+  /** Adaptive-thinking effort; the judge models accept no thinking token budget. */
+  effort?: 'low' | 'medium' | 'high';
 }
 
 export async function callJudge<T>(
@@ -129,7 +131,9 @@ export async function callJudge<T>(
     model: resolvedModel,
     max_tokens: maxTokens,
     ...(opts?.temperature !== undefined ? { temperature: opts.temperature } : {}),
-    ...(opts?.jsonSchema === undefined ? {} : { output_config: { format: { type: 'json_schema' as const, schema: opts.jsonSchema } } }),
+    ...(opts?.jsonSchema === undefined && opts?.effort === undefined ? {} : { output_config: {
+      ...(opts?.jsonSchema === undefined ? {} : { format: { type: 'json_schema' as const, schema: opts.jsonSchema } }),
+      ...(opts?.effort === undefined ? {} : { effort: opts.effort }) } }),
     messages: [{ role: 'user' as const, content: prompt }],
   };
   const makeRequest = () => opts?.stream

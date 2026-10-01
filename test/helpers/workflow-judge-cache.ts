@@ -18,6 +18,7 @@ export interface WorkflowCacheOptions {
   structuredResponse?: boolean;
   maxTokens?: number;
   stream?: boolean;
+  effort?: 'medium';
   env?: NodeJS.ProcessEnv;
 }
 export interface WorkflowJudgeReuse {
@@ -88,6 +89,7 @@ export function prepareWorkflowJudgeCache(opts: WorkflowCacheOptions): {
           request: opts.stream ? 'messages.stream/user' : 'messages.create/user', retries: 0,
           panel: { samples: JUDGE_PANEL_SAMPLES, numeric: 'mean', boolean: 'majority' },
           ...(opts.stream ? { stream: true } : {}),
+          ...(opts.effort ? { effort: opts.effort } : {}),
           ...(opts.structuredResponse ? { output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } },
             response_validation: { reasoning_words_below: WORKFLOW_JUDGE_REASONING_WORD_LIMIT } } : {}) },
         runtime: { image: env.EVALS_CACHE_RUNTIME_ID!, bun: Bun.version, node: process.versions.node,

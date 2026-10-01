@@ -398,6 +398,8 @@ test('Ship sends its authorized 64k cap and compact response contract through th
   expect(options.structuredResponse).toBe(true);
   expect(options.maxTokens).toBe(65_536);
   expect(options.stream).toBe(true);
+  expect(options.effort).toBe('medium');
+  expect(source.match(/^\s+effort: '/gm)).toHaveLength(1);
   expect(WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning).not.toHaveProperty('pattern');
   expect(WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning).not.toHaveProperty('maxLength');
   expect(source.match(/structuredResponse: true/g)).toHaveLength(1);
@@ -407,10 +409,10 @@ test('Ship sends its authorized 64k cap and compact response contract through th
   }) } as any);
   try {
     const h = actualCallback(f, { judge: (prompt, model, request) => callJudge<typeof scores>(prompt, model, request) });
-    await h.run({ ...h.options, structuredResponse: options.structuredResponse, maxTokens: options.maxTokens, stream: options.stream });
+    await h.run({ ...h.options, structuredResponse: options.structuredResponse, maxTokens: options.maxTokens, stream: options.stream, effort: options.effort });
     expect(stream.mock.calls[0]).toEqual([{
       model: resolveEvalModel('judge'), max_tokens: 65_536,
-      output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA } },
+      output_config: { format: { type: 'json_schema', schema: WORKFLOW_JUDGE_RESPONSE_SCHEMA }, effort: 'medium' },
       messages: [{ role: 'user', content: f.opts.prompt }],
     }, { signal: h.signals[0] }]);
     expect(h.records[0]).toMatchObject({ passed: true, judge_scores: { clarity: 4, completeness: 5, actionability: 4 } });
@@ -419,6 +421,8 @@ test('Ship sends its authorized 64k cap and compact response contract through th
     f.opts.structuredResponse = true;
     f.opts.maxTokens = 65_536;
     f.opts.stream = true;
+    expect(f.cache().lookup()).toBeNull();
+    f.opts.effort = 'medium';
     expect(f.cache().lookup()?.samples).toEqual(panel);
   } finally { stream.mockRestore(); }
 });
