@@ -1256,7 +1256,33 @@ describe('Autoplan ownership in a linked git worktree session', () => {
     expect(await run(f, root)).toMatchObject({ hookSpecificOutput: { permissionDecisionReason: expect.stringContaining('Publish the filled Phase 1') } });
   });
 
-  for (const kind of ['no-link', 'worktree-file-only', 'admin-entry-only', 'other-repository'] as const)
+  test.if(process.platform === 'win32')('a forward-slash, lowercase-drive gitdir names the same worktree', async () => {
+    const f = fixture(); f.message(); f.current(); f.journal();
+    const root = repo(), lower = (file: string) => posix(file[0]!.toLowerCase() + file.slice(1));
+    const entry = path.join(root, '.git', 'worktrees', 'session'); fs.mkdirSync(entry, { recursive: true });
+    fs.writeFileSync(path.join(entry, 'gitdir'), lower(path.join(f.cwd, '.git')) + '\n');
+    fs.writeFileSync(path.join(f.cwd, '.git'), `gitdir: ${lower(entry)}\n`);
+    expect(await run(f, lower(root))).toEqual({});
+  });
+
+  test('worktree.useRelativePaths links resolve against each file\'s own directory', async () => {
+    const f = fixture(); f.message(); f.current(); f.journal();
+    const root = repo(), entry = path.join(root, '.git', 'worktrees', 'session'); fs.mkdirSync(entry, { recursive: true });
+    // Exactly what git 2.55 `-c worktree.useRelativePaths=true worktree add` writes.
+    fs.writeFileSync(path.join(entry, 'gitdir'), posix(path.relative(entry, path.join(f.cwd, '.git'))) + '\n');
+    fs.writeFileSync(path.join(f.cwd, '.git'), `gitdir: ${posix(path.relative(f.cwd, entry))}\n`);
+    expect(await run(f, root)).toEqual({});
+  });
+
+  test('an unrelated linked worktree leaves the exact project-directory owner unchanged', async () => {
+    const f = fixture(); f.message(); f.current(); f.journal();
+    const elsewhere = repo(); fs.mkdirSync(path.join(f.cwd, '.git', 'worktrees', 'session'), { recursive: true });
+    fs.writeFileSync(path.join(f.cwd, '.git', 'worktrees', 'session', 'gitdir'), posix(path.join(elsewhere, '.git')) + '\n');
+    expect(await run(f, f.cwd)).toEqual({});
+  });
+
+  for (const kind of ['no-link', 'worktree-file-only', 'admin-entry-only', 'other-repository',
+    'submodule-gitdir', 'project-is-itself-a-worktree', 'bare-repository'] as const)
     test(`an unlinked directory cannot own the journal: ${kind}`, async () => {
       const f = fixture(); f.message(); f.current(); f.journal();
       const root = repo();
@@ -1264,6 +1290,16 @@ describe('Autoplan ownership in a linked git worktree session', () => {
       if (kind === 'admin-entry-only') admin(root, f.cwd);
       // The root claims the worktree, but the worktree names another repository.
       if (kind === 'other-repository') { admin(root, f.cwd); pointer(f.cwd, admin(repo(), f.cwd)); }
+      if (kind === 'submodule-gitdir') {
+        admin(root, f.cwd); const modules = path.join(root, '.git', 'modules', 'session');
+        fs.mkdirSync(modules, { recursive: true }); pointer(f.cwd, modules);
+      }
+      // A project directory whose own .git is a file has no worktree registry of its own.
+      if (kind === 'project-is-itself-a-worktree') { fs.writeFileSync(path.join(root, '.git'), 'gitdir: elsewhere\n'); pointer(f.cwd, path.join(root, '.git', 'worktrees', 'session')); }
+      if (kind === 'bare-repository') {
+        const entry = path.join(root, 'worktrees', 'session'); fs.mkdirSync(entry, { recursive: true });
+        fs.writeFileSync(path.join(entry, 'gitdir'), posix(path.join(f.cwd, '.git')) + '\n'); pointer(f.cwd, entry);
+      }
       const output: any = await run(f, root);
       expect(output.hookSpecificOutput?.permissionDecision).toBe('deny');
       expect(output.hookSpecificOutput.permissionDecisionReason).toContain('no missing-publication conclusion');

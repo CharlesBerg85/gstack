@@ -485,11 +485,15 @@ export function linkedWorktrees(projectDir: string): string[] {
   return entries.filter(entry => entry.isDirectory()).slice(0, 256).flatMap(entry => {
     try {
       const link = path.join(admin, entry.name);
-      const gitFile = nativePathSpelling(fs.readFileSync(path.join(link, 'gitdir'), 'utf8').trim());
-      if (!path.isAbsolute(gitFile) || path.basename(gitFile) !== '.git' || !fs.lstatSync(gitFile).isFile()) return [];
+      // worktree.useRelativePaths writes each side relative to its own file's directory.
+      const forward = /^([^\r\n]+)\r?\n?$/.exec(fs.readFileSync(path.join(link, 'gitdir'), 'utf8'))?.[1];
+      if (!forward) return [];
+      const gitFile = nativePathSpelling(path.resolve(link, nativePathSpelling(forward)));
+      if (path.basename(gitFile) !== '.git' || !fs.lstatSync(gitFile).isFile()) return [];
       const back = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(fs.readFileSync(gitFile, 'utf8'))?.[1];
-      if (!back || fs.realpathSync(path.resolve(path.dirname(gitFile), nativePathSpelling(back))) !== fs.realpathSync(link)) return [];
-      const worktree = fs.realpathSync(path.dirname(gitFile));
+      if (!back || nativePathSpelling(fs.realpathSync(path.resolve(path.dirname(gitFile), nativePathSpelling(back)))) !==
+          nativePathSpelling(fs.realpathSync(link))) return [];
+      const worktree = nativePathSpelling(fs.realpathSync(path.dirname(gitFile)));
       return ownPath(worktree) ? [worktree] : [];
     } catch { return []; }
   });
