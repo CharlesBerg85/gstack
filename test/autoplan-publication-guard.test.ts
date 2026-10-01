@@ -1230,3 +1230,42 @@ describe('Autoplan phase entry through the gbrain :user render (#2569)', () => {
       expect(withEnv(env, () => f.evaluate())).toMatchObject(denied);
     });
 });
+
+describe('Autoplan ownership in a linked git worktree session', () => {
+  const posix = (file: string) => file.replaceAll('\\', '/');
+  /** git worktree add's two-way link: <repo>/.git/worktrees/<name>/gitdir <-> <worktree>/.git. */
+  function admin(repo: string, worktree: string) {
+    const entry = path.join(repo, '.git', 'worktrees', 'session');
+    fs.mkdirSync(entry, { recursive: true });
+    fs.writeFileSync(path.join(entry, 'gitdir'), posix(path.join(worktree, '.git')) + '\n');
+    return entry;
+  }
+  const pointer = (worktree: string, entry: string) => fs.writeFileSync(path.join(worktree, '.git'), `gitdir: ${posix(entry)}\n`);
+  const repo = () => { const dir = fs.realpathSync(fs.mkdtempSync(path.join(tmpdir(), 'autoplan-repo-'))); dirs.push(dir); return dir; };
+  const run = (f: ReturnType<typeof fixture>, root: string) => withNativeProjectDirectory(root, () => runPublicationHook(f.input, ROOT));
+
+  test('the repository root owns its linked worktree journal', async () => {
+    const f = fixture(); f.message(); f.current(); f.journal();
+    const root = repo(); pointer(f.cwd, admin(root, f.cwd));
+    expect(await run(f, root)).toEqual({});
+  });
+
+  test('a linked worktree journal still requires the parent publication', async () => {
+    const f = fixture(); f.current(); f.journal();
+    const root = repo(); pointer(f.cwd, admin(root, f.cwd));
+    expect(await run(f, root)).toMatchObject({ hookSpecificOutput: { permissionDecisionReason: expect.stringContaining('Publish the filled Phase 1') } });
+  });
+
+  for (const kind of ['no-link', 'worktree-file-only', 'admin-entry-only', 'other-repository'] as const)
+    test(`an unlinked directory cannot own the journal: ${kind}`, async () => {
+      const f = fixture(); f.message(); f.current(); f.journal();
+      const root = repo();
+      if (kind === 'worktree-file-only') pointer(f.cwd, path.join(root, '.git', 'worktrees', 'session'));
+      if (kind === 'admin-entry-only') admin(root, f.cwd);
+      // The root claims the worktree, but the worktree names another repository.
+      if (kind === 'other-repository') { admin(root, f.cwd); pointer(f.cwd, admin(repo(), f.cwd)); }
+      const output: any = await run(f, root);
+      expect(output.hookSpecificOutput?.permissionDecision).toBe('deny');
+      expect(output.hookSpecificOutput.permissionDecisionReason).toContain('no missing-publication conclusion');
+    });
+});

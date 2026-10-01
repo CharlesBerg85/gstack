@@ -472,6 +472,29 @@ function evaluatePublication(input: PublicationHookInput, root: string, events: 
   }
 }
 
+/**
+ * A worktree session gets the repository root as CLAUDE_PROJECT_DIR while its
+ * journal is rooted in the linked worktree. Only git's own two-way link makes
+ * a directory that worktree: <root>/.git/worktrees/<name>/gitdir names
+ * <worktree>/.git, and that file names the same admin entry back.
+ */
+export function linkedWorktrees(projectDir: string): string[] {
+  let entries: fs.Dirent[];
+  const admin = path.join(projectDir, '.git', 'worktrees');
+  try { entries = fs.readdirSync(admin, { withFileTypes: true }); } catch { return []; }
+  return entries.filter(entry => entry.isDirectory()).slice(0, 256).flatMap(entry => {
+    try {
+      const link = path.join(admin, entry.name);
+      const gitFile = nativePathSpelling(fs.readFileSync(path.join(link, 'gitdir'), 'utf8').trim());
+      if (!path.isAbsolute(gitFile) || path.basename(gitFile) !== '.git' || !fs.lstatSync(gitFile).isFile()) return [];
+      const back = /^gitdir: ([^\r\n]+)\r?\n?$/.exec(fs.readFileSync(gitFile, 'utf8'))?.[1];
+      if (!back || fs.realpathSync(path.resolve(path.dirname(gitFile), nativePathSpelling(back))) !== fs.realpathSync(link)) return [];
+      const worktree = fs.realpathSync(path.dirname(gitFile));
+      return ownPath(worktree) ? [worktree] : [];
+    } catch { return []; }
+  });
+}
+
 export function publicationHookOutput(decision: PublicationDecision): object {
   return decision.allow ? {} : { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny',
     permissionDecisionReason: `[autoplan] ${decision.reason}` } };
@@ -491,9 +514,14 @@ export async function runPublicationHook(value: unknown, root: string): Promise<
     // On Windows the hook env spells it C:/...; the journal records C:\...
     const projectCwd = nativePathSpelling(process.env.CLAUDE_PROJECT_DIR ?? input.cwd);
     if (!ownPath(projectCwd)) fail('Native parent project directory is unavailable.');
+    const owners = [projectCwd, ...linkedWorktrees(projectCwd)];
     const deadline = performance.now() + 2_000;
     do {
-      const snapshot = readOwnedClaudePublicTranscript(input.transcript_path, projectCwd, input.session_id);
+      let snapshot = readOwnedClaudePublicTranscript(input.transcript_path, projectCwd, input.session_id);
+      for (const owner of owners.slice(1)) {
+        if (snapshot.transcript.status === 'ready') break;
+        snapshot = readOwnedClaudePublicTranscript(input.transcript_path, owner, input.session_id);
+      }
       if (snapshot.transcript.status === 'ready') {
         if (snapshot.events.some(e => e.kind === 'use' && e.toolUseId === input.tool_use_id))
           return publicationHookOutput(evaluateAutoplanPublication(input, root, snapshot.events));
