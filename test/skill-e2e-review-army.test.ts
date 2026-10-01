@@ -289,6 +289,7 @@ finish with a brief acknowledgement rather than repeating the findings in the fi
 
 describeIfSelected('Review Army: Delivery Audit', ['review-army-delivery-audit'], () => {
   let dir: string;
+  let observations: string;
 
   beforeAll(() => {
     const repo = setupRepo('army-delivery');
@@ -342,24 +343,40 @@ end
     repo.run('git', ['add', '.']);
     repo.run('git', ['commit', '-m', 'implement auth and profile features']);
 
-    copyReviewFiles(dir);
+    // PR lane 36794871032 timed out at 120 s: the session read the 46 KB extracted
+    // SKILL in three passes, logged a learning and rewrote a 74-line report. Stage only
+    // the audit section and record its git reads, as the Step 4.5 cases do.
+    const git = (args: string[]) => spawnSync('git', args, { cwd: dir, encoding: 'utf-8', timeout: 5000 }).stdout ?? '';
+    const diff = git(['diff', 'main...HEAD']);
+    if (!diff.includes('auth.rb') || !diff.includes('profile.rb')) throw new Error('Delivery audit fixture diff is missing auth.rb or profile.rb');
+    observations = `$ git log main..HEAD --oneline
+${git(['log', 'main..HEAD', '--oneline']).trimEnd()}
+$ git diff main...HEAD
+${diff.trimEnd()}`;
+    fs.writeFileSync(path.join(dir, 'plan-completion.md'), readReviewSection('plan-completion.md'));
   });
 
   afterAll(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch {} });
 
   testConcurrentIfSelected('review-army-delivery-audit', async () => {
     const result = await runSkillTest({
-      prompt: `You are in a git repo on branch feature/three-features.
+      prompt: `You are the /review parent on branch feature/three-features.
 There is a PLAN.md file that promises 3 features: auth, profile, and email notifications.
 The diff (git diff main...HEAD) only implements 2 of them (auth and profile).
+The base branch is main. There is no origin remote, so use main wherever the workflow says origin/<base>.
 
-Read review-SKILL.md for the review workflow. Focus on the Plan Completion Audit section.
+This capture covers only Step 1.5's Plan Completion Audit. Read plan-completion.md once: it is that workflow.
 The plan file is at ./PLAN.md. Cross-reference it against the diff.
+The HIGH-impact discrepancy question, its Scope Check, learnings logging and the later review steps are outside this capture; do not run them. Do not edit source.
+The fixture already ran the audit's git commands. Use these recorded outputs instead of rerunning them:
+\`\`\`
+${observations}
+\`\`\`
 
 For each plan item, classify as DONE, PARTIAL, NOT DONE, or CHANGED.
 The email notification system should be classified as NOT DONE.
 
-Write your completion audit to ${dir}/review-output.md`,
+Write ${dir}/review-output.md with only the PLAN COMPLETION AUDIT block and a DISCREPANCY entry for each PARTIAL or NOT DONE item, in at most 30 lines.`,
       workingDirectory: dir,
       maxTurns: 15,
       timeout: JUDGE_MS,
