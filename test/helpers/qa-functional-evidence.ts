@@ -21,14 +21,14 @@ const passingOutput = (text: string) => /\b[1-9]\d* pass\b/.test(text) && /\b0 f
 
 export function qaNativeProbes(result: Pick<SkillTestResult, 'toolCalls'> & Partial<Pick<SkillTestResult, 'transcript'>>, root?: string) {
   const calls = root && result.transcript ? nativeCalls(result.transcript, []) : [];
-  return result.toolCalls.flatMap<{ index: number; command: string; nativeCommand?: string; observed: any }>((call, index) => {
+  return result.toolCalls.flatMap<{ index: number; command: string; nativeCommand?: string; capture?: string; observed: any }>((call, index) => {
     if (root && call.tool === 'Bash') {
       const native = calls.filter(native => native.name === 'Bash' && native.input.command === call.input?.command && native.output === call.output);
       const producer = native.length === 1 ? qaNativeCapture(native[0], { cwd: root, reportRoot: path.join(root, 'qa-reports'), executable: path.join(root, 'bin/gstack-qa-evidence') }) : undefined;
       if (producer && /^bun (?:run probe -- |cancel\.ts$)/.test(producer.command.nativeCommand!)) {
         const observed = producer.captured.observed as any;
         if (observed && (Array.isArray(observed.args) || typeof observed.scenario === 'string'
-          || producer.command.nativeCommand === 'bun cancel.ts' && Object.hasOwn(observed, 'exit'))) return [{ index, command: call.input.command, nativeCommand: producer.command.nativeCommand!, observed }];
+          || producer.command.nativeCommand === 'bun cancel.ts' && Object.hasOwn(observed, 'exit'))) return [{ index, command: call.input.command, nativeCommand: producer.command.nativeCommand!, capture: producer.command.id!, observed }];
       }
     }
     if (call.tool !== 'Bash' || !/^bun (?:run probe -- |cancel\.ts$)/.test(call.input?.command ?? '')) return [];
@@ -164,8 +164,13 @@ export function qaFunctionalVerdict(fixture: QAFunctionalFixture, mode: QAMode, 
   for (const row of report?.evidence ?? []) {
     if (!probes.some(probe => row.command === probe.command && canonical(row.observed) === canonical(probe.observed))) failures.push('report invented an executed probe');
   }
+  const learnedNote = (row: any) => {
+    try { return JSON.parse(checkpointFiles[`exploration-${row.nextCapture}.json`]).hypothesis === row.hypothesis; } catch { return false; }
+  };
   if (!report?.learning?.some(row => typeof row.hypothesis === 'string' && row.hypothesis.trim().length > 20
-    && probes.some(previous => previous.command === row.observationCommand && probes.some(next => next.index > previous.index && next.command === row.nextCommand && nativeCommand(next) !== nativeCommand(previous))))) failures.push('missing observation-to-next-hypothesis evidence');
+    && probes.some(previous => (typeof row.observationCapture === 'string' ? previous.capture === row.observationCapture : previous.command === row.observationCommand)
+      && probes.some(next => next.index > previous.index && nativeCommand(next) !== nativeCommand(previous)
+        && (typeof row.nextCapture === 'string' ? next.capture === row.nextCapture && learnedNote(row) : next.command === row.nextCommand))))) failures.push('missing observation-to-next-hypothesis evidence');
   const publicText = JSON.stringify(report) + result.output + reportMarkdown + JSON.stringify(checkpointFiles);
   if (publicText.includes(QA_PRIVATE_SENTINEL)) failures.push('private sentinel leaked into published evidence');
   if (mode === 'qa' && defect) {

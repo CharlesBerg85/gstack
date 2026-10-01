@@ -105,7 +105,7 @@ describe('QA probe entry and checkpoint gates', () => {
       for (const skillName of ['qa', 'qa-only']) {
         const text = generateQAExploratory({ host: host.name, skillName, tmplPath: '', paths: HOST_PATHS[host.name] });
         const stages = [...(skillName === 'qa-only' ? ['Classify the last result before copying it'] : []),
-          'Check fields before publication', 'bun Q checkpoint R NNN CAPTURE_ID',
+          'Check fields before publication', "--after PREV --hypothesis 'why' -- CMD",
           'Browser checkpoints use Write', 'Wait for successful checkpoint publication', '3. Run that exact probe'];
         const positions = stages.map(stage => text.indexOf(stage));
         expect(positions.every(position => position >= 0)).toBe(true);

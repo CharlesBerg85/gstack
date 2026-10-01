@@ -115,7 +115,7 @@ ${reportOnly ? `   For guarded text, copy the complete span between the guard's 
    Preserve every safe program-JSON key/value and identity hash unchanged.
    Withhold unsafe values, disclose limits and stop that chain.
    Check fields before publication. No drafts/placeholders or invented safe-path redactions; corrections cannot repair published notes.
-   Functional: \`bun Q checkpoint R NNN CAPTURE_ID 'observationCommand' 'hypothesis' 'nextCommand'\` with literal arguments. Q supplies observed; never transcribe it.
+   Functional: the next capture publishes it: \`... --after PREV --hypothesis 'why' -- CMD\` (PREV: last complete capture). Q supplies observed; never transcribe it.
    Browser checkpoints use Write.
    Wait for successful checkpoint publication before dispatch.
    Never backfill or overwrite notes.

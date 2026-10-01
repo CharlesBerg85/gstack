@@ -115,6 +115,13 @@ export function readQaCapture(reportRoot: string, captureId: string, expectedHas
 
 const anchoredOn = (command: unknown, captureId: string) => typeof command === 'string' && new RegExp(`\\scapture\\s+\\S+\\s+${captureId}(?:\\s|$)`).test(command);
 const nativeCommand = (command: string) => command.slice(command.indexOf(' -- ') + 4).trim();
+const MERGED_NOTE = ['observationCapture', 'observationArgv', 'observed', 'hypothesis', 'nextCapture', 'nextArgv'];
+const links = (note: Record<string, any>, previous: string, captureId: string) => note.observationCapture === previous && note.nextCapture === captureId
+  || anchoredOn(note.observationCommand, previous) && anchoredOn(note.nextCommand, captureId);
+const learned = (note: Record<string, any>) => exact(note, MERGED_NOTE)
+  ? JSON.stringify(note.observationArgv) !== JSON.stringify(note.nextArgv)
+  : typeof note.observationCommand === 'string' && typeof note.nextCommand === 'string' && nativeCommand(note.observationCommand) !== nativeCommand(note.nextCommand);
+const validHypothesis = (value: unknown) => typeof value === 'string' && value.trim().length > 20 && /[a-z]{3}/i.test(value);
 
 function checkpointNotes(root: string): Record<string, any>[] {
   return fs.readdirSync(root).filter(name => /^exploration-\d{3}\.json$/.test(name)).sort()
@@ -140,16 +147,27 @@ function requiredRemaining(root: string): { requiredRemaining?: string[] } {
   return { requiredRemaining: required.filter(command => !run.has(command)) };
 }
 
-async function capture(root: string, captureId: string, publicOutput: boolean, option: string, budget: string, command: string, args: string[]) {
+async function capture(root: string, captureId: string, publicOutput: boolean, option: string, budget: string, command: string, args: string[], after?: { capture: string; hypothesis: string }) {
   id(captureId);
   if (!command || !['--deadline', '--timeout-ms'].includes(option)) throw new QaEvidenceError('Capture requires a deadline or finite command timeout');
   const previous = latestCompleteCapture(root);
-  if (previous && !checkpointNotes(root).some(note => anchoredOn(note.observationCommand, previous) && anchoredOn(note.nextCommand, captureId))) {
-    throw new QaEvidenceError(`Checkpoint required before capture ${captureId}: first publish a checkpoint whose observationCommand is capture ${previous}'s full command and whose nextCommand is this exact capture command (checkpoint ROOT NNN ${previous} 'capture ${previous} command' 'causal hypothesis' 'this command'), then rerun this command unchanged. To stop exploring instead, run no further probe.`);
+  if (after && after.capture !== previous) throw new QaEvidenceError(previous ? `--after must name capture ${previous}, the latest complete capture` : 'The first capture takes no --after');
+  if (after && !validHypothesis(after.hypothesis)) throw new QaEvidenceError('Invalid --hypothesis: need one causal sentence over 20 characters');
+  if (!after && previous && !checkpointNotes(root).some(note => links(note, previous, captureId))) {
+    throw new QaEvidenceError(`Checkpoint required before capture ${captureId}: rerun with the causal note for capture ${previous}: capture ROOT ${captureId} ${publicOutput ? '--public ' : ''}${option} ${budget} --after ${previous} --hypothesis 'what capture ${previous} taught you to test next' -- COMMAND ARGS. To stop exploring instead, run no further probe.`);
   }
   if (option === '--timeout-ms' && (!/^[1-9]\d*$/.test(budget) || !Number.isSafeInteger(Number(budget)) || Number(budget) > 2_147_483_647)) throw new QaEvidenceError('Invalid command timeout');
+  let note: Record<string, unknown> | undefined;
+  if (after) {
+    const observation = readQaCapture(root, after.capture);
+    note = { observationCapture: after.capture, observationArgv: observation.receipt.argv, observed: observation.observed,
+      hypothesis: after.hypothesis, nextCapture: captureId, nextArgv: [command, ...args] };
+    if (scan(JSON.stringify(note)).findings.some(finding => finding.tier === 'HIGH')) throw new QaEvidenceError('Sensitive intent cannot be published');
+    if (fs.existsSync(owned(root, `exploration-${captureId}.json`))) throw new QaEvidenceError(`Checkpoint ${captureId} already exists; use a fresh capture ID`);
+  }
   privateDirectory(root, '.qa-evidence');
   const directory = privateDirectory(root, `.qa-evidence/${captureId}`, true);
+  const checkpointSha256 = note && publish(root, `exploration-${captureId}.json`, note);
   const deadline = option === '--deadline' ? owned(root, path.resolve(budget)) : path.join(directory, 'deadline.json');
   if (option === '--timeout-ms') startQaDeadline(deadline, (Number(budget) / 1000).toFixed(3));
   const startedAt = new Date().toISOString();
@@ -219,7 +237,8 @@ async function capture(root: string, captureId: string, publicOutput: boolean, o
   const sha256 = publish(root, `.qa-evidence/${captureId}/receipt.json`, receipt);
   return { action: 'capture', id: captureId, status, sha256, exitCode, signal: result.signal, publicOutput,
     startedAt, completedAt, durationMs: Date.parse(completedAt) - Date.parse(startedAt), ...(remainingMs === undefined ? {} : { remainingMs }),
-    ...(status === 'complete' ? { next: `Another probe requires a checkpoint anchored on capture ${captureId} first; to stop exploring, publish none.` } : {}),
+    ...(checkpointSha256 ? { checkpoint: captureId, checkpointSha256, link: `[checkpoint ${captureId}](exploration-${captureId}.json)` } : {}),
+    ...(status === 'complete' ? { next: `Another probe requires a checkpoint anchored on capture ${captureId}: add --after ${captureId} --hypothesis 'TEXT' before --. To stop exploring, run none.` } : {}),
     ...requiredRemaining(root) };
 }
 
@@ -229,7 +248,7 @@ function checkpoint(root: string, checkpointId: string, source: string | Record<
   const intent = JSON.parse(decode(bytes));
   if (!exact(intent, ['capture', 'observationCommand', 'hypothesis', 'nextCommand'])
     || typeof intent.capture !== 'string' || typeof intent.observationCommand !== 'string' || !intent.observationCommand.trim()
-    || typeof intent.hypothesis !== 'string' || intent.hypothesis.trim().length <= 20 || !/[a-z]{3}/i.test(intent.hypothesis)
+    || !validHypothesis(intent.hypothesis)
     || typeof intent.nextCommand !== 'string' || !intent.nextCommand.trim()) throw new QaEvidenceError('Invalid causal intent: need exactly capture, observationCommand, hypothesis (one sentence over 20 characters) and nextCommand');
   if (scan(decode(bytes)).findings.some(finding => finding.tier === 'HIGH')) throw new QaEvidenceError('Sensitive intent cannot be published');
   const captured = readQaCapture(root, intent.capture);
@@ -258,8 +277,7 @@ function materialize(root: string, source: string) {
     cwd: measured.cwd,
     limits: typeof supplied.limits === 'string' ? [supplied.limits] : supplied.limits,
     evidence: supplied.evidence,
-    learning: supplied.learning ?? notes.filter(note => typeof note.observationCommand === 'string' && typeof note.nextCommand === 'string'
-      && nativeCommand(note.observationCommand) !== nativeCommand(note.nextCommand)).map(note => note.name.slice(12, 15)),
+    learning: supplied.learning ?? notes.filter(({ name, ...note }) => learned(note)).map(note => note.name.slice(12, 15)),
     ...Object.fromEntries(Object.entries(supplied).filter(([key]) => !['revision', 'runtime', 'cwd', 'limits', 'evidence', 'learning'].includes(key))),
   };
   if (!exact(annotations, ['revision', 'runtime', 'cwd', 'limits', 'evidence', 'learning'])
@@ -288,11 +306,12 @@ function materialize(root: string, source: string) {
   const learning = annotations.learning.map((name: unknown) => {
     if (typeof name !== 'string') throw new QaEvidenceError('Invalid checkpoint reference');
     const note = JSON.parse(decode(read(root, `exploration-${id(name)}.json`)));
-    if (!exact(note, ['observationCommand', 'observed', 'hypothesis', 'nextCommand'])) throw new QaEvidenceError('Invalid referenced checkpoint');
-    if (nativeCommand(note.observationCommand) === nativeCommand(note.nextCommand)) {
+    if (!exact(note, ['observationCommand', 'observed', 'hypothesis', 'nextCommand']) && !exact(note, MERGED_NOTE)) throw new QaEvidenceError('Invalid referenced checkpoint');
+    if (!learned(note)) {
       throw new QaEvidenceError(`Invalid learning: checkpoint ${name} replays the same probe; name checkpoints whose next probe differs, or omit learning and Q selects them`);
     }
-    return { observationCommand: note.observationCommand, hypothesis: note.hypothesis, nextCommand: note.nextCommand };
+    const { observed, ...row } = note;
+    return row;
   });
   const classes = annotations.evidence.map((row: any) => String(row.classification).toLowerCase());
   const open = [
@@ -313,7 +332,7 @@ function materialize(root: string, source: string) {
     next: `Include every reportLinks entry in the Markdown report, and report the overall status as ${verdict.status}${verdict.open.length ? ` (open: ${verdict.open.join('; ')})` : ''}; rerun what is open first if a pass is required.` };
 }
 
-const QA_EVIDENCE_USAGE = 'capture ROOT ID [--public] --deadline FILE|--timeout-ms MS -- COMMAND ARGS | checkpoint ROOT ID CAPTURE OBSERVATION_COMMAND HYPOTHESIS NEXT_COMMAND | checkpoint ROOT ID INTENT_FILE | materialize ROOT ANNOTATIONS (annotations: {evidence: [{capture, command, contract, expected, classification}], limits: [..]}; revision, runtime, cwd and learning are filled in)';
+const QA_EVIDENCE_USAGE = 'capture ROOT ID [--public] --deadline FILE|--timeout-ms MS [--after PREVIOUS_CAPTURE --hypothesis TEXT] -- COMMAND ARGS (--after publishes checkpoint ID linking PREVIOUS_CAPTURE to this probe; required after the first complete capture unless a checkpoint was published) | checkpoint ROOT ID CAPTURE OBSERVATION_COMMAND HYPOTHESIS NEXT_COMMAND | checkpoint ROOT ID INTENT_FILE | materialize ROOT ANNOTATIONS (annotations: {evidence: [{capture, command, contract, expected, classification}], limits: [..]}; revision, runtime, cwd and learning are filled in)';
 
 export async function qaEvidenceMain(args: string[]): Promise<number> {
   return withQaReceiptOutput(false, 'qa-evidence-receipt', value => value.event === 'observation'
@@ -329,8 +348,10 @@ export async function qaEvidenceMain(args: string[]): Promise<number> {
       let receipt: Record<string, any>;
       const publicOutput = action === 'capture' && rest[1] === '--public';
       if (publicOutput) rest.splice(1, 1);
+      const after = action === 'capture' && rest[3] === '--after' && rest[5] === '--hypothesis' ? { capture: rest[4], hypothesis: rest[6] } : undefined;
+      if (after) rest.splice(3, 4);
       if (action === 'capture' && rest.length >= 5 && rest[3] === '--') {
-        receipt = await capture(root, rest[0], publicOutput, rest[1], rest[2], rest[4], rest.slice(5));
+        receipt = await capture(root, rest[0], publicOutput, rest[1], rest[2], rest[4], rest.slice(5), after);
         if (publicOutput && receipt.status === 'complete') {
           const captured = readQaCapture(root, rest[0], receipt.sha256);
           emit('stdout', { event: 'observation', observed: captured.observed });

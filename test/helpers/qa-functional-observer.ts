@@ -140,7 +140,7 @@ export async function observeQAWrites(root: string, options: { reportDirectory?:
           || !canonicalUTC(state.startedAt) || !canonicalUTC(state.deadlineAt)
           || Date.parse(state.deadlineAt) > Date.parse(state.startedAt) + state.budgetMs)) throw error;
         if (!isDeadline && (!state || typeof state !== 'object' || Array.isArray(state))) throw error;
-        if (targetName.startsWith('exploration-') && Object.keys(state).sort().join(',') !== 'hypothesis,nextCommand,observationCommand,observed') throw error;
+        if (targetName.startsWith('exploration-') && !['hypothesis,nextCommand,observationCommand,observed', 'hypothesis,nextArgv,nextCapture,observationArgv,observationCapture,observed'].includes(Object.keys(state).sort().join(','))) throw error;
         if (targetName === 'receipt.json' && (state.version !== 1 || !/^\d{3}$/.test(state.id) || !['complete', 'incomplete', 'sensitive'].includes(state.status))) throw error;
         if (targetName === 'evidence.json' && (!Array.isArray(state.evidence) || !Array.isArray(state.limits))) throw error;
         const final = fs.lstatSync(target);

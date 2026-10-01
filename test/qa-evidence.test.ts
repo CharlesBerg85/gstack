@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 
 import { qaCommandAllowed } from './helpers/qa-functional-observer';
 import { qaCallerCommandAllowed } from './helpers/qa-callers-fixture';
@@ -281,6 +281,75 @@ test('a later capture requires a checkpoint anchored on the latest complete capt
   const final = JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8'));
   expect(final).toMatchObject({ runtime: `bun ${Bun.version}`, cwd: f.root });
   expect(final.learning).toEqual([{ observationCommand: first, hypothesis: 'The first observation makes the second input the riskiest next probe.', nextCommand: second('002') }]);
+});
+
+test('a merged capture publishes the causal note for the latest complete capture before running, and satisfies the guard by construction', () => {
+  const f = fixture();
+  const hypothesis = 'The first observation makes the second input the riskiest next probe.';
+  const merged = (id: string, after: string, program: string, text = hypothesis) =>
+    f.run('capture', f.root, id, '--timeout-ms', '4000', '--after', after, '--hypothesis', text, '--', process.execPath, '-e', program);
+  const first = merged('001', '000', 'console.log(1)');
+  expect(first.status).toBe(2);
+  expect(receipt(first.stderr).message).toContain('The first capture takes no --after');
+  expect(f.capture('001', 'console.log(JSON.stringify({ step: 1 }))').status).toBe(0);
+  for (const [after, text, message] of [['002', hypothesis, '--after must name capture 001'], ['001', 'too short', 'Invalid --hypothesis']]) {
+    const refused = merged('002', after, `require('node:fs').appendFileSync('effects', 'ran')`, text);
+    expect(refused.status).toBe(2);
+    expect(receipt(refused.stderr).message).toContain(message);
+  }
+  expect(fs.existsSync(path.join(f.root, 'effects'))).toBe(false);
+  expect(fs.existsSync(path.join(f.root, 'exploration-002.json'))).toBe(false);
+  expect(fs.existsSync(path.join(f.root, '.qa-evidence/002'))).toBe(false);
+  const program = `const fs = require('node:fs'); console.log(JSON.stringify({ step: 2, noteBeforeRun: fs.existsSync('exploration-002.json') }))`;
+  const second = merged('002', '001', program);
+  expect(second.status, second.stderr).toBe(0);
+  const captured = receipt(second.stdout);
+  expect(captured).toMatchObject({ action: 'capture', status: 'complete', id: '002', checkpoint: '002', link: '[checkpoint 002](exploration-002.json)' });
+  const noteBytes = fs.readFileSync(path.join(f.root, 'exploration-002.json'), 'utf8');
+  expect(captured.checkpointSha256).toBe(createHash('sha256').update(noteBytes).digest('hex'));
+  expect(JSON.parse(noteBytes)).toEqual({ observationCapture: '001', observationArgv: [process.execPath, '-e', 'console.log(JSON.stringify({ step: 1 }))'],
+    observed: { step: 1 }, hypothesis, nextCapture: '002', nextArgv: [process.execPath, '-e', program] });
+  expect(JSON.parse(fs.readFileSync(path.join(f.root, '.qa-evidence/002/stdout'), 'utf8'))).toEqual({ step: 2, noteBeforeRun: true });
+  if (process.platform !== 'win32') expect(fs.statSync(path.join(f.root, 'exploration-002.json')).mode & 0o777).toBe(0o600);
+  const stale = merged('003', '001', 'console.log(3)');
+  expect(stale.status).toBe(2);
+  expect(receipt(stale.stderr).message).toContain('--after must name capture 002');
+  fs.writeFileSync(path.join(f.root, 'exploration-003.json'), '{}', { mode: 0o600 });
+  const reused = merged('003', '002', `require('node:fs').appendFileSync('effects', 'ran')`);
+  expect(reused.status).toBe(2);
+  expect(receipt(reused.stderr).message).toContain('Checkpoint 003 already exists');
+  expect(fs.existsSync(path.join(f.root, 'effects'))).toBe(false);
+  const unguarded = f.capture('004', 'console.log(4)');
+  expect(unguarded.status).toBe(2);
+  expect(receipt(unguarded.stderr).message).toContain('--after 002 --hypothesis');
+  const replay = merged('004', '002', program);
+  expect(replay.status, replay.stderr).toBe(0);
+  const rows = ['001', '002', '004'].map(capture => ({ capture, command: `capture ${capture}`, contract: 'README.md', expected: 'declared', classification: 'pass' }));
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Only three probes ran.'], evidence: rows });
+  const report = f.run('materialize', f.root, 'annotations.json');
+  expect(report.status, report.stderr).toBe(0);
+  expect(receipt(report.stdout).reportLinks).toEqual(['[checkpoint 002](exploration-002.json)', '[checkpoint 003](exploration-003.json)', '[checkpoint 004](exploration-004.json)']);
+  const learning = JSON.parse(fs.readFileSync(path.join(f.root, 'evidence.json'), 'utf8')).learning;
+  expect(learning).toEqual([{ observationCapture: '001', observationArgv: [process.execPath, '-e', 'console.log(JSON.stringify({ step: 1 }))'], hypothesis, nextCapture: '002', nextArgv: [process.execPath, '-e', program] }]);
+  f.json('annotations.json', { revision: 'fixture-revision', limits: ['Only three probes ran.'], evidence: rows, learning: ['004'] });
+  fs.rmSync(path.join(f.root, 'evidence.json'));
+  const sameProbe = f.run('materialize', f.root, 'annotations.json');
+  expect(sameProbe.status).toBe(2);
+  expect(receipt(sameProbe.stderr).message).toContain('checkpoint 004 replays the same probe');
+});
+
+test('a merged capture refuses to publish a note naming a credential, and the separate checkpoint form keeps satisfying the guard', () => {
+  const f = fixture();
+  expect(f.capture('001', 'console.log(JSON.stringify({ step: 1 }))').status).toBe(0);
+  const secret = 'AKIA' + 'Q'.repeat(16);
+  const leaked = f.run('capture', f.root, '002', '--timeout-ms', '4000', '--after', '001', '--hypothesis', `The key ${secret} should be rejected by the next request.`, '--', process.execPath, '-e', 'console.log(2)');
+  expect(leaked.status).toBe(2);
+  expect(receipt(leaked.stderr).message).toBe('Sensitive intent cannot be published');
+  expect(fs.existsSync(path.join(f.root, 'exploration-002.json'))).toBe(false);
+  expect(f.run('checkpoint', f.root, '009', '001', `bun Q capture R 001 --timeout-ms 4000 -- one`, 'The first observation makes the second input the riskiest next probe.', `bun Q capture R 002 --timeout-ms 4000 -- two`).status).toBe(0);
+  const separate = f.capture('002', 'console.log(2)');
+  expect(separate.status, separate.stderr).toBe(0);
+  expect(receipt(separate.stdout).checkpoint).toBeUndefined();
 });
 
 test('materialize rejects placeholder metadata and same-probe learning with the fix in the message', () => {
