@@ -1255,6 +1255,19 @@ describe('Autoplan current-use identity: journal spelling vs PreToolUse spelling
     });
 });
 
+describe('Autoplan restore-point header line ending', () => {
+  // init writes an LF header above a CRLF plan; Claude's Edit then rewrites every ending as CRLF.
+  for (const [kind, ending, allowed] of [['crlf', '\r\n', true], ['lf', '\n', true],
+    ['trailing-text', ' forged\n', false], ['no-newline', '', false]] as const)
+    test(`a restore-point header ending ${kind} ${allowed ? 'binds' : 'does not bind'} the invocation`, () => {
+      const f = fixture(); f.message(); f.current();
+      const text = fs.readFileSync(f.active, 'utf8'), end = text.indexOf('-->') + 3;
+      fs.writeFileSync(f.active, text.slice(0, end) + ending + text.slice(text.indexOf('\n', end) + 1));
+      expect(f.evaluate()).toEqual(allowed ? { allow: true }
+        : { allow: false, reason: expect.stringContaining('initialization artifacts do not match') });
+    });
+});
+
 describe('Autoplan ownership in a linked git worktree session', () => {
   const posix = (file: string) => file.replaceAll('\\', '/');
   /** git worktree add's two-way link: <repo>/.git/worktrees/<name>/gitdir <-> <worktree>/.git. */

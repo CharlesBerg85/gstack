@@ -245,7 +245,9 @@ function invocation(events: Event[], root: string): Invocation {
   const restore = read(bound.restorePath, true), active = read(bound.activePlan);
   const reference = JSON.stringify(bound.restorePath).replace(/--/g, '\\u002d\\u002d');
   if (hash(restore) !== bound.originalSha256 || Buffer.byteLength(restore) !== chosen.originalBytes ||
-      !active.startsWith(`<!-- /autoplan restore point: ${reference} -->\n`) || bound.activePlan === bound.restorePath)
+      // Claude's Edit rewrites a CRLF plan's line endings, including init's LF header line.
+      !/^\r?\n/.test(active.slice(`<!-- /autoplan restore point: ${reference} -->`.length)) ||
+      !active.startsWith(`<!-- /autoplan restore point: ${reference} -->`) || bound.activePlan === bound.restorePath)
     fail('Autoplan initialization artifacts do not match this parent invocation.');
   return bound;
 }
