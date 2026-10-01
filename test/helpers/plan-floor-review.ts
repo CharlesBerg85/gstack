@@ -139,11 +139,11 @@ function deterministicPlanFloorSetup(input: PlanFloorReview): PlanFloorAssessmen
 
   // plan-devex-review 0B's confirmation contract: the brief asks whether the
   // narrative matches reality and every option is one of its three answers
-  // (accurate / some wrong / way off). Any remedy option leaves it to the assessor.
+  // (accurate / some or partly wrong / way off). Any remedy option leaves it to the assessor.
   const isDxNarrativeConfirmation =
     /\b(?:empathy|narrative)\b/.test(header) &&
     /\b(?:narrative|journey)\b[^?\n]*\bmatch\b[^?\n]*\?/.test(q.question.split(/\r?\n/)[0]!.toLowerCase()) &&
-    q.options.every(o => /^(?:[a-d][).:]\s*)?(?:(?:this is\s+)?accurate|some\b[^,]*?\b(?:wrong|corrections?)|(?:this is\s+)?way off)\b/i.test(o.label.trim()));
+    q.options.every(o => /^(?:[a-d][).:]\s*)?(?:(?:this is\s+)?accurate|(?:some|partly)\b[^,]*?\b(?:wrong|corrections?)|(?:this is\s+)?way off)\b/i.test(o.label.trim()));
 
   const isProductTypeSetup =
     header === 'product type' &&
