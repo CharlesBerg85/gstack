@@ -25,6 +25,13 @@ const samePath = (a: unknown, b: unknown): boolean =>
 /** Claude's Read expands a leading ~ before the tool runs; resolve the same file. */
 const requestedPath = (cwd: string, file: string) =>
   nativePathSpelling(path.resolve(cwd, file.replace(/^~(?=[\\/]|$)/, () => os.homedir())));
+/**
+ * Claude records the model's file_path verbatim in the journal but hands
+ * PreToolUse its resolved form (C:\x/y becomes C:\x\y). Compare that one field
+ * as the file it names; every other field stays exact.
+ */
+const nativeToolInput = (input: unknown, cwd: string): unknown =>
+  object(input) && typeof input.file_path === 'string' ? { ...input, file_path: requestedPath(cwd, input.file_path) } : input;
 class BoundaryError extends Error {}
 const fail = (reason: string): never => { throw new BoundaryError(reason); };
 export interface PublicationHookInput {
@@ -403,7 +410,7 @@ function evaluatePublication(input: PublicationHookInput, root: string, events: 
     if (pendingRead ? input.tool_name !== 'Read' || events.some(e =>
       (e.kind === 'use' || e.kind === 'result') && e.toolUseId === input.tool_use_id) :
       current.length !== 1 || current[0]!.kind !== 'use' || current[0]!.name !== input.tool_name ||
-        !isDeepStrictEqual(current[0]!.input, input.tool_input)) fail('Current native phase-entry identity is unavailable. Retry this phase-entry tool after the journal is available.');
+        !isDeepStrictEqual(nativeToolInput(current[0]!.input, input.cwd), nativeToolInput(input.tool_input, input.cwd))) fail('Current native phase-entry identity is unavailable. Retry this phase-entry tool after the journal is available.');
     const before = pendingRead ? events : events.filter(e => e.order < current[0]!.order);
     // Pinned Claude retains skill hooks after end_turn. Only an authenticated
     // later human request can release the old invocation; tool results and

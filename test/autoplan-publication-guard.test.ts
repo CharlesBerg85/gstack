@@ -1231,6 +1231,30 @@ describe('Autoplan phase entry through the gbrain :user render (#2569)', () => {
     });
 });
 
+describe('Autoplan current-use identity: journal spelling vs PreToolUse spelling', () => {
+  // Claude journals the model's file_path verbatim and hands PreToolUse its resolved form.
+  const spellings = (file: string) => [
+    path.join(path.dirname(file), '.') + path.sep + '.' + path.sep + path.basename(file),
+    ...(process.platform === 'win32' ? [path.dirname(file) + '/' + path.basename(file)] : []),
+  ];
+  for (const kind of ['dot-segment', 'forward-slash'] as const)
+    test.if(kind === 'dot-segment' || process.platform === 'win32')(`a ${kind} journal spelling is the same current Read`, () => {
+      const f = fixture(); f.message();
+      const target = f.input.tool_input.file_path as string, journal = spellings(target)[kind === 'dot-segment' ? 0 : 1]!;
+      f.use('next', 'Read', { file_path: journal });
+      expect(f.evaluate()).toEqual({ allow: true });
+    });
+
+  for (const kind of ['other-file', 'extra-field'] as const)
+    test(`a current Read that differs beyond spelling is not the same identity: ${kind}`, () => {
+      const f = fixture(); f.message();
+      const target = f.input.tool_input.file_path as string;
+      f.use('next', 'Read', kind === 'other-file' ? { file_path: path.join(path.dirname(target), 'eng-phase.md') }
+        : { file_path: spellings(target)[0], limit: 5 });
+      expect(f.evaluate()).toMatchObject({ allow: false, reason: expect.stringContaining('identity is unavailable') });
+    });
+});
+
 describe('Autoplan ownership in a linked git worktree session', () => {
   const posix = (file: string) => file.replaceAll('\\', '/');
   /** git worktree add's two-way link: <repo>/.git/worktrees/<name>/gitdir <-> <worktree>/.git. */
