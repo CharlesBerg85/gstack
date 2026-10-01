@@ -1255,6 +1255,28 @@ describe('Autoplan current-use identity: journal spelling vs PreToolUse spelling
     });
 });
 
+describe('Autoplan Read coverage of a CRLF artifact', () => {
+  // A CRLF plan carries CRLF into the close packet; Claude's Read reports those lines without CR.
+  const disk = 'Binding: {}\r\n## Implementation plan\r\nKeep it.\nlast line\r\n';
+  const use: any = { kind: 'use', sessionId: 's', toolUseId: 't', name: 'Read', order: 1, input: { file_path: 'C:\\x\\close-packet.md' } };
+  const result = (content: string): any => ({ kind: 'result', sessionId: 's', toolUseId: 't', isError: false, order: 2,
+    file: { filePath: 'C:\\x\\close-packet.md', content, startLine: 1, numLines: 5, totalLines: 5 } });
+  for (const [kind, reported, credited] of [
+    ['crlf-stripped', disk.replace(/\r\n/g, '\n'), true],
+    ['verbatim', disk, true],
+    ['changed-text', disk.replace(/\r\n/g, '\n').replace('Keep it.', 'Drop it.'), false],
+    ['mid-line-cr-dropped', 'Binding: {}\n## Implementation plan\nKeep it.\nlast line\n', true],
+  ] as const)
+    test(`a ${kind} report ${credited ? 'covers' : 'does not cover'} every line`, () => {
+      expect(autoplanReadRange(use, result(reported), disk)).toEqual(credited ? { start: 1, end: 5 } : undefined);
+    });
+  test('a CR inside a line is content, not a line ending', () => {
+    const inner = 'a\rb\nc';
+    const r: any = { ...result('ab\nc'), file: { filePath: 'C:\\x\\close-packet.md', content: 'ab\nc', startLine: 1, numLines: 2, totalLines: 2 } };
+    expect(autoplanReadRange(use, r, inner)).toBeUndefined();
+  });
+});
+
 describe('Autoplan restore-point header line ending', () => {
   // init writes an LF header above a CRLF plan; Claude's Edit then rewrites every ending as CRLF.
   for (const [kind, ending, allowed] of [['crlf', '\r\n', true], ['lf', '\n', true],

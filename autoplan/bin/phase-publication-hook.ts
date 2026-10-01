@@ -277,7 +277,9 @@ export function autoplanReadRange(use: Use, result: Event, content: string, hist
   if (!samePath(f.filePath, use.input?.file_path) || typeof f.content !== 'string' || !positive(f.startLine) || !positive(f.numLines) ||
       f.totalLines !== lines.length || f.startLine + f.numLines - 1 > lines.length || (use.input?.offset ?? 1) !== f.startLine ||
       (use.input?.limit !== undefined && (!positive(use.input.limit) || f.numLines > use.input.limit)) ||
-      f.content !== lines.slice(f.startLine - 1, f.startLine - 1 + f.numLines).join('\n')) return;
+      // Claude's Read reports a CRLF line without its CR; nothing else may differ.
+      f.content.replace(/\r(?=\n|$)/g, '') !==
+        lines.slice(f.startLine - 1, f.startLine - 1 + f.numLines).join('\n').replace(/\r(?=\n|$)/g, '')) return;
   return { start: f.startLine, end: f.startLine + f.numLines - 1 };
 }
 
