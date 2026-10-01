@@ -25,6 +25,8 @@ export const QA_DISCOVERY_REFERENCES = [
 ];
 
 export const WORKFLOW_JUDGE_REASONING_WORD_LIMIT = 150;
+/** The instructed length sits below the enforced limit: judges asked for <150 landed at 130-156 words. */
+export const WORKFLOW_JUDGE_REASONING_WORD_TARGET = 120;
 
 export const WORKFLOW_JUDGE_RESPONSE_SCHEMA = {
   type: 'object',
@@ -33,7 +35,7 @@ export const WORKFLOW_JUDGE_RESPONSE_SCHEMA = {
     completeness: { type: 'integer', enum: [1, 2, 3, 4, 5] },
     actionability: { type: 'integer', enum: [1, 2, 3, 4, 5] },
     reasoning: { type: 'string',
-      description: `Under ${WORKFLOW_JUDGE_REASONING_WORD_LIMIT} words with at most two decisive examples, evaluating the complete supplied workflow.` },
+      description: `Under ${WORKFLOW_JUDGE_REASONING_WORD_TARGET} words with at most two decisive examples, evaluating the complete supplied workflow.` },
   },
   required: ['clarity', 'completeness', 'actionability', 'reasoning'],
   additionalProperties: false,
@@ -61,7 +63,7 @@ Clarity 4 means the target agent can determine the next permitted action on each
 5 additionally means those paths are easy to locate and understand.
 Score clarity 3 or lower when execution still requires guessing because of
 conflicting order, undefined decisions, unclear authority or missing input/output handling.
-Evaluate the whole workflow, but keep the JSON reasoning under 150 words with at most two decisive examples.
+Evaluate the whole workflow, but keep the JSON reasoning under ${WORKFLOW_JUDGE_REASONING_WORD_TARGET} words with at most two decisive examples.
 For a clarity defect, cite the specific file/step and explain the competing actions or missing decision.
 Keep completeness and actionability independent: reader capability does not supply missing requirements.` : ''}
 

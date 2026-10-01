@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES } from './helpers/workflow-judge-input';
+import { readWorkflowJudgeInput, buildWorkflowJudgePrompt, QA_DISCOVERY_REFERENCES, WORKFLOW_JUDGE_RESPONSE_SCHEMA, WORKFLOW_JUDGE_REASONING_WORD_LIMIT } from './helpers/workflow-judge-input';
 import { ENG_REVIEW_EXCERPT } from './helpers/workflow-excerpt';
 
 const ROOT = resolve(import.meta.dir, '..');
@@ -41,10 +41,18 @@ test.each(['ship', 'review'])('%s clarity targets frontier readers without excus
 test('frontier calibration bounds reporting without reducing the evaluated source bundle', () => {
   const input = { files: [], text: 'Entire source bundle remains present.' };
   const prompt = buildWorkflowJudgePrompt({ judgeContext: 'a workflow', judgeGoal: 'how to finish', agentCapability: 'frontier' }, input);
-  expect(prompt).toContain('Evaluate the whole workflow, but keep the JSON reasoning under 150 words with at most two decisive examples');
+  expect(prompt).toContain('Evaluate the whole workflow, but keep the JSON reasoning under 120 words with at most two decisive examples');
   expect(prompt).toContain('For a clarity defect, cite the specific file/step and explain the competing actions or missing decision');
   expect(prompt).not.toContain('For each clarity defect');
   expect(prompt.endsWith(input.text)).toBe(true);
+});
+
+test('judges are asked for 120 words while the enforced reasoning limit stays below 150', () => {
+  const prompt = buildWorkflowJudgePrompt({ judgeContext: 'a workflow', judgeGoal: 'how to finish', agentCapability: 'frontier' }, { files: [], text: '' });
+  expect(prompt).toContain('keep the JSON reasoning under 120 words');
+  expect(prompt).not.toContain('150 words');
+  expect(WORKFLOW_JUDGE_RESPONSE_SCHEMA.properties.reasoning.description).toStartWith('Under 120 words');
+  expect(WORKFLOW_JUDGE_REASONING_WORD_LIMIT).toBe(150);
 });
 
 afterEach(() => {
