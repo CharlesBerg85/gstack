@@ -224,13 +224,20 @@ function initArguments(command: unknown, root: string): string[] | undefined {
   return args.slice(1);
 }
 
+/** A Bash command that looks like snapshot init but is not the bindable literal. Diagnostic only; never binds. */
+function shellInitAttempt(command: unknown): boolean {
+  return typeof command === 'string' && /\binit\b/.test(command) &&
+    (/gstack-autoplan-snapshot|SNAPSHOT_TOOL/.test(command) || /\bbun\s+\S+\s+init\s/.test(command));
+}
+
 function invocation(events: Event[], root: string): Invocation {
   let bound: Invocation | undefined;
   let chosen: Record<string, any> | undefined;
+  let unbound = false;
   for (const use of events) {
     if (use.kind !== 'use' || use.name !== 'Bash') continue;
     const args = initArguments(use.input?.command, root);
-    if (!args) continue;
+    if (!args) { unbound ||= shellInitAttempt(use.input?.command); continue; }
     const results = events.filter(x => x.kind === 'result' && x.toolUseId === use.toolUseId && x.order > use.order);
     if (results.length !== 1) fail('Autoplan initialization acknowledgment is unavailable or ambiguous.');
     const text = textResult(results[0]!);
@@ -244,6 +251,11 @@ function invocation(events: Event[], root: string): Invocation {
     bound = { activePlan: result.activePlan, restorePath: result.restorePath,
       originalSha256: result.originalSha256, start: results[0]!.order };
   }
+  if ((!chosen || !bound) && unbound)
+    fail('Autoplan invocation evidence is unavailable: snapshot init ran through shell variables, substitutions, chaining, pipes or ' +
+      'redirects, which this guard cannot bind. Re-run it as ONE Bash call, exactly ' +
+      '`bun "<SNAPSHOT_TOOL>" init "<SOURCE_PLAN>" "<ACTIVE_PLAN>" "<RESTORE_PATH>"`, with the literal absolute paths from the ' +
+      'earlier output (it answers reused:true), then retry the same Read.');
   if (!chosen || !bound) fail('Autoplan invocation evidence is unavailable. Complete the existing snapshot init step before phase entry.');
   const restore = read(bound.restorePath, true), active = read(bound.activePlan);
   const reference = JSON.stringify(bound.restorePath).replace(/--/g, '\\u002d\\u002d');
