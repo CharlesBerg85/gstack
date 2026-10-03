@@ -736,6 +736,11 @@ Before scope/review:
 ```bash
 bun "<SNAPSHOT_TOOL>" init "<SOURCE_PLAN>" "<ACTIVE_PLAN>" "<RESTORE_PATH>"
 ```
+Run init as its own Bash call, exactly this argv with the absolute paths written
+out literally: no `$VAR`, `$(…)`, `;`/`&&` chaining, `2>&1`, pipes, `timeout` or
+`echo`. The publication guard binds only that literal command. If a phase-entry
+Read is denied with "invocation evidence is unavailable", re-run that literal init
+with the same paths (it answers `reused:true`) and retry.
 Use returned paths/`scope`; never hand-wrap. init backs up SOURCE_PLAN exactly,
 then initializes ACTIVE_PLAN atomically without losing requirements.
 Reviewers get only `## Implementation plan`; analysis stays in `## Review record`,

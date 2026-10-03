@@ -459,6 +459,30 @@ describe('Autoplan parent publication guard', () => {
     });
   }
 
+  test('no init at all keeps the generic missing-evidence denial', () => {
+    const f = fixture(); f.message(); f.current(); f.events.splice(0, 2); f.reorder();
+    const reason = (f.evaluate() as any).reason;
+    expect(reason).toContain('Complete the existing snapshot init step');
+    expect(reason).not.toContain('shell variables');
+  });
+  test('a shell-built init is not bound and is named as the cause, with the literal re-run', () => {
+    const f = fixture(); f.message(); f.current();
+    (f.events[0] as any).input.command = `ST=$(bun -e 'console.log(require("fs").realpathSync(process.argv[1]))' "${ROOT}/bin/gstack-autoplan-snapshot.ts"); ` +
+      `echo "ST=$ST"; bun "$ST" init "${f.source}" "${f.active}" "${f.restore}" 2>&1 | tail -5`;
+    expect(f.evaluate()).toMatchObject({ allow: false, reason: expect.stringContaining('shell variables, substitutions, chaining, pipes or redirects') });
+    expect((f.evaluate() as any).reason).toContain('`bun "<SNAPSHOT_TOOL>" init "<SOURCE_PLAN>" "<ACTIVE_PLAN>" "<RESTORE_PATH>"`');
+    // The binding rule is unchanged: only the literal re-run (reused:true) binds.
+    f.events.splice(2, 0, { ...structuredClone(f.events[0]!), toolUseId: 're-init',
+      input: { command: `bun "${ROOT}/bin/gstack-autoplan-snapshot.ts" init "${f.source}" "${f.active}" "${f.restore}"` } },
+      { ...structuredClone(f.events[1]!), toolUseId: 're-init', content: JSON.stringify({ ...f.init, reused: true }) });
+    f.reorder(); expect(f.evaluate()).toEqual({ allow: true });
+  });
+  test('an init through a variable set in an earlier call is named as the cause', () => {
+    const f = fixture(); f.message(); f.current();
+    (f.events[0] as any).input.command = `bun "$SNAPSHOT_TOOL" init "${f.source}" "${f.active}" "${f.restore}"`;
+    expect(f.evaluate()).toMatchObject({ allow: false, reason: expect.stringContaining('cannot bind') });
+  });
+
   test('split successful close ranges through EOF are sufficient', () => {
     const f = fixture(); f.events.splice(4, 2); f.read('part1', f.packet.closePacketPath, 1, 10);
     f.read('part2', f.packet.closePacketPath, 11); f.message(); f.current(); expect(f.evaluate()).toEqual({ allow: true });
